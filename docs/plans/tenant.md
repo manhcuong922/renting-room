@@ -58,3 +58,4 @@ None — independent of Room, can be built in parallel.
   a separate File/Document module? Defer until product requirement is confirmed.
 - Should email uniqueness be case-insensitive? (Recommended: yes, normalize to lowercase
   before storing/comparing.)
+tesst
