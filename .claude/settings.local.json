@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dotnet build *)",
+      "Bash(dotnet tool *)",
+      "Bash(dotnet ef *)",
+      "PowerShell(dotnet build *)",
+      "PowerShell(dotnet ef database *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(dotnet add *)",
+      "Bash(dotnet list *)",
+      "Bash(curl -s \"https://api.nuget.org/v3-flatcontainer/automapper/index.json\")",
+      "Bash(dotnet new *)",
+      "Bash(dotnet sln *)",
+      "Bash(dotnet test *)",
+      "Bash(env)",
+      "Bash(docker port *)",
+      "Bash(docker exec *)",
+      "Bash(docker cp *)",
+      "Bash(npx tsc *)",
+      "Bash(grep -viE \"\\\\.cs$|/bin/|/obj/\")",
+      "Bash(sqlcmd *)"
+    ]
+  }
+}

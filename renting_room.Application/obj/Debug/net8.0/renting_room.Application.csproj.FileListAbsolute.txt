@@ -1,0 +1,15 @@
+D:\code\renting_room\renting_room.Application\obj\Debug\net8.0\renting_room.Application.csproj.AssemblyReference.cache
+D:\code\renting_room\renting_room.Application\obj\Debug\net8.0\renting_room.Application.GeneratedMSBuildEditorConfig.editorconfig
+D:\code\renting_room\renting_room.Application\obj\Debug\net8.0\renting_room.Application.AssemblyInfoInputs.cache
+D:\code\renting_room\renting_room.Application\obj\Debug\net8.0\renting_room.Application.AssemblyInfo.cs
+D:\code\renting_room\renting_room.Application\obj\Debug\net8.0\renting_room.Application.csproj.CoreCompileInputs.cache
+D:\code\renting_room\renting_room.Application\bin\Debug\net8.0\renting_room.Application.deps.json
+D:\code\renting_room\renting_room.Application\bin\Debug\net8.0\renting_room.Application.dll
+D:\code\renting_room\renting_room.Application\bin\Debug\net8.0\renting_room.Application.pdb
+D:\code\renting_room\renting_room.Application\bin\Debug\net8.0\renting_room.Domain.dll
+D:\code\renting_room\renting_room.Application\bin\Debug\net8.0\renting_room.Domain.pdb
+D:\code\renting_room\renting_room.Application\obj\Debug\net8.0\renting_.1A31753C.Up2Date
+D:\code\renting_room\renting_room.Application\obj\Debug\net8.0\renting_room.Application.dll
+D:\code\renting_room\renting_room.Application\obj\Debug\net8.0\refint\renting_room.Application.dll
+D:\code\renting_room\renting_room.Application\obj\Debug\net8.0\renting_room.Application.pdb
+D:\code\renting_room\renting_room.Application\obj\Debug\net8.0\ref\renting_room.Application.dll

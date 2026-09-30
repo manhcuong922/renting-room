@@ -1,0 +1,11 @@
+D:\code\renting_room\renting_room.Domain\bin\Debug\net8.0\renting_room.Domain.deps.json
+D:\code\renting_room\renting_room.Domain\bin\Debug\net8.0\renting_room.Domain.dll
+D:\code\renting_room\renting_room.Domain\bin\Debug\net8.0\renting_room.Domain.pdb
+D:\code\renting_room\renting_room.Domain\obj\Debug\net8.0\renting_room.Domain.GeneratedMSBuildEditorConfig.editorconfig
+D:\code\renting_room\renting_room.Domain\obj\Debug\net8.0\renting_room.Domain.AssemblyInfoInputs.cache
+D:\code\renting_room\renting_room.Domain\obj\Debug\net8.0\renting_room.Domain.AssemblyInfo.cs
+D:\code\renting_room\renting_room.Domain\obj\Debug\net8.0\renting_room.Domain.csproj.CoreCompileInputs.cache
+D:\code\renting_room\renting_room.Domain\obj\Debug\net8.0\renting_room.Domain.dll
+D:\code\renting_room\renting_room.Domain\obj\Debug\net8.0\refint\renting_room.Domain.dll
+D:\code\renting_room\renting_room.Domain\obj\Debug\net8.0\renting_room.Domain.pdb
+D:\code\renting_room\renting_room.Domain\obj\Debug\net8.0\ref\renting_room.Domain.dll

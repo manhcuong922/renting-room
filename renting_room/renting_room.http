@@ -1,0 +1,31 @@
+@renting_room_HostAddress = http://localhost:5213
+
+### List all rooms
+GET {{renting_room_HostAddress}}/api/rooms
+Accept: application/json
+
+### Create a room
+POST {{renting_room_HostAddress}}/api/rooms
+Content-Type: application/json
+
+{
+  "name": "Room 101",
+  "monthlyRent": 250.00
+}
+
+### Create a room with invalid data (expects 400 validation error)
+POST {{renting_room_HostAddress}}/api/rooms
+Content-Type: application/json
+
+{
+  "name": "",
+  "monthlyRent": -10
+}
+
+### Get a room by ID (replace with a real ID from the list/create response)
+GET {{renting_room_HostAddress}}/api/rooms/00000000-0000-0000-0000-000000000000
+Accept: application/json
+
+### Get a room that does not exist (expects 404)
+GET {{renting_room_HostAddress}}/api/rooms/ffffffff-ffff-ffff-ffff-ffffffffffff
+Accept: application/json
