@@ -2,21 +2,54 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using renting_room.Application.Common.Interfaces;
+using renting_room.Infrastructure.Idempotency;
+using renting_room.Infrastructure.Identity;
 using renting_room.Infrastructure.Persistence;
 
 namespace renting_room.Infrastructure;
 
 public static class DependencyInjection
 {
-    public static IServiceCollection AddInfrastructure(
-        this IServiceCollection services,
-        IConfiguration configuration)
-    {
-        services.AddDbContext<AppDbContext>(options =>
-            options.UseNpgsql(configuration.GetConnectionString("DefaultConnection")));
+    public const string ConnectionStringName = "DefaultConnection";
 
+    public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
+    {
+        var connectionString = configuration.GetConnectionString(ConnectionStringName);
+        if (string.IsNullOrWhiteSpace(connectionString))
+            throw new InvalidOperationException(
+                $"Connection string '{ConnectionStringName}' is not configured. " +
+                $"Set ConnectionStrings__{ConnectionStringName} via environment variable or user-secrets.");
+
+        services.AddDbContext<AppDbContext>(options => ConfigureDbContext(options, connectionString));
         services.AddScoped<IAppDbContext>(sp => sp.GetRequiredService<AppDbContext>());
+
+        services.AddOptions<DatabaseOptions>().Bind(configuration.GetSection(DatabaseOptions.SectionName));
+        services.AddOptions<BootstrapAdminOptions>().Bind(configuration.GetSection(BootstrapAdminOptions.SectionName));
+        services.AddOptions<JwtOptions>()
+            .Bind(configuration.GetSection(JwtOptions.SectionName))
+            .ValidateDataAnnotations()
+            .Validate(o => o.SessionAbsoluteDays >= o.RefreshTokenDays,
+                "Jwt:SessionAbsoluteDays must be greater than or equal to Jwt:RefreshTokenDays.")
+            .ValidateOnStart();
+
+        services.AddMemoryCache();
+        services.AddSingleton<JwtSigningKeyProvider>();
+        services.AddSingleton<ITokenService, JwtTokenService>();
+        services.AddSingleton<IPasswordHasher, PasswordHasher>();
+        services.AddScoped<IUserSessionStore, UserSessionStore>();
+
+        services.AddOptions<IdempotencyOptions>()
+            .Bind(configuration.GetSection(IdempotencyOptions.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+        services.AddScoped<IIdempotencyStore, IdempotencyStore>();
+        services.AddHostedService<IdempotencyCleanupService>();
 
         return services;
     }
+
+    internal static void ConfigureDbContext(DbContextOptionsBuilder options, string connectionString) =>
+        options
+            .UseNpgsql(connectionString, npgsql => npgsql.MigrationsHistoryTable("__ef_migrations_history"))
+            .UseSnakeCaseNamingConvention();
 }

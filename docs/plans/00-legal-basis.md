@@ -1,0 +1,64 @@
+# 00 — Căn cứ pháp lý & ràng buộc nghiệp vụ
+
+> **Phạm vi tài liệu**: tổng hợp các văn bản pháp luật Việt Nam ảnh hưởng tới **dữ liệu** và
+> **nghiệp vụ** của phần mềm quản lý nhà trọ. Phần mềm là công cụ **lưu trữ & tính toán** cho
+> chủ trọ — **không** phải phần mềm pháp lý, **không** thay chủ trọ nộp hồ sơ cho cơ quan nhà nước,
+> **không** xuất hóa đơn điện tử.
+>
+> ⚠️ Tra cứu ngày 01/10/2026. Văn bản pháp luật thay đổi thường xuyên — mỗi dòng có cột
+> "Độ tin cậy": **Đã xác minh** (đã đối chiếu nguồn khi lập plan) / **Cần xác minh** (theo hiểu biết,
+> phải kiểm tra lại với văn bản gốc hoặc luật sư trước khi đưa vào sản phẩm thương mại).
+
+## 1. Bảng văn bản & tác động lên hệ thống
+
+| # | Văn bản | Nội dung liên quan | Tác động lên hệ thống | Module | Độ tin cậy |
+|---|---------|-------------------|----------------------|--------|-----------|
+| L1 | Bộ luật Dân sự 2015 (91/2015/QH13) — Điều 472–482 (hợp đồng thuê tài sản), Điều 328 (đặt cọc) | Thuê tài sản, nghĩa vụ trả tiền thuê, đặt cọc: nếu bên thuê từ chối giao kết/thực hiện thì mất cọc; bên nhận cọc từ chối thì trả cọc + khoản tương đương | Sổ cọc (deposit ledger) phải phân biệt: Nhận cọc / Hoàn cọc / Khấu trừ / Mất cọc (Forfeit) — không gộp tiền cọc vào tiền thuê | M05, M08 | Đã xác minh (Điều 328); số điều 472–482 cần xác minh |
+| L2 | Luật Nhà ở 2023 (27/2023/QH15), hiệu lực 01/08/2024 — Điều 163 | Hợp đồng nhà ở phải lập **văn bản**, gồm 10 nội dung: (1) tên & địa chỉ các bên; (2) mô tả nhà ở và thửa đất; (3) giá; (4) thời hạn & phương thức thanh toán; (5) thời gian giao nhận, thời hạn thuê; (6) quyền & nghĩa vụ; (7) cam kết; (8) thỏa thuận khác; (9) thời điểm có hiệu lực; (10) ngày ký | Bên cho thuê khai báo ở khu (M02 PR-BR-12) + snapshot vào hợp đồng; hợp đồng có `effective_date`, `signed_date`, `signed_place`, điều khoản, cọc (M05 CT-BR-19/20) | M02, M05, M09 | Đã xác minh |
+| L2b | Luật Nhà ở 2023 — Điều 160 (cho thuê **không bắt buộc** Giấy chứng nhận), Điều 164 (hợp đồng thuê **không bắt buộc** công chứng; hiệu lực theo thỏa thuận, không thỏa thuận thì từ lúc ký) | | Số GCN, thửa đất là trường tùy chọn; `effective_date` mặc định = ngày ký | M02, M05 | Đã xác minh |
+| L2c | Bộ luật Dân sự 2015 — Điều 117 (điều kiện giao dịch có hiệu lực: năng lực hành vi dân sự, tự nguyện, không trái luật) | Người ký phải đủ năng lực hành vi (người chưa thành niên do người đại diện theo pháp luật ký) | CT-BR-18: người đại diện ký ≥ 18 tuổi; chủ nhà cá nhân ≥ 18 tuổi (PR-BR-12) | M02, M05 | Đã xác minh (Điều 117) |
+| L3 | Luật Nhà ở 2023 — Điều 57; Nghị định 95/2024/NĐ-CP | Nhà ≥ 2 tầng, quy mô **≥ 20 căn hộ cho thuê** của cá nhân phải làm thủ tục như dự án | Chỉ cảnh báo (thông tin), lưu "số phòng" của khu trọ; không chặn | M02 | Đã xác minh |
+| L4 | Luật Nhà ở 2023 — **Điều 172**: bên cho thuê chỉ được đơn phương chấm dứt khi bên thuê không trả tiền thuê từ 03 tháng trở lên, dùng sai mục đích, tự ý đục phá/cơi nới/cải tạo (và trường hợp nhà ở công/xã hội); bên thuê được chấm dứt khi bên cho thuê không sửa hư hỏng nặng, tăng giá bất hợp lý / không báo trước, quyền sử dụng bị hạn chế; phải thông báo bằng văn bản trước ít nhất **30 ngày** (trừ bất khả kháng / thỏa thuận khác) | Thời hạn báo trước, căn cứ chấm dứt | `notice_days` (mặc định 30); `termination_reason` + `termination_ground` (CT-BR-21) | M05 | Đã xác minh |
+| L5 | Luật Cư trú 2020 (68/2020/QH14); **Nghị định 154/2024/NĐ-CP** (hiệu lực 10/01/2025, thay NĐ 62/2021) | Ở ≥ 30 ngày tại chỗ ở hợp pháp ngoài nơi thường trú → **đăng ký tạm trú**; ở < 30 ngày → **thông báo lưu trú**; hợp đồng thuê là giấy tờ chứng minh chỗ ở hợp pháp; khai báo tạm vắng theo các trường hợp luật định; đăng ký được qua VNeID / Cổng DVC | Module Cư trú theo dõi **trạng thái** đăng ký tạm trú / lưu trú / tạm vắng của từng người ở, nhắc việc, lưu ảnh xác nhận. Hệ thống KHÔNG nộp hồ sơ thay | M03 | Đã xác minh (NĐ 154/2024, định nghĩa lưu trú/tạm trú); thời hạn tạm trú tối đa (2 năm) cần xác minh |
+| L6 | **Nghị định 282/2025/NĐ-CP** (hiệu lực 15/12/2025) — xử phạt VPHC an ninh trật tự | Phạt cảnh cáo hoặc 500.000–1.000.000đ khi không thực hiện đúng đăng ký tạm trú, thông báo lưu trú, khai báo tạm vắng | Dashboard "người ở chưa đăng ký tạm trú/lưu trú" là tính năng giá trị cao cho chủ trọ | M03, M10 | Đã xác minh |
+| L7 | Luật Xuất nhập cảnh của người nước ngoài (47/2014/QH13, sửa đổi 2019, 2023) | Người nước ngoài tạm trú phải được cơ sở lưu trú khai báo (thời hạn rất ngắn, tính bằng giờ) | Renter có `nationality`; nếu ≠ VN → bản ghi cư trú loại `ForeignerResidence` + cảnh báo khẩn | M03 | Cần xác minh thời hạn khai báo |
+| L8 | Luật Căn cước 2023 (26/2023/QH15), hiệu lực 01/07/2024 | Thẻ căn cước / số định danh cá nhân 12 chữ số; CMND 9 số đã hết giá trị sử dụng | Validate `IdNumber`: CCCD/Căn cước = đúng 12 chữ số; CMND 9 số chỉ chấp nhận dạng "giấy tờ cũ" (legacy); Hộ chiếu cho người nước ngoài | M03 | Đã xác minh (12 số); mốc CMND hết hạn cần xác minh |
+| L9 | **Thông tư 60/2025/TT-BCT** (từ 02/12/2025) — Điều 12 khoản 5: giá điện cho người thuê nhà | HĐ thuê ≥ 12 tháng + có đăng ký tạm trú → mỗi hộ thuê được tính 1 định mức; HĐ < 12 tháng: **4 người = 1 định mức** (1 người = ¼…), chủ nhà không kê khai số người → **giá bậc 2 cho toàn bộ sản lượng**; **tổng tiền điện chủ nhà thu không được vượt hóa đơn của đơn vị bán lẻ điện** | (1) Lưu số người ở để chủ trọ kê khai định mức; (2) tính năng **đối chiếu hóa đơn điện**: nhập tổng tiền hóa đơn EVN của khu → cảnh báo nếu tổng thu tiền điện của các phòng > hóa đơn; (3) cảnh báo đơn giá điện cao bất thường | M02, M04, M07, M10 | Đã xác minh |
+| L10 | Thông tư 44/2021/TT-BTC (khung giá nước sạch) + Quyết định giá nước của UBND tỉnh | Giá nước do UBND tỉnh quyết định trong khung; định mức theo số người tùy địa phương | Đơn giá nước do chủ trọ cấu hình; hỗ trợ cả tính theo khối (Metered) và theo đầu người (Fixed/PerOccupant) | M04 | Đã xác minh (khung giá) |
+| L11 | Luật Bảo vệ dữ liệu cá nhân 2025 (91/2025/QH15) + **Nghị định 356/2025/NĐ-CP** (hiệu lực 01/01/2026, thay NĐ 13/2023) | Thu thập, xử lý dữ liệu cá nhân phải có căn cứ (đồng ý của chủ thể…), bảo đảm quyền chủ thể dữ liệu, có biện pháp bảo vệ | Chủ trọ = bên kiểm soát dữ liệu; nền tảng (SaaS) = bên xử lý dữ liệu → cần thỏa thuận xử lý dữ liệu trong hợp đồng B2B. Hệ thống: ghi nhận đồng ý (consent), mã hóa số giấy tờ, che (mask) khi hiển thị/xuất, audit truy cập, chính sách lưu giữ & xóa | M01, M03, M09, M10 | Đã xác minh (văn bản & hiệu lực); phân loại "dữ liệu nhạy cảm" của ảnh giấy tờ cần xác minh |
+| L12 | Luật Thuế TNCN & Luật Thuế GTGT sửa đổi — áp dụng từ 01/01/2026 | Cá nhân cho thuê nhà chỉ nộp thuế khi doanh thu > **500 triệu đồng/năm**; lệ phí môn bài bãi bỏ | Báo cáo **doanh thu cho thuê theo năm** (tổng tiền phòng & dịch vụ đã thu) để chủ trọ tự kê khai. Hệ thống không tính thuế | M10 | Đã xác minh qua nguồn thứ cấp — cần đối chiếu văn bản gốc, số hiệu luật |
+| L13 | Luật PCCC & CNCH 2024 + **Nghị định 105/2025/NĐ-CP** (hiệu lực 01/07/2025) | Nhà trọ thuộc danh mục phải mua bảo hiểm cháy nổ bắt buộc (theo quy mô) | Lưu giấy tờ tuân thủ của khu trọ (PCCC, bảo hiểm) + ngày hết hạn → nhắc gia hạn (P2) | M02, M09 | Cần xác minh phạm vi đối tượng |
+| L14 | Nghị quyết sắp xếp ĐVHC 2025 + **Quyết định 19/2025/QĐ-TTg** (bảng mã ĐVHC, hiệu lực 01/07/2025) | 34 tỉnh/thành; bỏ cấp huyện; chính quyền 2 cấp (tỉnh – xã/phường/đặc khu) | Địa chỉ có cấu trúc **2 cấp**: `province_code` + `commune_code` + `street_address`. Địa chỉ thường trú in trên giấy tờ cũ có thể là 3 cấp → lưu thêm `address_text` tự do | M02, M03 | Đã xác minh |
+| L15 | Nghị định 123/2020/NĐ-CP (sửa đổi bởi NĐ 70/2025) — hóa đơn | Hóa đơn điện tử chỉ bắt buộc với đối tượng kinh doanh theo luật thuế | "Hóa đơn" trong hệ thống gọi là **Phiếu báo tiền phòng / Phiếu thu** — tránh gây hiểu nhầm là hóa đơn GTGT. Tích hợp HĐĐT ngoài phạm vi | M07 | Cần xác minh |
+
+## 2. Quy tắc nghiệp vụ rút ra (được tham chiếu từ các module)
+
+| Mã | Quy tắc | Nguồn |
+|----|---------|-------|
+| LEG-01 | Hợp đồng bắt buộc có đủ 10 nội dung Điều 163: bên cho thuê (snapshot) & bên thuê, mô tả phòng (+ thửa đất nếu có), giá thuê & đơn giá dịch vụ, kỳ & phương thức thanh toán, ngày bàn giao & thời hạn, quyền nghĩa vụ, cam kết, thỏa thuận khác (cọc, nội quy, tài sản bàn giao), ngày hiệu lực, ngày ký. Người ký ≥ 18 tuổi | L2, L2b, L2c |
+| LEG-02 | Không xóa vật lý dữ liệu hợp đồng, hóa đơn, thanh toán, cư trú — chỉ lưu trữ (archive) / hủy có lý do. Xóa dữ liệu cá nhân theo yêu cầu chủ thể = **ẩn danh hóa** (anonymize) các trường định danh, giữ số liệu tài chính | L1, L11 |
+| LEG-03 | Mỗi người ở (occupant) dự kiến ở ≥ 30 ngày → hệ thống tạo nhắc việc "đăng ký tạm trú"; < 30 ngày → "thông báo lưu trú"; người nước ngoài → nhắc "khai báo tạm trú người nước ngoài" ngay | L5, L7 |
+| LEG-04 | Khi người ở rời đi → nhắc chủ trọ thực hiện thủ tục liên quan (xóa/khai báo) và ghi nhận ngày rời | L5 |
+| LEG-05 | Tiền điện thu của người thuê: hệ thống cung cấp đối chiếu với hóa đơn EVN của khu; cảnh báo, không chặn (vì có thể nhiều công tơ tổng) | L9 |
+| LEG-06 | Số giấy tờ tùy thân: mã hóa khi lưu, che khi hiển thị/xuất trừ khi người dùng có quyền và chủ động chọn "xuất đầy đủ" (có audit) | L11 |
+| LEG-07 | Địa chỉ hành chính theo mô hình 2 cấp (tỉnh – xã) từ 01/07/2025 | L14 |
+| LEG-08 | Thuật ngữ trên giao diện/xuất file: "Phiếu báo tiền phòng", "Phiếu thu" — không dùng "Hóa đơn GTGT" | L15 |
+
+## 3. Nguồn tham khảo
+
+- [Nghị định 154/2024/NĐ-CP — quy định chi tiết Luật Cư trú (LuatVietnam)](https://luatvietnam.vn/tin-van-ban-moi/da-co-nghi-dinh-154-2024-nd-cp-quy-dinh-chi-tiet-luat-cu-tru-186-100081-article.html)
+- [Nghị định 154/2024/NĐ-CP (VCCI)](https://vcci.com.vn/ho-so-thi-truong.htm/legal-document/154-2024-nd-cp)
+- [Từ 15/12/2025 phạt vi phạm cư trú — NĐ 282/2025 (Báo Lâm Đồng)](https://baolamdong.vn/tu-15122025-phat-den-12-trieu-dong-cho-4-vi-pham-cu-tru-410039.html)
+- [Cách tính tiền điện người thuê nhà từ 02/12/2025 — TT 60/2025/TT-BCT (LuatVietnam)](https://luatvietnam.vn/linh-vuc-khac/cach-tinh-tien-dien-sinh-hoat-cua-nguoi-thue-nha-tu-02-12-2025-the-nao-883-105708-article.html)
+- [Thông tư 60/2025/TT-BCT (Hệ thống pháp luật)](https://hethongphapluat.com/thong-tu-60-2025-tt-bct-quy-dinh-ve-thuc-hien-gia-ban-dien-do-bo-truong-bo-cong-thuong-ban-hanh.html)
+- [Thông tư 44/2021/TT-BTC khung giá nước sạch (LuatVietnam)](https://luatvietnam.vn/tai-chinh/thong-tu-44-2021-tt-btc-khung-gia-nuoc-sach-sinh-hoat-204384-d1.html)
+- [Luật Nhà ở 27/2023/QH15 (Thư viện pháp luật)](https://thuvienphapluat.vn/van-ban/Bat-dong-san/Luat-Nha-o-27-2023-QH15-528669.aspx)
+- [Nội dung hợp đồng cho thuê nhà ở — Điều 163 (Thư viện pháp luật)](https://thuvienphapluat.vn/phap-luat-nha-dat/cho-thue-nha-o-co-can-giay-chung-nhan-khong-hop-dong-cho-thue-nha-o-co-noi-dung-gi-9736.html)
+- [Quy định nhà ở nhiều tầng nhiều căn hộ — NĐ 95/2024 (Thị trường Tài chính Tiền tệ)](https://thitruongtaichinhtiente.vn/quy-dinh-viec-xay-dung-ban-cho-thue-nha-o-nhieu-tang-nhieu-can-ho-61543.html)
+- [Đặt cọc thuê trọ (Thư viện pháp luật)](https://thuvienphapluat.vn/phap-luat/muc-dich-cua-tien-dat-coc-thue-tro-la-gi-tien-dat-coc-thue-tro-co-lay-lai-duoc-khong-co-can-lap-hop-86023-174322.html)
+- [Nghị định 356/2025/NĐ-CP hướng dẫn Luật BVDLCN (Thư viện pháp luật)](https://thuvienphapluat.vn/van-ban/Quyen-dan-su/Nghi-dinh-356-2025-ND-CP-huong-dan-Luat-Bao-ve-du-lieu-ca-nhan-687428.aspx)
+- [PwC — New rules on personal data protection (2026)](https://www.pwc.com/vn/vn/publications/2026/20260128-new-rules-personal-data-protection.pdf)
+- [Quy định mới về thuế cho thuê nhà từ 2026 (Thư viện pháp luật)](https://thuvienphapluat.vn/hoi-dap-phap-luat/quy-dinh-moi-ve-thue-cho-thue-nha-tu-2026-nhu-the-nao-138077137.html)
+- [Nghị định 105/2025/NĐ-CP về PCCC (LuatVietnam)](https://luatvietnam.vn/an-ninh-trat-tu/nghi-dinh-105-2025-nd-cp-cua-chinh-phu-quy-dinh-chi-tiet-mot-so-dieu-va-bien-phap-thi-hanh-luat-phong-chay-chua-chay-va-cuu-nan-cuu-ho-400511-d1.html)
+- [Bảo hiểm cháy nổ bắt buộc cho nhà trọ (Luật Minh Khuê)](https://luatminhkhue.vn/nha-tro-co-phai-mua-bao-hiem-chay-no-khong-ai-co-trach-nhiem-mua-bao-hiem-chay-no-bat-buoc-cho-nha-tro.aspx)
+- [Mã số 34 tỉnh thành sau sáp nhập (Thư viện pháp luật)](https://thuvienphapluat.vn/phap-luat-nha-dat/ma-so-34-tinh-thanh-sau-sap-nhap-moi-nhat-2025-9799.html)

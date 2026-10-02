@@ -1,31 +1,120 @@
-@renting_room_HostAddress = http://localhost:5213
+@host = http://localhost:5213
+@api = {{host}}/api/v1
 
-### List all rooms
-GET {{renting_room_HostAddress}}/api/rooms
-Accept: application/json
+# Chạy lần lượt từ trên xuống. {{$guid}} sinh Idempotency-Key mới mỗi lần gửi. Mật khẩu admin = giá trị Bootstrap:Admin:Password trong user-secrets.
 
-### Create a room
-POST {{renting_room_HostAddress}}/api/rooms
+### 1. Admin đăng nhập
+# @name adminLogin
+POST {{api}}/auth/login
 Content-Type: application/json
 
 {
-  "name": "Room 101",
-  "monthlyRent": 250.00
+  "username": "0900000001",
+  "password": "<mật khẩu admin trong user-secrets>"
 }
 
-### Create a room with invalid data (expects 400 validation error)
-POST {{renting_room_HostAddress}}/api/rooms
+### 2. Thông tin tài khoản đang đăng nhập
+GET {{api}}/me
+Authorization: Bearer {{adminLogin.response.body.accessToken}}
+
+### 3. Admin tạo tổ chức + tài khoản chủ trọ (trả mật khẩu tạm một lần)
+# @name createOrg
+POST {{api}}/admin/organizations
+Authorization: Bearer {{adminLogin.response.body.accessToken}}
+Content-Type: application/json
+Idempotency-Key: {{$guid}}
+
+{
+  "code": "NT-DEMO",
+  "name": "Nhà trọ Demo",
+  "contactPhone": "0987654321",
+  "owner": { "fullName": "Trần Văn Chủ", "phone": "0987654321", "email": "chu.tro@example.com" }
+}
+
+### 4. Danh sách tổ chức (phân trang, tìm kiếm)
+GET {{api}}/admin/organizations?search=demo&status=Active&page=1&pageSize=20
+Authorization: Bearer {{adminLogin.response.body.accessToken}}
+
+### 5. Chủ trọ đăng nhập bằng mật khẩu tạm → mustChangePassword = true
+# @name ownerLogin
+POST {{api}}/auth/login
 Content-Type: application/json
 
 {
-  "name": "",
-  "monthlyRent": -10
+  "username": "0987654321",
+  "password": "{{createOrg.response.body.temporaryPassword}}"
 }
 
-### Get a room by ID (replace with a real ID from the list/create response)
-GET {{renting_room_HostAddress}}/api/rooms/00000000-0000-0000-0000-000000000000
-Accept: application/json
+### 6. Gọi API nghiệp vụ khi chưa đổi mật khẩu → 403 PASSWORD_CHANGE_REQUIRED
+GET {{api}}/rooms
+Authorization: Bearer {{ownerLogin.response.body.accessToken}}
 
-### Get a room that does not exist (expects 404)
-GET {{renting_room_HostAddress}}/api/rooms/ffffffff-ffff-ffff-ffff-ffffffffffff
-Accept: application/json
+### 7. Đổi mật khẩu → nhận cặp token mới
+# @name changePassword
+POST {{api}}/auth/change-password
+Authorization: Bearer {{ownerLogin.response.body.accessToken}}
+Content-Type: application/json
+
+{
+  "currentPassword": "{{createOrg.response.body.temporaryPassword}}",
+  "newPassword": "ChuTro2026x"
+}
+
+### 8. Tạo phòng (chỉ thấy trong tổ chức của mình)
+POST {{api}}/rooms
+Authorization: Bearer {{changePassword.response.body.accessToken}}
+Content-Type: application/json
+Idempotency-Key: {{$guid}}
+
+{
+  "name": "P101",
+  "monthlyRent": 3500000
+}
+
+### 9. Danh sách phòng
+GET {{api}}/rooms
+Authorization: Bearer {{changePassword.response.body.accessToken}}
+
+### 10. Làm mới token (refresh token cũ bị thu hồi)
+# @name refresh
+POST {{api}}/auth/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "{{changePassword.response.body.refreshToken}}"
+}
+
+### 11. Đăng xuất phiên hiện tại
+POST {{api}}/auth/logout
+Content-Type: application/json
+
+{
+  "refreshToken": "{{refresh.response.body.refreshToken}}"
+}
+
+### 12. Dữ liệu sai → 400 VALIDATION_FAILED
+POST {{api}}/auth/login
+Content-Type: application/json
+
+{
+  "username": "",
+  "password": ""
+}
+
+### 13. Không có token → 401 AUTHENTICATION_REQUIRED
+GET {{api}}/rooms
+
+### 14. Health check (không cần đăng nhập)
+GET {{host}}/health/ready
+
+### 15. Gửi lại CÙNG Idempotency-Key → trả lại kết quả cũ (header Idempotent-Replayed: true), không tạo phòng thứ 2
+# Bấm request này 2 lần liên tiếp.
+POST {{api}}/rooms
+Authorization: Bearer {{changePassword.response.body.accessToken}}
+Content-Type: application/json
+Idempotency-Key: demo-fixed-key-0001
+
+{
+  "name": "P102",
+  "monthlyRent": 3200000
+}
