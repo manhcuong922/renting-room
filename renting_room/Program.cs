@@ -1,40 +1,34 @@
-using System.Text.Json.Serialization;
+using renting_room;
 using renting_room.Application;
 using renting_room.Endpoints;
 using renting_room.Infrastructure;
-using renting_room.Middleware;
+using renting_room.Infrastructure.Persistence;
 
 var builder = WebApplication.CreateBuilder(args);
-
-// Add services to the container.
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
-
-builder.Services.ConfigureHttpJsonOptions(options =>
+builder.WebHost.ConfigureKestrel(options =>
 {
-    options.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
+    options.AddServerHeader = false;
+    // API chỉ nhận JSON nhỏ — chặn body khổng lồ (mặc định Kestrel 30 MB). Upload file sẽ nâng riêng theo endpoint.
+    options.Limits.MaxRequestBodySize = builder.Configuration.GetValue("Limits:MaxRequestBodyBytes", 1_048_576L);
 });
 
-builder.Services.AddApplication();
-builder.Services.AddInfrastructure(builder.Configuration);
-
-builder.Services.AddProblemDetails();
-builder.Services.AddExceptionHandler<ValidationExceptionHandler>();
+builder.Services
+    .AddApplication()
+    .AddInfrastructure(builder.Configuration)
+    .AddApi(builder.Configuration);
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment())
-{
-    app.UseSwagger();
-    app.UseSwaggerUI();
-}
-
-app.UseExceptionHandler();
-app.UseStatusCodePages();
-
-app.UseHttpsRedirection();
-
+app.UseApi();
+app.MapAuthEndpoints();
+app.MapAdminOrganizationEndpoints();
 app.MapRoomEndpoints();
 
-app.Run();
+await app.Services.InitializeDatabaseAsync();
+await app.RunAsync();
+
+/// <summary>Cho phép integration test dùng WebApplicationFactory&lt;Program&gt;.</summary>
+public partial class Program
+{
+    protected Program() { }
+}

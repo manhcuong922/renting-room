@@ -1,0 +1,26 @@
+# Môi trường dev: PostgreSQL chạy trong Docker, không cần cài PostgreSQL lên máy.
+# Chạy:   docker compose up -d
+# Dừng:   docker compose down        (dữ liệu vẫn giữ trong volume)
+# Xóa sạch dữ liệu: docker compose down -v
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: renting_room_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-renting_room}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      TZ: Asia/Ho_Chi_Minh
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-renting_room}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  postgres_data:

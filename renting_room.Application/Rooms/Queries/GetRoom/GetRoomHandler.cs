@@ -2,6 +2,7 @@ using Mediator;
 using Microsoft.EntityFrameworkCore;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Domain.Common;
+using renting_room.Domain.Entities;
 
 namespace renting_room.Application.Rooms.Queries.GetRoom;
 
@@ -16,6 +17,6 @@ public sealed class GetRoomHandler(IAppDbContext db) : IRequestHandler<GetRoomQu
 
         return room is not null
             ? Result.Success(room)
-            : Result.Failure<RoomDto>("Room not found");
+            : Result.Failure<RoomDto>(RoomErrors.NotFound);
     }
 }
