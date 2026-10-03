@@ -56,6 +56,8 @@ docker compose up -d
 cd renting_room
 dotnet user-secrets set "Bootstrap:Admin:Phone" "0900000001"
 dotnet user-secrets set "Bootstrap:Admin:Password" "<mật khẩu ≥ 12 ký tự>"
+# Khóa băm số CCCD (bắt buộc, ≥ 32 ký tự, KHÔNG được đổi sau khi đã có dữ liệu)
+dotnet user-secrets set "PersonalData:HashKey" "<chuỗi ngẫu nhiên ≥ 32 ký tự>"
 
 # 4. Chạy API — lần đầu sẽ tự tạo bảng (migration) và tạo tài khoản admin
 dotnet run --launch-profile http

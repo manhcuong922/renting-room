@@ -1,6 +1,7 @@
 # Quy ước gọi API (dành cho frontend / mobile)
 
 > Áp dụng cho mọi endpoint `/api/v1/*`. Thử nhanh bằng [`renting_room.http`](../../renting_room/renting_room.http) hoặc Swagger `http://localhost:5213/swagger`.
+> Tài liệu theo từng chức năng / màn hình (endpoint, mẫu JSON, mã lỗi): [`docs/api/`](../api/README.md).
 
 ## 1. Xác thực
 
@@ -26,7 +27,7 @@ Xử lý phía client:
 Thao tác **tạo mới** (và sau này: thanh toán, cọc, tạo phiếu) yêu cầu header:
 
 ```http
-POST /api/v1/rooms
+POST /api/v1/properties
 Idempotency-Key: 7f3c1a2e-5b4d-4e8f-9a01-2b3c4d5e6f70
 ```
 
@@ -49,7 +50,11 @@ Endpoint đang áp dụng:
 | Endpoint | Bắt buộc? |
 |----------|-----------|
 | `POST /admin/organizations` | ✅ (retry nhận lại đúng mật khẩu tạm của lần đầu) |
-| `POST /rooms` | ✅ |
+| `POST /org/members` (thêm phó quản lý) | ✅ |
+| `POST /properties`, `POST /properties/{id}/rooms`, `POST /properties/{id}/rooms/bulk` | ✅ |
+| `POST /renters` | ✅ |
+| `POST /contracts` | ✅ |
+| `POST /contracts/{id}/activate` | Tùy chọn |
 | `POST /admin/organizations/{id}/suspend`, `/reactivate` | Tùy chọn |
 
 Key có hiệu lực 24 giờ, phạm vi theo từng tài khoản (2 người dùng trùng key không ảnh hưởng nhau).

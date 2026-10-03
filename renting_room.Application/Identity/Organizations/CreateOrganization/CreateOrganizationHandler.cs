@@ -10,6 +10,7 @@ namespace renting_room.Application.Identity.Organizations.CreateOrganization;
 public sealed class CreateOrganizationHandler(
     IAppDbContext db,
     IPasswordHasher passwordHasher,
+    TimeProvider clock,
     ILogger<CreateOrganizationHandler> logger)
     : IRequestHandler<CreateOrganizationCommand, Result<CreateOrganizationResult>>
 {
@@ -35,7 +36,8 @@ public sealed class CreateOrganizationHandler(
             request.ContactPhone,
             request.ContactEmail,
             request.TaxCode,
-            request.Note);
+            request.Note,
+            request.Address);
 
         var temporaryPassword = TemporaryPasswordGenerator.Generate();
         var owner = User.CreateOrgOwner(
@@ -43,7 +45,8 @@ public sealed class CreateOrganizationHandler(
             request.Owner.FullName,
             phone,
             email,
-            passwordHasher.Hash(temporaryPassword));
+            passwordHasher.Hash(temporaryPassword),
+            clock.GetUtcNow());
 
         // Một SaveChanges = một transaction: không bao giờ có tổ chức thiếu chủ (M01 §10).
         db.Organizations.Add(organization);

@@ -9,18 +9,18 @@ namespace renting_room.IntegrationTests;
 [Collection(ApiCollection.Name)]
 public sealed class IdempotencyTests(ApiFactory factory)
 {
-    private const string RoomsUrl = "/api/v1/rooms";
     private readonly HttpClient _client = factory.CreateClient();
 
     [Fact]
     public async Task SameKeyTwice_CreatesOnce_AndReplaysOriginalResponse()
     {
         var owner = await _client.CreateActiveOwnerAsync();
+        var ownerRoomsUrl = await RoomsUrlAsync(owner);
         var key = Guid.NewGuid().ToString();
-        var body = new { name = "P201", monthlyRent = 3_000_000 };
+        var body = Room("P201");
 
-        var first = await _client.PostJsonAsync(RoomsUrl, body, owner.Tokens.AccessToken, key);
-        var second = await _client.PostJsonAsync(RoomsUrl, body, owner.Tokens.AccessToken, key);
+        var first = await _client.PostJsonAsync(ownerRoomsUrl, body, owner.Tokens.AccessToken, key);
+        var second = await _client.PostJsonAsync(ownerRoomsUrl, body, owner.Tokens.AccessToken, key);
 
         first.StatusCode.Should().Be(HttpStatusCode.Created);
         first.Headers.Contains("Idempotent-Replayed").Should().BeFalse();
@@ -37,10 +37,11 @@ public sealed class IdempotencyTests(ApiFactory factory)
     public async Task ConcurrentRequestsWithSameKey_CreateExactlyOneRoom()
     {
         var owner = await _client.CreateActiveOwnerAsync();
+        var ownerRoomsUrl = await RoomsUrlAsync(owner);
         var key = Guid.NewGuid().ToString();
 
         var responses = await Task.WhenAll(Enumerable.Range(0, 10).Select(_ =>
-            factory.CreateClient().PostJsonAsync(RoomsUrl, new { name = "P301", monthlyRent = 3_000_000 }, owner.Tokens.AccessToken, key)));
+            factory.CreateClient().PostJsonAsync(ownerRoomsUrl, Room("P301"), owner.Tokens.AccessToken, key)));
 
         // Một request thực thi; các request khác: 409 (đang xử lý) hoặc 201 replay (nếu đến sau khi xong).
         responses.Should().OnlyContain(r => r.StatusCode == HttpStatusCode.Created || r.StatusCode == HttpStatusCode.Conflict);
@@ -55,10 +56,11 @@ public sealed class IdempotencyTests(ApiFactory factory)
     public async Task SameKeyWithDifferentBody_Returns422()
     {
         var owner = await _client.CreateActiveOwnerAsync();
+        var ownerRoomsUrl = await RoomsUrlAsync(owner);
         var key = Guid.NewGuid().ToString();
-        await _client.PostJsonAsync(RoomsUrl, new { name = "P401", monthlyRent = 3_000_000 }, owner.Tokens.AccessToken, key);
+        await _client.PostJsonAsync(ownerRoomsUrl, Room("P401"), owner.Tokens.AccessToken, key);
 
-        var reused = await _client.PostJsonAsync(RoomsUrl, new { name = "P402", monthlyRent = 3_000_000 }, owner.Tokens.AccessToken, key);
+        var reused = await _client.PostJsonAsync(ownerRoomsUrl, Room("P402"), owner.Tokens.AccessToken, key);
 
         reused.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
         (await reused.ReadProblemCodeAsync()).Should().Be("IDEMPOTENCY_KEY_REUSED");
@@ -69,8 +71,9 @@ public sealed class IdempotencyTests(ApiFactory factory)
     public async Task MissingKey_OnRequiredEndpoint_Returns400_AndCreatesNothing()
     {
         var owner = await _client.CreateActiveOwnerAsync();
+        var ownerRoomsUrl = await RoomsUrlAsync(owner);
 
-        var response = await _client.PostJsonAsync(RoomsUrl, new { name = "P501", monthlyRent = 3_000_000 }, owner.Tokens.AccessToken, idempotencyKey: null);
+        var response = await _client.PostJsonAsync(ownerRoomsUrl, Room("P501"), owner.Tokens.AccessToken, idempotencyKey: null);
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         (await response.ReadProblemCodeAsync()).Should().Be("IDEMPOTENCY_KEY_REQUIRED");
@@ -84,8 +87,9 @@ public sealed class IdempotencyTests(ApiFactory factory)
     public async Task InvalidKeyFormat_Returns400(string key)
     {
         var owner = await _client.CreateActiveOwnerAsync();
+        var ownerRoomsUrl = await RoomsUrlAsync(owner);
 
-        var response = await _client.PostJsonAsync(RoomsUrl, new { name = "P601", monthlyRent = 3_000_000 }, owner.Tokens.AccessToken, key);
+        var response = await _client.PostJsonAsync(ownerRoomsUrl, Room("P601"), owner.Tokens.AccessToken, key);
 
         (await response.ReadProblemCodeAsync()).Should().Be("INVALID_IDEMPOTENCY_KEY");
     }
@@ -94,12 +98,13 @@ public sealed class IdempotencyTests(ApiFactory factory)
     public async Task FailedRequest_ReleasesKey_SoClientCanRetryWithSameKey()
     {
         var owner = await _client.CreateActiveOwnerAsync();
+        var ownerRoomsUrl = await RoomsUrlAsync(owner);
         var key = Guid.NewGuid().ToString();
 
-        var invalid = await _client.PostJsonAsync(RoomsUrl, new { name = "", monthlyRent = -1 }, owner.Tokens.AccessToken, key);
+        var invalid = await _client.PostJsonAsync(ownerRoomsUrl, new { code = "", spec = new { maxOccupants = 0 } }, owner.Tokens.AccessToken, key);
         invalid.StatusCode.Should().Be(HttpStatusCode.BadRequest);
 
-        var corrected = await _client.PostJsonAsync(RoomsUrl, new { name = "P701", monthlyRent = 3_000_000 }, owner.Tokens.AccessToken, key);
+        var corrected = await _client.PostJsonAsync(ownerRoomsUrl, Room("P701"), owner.Tokens.AccessToken, key);
         corrected.StatusCode.Should().Be(HttpStatusCode.Created);
     }
 
@@ -107,11 +112,13 @@ public sealed class IdempotencyTests(ApiFactory factory)
     public async Task SameKey_ForDifferentUsers_IsIndependent()
     {
         var ownerA = await _client.CreateActiveOwnerAsync();
+        var ownerARoomsUrl = await RoomsUrlAsync(ownerA);
         var ownerB = await _client.CreateActiveOwnerAsync();
+        var ownerBRoomsUrl = await RoomsUrlAsync(ownerB);
         var key = Guid.NewGuid().ToString();
 
-        var a = await _client.PostJsonAsync(RoomsUrl, new { name = "A1", monthlyRent = 1_000_000 }, ownerA.Tokens.AccessToken, key);
-        var b = await _client.PostJsonAsync(RoomsUrl, new { name = "B1", monthlyRent = 2_000_000 }, ownerB.Tokens.AccessToken, key);
+        var a = await _client.PostJsonAsync(ownerARoomsUrl, Room("A1"), ownerA.Tokens.AccessToken, key);
+        var b = await _client.PostJsonAsync(ownerBRoomsUrl, Room("B1"), ownerB.Tokens.AccessToken, key);
 
         a.StatusCode.Should().Be(HttpStatusCode.Created);
         b.StatusCode.Should().Be(HttpStatusCode.Created);
@@ -144,10 +151,15 @@ public sealed class IdempotencyTests(ApiFactory factory)
         Encoding.UTF8.GetString(storedBody!).Should().NotContain(original.TemporaryPassword);
     }
 
+    private static object Room(string code) => new { code, spec = new { maxOccupants = 2, listedRent = 3_000_000 } };
+
+    private async Task<string> RoomsUrlAsync(OwnerAccount owner) =>
+        $"/api/v1/properties/{await _client.CreatePropertyAsync(owner.Tokens.AccessToken, withLessor: false)}/rooms";
+
     private async Task<int> RoomCountAsync(OwnerAccount owner)
     {
-        var rooms = await _client.GetAsync(RoomsUrl, owner.Tokens.AccessToken);
-        return (await rooms.ReadAsync<List<object>>()).Count;
+        var rooms = await _client.GetAsync("/api/v1/rooms", owner.Tokens.AccessToken);
+        return (await rooms.ReadAsync<Page<object>>()).TotalCount;
     }
 
     private async Task<byte[]?> ReadStoredResponseAsync(string key)

@@ -22,7 +22,13 @@ var app = builder.Build();
 app.UseApi();
 app.MapAuthEndpoints();
 app.MapAdminOrganizationEndpoints();
+app.MapMemberEndpoints();
+app.MapPropertyEndpoints();
 app.MapRoomEndpoints();
+app.MapRenterEndpoints();
+app.MapContractEndpoints();
+app.MapContractTemplateEndpoints();
+app.MapExportEndpoints();
 
 await app.Services.InitializeDatabaseAsync();
 await app.RunAsync();

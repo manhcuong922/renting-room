@@ -22,7 +22,11 @@ internal static class ApiSetup
     public static IServiceCollection AddApi(this IServiceCollection services, IConfiguration configuration)
     {
         services.ConfigureHttpJsonOptions(options =>
-            options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+        {
+            options.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
+            // "version" trả ra dạng chuỗi (xmin) — client gửi lại nguyên chuỗi đó khi cập nhật.
+            options.SerializerOptions.NumberHandling = JsonNumberHandling.AllowReadingFromString;
+        });
 
         // JSON sai cú pháp / thiếu body → ném BadHttpRequestException để GlobalExceptionHandler trả ProblemDetails.
         services.Configure<RouteHandlerOptions>(options => options.ThrowOnBadRequest = true);
@@ -93,6 +97,7 @@ internal static class ApiSetup
         // Fail-fast: thiếu/sai Jwt:SigningKey ở production phải làm app dừng ngay khi khởi động,
         // không phải đợi tới request đăng nhập đầu tiên mới trả 500.
         _ = app.Services.GetRequiredService<JwtSigningKeyProvider>();
+        _ = app.Services.GetRequiredService<IPersonalDataProtector>(); // thiếu PersonalData:HashKey ⇒ dừng ngay
         WarnIfReverseProxyNotConfigured(app);
 
         app.UseForwardedHeaders();

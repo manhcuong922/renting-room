@@ -44,6 +44,10 @@ public sealed class LoginHandler(
             return IdentityErrors.InvalidCredentials;
         }
 
+        // ID-BR-20: chỉ báo hết hạn khi mật khẩu ĐÚNG — không giúp kẻ dò mật khẩu.
+        if (user.IsTemporaryPasswordExpired(now))
+            return IdentityErrors.TemporaryPasswordExpired;
+
         if (user.OrganizationId is { } organizationId)
         {
             var organizationStatus = await db.Organizations

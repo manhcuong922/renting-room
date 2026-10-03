@@ -16,6 +16,9 @@ public static class AuthPolicies
 
     /// <summary>Thành viên tổ chức chủ trọ. Đây cũng là policy MẶC ĐỊNH cho mọi endpoint không khai báo gì.</summary>
     public const string OrgMember = "OrgMember";
+
+    /// <summary>Chỉ chủ trọ — quản lý phó quản lý (ID-BR-14).</summary>
+    public const string OrgOwner = "OrgOwner";
 }
 
 internal static class AuthorizationSetup
@@ -38,6 +41,11 @@ internal static class AuthorizationSetup
                 .RequireRole(nameof(UserRole.SystemAdmin))
                 .AddRequirements(new PasswordChangedRequirement()))
             .AddPolicy(AuthPolicies.OrgMember, orgMemberPolicy)
+            .AddPolicy(AuthPolicies.OrgOwner, policy => policy
+                .RequireAuthenticatedUser()
+                .RequireRole(nameof(UserRole.OrgOwner))
+                .RequireClaim(AppClaimTypes.OrganizationId)
+                .AddRequirements(new PasswordChangedRequirement()))
             // Secure-by-default: endpoint quên khai báo quyền vẫn bị bảo vệ (M01 §9).
             .SetFallbackPolicy(orgMemberPolicy);
 

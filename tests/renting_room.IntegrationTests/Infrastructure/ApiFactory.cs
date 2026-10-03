@@ -46,6 +46,7 @@ public class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         builder.UseSetting("ConnectionStrings:DefaultConnection", _database.GetConnectionString());
         builder.UseSetting("Database:MigrateOnStartup", "true");
         builder.UseSetting("Jwt:SigningKey", "integration-test-signing-key-at-least-32-bytes!");
+        builder.UseSetting("PersonalData:HashKey", "integration-test-personal-data-hmac-key-32+chars");
         builder.UseSetting("Bootstrap:Admin:Phone", AdminPhone);
         builder.UseSetting("Bootstrap:Admin:Password", AdminPassword);
         ConfigureRateLimits(builder);

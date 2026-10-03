@@ -16,6 +16,12 @@ public sealed class Organization : AuditableEntity
     public OrganizationStatus Status { get; private set; }
     public string? SuspendedReason { get; private set; }
     public string? Note { get; private set; }
+    public string? Address { get; private set; }
+
+    /// <summary>ID-BR-15: số phó quản lý đang hoạt động tối đa.</summary>
+    public int MaxManagers { get; private set; } = DefaultMaxManagers;
+
+    public const int DefaultMaxManagers = 10;
 
     public static Organization Create(
         string code,
@@ -24,7 +30,8 @@ public sealed class Organization : AuditableEntity
         string? contactPhone,
         string? contactEmail,
         string? taxCode,
-        string? note)
+        string? note,
+        string? address = null)
     {
         if (string.IsNullOrWhiteSpace(code))
             throw new ArgumentException("Organization code is required.", nameof(code));
@@ -41,6 +48,7 @@ public sealed class Organization : AuditableEntity
             ContactEmail = ContactNormalizer.NormalizeEmail(contactEmail),
             TaxCode = taxCode?.Trim(),
             Note = note,
+            Address = TextNormalizer.TrimToNull(address),
             Status = OrganizationStatus.Active
         };
     }

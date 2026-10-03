@@ -1,6 +1,7 @@
 using Mediator;
 using Microsoft.AspNetCore.Http.HttpResults;
 using renting_room.Application.Common.Models;
+using renting_room.Application.Identity.Members;
 using renting_room.Application.Identity.Organizations.ChangeStatus;
 using renting_room.Application.Identity.Organizations.CreateOrganization;
 using renting_room.Application.Identity.Organizations.Queries;
@@ -33,6 +34,22 @@ public static class AdminOrganizationEndpoints
         group.MapGet("/{id:guid}", Get).WithSummary("Chi tiết tổ chức");
         group.MapPost("/{id:guid}/suspend", Suspend).WithIdempotency(required: false).WithSummary("Tạm ngưng tổ chức (thu hồi mọi phiên đăng nhập)");
         group.MapPost("/{id:guid}/reactivate", Reactivate).WithIdempotency(required: false).WithSummary("Kích hoạt lại tổ chức");
+
+        // Admin chỉ quản lý TÀI KHOẢN — không xem dữ liệu trọ (ID-BR-11).
+        var users = app.MapGroup($"{EndpointHelpers.ApiPrefix}/admin/users")
+            .WithTags("Admin - Users")
+            .RequireAuthorization(AuthPolicies.SystemAdmin);
+
+        users.MapPost("/{id:guid}/reset-password", async (Guid id, ISender sender, CancellationToken ct) =>
+                (await sender.Send(new AdminResetPasswordCommand(id), ct)).ToHttp())
+            .WithNoStore()
+            .WithSummary("Cấp lại mật khẩu tạm cho chủ trọ / phó quản lý");
+        users.MapPost("/{id:guid}/lock", async (Guid id, ISender sender, CancellationToken ct) =>
+                (await sender.Send(new AdminSetUserLockCommand(id, Locked: true), ct)).ToHttp())
+            .WithSummary("Khóa tài khoản phó quản lý (chủ trọ: dùng tạm ngưng tổ chức)");
+        users.MapPost("/{id:guid}/unlock", async (Guid id, ISender sender, CancellationToken ct) =>
+                (await sender.Send(new AdminSetUserLockCommand(id, Locked: false), ct)).ToHttp())
+            .WithSummary("Mở khóa tài khoản");
     }
 
     private static async Task<Ok<PagedResult<OrganizationSummaryDto>>> List(

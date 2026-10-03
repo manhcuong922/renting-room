@@ -10,7 +10,10 @@ public enum UserRole
 public enum UserStatus
 {
     Active,
-    Locked
+    Locked,
+
+    /// <summary>Phó quản lý đã bị gỡ khỏi tổ chức — không đăng nhập, không khôi phục (ID-BR-17).</summary>
+    Removed
 }
 
 public enum OrganizationStatus

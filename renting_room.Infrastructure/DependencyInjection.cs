@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using renting_room.Application.Common.Interfaces;
+using renting_room.Infrastructure.Exports;
 using renting_room.Infrastructure.Idempotency;
 using renting_room.Infrastructure.Identity;
 using renting_room.Infrastructure.Persistence;
@@ -37,6 +38,15 @@ public static class DependencyInjection
         services.AddSingleton<ITokenService, JwtTokenService>();
         services.AddSingleton<IPasswordHasher, PasswordHasher>();
         services.AddScoped<IUserSessionStore, UserSessionStore>();
+
+        services.AddOptions<PersonalDataOptions>()
+            .Bind(configuration.GetSection(PersonalDataOptions.SectionName))
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+        services.AddSingleton<IPersonalDataProtector, PersonalDataProtector>();
+        services.AddScoped<IContractNumberGenerator, ContractNumberGenerator>();
+        services.AddScoped<IInvoiceLockReader, NoInvoiceLockReader>();
+        services.AddSingleton<ISpreadsheetWriter, ClosedXmlSpreadsheetWriter>();
 
         services.AddOptions<IdempotencyOptions>()
             .Bind(configuration.GetSection(IdempotencyOptions.SectionName))

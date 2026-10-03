@@ -60,19 +60,81 @@ Content-Type: application/json
   "newPassword": "ChuTro2026x"
 }
 
-### 8. Tạo phòng (chỉ thấy trong tổ chức của mình)
-POST {{api}}/rooms
+### 8a. Tạo khu trọ
+# @name createProperty
+POST {{api}}/properties
 Authorization: Bearer {{changePassword.response.body.accessToken}}
 Content-Type: application/json
 Idempotency-Key: {{$guid}}
 
 {
-  "name": "P101",
-  "monthlyRent": 3500000
+  "code": "KCG",
+  "name": "Khu Cầu Giấy",
+  "address": { "streetAddress": "Số 5 ngõ 10 Trần Duy Hưng", "communeName": "Phường Cầu Giấy", "provinceName": "Hà Nội" },
+  "billingDefaults": { "anchorDay": 5, "chargeMode": "Prepaid", "paymentDueDays": 5, "prorationMode": "Daily", "noticeDays": 30 }
 }
 
-### 9. Danh sách phòng
-GET {{api}}/rooms
+### 8b. Khai báo bên cho thuê (bắt buộc trước khi kích hoạt hợp đồng)
+PUT {{api}}/properties/{{createProperty.response.body.id}}/lessor
+Authorization: Bearer {{changePassword.response.body.accessToken}}
+Content-Type: application/json
+
+{
+  "type": "Individual", "name": "Nguyễn Văn Chủ", "address": "Số 1 Láng Hạ, Hà Nội", "phone": "0911222333",
+  "idType": "CitizenId", "idNumber": "001080012345", "dateOfBirth": "1980-01-01"
+}
+
+### 8c. Tạo phòng hàng loạt
+POST {{api}}/properties/{{createProperty.response.body.id}}/rooms/bulk
+Authorization: Bearer {{changePassword.response.body.accessToken}}
+Content-Type: application/json
+Idempotency-Key: {{$guid}}
+
+{
+  "floors": [ { "floor": "1", "codes": ["101", "102", "103"] } ],
+  "maxOccupants": 2, "listedRent": 3500000, "areaM2": 18.5
+}
+
+### 9. Danh sách phòng (trạng thái tính từ hợp đồng)
+# @name rooms
+GET {{api}}/rooms?propertyId={{createProperty.response.body.id}}
+Authorization: Bearer {{changePassword.response.body.accessToken}}
+
+### 9a. Tạo người thuê
+# @name createRenter
+POST {{api}}/renters
+Authorization: Bearer {{changePassword.response.body.accessToken}}
+Content-Type: application/json
+Idempotency-Key: {{$guid}}
+
+{
+  "fullName": "Trần Thị Lan", "dateOfBirth": "2002-04-15", "gender": "Female", "phone": "0987654321",
+  "idType": "CitizenId", "idNumber": "001302012345", "permanentAddress": "Nam Định"
+}
+
+### 9b. Tạo hợp đồng nháp (giá, cọc, kỳ thu lấy mặc định từ phòng/khu nếu bỏ trống)
+# @name createContract
+POST {{api}}/contracts
+Authorization: Bearer {{changePassword.response.body.accessToken}}
+Content-Type: application/json
+Idempotency-Key: {{$guid}}
+
+{
+  "roomId": "{{rooms.response.body.items[0].id}}",
+  "contract": {
+    "representativeRenterId": "{{createRenter.response.body.id}}",
+    "startDate": "2026-10-05",
+    "endDate": "2027-10-04",
+    "occupants": [ { "renterId": "{{createRenter.response.body.id}}" } ]
+  }
+}
+
+### 9c. Kích hoạt hợp đồng (bàn giao phòng)
+POST {{api}}/contracts/{{createContract.response.body.id}}/activate
+Authorization: Bearer {{changePassword.response.body.accessToken}}
+
+### 9d. Chi tiết hợp đồng
+GET {{api}}/contracts/{{createContract.response.body.id}}
 Authorization: Bearer {{changePassword.response.body.accessToken}}
 
 ### 10. Làm mới token (refresh token cũ bị thu hồi)
@@ -107,14 +169,15 @@ GET {{api}}/rooms
 ### 14. Health check (không cần đăng nhập)
 GET {{host}}/health/ready
 
-### 15. Gửi lại CÙNG Idempotency-Key → trả lại kết quả cũ (header Idempotent-Replayed: true), không tạo phòng thứ 2
+### 15. Gửi lại CÙNG Idempotency-Key → trả lại kết quả cũ (header Idempotent-Replayed: true), không tạo khu thứ 2
 # Bấm request này 2 lần liên tiếp.
-POST {{api}}/rooms
+POST {{api}}/properties
 Authorization: Bearer {{changePassword.response.body.accessToken}}
 Content-Type: application/json
 Idempotency-Key: demo-fixed-key-0001
 
 {
-  "name": "P102",
-  "monthlyRent": 3200000
+  "code": "KDEMO2",
+  "name": "Khu demo idempotency",
+  "address": { "streetAddress": "Số 9", "communeName": "Phường Láng", "provinceName": "Hà Nội" }
 }

@@ -38,7 +38,7 @@ public sealed class RefreshTokenHandler(
             return IdentityErrors.InvalidRefreshToken;
 
         var user = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == current.UserId, cancellationToken);
-        if (user is null || user.Status == UserStatus.Locked || user.SecurityStamp != current.SecurityStamp)
+        if (user is null || user.Status != UserStatus.Active || user.SecurityStamp != current.SecurityStamp)
         {
             await RefreshTokenRevoker.RevokeFamilyAsync(
                 db, current.FamilyId, RefreshTokenRevokeReason.AdminAction, now, cancellationToken);

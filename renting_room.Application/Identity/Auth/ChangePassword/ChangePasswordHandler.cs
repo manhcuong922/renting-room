@@ -43,7 +43,7 @@ public sealed class ChangePasswordHandler(
         if (ContainsUsername(request.NewPassword, user))
             return IdentityErrors.PasswordContainsUsername;
 
-        user.ChangePassword(passwordHasher.Hash(request.NewPassword));
+        user.ChangePassword(passwordHasher.Hash(request.NewPassword), now);
 
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
 

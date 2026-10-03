@@ -15,6 +15,8 @@ internal sealed class UserConfiguration : IEntityTypeConfiguration<User>
             // ID-BR-03: SystemAdmin ⇔ không thuộc tổ chức.
             t.HasCheckConstraint("ck_users_role_organization", "(role = 'SystemAdmin') = (organization_id IS NULL)");
             t.HasCheckConstraint("ck_users_failed_login_count", "failed_login_count >= 0");
+            // ID-BR-17: thông tin gỡ có ⇔ trạng thái Removed.
+            t.HasCheckConstraint("ck_users_removed", "(status = 'Removed') = (removed_at IS NOT NULL)");
         });
 
         builder.HasKey(u => u.Id);

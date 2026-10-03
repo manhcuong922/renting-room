@@ -76,6 +76,50 @@
 | R-60 ✅ | Không có biên bản tài sản bàn giao | Tranh chấp trừ cọc khi trả phòng | `contract_assets` + gợi ý trừ cọc có xác nhận | CT-BR-23 |
 | R-61 ✅ | Mật khẩu tạm không hết hạn | Mật khẩu tạm bị lộ dùng được mãi | Hạn 72h | ID-BR-20 |
 
+## B3. Rà nghiệp vụ sau khi code M01 (phó quản lý), M02, M03 (cơ bản), M05 — 02/10/2026
+
+| # | Vấn đề | Kịch bản lỗi | Xử lý | Nơi sửa |
+|---|--------|--------------|-------|---------|
+| R-62 ✅ | Bản chụp lúc ký chỉ có bên cho thuê | Sửa hồ sơ người thuê / mã phòng / diện tích sau khi ký ⇒ hợp đồng in lại sai so với bản đã ký (Điều 163: tên, địa chỉ các bên, mô tả nhà) | `signing_snapshot` gồm bên cho thuê + bên thuê + phòng + ngân hàng; migration chuyển dữ liệu cũ | CT-BR-19 |
+| R-63 ✅ | Hủy hợp đồng nháp không nhả biển số xe | Biển số bị khóa vĩnh viễn trong tổ chức, không đăng ký được ở phòng khác | Hủy nháp ⇒ kết thúc đăng ký xe | `Contract.Cancel` |
+| R-64 ✅ | Hợp đồng đã kích hoạt nhưng ngày bàn giao là ngày mai ⇒ phòng hiện "Trống" | Nhân viên khác tưởng phòng trống, tạo hợp đồng mới (DB vẫn chặn khi kích hoạt nhưng gây nhầm lẫn) | Hiển thị "Giữ chỗ" | PR-BR-02 |
+| R-65 ✅ | Nhập HĐ cũ có ngày hiệu lực thỏa thuận sớm hơn ngày bắt đầu, không ghi ngày ký | Ngày ký mặc định > ngày hiệu lực ⇒ vi phạm CHECK ⇒ 422 khó hiểu | Ngày ký mặc định không muộn hơn ngày hiệu lực | `Contract.Activate` |
+| R-66 ✅ | Phụ lục đổi giá cho phép trên hợp đồng nháp | Sửa nháp sau đó xóa mất phụ lục; phụ lục cho HĐ chưa ký vô nghĩa | Chỉ hợp đồng Active | CT-BR-05 |
+| R-67 ✅ | Đổi loại giấy tờ (CCCD → hộ chiếu) mà không nhập lại số | Số CCCD cũ gắn nhãn hộ chiếu; hash sai loại ⇒ chống trùng / tìm kiếm hỏng | Bắt buộc nhập lại số khi đổi loại (người thuê + bên cho thuê) | `ID_NUMBER_REQUIRED` |
+| R-68 ✅ | Tìm theo số giấy tờ mặc định loại CCCD | Không tìm được người nước ngoài theo hộ chiếu nếu không chọn loại | Không chọn loại ⇒ thử mọi loại | `SearchRenters` |
+| R-69 ✅ | Tạo nháp không khóa phòng | Tạo nháp song song với ngừng dùng phòng ⇒ nháp trên phòng đã ngừng dùng | Khóa hàng phòng khi tạo nháp | `CreateContractHandler` |
+| R-70 ✅ | Số HĐ tự sinh trùng số người dùng tự nhập trước đó | Tạo hợp đồng báo 409 khó hiểu | Lấy số kế tiếp (tối đa 5 lần) | `CreateContractHandler` |
+| R-71 ✅ | Lịch kỳ thu cắt tại ngày hết hạn thỏa thuận | HĐ quá hạn vẫn đang ở nhưng lịch kỳ thu dừng ⇒ M07 sẽ bỏ sót kỳ | Chỉ cắt tại ngày trả phòng thực tế (CT-BR-03) | `GetBillingPeriods` |
+| R-72 ✅ | (phát hiện khi code) Entity con có Id do domain sinh bị EF lưu bằng UPDATE | Thêm người ở / xe / tài sản / thành viên nhóm lỗi 409 | `ValueGeneratedNever` cho mọi Id | `AppDbContext` |
+| R-73 ✅ | (phát hiện khi code) Hoàn tất thanh lý trước ngày trả phòng | Phòng hiện trống khi người thuê còn ở | Chỉ hoàn tất từ ngày trả phòng; HĐ Ended vẫn chiếm phòng tới hết ngày trả | CT-BR-12 |
+
+## B4. Rà theo hợp đồng giấy thực tế & case gia đình — 02–03/10/2026
+
+| # | Vấn đề | Kịch bản lỗi | Xử lý | Nơi sửa |
+|---|--------|--------------|-------|---------|
+| R-74 ✅ | Key lỗi validation không khớp body (`POST /renters`, tài sản bàn giao, phòng) | UI không gắn được lỗi vào ô nhập (`renter.fullName` thay vì `fullName`, `maxOccupants` thay vì `spec.maxOccupants`) | Helper `FlattenedValidator`; tiền tố `spec.`; test hồi quy | Application |
+| R-75 ✅ | HĐ thực tế có tiêu đề, điều khoản theo mục, thỏa thuận điện (giá nhà nước, trả cuối tháng), nước (đ/người, trả đầu tháng), wifi — DB không có chỗ chứa | Mất nội dung khi nhập HĐ giấy; mỗi chủ trọ một kiểu HĐ | Mẫu hợp đồng + trường tùy biến chép vào HĐ | CT-BR-25, 26 |
+| R-76 ✅ | HĐ giấy thiếu điều khoản giải quyết tranh chấp, thời điểm & hiện trạng bàn giao (Luật Nhà ở 2023 Điều 163) | HĐ in ra thiếu nội dung bắt buộc | Mẫu gợi ý có sẵn các mục này | Mẫu gợi ý |
+| R-77 ✅ | HĐ không cọc vẫn nhận cọc mặc định của phòng | Sổ cọc sai, phiếu quyết toán hoàn cọc không có thật | Mẫu `no_deposit` ⇒ cọc = 0, gửi > 0 bị chặn; lọc `hasDeposit` | CT-BR-27 |
+| R-78 ✅ | Người ở không có quan hệ với người đứng tên; dữ liệu vô lý (vợ là nam, con lớn tuổi hơn cha, 2 vợ, vợ chồng chưa đủ tuổi) | Không lập được tờ khai tạm trú chung hộ; danh sách gửi công an sai | Danh mục quan hệ theo TT 55/2021 Điều 6 (sửa bởi TT 66/2023) + kiểm tra hợp lý; kiểm lại khi kích hoạt | CT-BR-28, 29 |
+| R-79 ✅ | Người chưa thành niên ở trọ cùng người không phải cha mẹ / giám hộ | Tờ khai tạm trú bị từ chối (Luật Cư trú Điều 28) | Bắt buộc `guardian_consent` | CT-BR-30 |
+| R-80 ✅ | Một người được thêm vào 2 phòng cùng lúc | Danh sách người ở / tạm trú mâu thuẫn; đếm sai số người tính định mức điện (L9) | Chặn ở Application; chuyển đi – vào ở cùng ngày hợp lệ | CT-BR-31 |
+| R-81 ✅ | (phát hiện khi code) HĐ đang thanh lý: `move_out_date` của người ở chỉ ghi khi hoàn tất | Kiểm tra ở 2 phòng chặn nhầm HĐ mới; xuất Excel theo ngày vẫn liệt kê người đã trả phòng | Ngày ra hiệu lực = `COALESCE(move_out_date, actual_end_date)` | M05 §4, E1 |
+| R-82 ✅ | Xuất Excel: tên người nhập dạng `=HYPERLINK(...)`, SĐT / CCCD mất số 0 đầu | Chèn công thức độc hại; sai dữ liệu | Quote-prefix chuỗi bắt đầu `= + - @`; cột chữ định dạng `@` | RP-BR-02 |
+
+## B5. Rà nghiệp vụ hợp đồng lần 2 — 03/10/2026 (mỗi lỗi có test tái hiện trước khi sửa)
+
+| # | Vấn đề | Kịch bản lỗi | Xử lý | Nơi sửa |
+|---|--------|--------------|-------|---------|
+| R-83 ✅ | Nháp cho phép "vẫn thêm" vượt sức chứa nhưng kích hoạt luôn chặn, không có cách vượt | Gia đình vợ chồng + con nhỏ ở phòng 2 người không kích hoạt được HĐ | Kích hoạt nhận `overrideCapacity` (ghi audit); audit cả khi thêm người ở | CT-BR-09 |
+| R-84 ✅ | Ghi "chuyển đi" lần 2 ghi đè ngày ra cũ | Kéo dài ngày ra chồng lên nơi ở mới ⇒ một người ở 2 phòng (lọt CT-BR-31) | Đã chuyển đi thì không ghi lại → 409 `OCCUPANT_ALREADY_MOVED_OUT` | CT-BR-08 |
+| R-85 ✅ | Hủy thanh lý khi người ở đã sang phòng khác | Người ở trở lại "đang ở" vô thời hạn ở phòng cũ ⇒ ở 2 phòng | Kiểm CT-BR-31 khi hủy thanh lý | CT-BR-34 |
+| R-86 ✅ | Kiểm "ở nơi khác" cũng bắt HĐ cùng phòng | Lỗi `OCCUPANT_LIVES_ELSEWHERE` che lỗi gốc `ROOM_PERIOD_OVERLAP` | Chỉ xét phòng khác | `OccupantChecks` |
+| R-87 ✅ | Không giới hạn tiền cọc (plan §8 có, code chưa làm) | Nhập thừa số 0 (100 triệu thay vì 1 triệu) ⇒ sổ cọc / hoàn cọc sai | ≤ 12 tháng tiền thuê | CT-BR-32 |
+| R-88 ✅ | Ngừng dùng phòng / khu, bảo trì được ngay **trong ngày trả phòng** | Phòng "Đang thuê" (người thuê còn dọn đồ) nhưng đã bị ngừng dùng | Tính HĐ `Ended` có ngày trả phòng ≥ hôm nay là còn chiếm phòng | CT-BR-33 |
+| R-89 ✅ | Dời ngày bắt đầu nháp về sau, xe đã đăng ký giữ nguyên ngày cũ | Xe "giữ" trước ngày bắt đầu HĐ ⇒ M07 tính phí giữ xe trước khi thuê | Dời `registered_from` theo | CT-BR-35 |
+| R-90 ✅ | Plan lệch code: PUT HĐ Active sửa ghi chú (plan có, code không), phân quyền phó quản lý "P3 theo khu" (code: toàn quyền) | Người làm UI / tester hiểu sai | Sửa plan theo thực tế, ghi phần chưa làm là P2/P3 | 05-contract §7, §9 |
+
 ## C. Rủi ro còn lại / cần quyết định
 
 | # | Vấn đề | Ảnh hưởng | Đề xuất |
@@ -88,6 +132,9 @@
 | O-06 ⚠️ | `paid_amount` là cache | Bug code có thể làm lệch | Test bất biến sau mỗi integration test + job đối soát đêm (P2) |
 | O-07 ⚠️ | Hiệu năng tạo phiếu cho khu lớn (load snapshot) | Chậm khi > 1.000 phòng | Loader theo khu (vài query batch), đo trong test hiệu năng P1 |
 | O-08 ⚠️ | Chủ trọ cần thu theo **giường** / nhiều phòng 1 HĐ | Không hỗ trợ P1 | Workaround: mỗi giường 1 `Room` |
+| O-09 ✅ | Người đứng tên không ở cùng ⇒ "chủ hộ" khi đăng ký tạm trú là người khác | Quan hệ khai so với người đứng tên không khớp tờ khai | Đã làm `household_head_renter_id` (CT-BR-36) |
+| O-10 ✅ | CT-BR-31 (không ở 2 phòng) chỉ kiểm ở Application | 2 request song song thêm cùng người vào 2 phòng có thể lọt | Đã làm: advisory lock theo người thuê trong transaction (05-contract §10) |
+| O-11 ⚠️ | Trường tùy biến điện / nước trùng khoản thu M04 | Nhập 2 nơi, lệch nhau | Khi có M04: tự điền trường từ `contract_fees` (05-contract Q7) |
 
 ## D. Ma trận kiểm tra chéo (đã đối chiếu)
 

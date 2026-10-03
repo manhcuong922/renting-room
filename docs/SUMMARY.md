@@ -9,8 +9,13 @@
 | Xác thực | Đăng nhập / refresh / đăng xuất / đổi mật khẩu (JWT), admin tạo & tạm ngưng tổ chức | `/api/v1/auth/*`, `/api/v1/admin/organizations` |
 | Bảo mật | Security review → sửa 8 lỗi (lộ tài khoản, dò mật khẩu, race khi đổi mật khẩu…) | |
 | Chống trùng & spam | `Idempotency-Key`, rate limit nhiều lớp, giới hạn body 1 MB | |
-| Kiểm thử | 58 unit + 44 integration (PostgreSQL thật) — tất cả xanh | `tests/` |
+| Người dùng | Phó quản lý (chủ trọ thêm/sửa/khóa/cấp lại mật khẩu/gỡ), admin cấp lại mật khẩu & khóa tài khoản, mật khẩu tạm hết hạn 72h | `/api/v1/org/members`, `/api/v1/admin/users` |
+| Khu trọ & phòng | Khu (bên cho thuê, ngân hàng, nội quy), phòng (đơn lẻ / hàng loạt, bảo trì, ngừng dùng, trạng thái tính từ hợp đồng), nhóm phòng | `/api/v1/properties`, `/rooms`, `/room-groups` |
+| Người thuê | Hồ sơ, số CCCD mã hóa + chống trùng, tìm không dấu | `/api/v1/renters` |
+| Hợp đồng | Nháp → kích hoạt (snapshot bên cho thuê, kiểm tra ≥ 18 tuổi, sức chứa) → thanh lý → kết thúc; người ở, phụ lục giá, gia hạn, báo trả phòng, tài sản bàn giao, xe gửi | `/api/v1/contracts` |
+| Kiểm thử | 94 unit + 84 integration (PostgreSQL thật) — tất cả xanh | `tests/` |
 | Tài liệu | Hướng dẫn PostgreSQL, quy ước gọi API | `docs/guides/` |
+| Tài liệu UI | Chức năng, màn hình gợi ý, endpoint, mẫu request/response thật, mã lỗi cho người làm giao diện | `docs/api/` (`README.md`, `openapi.json`) |
 
 ## 2. Công nghệ
 
@@ -83,13 +88,24 @@ Vượt → `429 TOO_MANY_REQUESTS` + `Retry-After`. Sai mật khẩu 5 lần �
 
 ```mermaid
 erDiagram
-  organizations ||--o{ users : "có"
-  organizations ||--o{ rooms : "sở hữu"
+  organizations ||--o{ users : "chủ + phó quản lý"
+  organizations ||--o{ properties : "khu trọ"
+  properties ||--o{ rooms : "phòng"
+  properties ||--o{ room_groups : "nhóm"
+  room_groups ||--o{ room_group_members : ""
+  organizations ||--o{ renters : "người thuê"
+  rooms ||--o{ contracts : "hợp đồng"
+  renters ||--o{ contracts : "đứng tên"
+  contracts ||--o{ contract_occupants : "người ở"
+  contracts ||--o{ contract_rent_terms : "giá theo kỳ"
+  contracts ||--o{ contract_assets : "tài sản"
+  contracts ||--o{ contract_vehicles : "xe"
   users ||--o{ refresh_tokens : "phiên"
-  users ||--o{ idempotency_keys : "key"
 ```
 
-Migration: `InitialIdentity` → `AddRefreshTokenFamilyExpiry` → `AddIdempotencyKeys`.
+Mọi khóa ngoại giữa bảng nghiệp vụ đều kèm `organization_id` ⇒ DB tự chặn dữ liệu chéo giữa các chủ trọ.
+
+Migration: `InitialIdentity` → `AddRefreshTokenFamilyExpiry` → `AddIdempotencyKeys` → `AddPropertiesRentersContracts` (kèm 2 EXCLUDE constraint viết tay).
 
 ## 8. Chạy thử
 
@@ -101,6 +117,7 @@ dotnet test                                          # tại thư mục gốc, c
 
 ## 9. Việc tiếp theo
 
-- Bảng `audit_logs` (ghi lịch sử thay đổi) — cần trước các module tiền.
+- Bảng `audit_logs` (ghi lịch sử thay đổi, hiện mới ghi log ứng dụng khi xem số CCCD) — cần trước các module tiền.
+- M04 Khoản thu (điện, nước, dịch vụ) → gắn vào hợp đồng; M06 Công tơ & chỉ số bàn giao.
+- M03 phần cư trú (tạm trú / lưu trú / tạm vắng), seed bảng địa chỉ hành chính 34 tỉnh.
 - Nâng .NET 10 (cần cài SDK 10; .NET 8 hết hỗ trợ 10/11/2026).
-- Module M02 Khu trọ & Phòng (viết lại `Room` theo plan).

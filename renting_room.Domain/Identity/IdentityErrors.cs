@@ -46,4 +46,29 @@ public static class IdentityErrors
 
     public static readonly Error OrganizationNotSuspended =
         Error.Conflict("ORG_NOT_SUSPENDED", "Tổ chức không ở trạng thái tạm ngưng.");
+
+    public static readonly Error TemporaryPasswordExpired =
+        Error.Unauthorized("TEMPORARY_PASSWORD_EXPIRED",
+            "Mật khẩu tạm đã hết hạn. Vui lòng liên hệ người cấp tài khoản để được cấp lại.");
+
+    public static readonly Error MemberNotFound =
+        Error.NotFound("MEMBER_NOT_FOUND", "Không tìm thấy thành viên trong tổ chức.");
+
+    public static readonly Error ManagerLimitReached =
+        Error.BusinessRule("MANAGER_LIMIT_REACHED", "Tổ chức đã đạt số lượng phó quản lý tối đa.");
+
+    public static readonly Error CannotModifyOwner =
+        Error.BusinessRule("CANNOT_MODIFY_OWNER", "Không thể thực hiện thao tác này với tài khoản chủ trọ.");
+
+    public static readonly Error CannotLockOwner =
+        Error.BusinessRule("CANNOT_LOCK_OWNER", "Không khóa tài khoản chủ trọ — hãy tạm ngưng tổ chức.");
+
+    public static readonly Error UserRemoved =
+        Error.Conflict("USER_REMOVED", "Tài khoản đã bị gỡ khỏi tổ chức.");
+
+    public static readonly Error UserAlreadyLocked =
+        Error.Conflict("USER_ALREADY_LOCKED", "Tài khoản đang bị khóa.");
+
+    public static readonly Error UserNotLocked =
+        Error.Conflict("USER_NOT_LOCKED", "Tài khoản không ở trạng thái khóa.");
 }
