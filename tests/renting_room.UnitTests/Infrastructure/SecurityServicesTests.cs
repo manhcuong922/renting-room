@@ -26,7 +26,7 @@ public sealed class JwtTokenServiceTests
     public void CreateAccessToken_ContainsIdentityClaims_AndExpiresAfterConfiguredMinutes()
     {
         var organizationId = Guid.NewGuid();
-        var user = User.CreateOrgOwner(organizationId, "Minh", "0912345678", null, "hash");
+        var user = User.CreateOrgOwner(organizationId, "Minh", "0912345678", null, "hash", Now);
 
         var token = CreateService().CreateAccessToken(user, Now);
         var jwt = new JsonWebToken(token.Value);

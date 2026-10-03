@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text;
+using System.Text.Json;
 using renting_room.IntegrationTests.Infrastructure;
 
 namespace renting_room.IntegrationTests;
@@ -8,6 +9,36 @@ namespace renting_room.IntegrationTests;
 public sealed class AuthorizationAndErrorTests(ApiFactory factory)
 {
     private readonly HttpClient _client = factory.CreateClient();
+
+    private static async Task<IReadOnlyList<string>> ReadValidationKeysAsync(HttpResponseMessage response)
+    {
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        return document.RootElement.GetProperty("errors").EnumerateObject().Select(p => p.Name).ToList();
+    }
+
+    [Fact]
+    public async Task ValidationErrorKeys_MatchRequestBodyPaths()
+    {
+        var owner = await _client.CreateActiveOwnerAsync();
+        var token = owner.Tokens.AccessToken;
+        var today = TestData.Today(factory);
+        var roomId = await _client.CreateRoomAsync(token, await _client.CreatePropertyAsync(token));
+        var contractId = await _client.CreateContractAsync(token, roomId, await _client.CreateRenterAsync(token), today);
+
+        // Body phẳng ⇒ key không có tiền tố.
+        var renter = await _client.PostJsonAsync("/api/v1/renters",
+            new { fullName = "", dateOfBirth = "2000-01-01", gender = "Male", idType = "CitizenId", idNumber = "123" }, token);
+        (await ReadValidationKeysAsync(renter)).Should().BeEquivalentTo("fullName", "idNumber");
+
+        var asset = await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/assets", new { name = "", quantity = 0 }, token);
+        (await ReadValidationKeysAsync(asset)).Should().BeEquivalentTo("name", "quantity");
+
+        // Body lồng ⇒ key theo đường dẫn JSON.
+        var room = await _client.PostJsonAsync($"/api/v1/properties/{Guid.NewGuid()}/rooms",
+            new { code = "R1", spec = new { maxOccupants = 0 } }, token);
+        (await ReadValidationKeysAsync(room)).Should().BeEquivalentTo("spec.maxOccupants");
+    }
 
     [Fact]
     public async Task ProtectedEndpoint_Returns401_WithoutToken()

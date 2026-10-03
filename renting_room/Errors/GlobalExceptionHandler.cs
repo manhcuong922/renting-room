@@ -74,6 +74,7 @@ internal sealed class GlobalExceptionHandler(
         return new HttpValidationProblemDetails(errors)
         {
             Status = StatusCodes.Status400BadRequest,
+            Title = "Dữ liệu không hợp lệ",
             Detail = "Một hoặc nhiều trường dữ liệu không hợp lệ.",
             Extensions = { [ProblemResponses.CodeKey] = "VALIDATION_FAILED" }
         };
@@ -84,16 +85,16 @@ internal sealed class GlobalExceptionHandler(
     {
         switch (exception.SqlState)
         {
+            case PostgresErrorCodes.UniqueViolation or PostgresErrorCodes.ExclusionViolation
+                when DbConstraints.FromViolation(exception.ConstraintName) is { } known:
+                return Problem(StatusCodes.Status409Conflict, known.Code, known.Message);
             case PostgresErrorCodes.UniqueViolation:
-                var known = DbConstraints.FromUniqueViolation(exception.ConstraintName);
-                return known is not null
-                    ? Problem(StatusCodes.Status409Conflict, known.Code, known.Message)
-                    : Problem(StatusCodes.Status409Conflict, "DUPLICATE_VALUE", "Dữ liệu đã tồn tại.");
+                return Problem(StatusCodes.Status409Conflict, "DUPLICATE_VALUE", "Dữ liệu đã tồn tại.");
+            case PostgresErrorCodes.ExclusionViolation:
+                return Problem(StatusCodes.Status409Conflict, "OVERLAP_CONFLICT", "Khoảng thời gian bị chồng lấn.");
             case PostgresErrorCodes.ForeignKeyViolation:
                 return Problem(StatusCodes.Status409Conflict, "REFERENCE_CONFLICT",
                     "Dữ liệu đang được tham chiếu hoặc tham chiếu tới dữ liệu không tồn tại.");
-            case PostgresErrorCodes.ExclusionViolation:
-                return Problem(StatusCodes.Status409Conflict, "OVERLAP_CONFLICT", "Khoảng thời gian bị chồng lấn.");
             case PostgresErrorCodes.SerializationFailure:
                 return Problem(StatusCodes.Status409Conflict, "CONCURRENCY_CONFLICT",
                     "Dữ liệu đang được xử lý đồng thời. Vui lòng thử lại.");

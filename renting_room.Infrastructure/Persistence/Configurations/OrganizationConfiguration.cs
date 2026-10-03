@@ -8,9 +8,11 @@ internal sealed class OrganizationConfiguration : IEntityTypeConfiguration<Organ
 {
     public void Configure(EntityTypeBuilder<Organization> builder)
     {
-        builder.ToTable("organizations", t => t.HasCheckConstraint(
-            "ck_organizations_suspended_reason",
-            "status <> 'Suspended' OR suspended_reason IS NOT NULL"));
+        builder.ToTable("organizations", t =>
+        {
+            t.HasCheckConstraint("ck_organizations_suspended_reason", "status <> 'Suspended' OR suspended_reason IS NOT NULL");
+            t.HasCheckConstraint("ck_organizations_max_managers", "max_managers BETWEEN 0 AND 100");
+        });
 
         builder.HasKey(o => o.Id);
         builder.ConfigureAuditable();
@@ -24,6 +26,8 @@ internal sealed class OrganizationConfiguration : IEntityTypeConfiguration<Organ
         builder.Property(o => o.Status).HasConversion<string>().HasMaxLength(16).IsRequired();
         builder.Property(o => o.SuspendedReason).HasMaxLength(500);
         builder.Property(o => o.Note).HasMaxLength(2000);
+        builder.Property(o => o.Address).HasMaxLength(500);
+        builder.Property(o => o.MaxManagers).HasDefaultValue(Organization.DefaultMaxManagers);
 
         builder.HasIndex(o => o.Code).IsUnique().HasDatabaseName(DbConstraints.OrganizationCodeUnique);
     }

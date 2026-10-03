@@ -15,7 +15,8 @@ public sealed record CreateOrganizationCommand(
     string? ContactEmail,
     string? TaxCode,
     string? Note,
-    CreateOrganizationOwner Owner) : IRequest<Result<CreateOrganizationResult>>;
+    CreateOrganizationOwner Owner,
+    string? Address = null) : IRequest<Result<CreateOrganizationResult>>;
 
 /// <summary><see cref="TemporaryPassword"/> chỉ trả về đúng một lần — không lưu dạng rõ, không ghi log.</summary>
 public sealed record CreateOrganizationResult(

@@ -67,11 +67,13 @@ public sealed class RateLimitingTests(RateLimitedApiFactory factory)
     public async Task WriteRequests_AreLimited_ButReadsStillAllowed()
     {
         var owner = await CreateOwnerAsync("198.51.100.30");
+        var propertyId = await _client.CreatePropertyAsync(owner.Tokens.AccessToken, withLessor: false);
 
         HttpResponseMessage? rejected = null;
         for (var i = 0; i < RateLimitedApiFactory.WriteLimit + 1 && rejected is null; i++)
         {
-            var response = await _client.PostJsonAsync("/api/v1/rooms", new { name = $"P{i}", monthlyRent = 1_000_000 }, owner.Tokens.AccessToken);
+            var response = await _client.PostJsonAsync($"/api/v1/properties/{propertyId}/rooms",
+                new { code = $"P{i}", spec = new { maxOccupants = 2 } }, owner.Tokens.AccessToken);
             if (response.StatusCode == HttpStatusCode.TooManyRequests)
                 rejected = response;
         }

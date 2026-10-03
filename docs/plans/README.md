@@ -97,8 +97,9 @@ Tạo khu trọ (địa chỉ 2 cấp, cài đặt thu mặc định: ngày ch�
 → tạo phòng (hàng loạt) → gắn công tơ + chỉ số ban đầu (M06) → tạo nhóm phòng (tùy chọn).
 
 ### F3. Cho thuê phòng (M03, M05, M06, M08)
-Tạo/tìm người thuê (theo số giấy tờ) → tạo hợp đồng nháp (giá thuê, cọc, ngày chốt kỳ, khoản thu đăng ký,
-người ở cùng) → upload scan → **kích hoạt** (ghi chỉ số bàn giao, ghi nhận tiền cọc) → hệ thống tạo nhắc
+Tạo/tìm người thuê (theo số giấy tờ) → chọn **mẫu hợp đồng** (thuê trọ / không cọc / thuê nhà) → tạo hợp đồng nháp
+(giá thuê, cọc, ngày chốt kỳ, khoản thu đăng ký, trường tùy biến của mẫu, người ở cùng + **quan hệ với người đứng tên**,
+đồng ý của người giám hộ nếu < 18 tuổi) → upload scan → **kích hoạt** (ghi chỉ số bàn giao, ghi nhận tiền cọc) → hệ thống tạo nhắc
 **đăng ký tạm trú/lưu trú** cho từng người ở.
 
 ### F4. Chu kỳ hàng tháng (M06 → M07 → M08 → M10)

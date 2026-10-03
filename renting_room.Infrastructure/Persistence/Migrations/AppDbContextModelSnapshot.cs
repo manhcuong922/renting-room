@@ -20,14 +20,63 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                 .HasAnnotation("ProductVersion", "8.0.11")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
+            NpgsqlModelBuilderExtensions.HasPostgresExtension(modelBuilder, "btree_gist");
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
-            modelBuilder.Entity("renting_room.Domain.Entities.Room", b =>
+            modelBuilder.Entity("renting_room.Domain.Contracts.Contract", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasColumnName("id");
+
+                    b.Property<DateTimeOffset?>("ActivatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("activated_at");
+
+                    b.Property<DateOnly?>("ActualEndDate")
+                        .HasColumnType("date")
+                        .HasColumnName("actual_end_date");
+
+                    b.Property<int>("BillingAnchorDay")
+                        .HasColumnType("integer")
+                        .HasColumnName("billing_anchor_day");
+
+                    b.Property<string>("CancelReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("cancel_reason");
+
+                    b.Property<DateTimeOffset?>("CancelledAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("cancelled_at");
+
+                    b.Property<string>("ChargeMode")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("charge_mode");
+
+                    b.Property<string>("Clauses")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("clauses");
+
+                    b.Property<string>("ContractNo")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("contract_no");
+
+                    b.Property<string>("ContractType")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)")
+                        .HasDefaultValue("RoomRental")
+                        .HasColumnName("contract_type");
+
+                    b.Property<int>("CopiesCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("copies_count");
 
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
@@ -37,9 +86,243 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("created_by");
 
-                    b.Property<decimal>("MonthlyRent")
-                        .HasColumnType("numeric(18,2)")
-                        .HasColumnName("monthly_rent");
+                    b.Property<string>("CustomFieldDefinitions")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("custom_field_definitions");
+
+                    b.Property<string>("CustomFieldValues")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("custom_field_values");
+
+                    b.Property<decimal>("DepositAmount")
+                        .HasColumnType("numeric(18,0)")
+                        .HasColumnName("deposit_amount");
+
+                    b.Property<string>("DepositTerms")
+                        .HasMaxLength(5000)
+                        .HasColumnType("character varying(5000)")
+                        .HasColumnName("deposit_terms");
+
+                    b.Property<DateOnly?>("EffectiveDate")
+                        .HasColumnType("date")
+                        .HasColumnName("effective_date");
+
+                    b.Property<DateOnly?>("EndDate")
+                        .HasColumnType("date")
+                        .HasColumnName("end_date");
+
+                    b.Property<DateTimeOffset?>("EndedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("ended_at");
+
+                    b.Property<string>("HouseRulesSnapshot")
+                        .HasMaxLength(20000)
+                        .HasColumnType("character varying(20000)")
+                        .HasColumnName("house_rules_snapshot");
+
+                    b.Property<Guid?>("HouseholdHeadRenterId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("household_head_renter_id");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("note");
+
+                    b.Property<int>("NoticeDays")
+                        .HasColumnType("integer")
+                        .HasColumnName("notice_days");
+
+                    b.Property<DateOnly?>("NoticeGivenDate")
+                        .HasColumnType("date")
+                        .HasColumnName("notice_given_date");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("organization_id");
+
+                    b.Property<int>("PaymentDueDays")
+                        .HasColumnType("integer")
+                        .HasColumnName("payment_due_days");
+
+                    b.Property<string[]>("PaymentMethods")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("payment_methods");
+
+                    b.Property<DateOnly?>("PlannedMoveOutDate")
+                        .HasColumnType("date")
+                        .HasColumnName("planned_move_out_date");
+
+                    b.Property<Guid?>("PreviousContractId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("previous_contract_id");
+
+                    b.Property<Guid>("PropertyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("property_id");
+
+                    b.Property<string>("ProrationMode")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("proration_mode");
+
+                    b.Property<Guid>("RepresentativeRenterId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("representative_renter_id");
+
+                    b.Property<Guid>("RoomId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("room_id");
+
+                    b.Property<DateOnly?>("SignedDate")
+                        .HasColumnType("date")
+                        .HasColumnName("signed_date");
+
+                    b.Property<string>("SignedPlace")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("signed_place");
+
+                    b.Property<string>("SigningSnapshot")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("signing_snapshot");
+
+                    b.Property<DateOnly>("StartDate")
+                        .HasColumnType("date")
+                        .HasColumnName("start_date");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("status");
+
+                    b.Property<Guid?>("TemplateId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("template_id");
+
+                    b.Property<string>("TerminationGround")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("termination_ground");
+
+                    b.Property<string>("TerminationNote")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("termination_note");
+
+                    b.Property<string>("TerminationReason")
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)")
+                        .HasColumnName("termination_reason");
+
+                    b.Property<string>("TermsText")
+                        .HasMaxLength(50000)
+                        .HasColumnType("character varying(50000)")
+                        .HasColumnName("terms_text");
+
+                    b.Property<string>("Title")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("title");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.Property<string>("UtilityPriceSnapshot")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("utility_price_snapshot");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_contracts");
+
+                    b.HasAlternateKey("OrganizationId", "Id")
+                        .HasName("ak_contracts_organization_id_id");
+
+                    b.HasIndex("RoomId")
+                        .HasDatabaseName("ix_contracts_room_id");
+
+                    b.HasIndex("OrganizationId", "ContractNo")
+                        .IsUnique()
+                        .HasDatabaseName("ux_contracts_contract_no");
+
+                    b.HasIndex("OrganizationId", "HouseholdHeadRenterId")
+                        .HasDatabaseName("ix_contracts_organization_id_household_head_renter_id");
+
+                    b.HasIndex("OrganizationId", "RepresentativeRenterId")
+                        .HasDatabaseName("ix_contracts_representative");
+
+                    b.HasIndex("OrganizationId", "TemplateId")
+                        .HasDatabaseName("ix_contracts_organization_id_template_id");
+
+                    b.HasIndex("OrganizationId", "PropertyId", "RoomId")
+                        .HasDatabaseName("ix_contracts_organization_id_property_id_room_id");
+
+                    b.HasIndex("OrganizationId", "PropertyId", "Status")
+                        .HasDatabaseName("ix_contracts_property_status");
+
+                    b.ToTable("contracts", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_contracts_activated_snapshot", "status NOT IN ('Active','Liquidating','Ended') OR (effective_date IS NOT NULL AND signing_snapshot IS NOT NULL)");
+
+                            t.HasCheckConstraint("ck_contracts_actual_end", "actual_end_date IS NULL OR actual_end_date >= start_date");
+
+                            t.HasCheckConstraint("ck_contracts_effective_date", "effective_date IS NULL OR signed_date IS NULL OR effective_date >= signed_date");
+
+                            t.HasCheckConstraint("ck_contracts_end_after_start", "end_date IS NULL OR end_date > start_date");
+
+                            t.HasCheckConstraint("ck_contracts_liquidation_end", "status NOT IN ('Liquidating','Ended') OR actual_end_date IS NOT NULL");
+
+                            t.HasCheckConstraint("ck_contracts_settings", "billing_anchor_day BETWEEN 1 AND 31 AND deposit_amount >= 0 AND copies_count BETWEEN 1 AND 10");
+
+                            t.HasCheckConstraint("ck_contracts_termination_reason", "status <> 'Ended' OR termination_reason IS NOT NULL");
+                        });
+                });
+
+            modelBuilder.Entity("renting_room.Domain.Contracts.ContractAsset", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<decimal?>("CompensationValue")
+                        .HasColumnType("numeric(18,0)")
+                        .HasColumnName("compensation_value");
+
+                    b.Property<string>("ConditionAtHandover")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("condition_at_handover");
+
+                    b.Property<string>("ConditionAtReturn")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("condition_at_return");
+
+                    b.Property<Guid>("ContractId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("contract_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -47,15 +330,107 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(200)")
                         .HasColumnName("name");
 
+                    b.Property<string>("Note")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("note");
+
                     b.Property<Guid>("OrganizationId")
                         .HasColumnType("uuid")
                         .HasColumnName("organization_id");
 
-                    b.Property<string>("Status")
-                        .IsRequired()
+                    b.Property<int>("Quantity")
+                        .HasColumnType("integer")
+                        .HasColumnName("quantity");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.Property<decimal?>("ValueEstimate")
+                        .HasColumnType("numeric(18,0)")
+                        .HasColumnName("value_estimate");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_contract_assets");
+
+                    b.HasIndex("OrganizationId", "ContractId")
+                        .HasDatabaseName("ix_contract_assets_organization_id_contract_id");
+
+                    b.ToTable("contract_assets", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_contract_assets_money", "(value_estimate IS NULL OR value_estimate >= 0) AND (compensation_value IS NULL OR compensation_value >= 0)");
+
+                            t.HasCheckConstraint("ck_contract_assets_quantity", "quantity BETWEEN 1 AND 100");
+                        });
+                });
+
+            modelBuilder.Entity("renting_room.Domain.Contracts.ContractOccupant", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("ContractId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("contract_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<DateOnly?>("ExpectedEndDate")
+                        .HasColumnType("date")
+                        .HasColumnName("expected_end_date");
+
+                    b.Property<bool>("GuardianConsent")
+                        .HasColumnType("boolean")
+                        .HasColumnName("guardian_consent");
+
+                    b.Property<DateOnly>("MoveInDate")
+                        .HasColumnType("date")
+                        .HasColumnName("move_in_date");
+
+                    b.Property<DateOnly?>("MoveOutDate")
+                        .HasColumnType("date")
+                        .HasColumnName("move_out_date");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("note");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("organization_id");
+
+                    b.Property<string>("Relationship")
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)")
-                        .HasColumnName("status");
+                        .HasColumnName("relationship");
+
+                    b.Property<string>("RelationshipType")
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)")
+                        .HasColumnName("relationship_type");
+
+                    b.Property<Guid>("RenterId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("renter_id");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
@@ -72,20 +447,267 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                         .HasColumnName("xmin");
 
                     b.HasKey("Id")
-                        .HasName("pk_rooms");
+                        .HasName("pk_contract_occupants");
 
-                    b.HasIndex("OrganizationId")
-                        .HasDatabaseName("ix_rooms_organization_id");
+                    b.HasIndex("OrganizationId", "ContractId")
+                        .HasDatabaseName("ix_contract_occupants_organization_id_contract_id");
 
-                    b.ToTable("rooms", (string)null);
+                    b.HasIndex("OrganizationId", "RenterId")
+                        .HasDatabaseName("ix_contract_occupants_renter");
+
+                    b.ToTable("contract_occupants", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_contract_occupants_dates", "move_out_date IS NULL OR move_out_date >= move_in_date");
+                        });
+                });
+
+            modelBuilder.Entity("renting_room.Domain.Contracts.ContractRentTerm", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("AddendumNo")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("addendum_no");
+
+                    b.Property<Guid>("ContractId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("contract_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<DateOnly>("EffectiveFrom")
+                        .HasColumnType("date")
+                        .HasColumnName("effective_from");
+
+                    b.Property<decimal>("MonthlyRent")
+                        .HasColumnType("numeric(18,0)")
+                        .HasColumnName("monthly_rent");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("note");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("organization_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_contract_rent_terms");
+
+                    b.HasIndex("ContractId", "EffectiveFrom")
+                        .IsUnique()
+                        .HasDatabaseName("ux_contract_rent_terms_effective_from");
+
+                    b.HasIndex("OrganizationId", "ContractId")
+                        .HasDatabaseName("ix_contract_rent_terms_organization_id_contract_id");
+
+                    b.ToTable("contract_rent_terms", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_contract_rent_terms_positive", "monthly_rent > 0");
+                        });
+                });
+
+            modelBuilder.Entity("renting_room.Domain.Contracts.ContractTemplate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset?>("ArchivedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("archived_at");
+
+                    b.Property<string>("ClausesJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("clauses");
+
+                    b.Property<string>("ContractType")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)")
+                        .HasColumnName("contract_type");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("FieldDefinitionsJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("field_definitions");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("name");
+
+                    b.Property<bool>("NoDeposit")
+                        .HasColumnType("boolean")
+                        .HasColumnName("no_deposit");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("organization_id");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("title");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_contract_templates");
+
+                    b.HasAlternateKey("OrganizationId", "Id")
+                        .HasName("ak_contract_templates_organization_id_id");
+
+                    b.HasIndex("OrganizationId", "Name")
+                        .IsUnique()
+                        .HasDatabaseName("ux_contract_templates_name");
+
+                    b.ToTable("contract_templates", (string)null);
+                });
+
+            modelBuilder.Entity("renting_room.Domain.Contracts.ContractVehicle", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("BrandColor")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("brand_color");
+
+                    b.Property<Guid>("ContractId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("contract_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("note");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("organization_id");
+
+                    b.Property<string>("PlateNumber")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("plate_number");
+
+                    b.Property<DateOnly>("RegisteredFrom")
+                        .HasColumnType("date")
+                        .HasColumnName("registered_from");
+
+                    b.Property<DateOnly?>("RegisteredTo")
+                        .HasColumnType("date")
+                        .HasColumnName("registered_to");
+
+                    b.Property<Guid?>("RenterId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("renter_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.Property<string>("VehicleType")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("vehicle_type");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_contract_vehicles");
+
+                    b.HasIndex("OrganizationId", "ContractId")
+                        .HasDatabaseName("ix_contract_vehicles_organization_id_contract_id");
+
+                    b.HasIndex("OrganizationId", "PlateNumber")
+                        .IsUnique()
+                        .HasDatabaseName("ux_contract_vehicles_active_plate")
+                        .HasFilter("registered_to IS NULL AND plate_number IS NOT NULL");
+
+                    b.ToTable("contract_vehicles", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_contract_vehicles_dates", "registered_to IS NULL OR registered_to >= registered_from");
+                        });
                 });
 
             modelBuilder.Entity("renting_room.Domain.Identity.Organization", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasColumnName("id");
+
+                    b.Property<string>("Address")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("address");
 
                     b.Property<string>("Code")
                         .IsRequired()
@@ -115,6 +737,12 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("CreatedBy")
                         .HasColumnType("uuid")
                         .HasColumnName("created_by");
+
+                    b.Property<int>("MaxManagers")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(10)
+                        .HasColumnName("max_managers");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -166,6 +794,8 @@ namespace renting_room.Infrastructure.Persistence.Migrations
 
                     b.ToTable("organizations", null, t =>
                         {
+                            t.HasCheckConstraint("ck_organizations_max_managers", "max_managers BETWEEN 0 AND 100");
+
                             t.HasCheckConstraint("ck_organizations_suspended_reason", "status <> 'Suspended' OR suspended_reason IS NOT NULL");
                         });
                 });
@@ -173,7 +803,6 @@ namespace renting_room.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("renting_room.Domain.Identity.RefreshToken", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
@@ -246,7 +875,6 @@ namespace renting_room.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("renting_room.Domain.Identity.User", b =>
                 {
                     b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
@@ -289,6 +917,10 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("organization_id");
 
+                    b.Property<DateTimeOffset?>("PasswordChangedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("password_changed_at");
+
                     b.Property<string>("PasswordHash")
                         .IsRequired()
                         .HasMaxLength(256)
@@ -299,6 +931,14 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                         .HasMaxLength(15)
                         .HasColumnType("character varying(15)")
                         .HasColumnName("phone_normalized");
+
+                    b.Property<DateTimeOffset?>("RemovedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("removed_at");
+
+                    b.Property<Guid?>("RemovedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("removed_by");
 
                     b.Property<string>("Role")
                         .IsRequired()
@@ -315,6 +955,10 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                         .HasMaxLength(16)
                         .HasColumnType("character varying(16)")
                         .HasColumnName("status");
+
+                    b.Property<DateTimeOffset?>("TempPasswordExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("temp_password_expires_at");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
@@ -357,8 +1001,630 @@ namespace renting_room.Infrastructure.Persistence.Migrations
 
                             t.HasCheckConstraint("ck_users_has_username", "phone_normalized IS NOT NULL OR email_normalized IS NOT NULL");
 
+                            t.HasCheckConstraint("ck_users_removed", "(status = 'Removed') = (removed_at IS NOT NULL)");
+
                             t.HasCheckConstraint("ck_users_role_organization", "(role = 'SystemAdmin') = (organization_id IS NULL)");
                         });
+                });
+
+            modelBuilder.Entity("renting_room.Domain.Properties.Property", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset?>("ArchivedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("archived_at");
+
+                    b.Property<DateOnly?>("AuthorizationDocDate")
+                        .HasColumnType("date")
+                        .HasColumnName("authorization_doc_date");
+
+                    b.Property<string>("AuthorizationDocNo")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("authorization_doc_no");
+
+                    b.Property<string>("BankAccountName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("bank_account_name");
+
+                    b.Property<string>("BankAccountNo")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("bank_account_no");
+
+                    b.Property<string>("BankName")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("bank_name");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("code");
+
+                    b.Property<string>("CommuneCode")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasColumnName("commune_code");
+
+                    b.Property<string>("CommuneName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("commune_name");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<int>("DefaultBillingAnchorDay")
+                        .HasColumnType("integer")
+                        .HasColumnName("default_billing_anchor_day");
+
+                    b.Property<string>("DefaultChargeMode")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("default_charge_mode");
+
+                    b.Property<int>("DefaultNoticeDays")
+                        .HasColumnType("integer")
+                        .HasColumnName("default_notice_days");
+
+                    b.Property<int>("DefaultPaymentDueDays")
+                        .HasColumnType("integer")
+                        .HasColumnName("default_payment_due_days");
+
+                    b.Property<string>("DefaultProrationMode")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("default_proration_mode");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("description");
+
+                    b.Property<string>("EvnCustomerCode")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("evn_customer_code");
+
+                    b.Property<string>("HouseRulesText")
+                        .HasMaxLength(20000)
+                        .HasColumnType("character varying(20000)")
+                        .HasColumnName("house_rules_text");
+
+                    b.Property<string>("LandMapSheetNo")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("land_map_sheet_no");
+
+                    b.Property<string>("LandParcelNo")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("land_parcel_no");
+
+                    b.Property<string>("LessorAddress")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("lessor_address");
+
+                    b.Property<DateOnly?>("LessorDateOfBirth")
+                        .HasColumnType("date")
+                        .HasColumnName("lessor_date_of_birth");
+
+                    b.Property<string>("LessorEmail")
+                        .HasMaxLength(254)
+                        .HasColumnType("character varying(254)")
+                        .HasColumnName("lessor_email");
+
+                    b.Property<DateOnly?>("LessorIdIssueDate")
+                        .HasColumnType("date")
+                        .HasColumnName("lessor_id_issue_date");
+
+                    b.Property<string>("LessorIdIssuePlace")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("lessor_id_issue_place");
+
+                    b.Property<byte[]>("LessorIdNumberEncrypted")
+                        .HasColumnType("bytea")
+                        .HasColumnName("lessor_id_number_encrypted");
+
+                    b.Property<string>("LessorIdNumberLast4")
+                        .HasMaxLength(4)
+                        .HasColumnType("character varying(4)")
+                        .HasColumnName("lessor_id_number_last4");
+
+                    b.Property<string>("LessorIdType")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("lessor_id_type");
+
+                    b.Property<string>("LessorName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("lessor_name");
+
+                    b.Property<string>("LessorPhone")
+                        .HasMaxLength(15)
+                        .HasColumnType("character varying(15)")
+                        .HasColumnName("lessor_phone");
+
+                    b.Property<string>("LessorRepresentativeName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("lessor_representative_name");
+
+                    b.Property<string>("LessorRepresentativeTitle")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("lessor_representative_title");
+
+                    b.Property<string>("LessorTaxCode")
+                        .HasMaxLength(14)
+                        .HasColumnType("character varying(14)")
+                        .HasColumnName("lessor_tax_code");
+
+                    b.Property<string>("LessorType")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("lessor_type");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("name");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("organization_id");
+
+                    b.Property<string>("OwnershipCertificateNo")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("ownership_certificate_no");
+
+                    b.Property<string>("ProvinceCode")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasColumnName("province_code");
+
+                    b.Property<string>("ProvinceName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("province_name");
+
+                    b.Property<string>("StreetAddress")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("street_address");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_properties");
+
+                    b.HasAlternateKey("OrganizationId", "Id")
+                        .HasName("ak_properties_organization_id_id");
+
+                    b.HasIndex("OrganizationId", "Code")
+                        .IsUnique()
+                        .HasDatabaseName("ux_properties_code");
+
+                    b.ToTable("properties", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_properties_anchor_day", "default_billing_anchor_day BETWEEN 1 AND 31");
+
+                            t.HasCheckConstraint("ck_properties_lessor_organization", "lessor_type IS DISTINCT FROM 'Organization' OR (lessor_tax_code IS NOT NULL AND lessor_representative_name IS NOT NULL)");
+                        });
+                });
+
+            modelBuilder.Entity("renting_room.Domain.Properties.Room", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string[]>("Amenities")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("amenities");
+
+                    b.Property<DateTimeOffset?>("ArchivedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("archived_at");
+
+                    b.Property<decimal?>("AreaM2")
+                        .HasColumnType("numeric(6,2)")
+                        .HasColumnName("area_m2");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("code");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<decimal?>("DefaultDeposit")
+                        .HasColumnType("numeric(18,0)")
+                        .HasColumnName("default_deposit");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("description");
+
+                    b.Property<string>("Floor")
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasColumnName("floor");
+
+                    b.Property<bool>("IsUnderMaintenance")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_under_maintenance");
+
+                    b.Property<decimal?>("ListedRent")
+                        .HasColumnType("numeric(18,0)")
+                        .HasColumnName("listed_rent");
+
+                    b.Property<string>("MaintenanceNote")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("maintenance_note");
+
+                    b.Property<int>("MaxOccupants")
+                        .HasColumnType("integer")
+                        .HasColumnName("max_occupants");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("organization_id");
+
+                    b.Property<Guid>("PropertyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("property_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_rooms");
+
+                    b.HasAlternateKey("OrganizationId", "PropertyId", "Id")
+                        .HasName("ak_rooms_organization_property_id");
+
+                    b.HasIndex("PropertyId", "Code")
+                        .IsUnique()
+                        .HasDatabaseName("ux_rooms_code");
+
+                    b.ToTable("rooms", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_rooms_area", "area_m2 IS NULL OR area_m2 > 0");
+
+                            t.HasCheckConstraint("ck_rooms_maintenance_not_archived", "NOT (is_under_maintenance AND archived_at IS NOT NULL)");
+
+                            t.HasCheckConstraint("ck_rooms_max_occupants", "max_occupants BETWEEN 1 AND 20");
+
+                            t.HasCheckConstraint("ck_rooms_money", "(listed_rent IS NULL OR listed_rent >= 0) AND (default_deposit IS NULL OR default_deposit >= 0)");
+                        });
+                });
+
+            modelBuilder.Entity("renting_room.Domain.Properties.RoomGroup", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("description");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("name");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("organization_id");
+
+                    b.Property<Guid>("PropertyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("property_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_room_groups");
+
+                    b.HasAlternateKey("OrganizationId", "PropertyId", "Id")
+                        .HasName("ak_room_groups_organization_property_id");
+
+                    b.HasIndex("PropertyId", "Name")
+                        .HasDatabaseName("ix_room_groups_property_name");
+
+                    b.ToTable("room_groups", (string)null);
+                });
+
+            modelBuilder.Entity("renting_room.Domain.Properties.RoomGroupMember", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("organization_id");
+
+                    b.Property<Guid>("PropertyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("property_id");
+
+                    b.Property<Guid>("RoomGroupId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("room_group_id");
+
+                    b.Property<Guid>("RoomId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("room_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_room_group_members");
+
+                    b.HasIndex("RoomGroupId", "RoomId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_room_group_members_group_room");
+
+                    b.HasIndex("OrganizationId", "PropertyId", "RoomGroupId")
+                        .HasDatabaseName("ix_room_group_members_organization_id_property_id_room_group_id");
+
+                    b.HasIndex("OrganizationId", "PropertyId", "RoomId")
+                        .HasDatabaseName("ix_room_group_members_organization_id_property_id_room_id");
+
+                    b.ToTable("room_group_members", (string)null);
+                });
+
+            modelBuilder.Entity("renting_room.Domain.Renters.Renter", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset?>("ArchivedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("archived_at");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<DateOnly>("DateOfBirth")
+                        .HasColumnType("date")
+                        .HasColumnName("date_of_birth");
+
+                    b.Property<string>("Email")
+                        .HasMaxLength(254)
+                        .HasColumnType("character varying(254)")
+                        .HasColumnName("email");
+
+                    b.Property<string>("EmergencyContactName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("emergency_contact_name");
+
+                    b.Property<string>("EmergencyContactPhone")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("emergency_contact_phone");
+
+                    b.Property<string>("FullName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("full_name");
+
+                    b.Property<string>("FullNameSearch")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("full_name_search");
+
+                    b.Property<string>("Gender")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)")
+                        .HasColumnName("gender");
+
+                    b.Property<DateOnly?>("IdIssueDate")
+                        .HasColumnType("date")
+                        .HasColumnName("id_issue_date");
+
+                    b.Property<string>("IdIssuePlace")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("id_issue_place");
+
+                    b.Property<byte[]>("IdNumberEncrypted")
+                        .IsRequired()
+                        .HasColumnType("bytea")
+                        .HasColumnName("id_number_encrypted");
+
+                    b.Property<string>("IdNumberHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character(64)")
+                        .HasColumnName("id_number_hash")
+                        .IsFixedLength();
+
+                    b.Property<string>("IdNumberLast4")
+                        .IsRequired()
+                        .HasMaxLength(4)
+                        .HasColumnType("character varying(4)")
+                        .HasColumnName("id_number_last4");
+
+                    b.Property<string>("IdType")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("id_type");
+
+                    b.Property<string>("Nationality")
+                        .IsRequired()
+                        .HasMaxLength(2)
+                        .HasColumnType("character(2)")
+                        .HasColumnName("nationality")
+                        .IsFixedLength();
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("note");
+
+                    b.Property<string>("Occupation")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("occupation");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("organization_id");
+
+                    b.Property<string>("PermanentAddress")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("permanent_address");
+
+                    b.Property<string>("Phone")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("phone");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.Property<string>("Workplace")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("workplace");
+
+                    b.HasKey("Id")
+                        .HasName("pk_renters");
+
+                    b.HasAlternateKey("OrganizationId", "Id")
+                        .HasName("ak_renters_organization_id_id");
+
+                    b.HasIndex("OrganizationId", "IdNumberHash")
+                        .IsUnique()
+                        .HasDatabaseName("ux_renters_id_number");
+
+                    b.HasIndex("OrganizationId", "Phone")
+                        .HasDatabaseName("ix_renters_phone");
+
+                    b.ToTable("renters", (string)null);
                 });
 
             modelBuilder.Entity("renting_room.Infrastructure.Idempotency.IdempotencyRecord", b =>
@@ -439,14 +1705,109 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                         });
                 });
 
-            modelBuilder.Entity("renting_room.Domain.Entities.Room", b =>
+            modelBuilder.Entity("renting_room.Infrastructure.Persistence.ContractNumberSequence", b =>
                 {
-                    b.HasOne("renting_room.Domain.Identity.Organization", null)
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("organization_id");
+
+                    b.Property<int>("Year")
+                        .HasColumnType("integer")
+                        .HasColumnName("year");
+
+                    b.Property<int>("LastValue")
+                        .HasColumnType("integer")
+                        .HasColumnName("last_value");
+
+                    b.HasKey("OrganizationId", "Year")
+                        .HasName("pk_contract_number_sequences");
+
+                    b.ToTable("contract_number_sequences", (string)null);
+                });
+
+            modelBuilder.Entity("renting_room.Domain.Contracts.Contract", b =>
+                {
+                    b.HasOne("renting_room.Domain.Renters.Renter", null)
                         .WithMany()
-                        .HasForeignKey("OrganizationId")
+                        .HasForeignKey("OrganizationId", "HouseholdHeadRenterId")
+                        .HasPrincipalKey("OrganizationId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_contracts_renters_organization_id_household_head_renter_id");
+
+                    b.HasOne("renting_room.Domain.Renters.Renter", null)
+                        .WithMany()
+                        .HasForeignKey("OrganizationId", "RepresentativeRenterId")
+                        .HasPrincipalKey("OrganizationId", "Id")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
-                        .HasConstraintName("fk_rooms_organizations_organization_id");
+                        .HasConstraintName("fk_contracts_renters_organization_id_representative_renter_id");
+
+                    b.HasOne("renting_room.Domain.Contracts.ContractTemplate", null)
+                        .WithMany()
+                        .HasForeignKey("OrganizationId", "TemplateId")
+                        .HasPrincipalKey("OrganizationId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_contracts_contract_templates_organization_id_template_id");
+
+                    b.HasOne("renting_room.Domain.Properties.Room", null)
+                        .WithMany()
+                        .HasForeignKey("OrganizationId", "PropertyId", "RoomId")
+                        .HasPrincipalKey("OrganizationId", "PropertyId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_contracts_rooms_organization_id_property_id_room_id");
+                });
+
+            modelBuilder.Entity("renting_room.Domain.Contracts.ContractAsset", b =>
+                {
+                    b.HasOne("renting_room.Domain.Contracts.Contract", null)
+                        .WithMany("Assets")
+                        .HasForeignKey("OrganizationId", "ContractId")
+                        .HasPrincipalKey("OrganizationId", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_contract_assets_contracts_organization_id_contract_id");
+                });
+
+            modelBuilder.Entity("renting_room.Domain.Contracts.ContractOccupant", b =>
+                {
+                    b.HasOne("renting_room.Domain.Contracts.Contract", null)
+                        .WithMany("Occupants")
+                        .HasForeignKey("OrganizationId", "ContractId")
+                        .HasPrincipalKey("OrganizationId", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_contract_occupants_contracts_organization_id_contract_id");
+
+                    b.HasOne("renting_room.Domain.Renters.Renter", null)
+                        .WithMany()
+                        .HasForeignKey("OrganizationId", "RenterId")
+                        .HasPrincipalKey("OrganizationId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_contract_occupants_renters_organization_id_renter_id");
+                });
+
+            modelBuilder.Entity("renting_room.Domain.Contracts.ContractRentTerm", b =>
+                {
+                    b.HasOne("renting_room.Domain.Contracts.Contract", null)
+                        .WithMany("RentTerms")
+                        .HasForeignKey("OrganizationId", "ContractId")
+                        .HasPrincipalKey("OrganizationId", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_contract_rent_terms_contracts_organization_id_contract_id");
+                });
+
+            modelBuilder.Entity("renting_room.Domain.Contracts.ContractVehicle", b =>
+                {
+                    b.HasOne("renting_room.Domain.Contracts.Contract", null)
+                        .WithMany("Vehicles")
+                        .HasForeignKey("OrganizationId", "ContractId")
+                        .HasPrincipalKey("OrganizationId", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_contract_vehicles_contracts_organization_id_contract_id");
                 });
 
             modelBuilder.Entity("renting_room.Domain.Identity.RefreshToken", b =>
@@ -466,6 +1827,83 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                         .HasForeignKey("OrganizationId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_users_organizations_organization_id");
+                });
+
+            modelBuilder.Entity("renting_room.Domain.Properties.Property", b =>
+                {
+                    b.HasOne("renting_room.Domain.Identity.Organization", null)
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_properties_organizations_organization_id");
+                });
+
+            modelBuilder.Entity("renting_room.Domain.Properties.Room", b =>
+                {
+                    b.HasOne("renting_room.Domain.Properties.Property", null)
+                        .WithMany()
+                        .HasForeignKey("OrganizationId", "PropertyId")
+                        .HasPrincipalKey("OrganizationId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_rooms_properties_organization_id_property_id");
+                });
+
+            modelBuilder.Entity("renting_room.Domain.Properties.RoomGroup", b =>
+                {
+                    b.HasOne("renting_room.Domain.Properties.Property", null)
+                        .WithMany()
+                        .HasForeignKey("OrganizationId", "PropertyId")
+                        .HasPrincipalKey("OrganizationId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_room_groups_properties_organization_id_property_id");
+                });
+
+            modelBuilder.Entity("renting_room.Domain.Properties.RoomGroupMember", b =>
+                {
+                    b.HasOne("renting_room.Domain.Properties.RoomGroup", null)
+                        .WithMany("Members")
+                        .HasForeignKey("OrganizationId", "PropertyId", "RoomGroupId")
+                        .HasPrincipalKey("OrganizationId", "PropertyId", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_room_group_members_room_groups_organization_id_property_id_");
+
+                    b.HasOne("renting_room.Domain.Properties.Room", null)
+                        .WithMany()
+                        .HasForeignKey("OrganizationId", "PropertyId", "RoomId")
+                        .HasPrincipalKey("OrganizationId", "PropertyId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_room_group_members_rooms_organization_id_property_id_room_id");
+                });
+
+            modelBuilder.Entity("renting_room.Domain.Renters.Renter", b =>
+                {
+                    b.HasOne("renting_room.Domain.Identity.Organization", null)
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_renters_organizations_organization_id");
+                });
+
+            modelBuilder.Entity("renting_room.Domain.Contracts.Contract", b =>
+                {
+                    b.Navigation("Assets");
+
+                    b.Navigation("Occupants");
+
+                    b.Navigation("RentTerms");
+
+                    b.Navigation("Vehicles");
+                });
+
+            modelBuilder.Entity("renting_room.Domain.Properties.RoomGroup", b =>
+                {
+                    b.Navigation("Members");
                 });
 #pragma warning restore 612, 618
         }

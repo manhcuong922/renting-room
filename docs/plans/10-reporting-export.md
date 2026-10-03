@@ -15,7 +15,7 @@ dashboard tổng quan; nhắc việc (HĐ sắp hết hạn, cư trú chưa đă
 
 | Mã | Tên | Tham số | Nội dung (cột) | Ghi chú |
 |----|-----|---------|----------------|---------|
-| E1 | Danh sách người thuê | propertyIds[] (1..n), asOfDate (mặc định hôm nay), `includeEnded` (lịch sử trong khoảng from–to), `layout` = `SheetPerProperty` \| `SingleSheet`, `includeSensitive` | Khu, Phòng, Số HĐ, Vai trò (Đại diện/Người ở), Họ tên, Ngày sinh, Giới tính, SĐT, Loại & **số giấy tờ (che)**, Quốc tịch, Địa chỉ thường trú, Ngày vào, Ngày ra, Tình trạng tạm trú, Hạn tạm trú | Phục vụ đối chiếu với công an khu vực; `includeSensitive=true` mới hiện đầy đủ số giấy tờ (audit) |
+| E1 ✅ | Danh sách người thuê | propertyIds[] (trống = tất cả), `floors[]`, `roomGroupIds[]`, `roomIds[]`, `fromDate`/`toDate` (mặc định hôm nay; người ở giao khoảng ngày — gồm cả đã chuyển đi), `layout` = `SheetPerProperty` \| `SheetPerFloor` \| `SingleSheet`, `includeSensitive` | STT, Khu, Tầng, Phòng, Số HĐ, Vai trò (Đại diện/Người ở), Họ tên, Ngày sinh, Giới tính, SĐT, Loại & **số giấy tờ (che)**, Ngày cấp, Nơi cấp, Quốc tịch, Địa chỉ thường trú, Nghề nghiệp, Nơi làm việc, **Quan hệ với người đứng tên (chủ hộ)**, **Người chưa thành niên** (đã/chưa có đồng ý của cha mẹ, giám hộ), Ngày vào, Ngày ra (HĐ đang thanh lý = ngày trả phòng), Trạng thái HĐ, Liên hệ khẩn cấp. P2: Tình trạng tạm trú, Hạn tạm trú (khi có bản ghi cư trú M03). Thứ tự trong phòng: người đứng tên → vợ/chồng → cha mẹ → con → … | Phục vụ đối chiếu với công an khu vực; `includeSensitive=true` mới hiện đầy đủ số giấy tờ (audit) |
 | E2 | Tiền phòng tháng | propertyIds[], billingMonth, `statuses` (mặc định Finalized), layout | Khu, Phòng, Số phiếu, Người đại diện, Kỳ, Tiền phòng (gốc / thực thu tháng), **một cột cho mỗi khoản thu** (động theo danh mục của các khu được chọn, gộp theo tên), Chỉ số điện cũ/mới/sản lượng, Chỉ số nước cũ/mới/sản lượng, Điều chỉnh, Tổng, Đã thu, Còn nợ, Hạn, Trạng thái | Hàng tổng cuối mỗi sheet bằng **công thức SUM**; số tiền định dạng `#,##0` |
 | E3 | Thông tin phòng | propertyIds[], asOfDate | Khu, Phòng, Tầng, Diện tích, Sức chứa, Giá niêm yết, Trạng thái (dẫn xuất), Nhóm phòng, Số HĐ hiện hành, Người đại diện, Giá thuê HĐ, Ngày bắt đầu/hết hạn, Số người ở, Tiền cọc đang giữ, Khoản thu đăng ký (giữ xe ×2…) | |
 | E4 | Công nợ | propertyIds[], asOfDate | Khu, Phòng, Người đại diện, SĐT, Số phiếu nợ, Tổng nợ, Nợ quá hạn, Ngày quá hạn lâu nhất | |
@@ -92,8 +92,8 @@ Số liệu nhất quán (RP-BR-09); dùng snapshot phiếu (RP-BR-04); cột kh
 
 | ID | Task | Ước lượng |
 |----|------|-----------|
-| RP-01 | `IExcelWriter` ClosedXML + sanitize + style chung | 1d |
-| RP-02 | E1, E3 | 1.5d |
+| RP-01 ✅ | `ISpreadsheetWriter` (ClosedXML 0.105) + chống công thức + tên sheet + style chung | 1d |
+| RP-02 | E1 ✅ (lọc khu / tầng / nhóm phòng / phòng / khoảng ngày; chia sheet theo khu / tầng), E3 | 1.5d |
 | RP-03 | E2 (cột động) | 1.5d |
 | RP-04 | E4, E5 | 1d |
 | RP-05 | Tests | 1d |
@@ -102,5 +102,5 @@ Số liệu nhất quán (RP-BR-09); dùng snapshot phiếu (RP-BR-04); cột kh
 ## 15. Câu hỏi mở
 | # | Câu hỏi | Đề xuất |
 |---|---------|---------|
-| Q1 | Mẫu E1 có cần đúng mẫu của công an phường? | Thu thập mẫu thực tế từ người dùng; P2 thêm template tùy biến |
+| Q1 | Mẫu E1 có cần đúng mẫu của công an phường? | Đã có cột quan hệ với chủ hộ + người chưa thành niên theo tờ khai CT01; thu thập mẫu thực tế từ người dùng; P2 thêm template tùy biến |
 | Q2 | Xuất PDF phiếu báo để gửi Zalo? | P2 (QuestPDF — kiểm tra license cộng đồng/thương mại) |

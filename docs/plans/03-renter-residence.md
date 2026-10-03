@@ -41,6 +41,7 @@ bản ghi cư trú + trạng thái + file xác nhận; bản ghi tạm vắng; �
 | RT-UC-08 | Danh sách "cần xử lý cư trú": người ở chưa đăng ký / sắp hết hạn tạm trú / đã rời đi chưa xử lý |
 | RT-UC-09 | Ẩn danh hóa hồ sơ theo yêu cầu (khi không còn hợp đồng hiệu lực & hết thời hạn lưu giữ) |
 | RT-UC-10 | Xem số giấy tờ đầy đủ (có audit) |
+| RT-UC-11 | Chuẩn bị thông tin tờ khai tạm trú (CT01) cho người ở: quan hệ với chủ hộ, đồng ý của cha mẹ / người giám hộ (người < 18 tuổi) — lấy từ người ở của HĐ (M05 CT-BR-28, 30); xuất danh sách E1 (M10) để đối chiếu |
 
 ### 3.2 Quy tắc nghiệp vụ
 
@@ -59,6 +60,8 @@ bản ghi cư trú + trạng thái + file xác nhận; bản ghi tạm vắng; �
 | RT-BR-11 | Tạm vắng: `from_date ≤ to_date`; không chồng lấn với tạm vắng khác của cùng người trong cùng HĐ; phải nằm trong thời gian ở của occupant | Domain + EXCLUDE |
 | RT-BR-12 | Tạm vắng **không** tự động giảm tiền (chủ trọ dùng điều chỉnh thủ công M07 nếu muốn) | Thiết kế |
 | RT-BR-13 | Tuổi: ngày sinh ≤ hôm nay và ≥ 1900-01-01 | Validator |
+| RT-BR-14 | Trẻ em chưa có thẻ căn cước: dùng **số định danh cá nhân** 12 số (giấy khai sinh / VNeID) với loại `CitizenId`; ngày cấp, nơi cấp để trống (Luật Căn cước 2023) | Validator (12 số) |
+| RT-BR-15 | Bản ghi cư trú (P1) lấy "quan hệ với chủ hộ" từ `contract_occupants.relationship_type` và cờ `guardian_consent`; người ở < 18 tuổi thiếu đồng ý ⇒ không chuyển được sang `Submitted` | Application (khi làm phần cư trú) |
 
 ### 3.3 Vòng đời bản ghi cư trú
 
