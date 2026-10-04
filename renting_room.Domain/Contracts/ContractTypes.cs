@@ -12,20 +12,43 @@ public enum ContractStatus
 /// <summary>CT-BR-21: lý do kết thúc hợp đồng.</summary>
 public enum TerminationReason
 {
+    /// <summary>Hết hạn — chỉ cho HĐ có thời hạn, ngày trả phòng từ ngày hết hạn trở đi (CT-BR-21).</summary>
     Expired,
     MutualAgreement,
     LesseeUnilateral,
     LessorUnilateral,
-    RoomTransfer
+    RoomTransfer,
+
+    /// <summary>Bên thuê tự ý bỏ đi không báo (trả phòng bất chợt) — ngày trả phòng = ngày phát hiện / ngày cuối còn ở (CT-BR-41).</summary>
+    Abandoned
 }
 
-/// <summary>Căn cứ bên cho thuê đơn phương chấm dứt — Luật Nhà ở 2023 Điều 172 khoản 2.</summary>
+/// <summary>Cờ dẫn xuất theo ngày của HĐ đang hiệu lực — cần chủ trọ xử lý (CT-BR-44, CT-BR-45).</summary>
+public enum ContractFlag
+{
+    /// <summary>Người đứng tên đã chuyển đi, vẫn còn người ở — cần ký lại.</summary>
+    RepresentativeMovedOut,
+
+    /// <summary>Không còn ai ở mà HĐ vẫn hiệu lực — thanh lý?</summary>
+    NoOccupantLeft,
+
+    /// <summary>Đã quá ngày hết hạn, chủ trọ chưa quyết định (gia hạn / ở tiếp / thu lại phòng).</summary>
+    ExpiredAwaitingDecision,
+
+    /// <summary>Quá hạn, chủ trọ cho ở tiếp chưa ký lại.</summary>
+    Holdover
+}
+
+/// <summary>Căn cứ bên cho thuê chấm dứt — Luật Nhà ở 2023 Điều 172 khoản 2; HĐ không thời hạn: báo trước 90 ngày (CT-BR-42).</summary>
 public enum TerminationGround
 {
     RentArrears3Months,
     WrongPurpose,
     UnauthorizedRenovation,
-    Other
+    Other,
+
+    /// <summary>HĐ không thời hạn: bên cho thuê thông báo chấm dứt, HĐ chấm dứt sau 90 ngày (CT-BR-42).</summary>
+    IndefiniteTermNotice
 }
 
 public enum PaymentMethod
@@ -76,7 +99,11 @@ public sealed record ContractDraftData(
     string? Note,
     IReadOnlyCollection<OccupantInput> Occupants,
     ContractDocument? Document = null,
-    Guid? HouseholdHeadRenterId = null);
+    Guid? HouseholdHeadRenterId = null,
+    IReadOnlyCollection<ContractFeeInput>? Fees = null);
+
+/// <summary>Khoản thu gắn vào HĐ (CT-UC-06): số lượng (nhóm Quantity), giá riêng của HĐ (null = theo bảng giá của khu).</summary>
+public sealed record ContractFeeInput(Guid FeeTypeId, decimal Quantity, decimal? UnitPriceOverride);
 
 /// <summary>
 /// Phần văn bản của hợp đồng (CT-BR-25): loại, tiêu đề, điều khoản, trường tùy biến — chép từ mẫu lúc tạo/sửa nháp.
@@ -105,6 +132,7 @@ public sealed record ActivationContext(
     string? HouseRulesSnapshot,
     DateOnly RepresentativeDateOfBirth,
     bool RepresentativeHasPhone,
-    bool OverrideCapacity = false);
+    bool OverrideCapacity = false,
+    string? UtilityPriceSnapshotJson = null);
 
 public sealed record NoticeResult(bool ShorterThanNoticePeriod, int NoticeDays, int ActualDays);

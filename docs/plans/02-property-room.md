@@ -47,10 +47,10 @@ cài đặt thu mặc định của khu; thông tin hợp đồng điện EVN c�
 | Mã | Quy tắc | Nơi kiểm tra |
 |----|---------|-------------|
 | PR-BR-01 | `Property.code` unique trong tổ chức; `Room.code` unique trong khu (không phân biệt hoa thường, kể cả phòng đã archive — tránh nhầm khi xuất lịch sử) | DB unique index trên `lower(code)` |
-| PR-BR-02 | Trạng thái phòng **không lưu cứng** "Occupied". Tính **theo ngày** D (mặc định hôm nay, C-04): `Occupied` = tồn tại HĐ `Active`/`Liquidating` có `start_date ≤ D ≤ COALESCE(actual_end_date, ∞)`; `Reserved` = không Occupied và có HĐ `Draft` (chưa hủy) của phòng; còn lại `Vacant`. Một phòng có thể đồng thời có HĐ cũ đang thanh lý và HĐ mới bắt đầu sau `actual_end_date` cũ | Query (M05) |
+| PR-BR-02 | Trạng thái phòng **không lưu cứng** "Occupied". Tính **theo ngày** D (mặc định hôm nay, C-04): `Occupied` = tồn tại HĐ `Active`/`Liquidating` có `start_date ≤ D ≤ COALESCE(actual_end_date, ∞)` **hoặc HĐ `Ended` có `start_date ≤ D ≤ actual_end_date`** (ngày trả phòng vẫn tính là đang thuê — CT-BR-33); `Reserved` = không Occupied và có HĐ `Draft` (chưa hủy) của phòng; còn lại `Vacant`. **HĐ quá hạn (`end_date` đã qua) vẫn là `Occupied`** cho tới khi thanh lý (CT-BR-45); người đứng tên rời đi nhưng còn người ở vẫn `Occupied` (CT-BR-44). Phòng về `Vacant` chỉ khi chủ trọ thanh lý xong. Một phòng có thể đồng thời có HĐ cũ đang thanh lý và HĐ mới bắt đầu sau `actual_end_date` cũ | Query (M05) ✅ |
 | PR-BR-03 | Chỉ đặt `Maintenance` khi phòng không có hợp đồng `Active`/`Liquidating` | Application (đọc M05) trong transaction |
 | PR-BR-04 | Phòng `Maintenance` hoặc `Archived` không được **kích hoạt** hợp đồng mới | M05 kiểm tra |
-| PR-BR-05 | Archive phòng chỉ khi không có hợp đồng `Draft`/`Active`/`Liquidating`; archive khu chỉ khi mọi phòng đã archive hoặc archivable (archive phòng kèm theo trong cùng transaction) | Application |
+| PR-BR-05 | Archive phòng / bắt đầu bảo trì chỉ khi không có hợp đồng `Draft`/`Active`/`Liquidating` **và không có HĐ `Ended` có `actual_end_date ≥ hôm nay`** (người thuê còn ở trong ngày trả phòng — CT-BR-33); archive khu chỉ khi mọi phòng đã archive hoặc archivable (archive phòng kèm theo trong cùng transaction) | Application ✅ |
 | PR-BR-06 | `max_occupants` ≥ 1; giảm `max_occupants` xuống dưới số người đang ở → 422 | Application |
 | PR-BR-07 | Nhóm phòng chỉ chứa phòng **cùng khu** với nhóm | DB FK composite `(organization_id, property_id, room_id)` |
 | PR-BR-08 | Xóa nhóm phòng: cho phép nếu không có quy tắc điều chỉnh (M07) đang `Active` tham chiếu; nếu có → 409 | Application |
@@ -61,6 +61,7 @@ cài đặt thu mặc định của khu; thông tin hợp đồng điện EVN c�
 | PR-BR-13 | Người ký không phải chủ nhà (công ty quản lý, người được ủy quyền) → bắt buộc `authorization_doc_no` + `authorization_doc_date` | Validator |
 | PR-BR-14 | Số giấy tờ bên cho thuê: chuẩn hóa + mã hóa + che khi hiển thị như số giấy tờ người thuê (C-11) | Infrastructure |
 | PR-BR-15 | Sửa thông tin bên cho thuê / ngân hàng **không** làm đổi hợp đồng đã kích hoạt (hợp đồng giữ snapshot — CT-BR-19) | Thiết kế |
+| PR-BR-16 ✅ | **Nhãn trên thẻ phòng / chi tiết phòng** (dẫn xuất): `currentContract.flags` của HĐ đang ở — `RepresentativeMovedOut` "Người ký đã rời đi", `NoOccupantLeft` "Không còn người ở", `ExpiredAwaitingDecision` "Quá hạn HĐ — chờ quyết định", `Holdover` "Ở tiếp chưa ký lại" (CT-BR-44/45); `Còn nợ` (tổng phiếu đã chốt chưa thu đủ > 0) khi có M08. Chi tiết phòng có tab **Phiếu tiền phòng** (M07 BL-UC-14) | Query |
 
 ### 3.3 Vòng đời
 - Property: `Active` ⇄ `Archived` (`archived_at`).
@@ -247,7 +248,7 @@ POST /api/v1/properties/{propertyId}/rooms/bulk
 | bulk | ≤ 500 phòng/lần; mã trong request không trùng nhau | `DUPLICATE_IN_REQUEST` |
 
 ## 9. Phân quyền
-OrgOwner: toàn quyền. OrgManager (P3): đọc/sửa phòng trong khu được gán; không tạo/archive khu. SystemAdmin: không.
+P1: chủ trọ và phó quản lý toàn quyền nghiệp vụ (M01 §3.3); xem số giấy tờ đầy đủ của bên cho thuê: dữ liệu nhạy cảm (số giấy tờ đầy đủ) chỉ chủ trọ hoặc phó quản lý được chủ trọ cấp quyền (ID-BR-22). P3: phó quản lý theo khu được gán. SystemAdmin: không.
 
 ## 10. Toàn vẹn dữ liệu & concurrency
 

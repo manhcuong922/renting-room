@@ -30,11 +30,12 @@ public static class ProblemResponses
     public static ProblemHttpResult ToProblem(this Error error)
     {
         var status = StatusFor(error.Type);
+        var extensions = new Dictionary<string, object?>(error.Details ?? new Dictionary<string, object?>()) { [CodeKey] = error.Code };
         return TypedResults.Problem(
             title: TitleFor(status),
             detail: error.Message,
             statusCode: status,
-            extensions: new Dictionary<string, object?> { [CodeKey] = error.Code });
+            extensions: extensions);
     }
 
     /// <summary>Ghi ProblemDetails trực tiếp vào response — dùng ở middleware (401, 403, 429).</summary>

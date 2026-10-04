@@ -18,7 +18,8 @@ public sealed record MeDto(
     UserRole Role,
     bool MustChangePassword,
     DateTimeOffset? LastLoginAt,
-    MeOrganizationDto? Organization);
+    MeOrganizationDto? Organization,
+    bool CanViewSensitiveData);
 
 public sealed class GetMeHandler(IAppDbContext db, ICurrentUser currentUser)
     : IRequestHandler<GetMeQuery, Result<MeDto>>
@@ -41,7 +42,8 @@ public sealed class GetMeHandler(IAppDbContext db, ICurrentUser currentUser)
                 db.Organizations
                     .Where(o => o.Id == u.OrganizationId)
                     .Select(o => new MeOrganizationDto(o.Id, o.Code, o.Name))
-                    .FirstOrDefault()))
+                    .FirstOrDefault(),
+                u.Role == UserRole.OrgOwner || (u.Role == UserRole.OrgManager && u.CanViewSensitiveData)))
             .FirstOrDefaultAsync(cancellationToken);
 
         return me is null ? IdentityErrors.UserNotFound : me;

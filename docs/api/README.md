@@ -17,6 +17,10 @@
 | [properties.md](properties.md) | Khu trọ, bên cho thuê, tài khoản ngân hàng, nội quy | Chủ trọ, phó quản lý |
 | [rooms.md](rooms.md) | Phòng, trạng thái phòng, bảo trì, nhóm phòng | Chủ trọ, phó quản lý |
 | [renters.md](renters.md) | Hồ sơ người thuê / người ở | Chủ trọ, phó quản lý |
+| [fees.md](fees.md) | Khoản thu của khu: điện nước theo công tơ; dịch vụ theo phòng / đầu người / số gói (mạng, nước theo người, giữ xe); bảng giá (một giá) | Chủ trọ, phó quản lý |
+| [meters.md](meters.md) | Công tơ điện nước của phòng: lắp, thay (phiên bản), tháo, lịch sử, sửa chỉ số; lưới ghi chỉ số hằng tháng | Chủ trọ, phó quản lý |
+| [invoices.md](invoices.md) | Phiếu tiền phòng: tạo nháp theo tháng, sửa tay, phụ thu, tính lại, chốt, hủy | Chủ trọ, phó quản lý |
+| [payments.md](payments.md) | Thu tiền ("Đã thu"), phiếu thu, đảo phiếu thu, còn nợ | Chủ trọ, phó quản lý |
 | [contract-templates.md](contract-templates.md) | Mẫu hợp đồng theo loại (thuê phòng trọ / thuê nhà): tiêu đề, điều khoản, trường tùy biến | Chủ trọ, phó quản lý |
 | [contracts.md](contracts.md) | Hợp đồng: tạo, kích hoạt, người ở, phụ lục, báo trả phòng, thanh lý, tài sản, xe | Chủ trọ, phó quản lý |
 | [exports.md](exports.md) | Xuất Excel danh sách người thuê theo khu / tầng / nhóm phòng / phòng / khoảng ngày | Chủ trọ, phó quản lý |
@@ -56,6 +60,7 @@ flowchart TB
 │       ├── Bên cho thuê ⚠ bắt buộc trước khi ký HĐ   PUT /properties/{id}/lessor
 │       ├── Tài khoản ngân hàng                PUT /properties/{id}/bank-account
 │       ├── Nội quy                            PUT /properties/{id}/house-rules
+│       ├── Khoản thu (điện, nước, dịch vụ)    GET /properties/{id}/fee-types
 │       ├── Phòng (lưới theo tầng)             GET /rooms?propertyId=
 │       └── Nhóm phòng                         GET /properties/{id}/room-groups
 ├── Phòng
@@ -95,5 +100,5 @@ sequenceDiagram
 
 ## Chưa có trong API (đừng làm UI)
 
-Các module sau mới có trong plan (`docs/plans/`), **chưa có endpoint**: khoản thu điện/nước/dịch vụ (M04), công tơ & ghi chỉ số (M06),
+Các module sau mới có trong plan (`docs/plans/`), **chưa có endpoint**: công tơ & ghi chỉ số (M06),
 phiếu báo tiền phòng (M07), thu tiền & sổ cọc (M08), upload ảnh/file (M09), các file Excel khác ngoài danh sách người thuê (M10), theo dõi tạm trú (M03 phần cư trú).

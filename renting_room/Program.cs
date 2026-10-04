@@ -29,6 +29,9 @@ app.MapRenterEndpoints();
 app.MapContractEndpoints();
 app.MapContractTemplateEndpoints();
 app.MapExportEndpoints();
+app.MapFeeEndpoints();
+app.MapMeterEndpoints();
+app.MapBillingEndpoints();
 
 await app.Services.InitializeDatabaseAsync();
 await app.RunAsync();

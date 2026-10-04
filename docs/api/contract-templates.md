@@ -11,7 +11,8 @@ Khi tạo hợp đồng chọn mẫu, server **chép** tiêu đề, điều kho�
 - Sửa hoặc ngừng dùng mẫu **không đổi** hợp đồng đã kích hoạt.
 - Bản **nháp** nhận nội dung mới của mẫu ở lần sửa nháp kế tiếp.
 
-> Trường tùy biến chỉ để **ghi nhận thỏa thuận** in trên hợp đồng. Việc tự tính tiền điện/nước vào phiếu thu thuộc module khoản thu (chưa có API).
+> **Điện, nước, dịch vụ không khai bằng trường tùy biến** — khai bằng [khoản thu](fees.md) để vừa tính tiền vừa in vào văn bản.
+> Trường tùy biến dành cho thỏa thuận khác (khách qua đêm, giờ đóng cổng, mục đích sử dụng nhà…).
 
 Quyền: chủ trọ và phó quản lý.
 
@@ -61,7 +62,7 @@ Xem nhóm hợp đồng không cọc: `GET /contracts?hasDeposit=false` (gồm c
 Định nghĩa trường:
 
 ```json
-{ "key": "water_unit_price", "label": "Đơn giá nước", "type": "Money", "required": true, "options": null, "unit": "đ", "hint": "VD 20.000đ/người" }
+{ "key": "gate_closing_time", "label": "Giờ đóng cổng", "type": "Text", "required": false, "options": null, "unit": null, "hint": "VD 23:00" }
 ```
 
 | Thuộc tính | Quy tắc |
@@ -81,9 +82,9 @@ Tối đa 50 trường và 30 điều khoản mỗi mẫu. Mỗi điều khoản
 
 | Mẫu | Điều khoản | Trường |
 |-----|-----------|--------|
-| Thuê phòng trọ | Trách nhiệm bên A · bên B · chung · Giải quyết tranh chấp | Cách tính điện (giá nhà nước / cố định), đơn giá điện, thời điểm trả tiền điện; cách tính nước (đầu người / m³ / trọn gói), đơn giá nước, thời điểm trả; có wifi; dịch vụ khác |
-| Thuê phòng trọ **không cọc** (`noDeposit: true`) | Trách nhiệm bên A · bên B · **Thanh toán (không đặt cọc)**: trả tiền thuê trước đầu kỳ, chậm trả quá N ngày bên A được chấm dứt · chung · Giải quyết tranh chấp | **Số ngày chậm trả tối đa** (bắt buộc) + các trường điện nước như trên |
-| Thuê nhà nguyên căn | Đặc điểm nhà · Trách nhiệm bên A · bên B · Chấm dứt · Giải quyết tranh chấp | Diện tích đất, diện tích sàn, số tầng, giấy tờ sở hữu, mục đích sử dụng, kỳ trả tiền thuê, cho thuê lại + các trường điện nước như trên |
+| Thuê phòng trọ | Trách nhiệm bên A · bên B · chung · Giải quyết tranh chấp | **Khách ở qua đêm** (bắt buộc: phải báo / không cho / không hạn chế), giờ đóng cổng, nuôi thú cưng |
+| Thuê phòng trọ **không cọc** (`noDeposit: true`) | Trách nhiệm bên A · bên B · **Thanh toán (không đặt cọc)**: trả tiền thuê trước đầu kỳ, chậm trả quá N ngày bên A được chấm dứt · chung · Giải quyết tranh chấp | **Số ngày chậm trả tối đa** (bắt buộc) + quy định sinh hoạt như trên |
+| Thuê nhà nguyên căn | Đặc điểm nhà · Trách nhiệm bên A · bên B · Chấm dứt · Giải quyết tranh chấp | Diện tích đất, diện tích sàn, số tầng, giấy tờ sở hữu, mục đích sử dụng, kỳ trả tiền thuê, cho thuê lại + quy định sinh hoạt như trên |
 
 UI: chọn preset → mở form tạo mẫu đã điền sẵn → người dùng sửa tên, điều khoản, thêm/bớt trường → `POST`.
 
@@ -101,10 +102,10 @@ UI: chọn preset → mở form tạo mẫu đã điền sẵn → người dùn
     { "heading": "Trách nhiệm của bên B", "body": "- Thanh toán đầy đủ các khoản tiền theo đúng thỏa thuận.\n- Nếu cho khách ở qua đêm phải báo và được chủ nhà đồng ý." }
   ],
   "fields": [
-    { "key": "electricity_pricing", "label": "Cách tính tiền điện", "type": "Select", "required": true,
-      "options": ["Theo giá nhà nước (bậc thang EVN)", "Đơn giá cố định theo kWh"], "unit": null, "hint": null },
-    { "key": "water_unit_price", "label": "Tiền nước", "type": "Money", "required": true, "options": null, "unit": "đ/người", "hint": null },
-    { "key": "wifi_included", "label": "Có wifi", "type": "Boolean", "required": false, "options": null, "unit": null, "hint": null }
+    { "key": "overnight_guest_policy", "label": "Khách ở qua đêm", "type": "Select", "required": true,
+      "options": ["Phải báo và được chủ nhà đồng ý", "Không cho phép", "Không hạn chế"], "unit": null, "hint": null },
+    { "key": "gate_closing_time", "label": "Giờ đóng cổng", "type": "Text", "required": false, "options": null, "unit": null, "hint": "VD 23:00" },
+    { "key": "pets_allowed", "label": "Cho phép nuôi thú cưng", "type": "Boolean", "required": false, "options": null, "unit": null, "hint": null }
   ],
   "noDeposit": false
 }
@@ -123,7 +124,7 @@ UI: chọn preset → mở form tạo mẫu đã điền sẵn → người dùn
   "contractType": "RoomRental",
   "title": "HỢP ĐỒNG THUÊ PHÒNG TRỌ",
   "clauses": [ { "heading": "…", "body": "…" } ],
-  "fields": [ { "key": "water_unit_price", "label": "Tiền nước", "type": "Money", "required": true, "options": null, "unit": "đ/người", "hint": null } ],
+  "fields": [ { "key": "gate_closing_time", "label": "Giờ đóng cổng", "type": "Text", "required": false, "options": null, "unit": null, "hint": "VD 23:00" } ],
   "noDeposit": false,
   "isArchived": false,
   "createdAt": "2026-10-02T14:20:00+00:00",

@@ -49,14 +49,11 @@ public sealed class ContractTemplateTests(ApiFactory factory)
             }
         }, token);
 
-    private static object ValidUtilityFields => new
+    private static object ValidLivingRules => new
     {
-        electricity_pricing = "Theo giá nhà nước (bậc thang EVN)",
-        electricity_payment_time = "Cuối tháng",
-        water_pricing = "Theo đầu người",
-        water_unit_price = 20_000,
-        water_payment_time = "Đầu tháng",
-        wifi_included = true
+        overnight_guest_policy = "Phải báo và được chủ nhà đồng ý",
+        gate_closing_time = "23:00",
+        pets_allowed = false
     };
 
     [Fact]
@@ -80,7 +77,7 @@ public sealed class ContractTemplateTests(ApiFactory factory)
         var roomId = await _client.CreateRoomAsync(token, await _client.CreatePropertyAsync(token));
         var renterId = await _client.CreateRenterAsync(token);
 
-        var contractId = await (await PostContractWithTemplateAsync(token, roomId, renterId, today, templateId, ValidUtilityFields)).ReadIdAsync();
+        var contractId = await (await PostContractWithTemplateAsync(token, roomId, renterId, today, templateId, ValidLivingRules)).ReadIdAsync();
         await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/activate", null, token);
 
         var contract = await (await _client.GetAsync($"/api/v1/contracts/{contractId}", token)).ReadAsync<ContractWithDocument>();
@@ -89,9 +86,9 @@ public sealed class ContractTemplateTests(ApiFactory factory)
         contract.Document.ContractType.Should().Be("RoomRental");
         contract.Document.Title.Should().Be("HỢP ĐỒNG THUÊ PHÒNG TRỌ");
         contract.Document.Clauses.Should().HaveCount(4);
-        contract.Document.CustomFieldDefinitions.Should().Contain(f => f.Key == "water_unit_price" && f.Type == "Money");
-        contract.Document.CustomFields["water_unit_price"].GetDecimal().Should().Be(20_000);
-        contract.Document.CustomFields["wifi_included"].GetBoolean().Should().BeTrue();
+        contract.Document.CustomFieldDefinitions.Should().Contain(f => f.Key == "overnight_guest_policy" && f.Type == "Select" && f.Required);
+        contract.Document.CustomFields["gate_closing_time"].GetString().Should().Be("23:00");
+        contract.Document.CustomFields["pets_allowed"].GetBoolean().Should().BeFalse();
 
         // Sửa mẫu sau khi ký không đổi hợp đồng đã kích hoạt.
         var template = await (await _client.GetAsync($"{Templates}/{templateId}", token)).ReadAsync<TemplateResponse>();
@@ -115,13 +112,13 @@ public sealed class ContractTemplateTests(ApiFactory factory)
         var renterId = await _client.CreateRenterAsync(token);
 
         var response = await PostContractWithTemplateAsync(token, roomId, renterId, TestData.Today(factory), templateId,
-            new { electricity_pricing = "Miễn phí", water_pricing = "Theo đầu người", not_in_template = 1 });
+            new { pets_allowed = "có", not_in_template = 1 });
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         using var problem = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         problem.RootElement.GetProperty("errors").EnumerateObject().Select(p => p.Name).Should().BeEquivalentTo(
-            "contract.customFields.electricity_pricing",
-            "contract.customFields.water_unit_price",
+            "contract.customFields.overnight_guest_policy",
+            "contract.customFields.pets_allowed",
             "contract.customFields.not_in_template");
     }
 
@@ -135,12 +132,12 @@ public sealed class ContractTemplateTests(ApiFactory factory)
         var propertyId = await _client.CreatePropertyAsync(token);
         var renterId = await _client.CreateRenterAsync(token);
         var draftId = await (await PostContractWithTemplateAsync(
-            token, await _client.CreateRoomAsync(token, propertyId), renterId, today, templateId, ValidUtilityFields)).ReadIdAsync();
+            token, await _client.CreateRoomAsync(token, propertyId), renterId, today, templateId, ValidLivingRules)).ReadIdAsync();
 
         (await _client.PostJsonAsync($"{Templates}/{templateId}/archive", null, token)).StatusCode.Should().Be(HttpStatusCode.NoContent);
 
         (await (await PostContractWithTemplateAsync(token, await _client.CreateRoomAsync(token, propertyId), renterId, today, templateId,
-            ValidUtilityFields)).ReadProblemCodeAsync()).Should().Be("CONTRACT_TEMPLATE_ARCHIVED");
+            ValidLivingRules)).ReadProblemCodeAsync()).Should().Be("CONTRACT_TEMPLATE_ARCHIVED");
 
         var draft = await (await _client.GetAsync($"/api/v1/contracts/{draftId}", token)).ReadAsync<ContractWithDocument>();
         (await _client.PutJsonAsync($"/api/v1/contracts/{draftId}", new
@@ -148,7 +145,7 @@ public sealed class ContractTemplateTests(ApiFactory factory)
             contract = new
             {
                 representativeRenterId = renterId, startDate = today, monthlyRent = 1_100_000, templateId,
-                customFields = ValidUtilityFields, occupants = new[] { new { renterId } }
+                customFields = ValidLivingRules, occupants = new[] { new { renterId } }
             },
             version = draft.Version
         }, token)).StatusCode.Should().Be(HttpStatusCode.NoContent);

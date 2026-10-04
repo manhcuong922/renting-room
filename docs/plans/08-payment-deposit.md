@@ -14,6 +14,12 @@ sổ cọc: nhận, nhận thêm, cấn trừ vào phiếu, hoàn, mất cọc, 
 
 **Phase**: P1.
 
+**Code đợt 1 (04/10/2026)**
+- Thu tiền bằng tay (PM-UC-01): `POST /contracts/{id}/payments` `{ amount, method, paidAt, invoiceId?, payerName?, reference?, note? }` — có `invoiceId` ⇒ phân bổ vào đúng phiếu đó (nút "Đã thu" trên phiếu, mặc định đủ số còn nợ, thu một phần được); không có ⇒ tự động FIFO (PM-BR-06). Số phiếu thu `PT{yyyy}-{000000}`.
+- **Đổi khi code**: chưa có số dư có ⇒ thu **vượt số còn nợ** → 422 `PAYMENT_EXCEEDS_DEBT` (đợt 2 mới cho trả thừa thành số dư có).
+- Đảo phiếu thu (PM-UC-04) — hủy mọi phân bổ, giảm `paid_amount`; nợ theo HĐ / phòng (PM-UC-10, PM-UC-12): phòng có `outstandingAmount` + nhãn "Còn nợ".
+- **Đợt 2**: số dư có / hoàn tiền thừa, phân bổ lại, sổ cọc (PM-UC-06..09), xóa nợ (PM-BR-16), ghi có (PM-BR-17), danh sách công nợ quá hạn theo khu.
+
 ## 2. Thuật ngữ
 
 | Thuật ngữ | Code | Định nghĩa |
@@ -31,10 +37,10 @@ sổ cọc: nhận, nhận thêm, cấn trừ vào phiếu, hoàn, mất cọc, 
 
 | ID | Mô tả |
 |----|-------|
-| PM-UC-01 | Ghi phiếu thu cho HĐ: số tiền, phương thức, ngày thu, người thu, mã giao dịch; phân bổ **tự động** (phiếu báo cũ nhất trước) hoặc **chỉ định** |
+| PM-UC-01 ✅ | **Đánh dấu đã thu bằng tay** (P1 — người thuê trả tiền mặt / chuyển khoản tự kiểm): từ phiếu báo bấm "Đã thu" (mặc định đủ số còn nợ, sửa được nếu thu một phần), phương thức, ngày thu, người thu, mã giao dịch; phân bổ **tự động** (phiếu báo cũ nhất trước) hoặc **chỉ định** |
 | PM-UC-02 | Phân bổ số dư có vào phiếu báo mới |
 | PM-UC-03 | Hủy một phân bổ (để phân bổ lại) |
-| PM-UC-04 | Đảo phiếu thu (lý do) |
+| PM-UC-04 ✅ | Đảo phiếu thu (lý do) |
 | PM-UC-05 | Hoàn tiền thừa (từ số dư có) |
 | PM-UC-06 | Nhận cọc / nhận thêm cọc |
 | PM-UC-07 | Cấn trừ cọc vào phiếu báo (thường khi thanh lý) |
@@ -42,18 +48,20 @@ sổ cọc: nhận, nhận thêm, cấn trừ vào phiếu, hoàn, mất cọc, 
 | PM-UC-09 | Chuyển cọc sang HĐ mới (chuyển phòng) |
 | PM-UC-10 | Xem công nợ: theo HĐ, theo khu, danh sách quá hạn |
 | PM-UC-11 | Xem sổ cọc của HĐ; tổng cọc đang giữ theo khu |
+| PM-UC-12 ✅ | **Công nợ khi xem phòng**: phòng còn phiếu chưa thu đủ → nhãn "Còn nợ" + số tiền trên thẻ phòng và tab phiếu của phòng (M02 PR-BR-16) |
+| PM-UC-13 | (P2) Mã VietQR trên phiếu gửi Zalo — nội dung chuyển khoản = số phiếu; (P3) thanh toán online / đối soát ngân hàng tự động | 
 
 ### 3.2 Quy tắc nghiệp vụ
 
 | Mã | Quy tắc | Nơi kiểm tra |
 |----|---------|-------------|
-| PM-BR-01 | `payment.amount` > 0, số nguyên đồng. Không sửa số tiền phiếu thu; sai → đảo + ghi lại | Domain + CHECK |
-| PM-BR-02 | Phân bổ chỉ vào phiếu báo **Finalized** của **cùng HĐ**; mỗi phân bổ > 0 | Domain + FK composite `(organization_id, contract_id, invoice_id)` |
-| PM-BR-03 | Σ phân bổ hiệu lực của 1 phiếu thu ≤ số tiền phiếu thu | Domain (aggregate Payment) |
-| PM-BR-04 | Σ phân bổ hiệu lực vào 1 phiếu báo ≤ `total_amount` (= `paid_amount` cache ≤ total, CHECK ở M07) | Domain + CHECK |
-| PM-BR-05 | `invoices.paid_amount` được cập nhật **trong cùng transaction** với tạo/hủy phân bổ, sau khi khóa hàng invoice `FOR UPDATE` | Application |
-| PM-BR-06 | Phân bổ tự động: phiếu báo chưa Paid của HĐ theo `due_date` tăng dần, rồi `period_start`; phần dư → số dư có | Domain service |
-| PM-BR-07 | Đảo phiếu thu: đảo mọi phân bổ (giảm `paid_amount`), trạng thái `Reversed`, lý do bắt buộc. Không đảo phiếu thu loại `DepositDeduction` trực tiếp — phải đảo bút toán cọc tương ứng (đảo cả 2 cùng lúc) | Domain |
+| PM-BR-01 ✅ | `payment.amount` > 0, số nguyên đồng. Không sửa số tiền phiếu thu; sai → đảo + ghi lại | Domain + CHECK |
+| PM-BR-02 ✅ | Phân bổ chỉ vào phiếu báo **Finalized** của **cùng HĐ**; mỗi phân bổ > 0 | Domain + FK composite `(organization_id, contract_id, invoice_id)` |
+| PM-BR-03 ✅ | Σ phân bổ hiệu lực của 1 phiếu thu ≤ số tiền phiếu thu | Domain (aggregate Payment) |
+| PM-BR-04 ✅ | Σ phân bổ hiệu lực vào 1 phiếu báo ≤ `total_amount` (= `paid_amount` cache ≤ total, CHECK ở M07) | Domain + CHECK |
+| PM-BR-05 ✅ | `invoices.paid_amount` được cập nhật **trong cùng transaction** với tạo/hủy phân bổ, sau khi khóa hàng invoice `FOR UPDATE` | Application |
+| PM-BR-06 ✅ | Phân bổ tự động: phiếu báo chưa Paid của HĐ theo `due_date` tăng dần, rồi `period_start`; phần dư → số dư có | Domain service |
+| PM-BR-07 ✅ | Đảo phiếu thu: đảo mọi phân bổ (giảm `paid_amount`), trạng thái `Reversed`, lý do bắt buộc. Không đảo phiếu thu loại `DepositDeduction` trực tiếp — phải đảo bút toán cọc tương ứng (đảo cả 2 cùng lúc) | Domain |
 | PM-BR-08 | `CreditBalance(HĐ)` = Σ(amount − Σ phân bổ hiệu lực) của phiếu thu `Recorded` − Σ hoàn tiền thừa hiệu lực ≥ 0. Hoàn tiền thừa > số dư có → 422 | Application (khóa contract) |
 | PM-BR-09 | `DepositBalance(HĐ)` = Σ(Receive, TopUp, TransferIn) − Σ(DeductToInvoice, Refund, Forfeit, TransferOut) trên bút toán chưa đảo, **luôn ≥ 0** — kiểm tra khi ghi bút toán ra và khi đảo bút toán vào | Application (khóa contract `FOR UPDATE`) |
 | PM-BR-10 | `DeductToInvoice` tạo đồng thời 1 phiếu thu `method = DepositDeduction` và phân bổ vào phiếu báo chỉ định — **một transaction** | Application |
@@ -63,8 +71,9 @@ sổ cọc: nhận, nhận thêm, cấn trừ vào phiếu, hoàn, mất cọc, 
 | PM-BR-16 | **Xóa nợ** (người thuê bỏ đi, không đòi được): phiếu thu `method = WriteOff`, lý do bắt buộc, phân bổ vào phiếu báo như tiền thật để đóng công nợ và cho phép hoàn tất thanh lý; **không** tính vào doanh thu (M10). Chỉ khi HĐ `Liquidating` | Domain |
 | PM-BR-17 | **Ghi có** (`method = CreditNote`) chỉ do hệ thống sinh (BL-BR-17), không qua API; tạo số dư có để hoàn cho người thuê | Application |
 | PM-BR-18 | Phương thức "phi tiền mặt" (`DepositDeduction`, `WriteOff`, `CreditNote`) không nhập trực tiếp qua `POST /payments` (trừ `WriteOff` qua endpoint riêng) | Validator |
-| PM-BR-14 | `paid_at` ≤ hôm nay; ≥ `start_date` HĐ − 60 ngày (cọc giữ chỗ) | Validator |
-| PM-BR-15 | Số phiếu thu `PT{yyyy}-{seq:000000}` cấp khi tạo, unique trong tổ chức | DB + sequence |
+| PM-BR-14 ✅ | `paid_at` ≤ hôm nay; ≥ `start_date` HĐ − 60 ngày (cọc giữ chỗ) | Validator |
+| PM-BR-15 ✅ | Số phiếu thu `PT{yyyy}-{seq:000000}` cấp khi tạo, unique trong tổ chức | DB + sequence |
+| PM-BR-19 | **Thông tin cọc trên HĐ chỉ để lưu trữ** (04/10/2026): `deposit_amount`, `deposit_terms`, nhóm HĐ không cọc (M05 CT-BR-27) là nội dung thỏa thuận để lưu & in — **không** ràng buộc sổ cọc: không tự tạo bút toán `Receive`, không chặn ghi cọc cho HĐ ghi "không cọc" hay vượt `deposit_amount`, không giới hạn mức cọc theo tháng. Sổ cọc (bút toán) là nguồn sự thật về tiền cọc thực nhận / hoàn / mất. Chênh lệch giữa số dư cọc và `deposit_amount` chỉ hiển thị thông tin trên chi tiết HĐ | Application |
 
 ### 3.3 Vòng đời
 - Payment: `Recorded` → `Reversed`. Allocation: `Active` → `Cancelled`. DepositTransaction: `Recorded` → `Reversed`.
@@ -193,7 +202,7 @@ Idempotency-Key: 1d2e…
 | reason | 1–500 khi bắt buộc |
 
 ## 9. Phân quyền
-OrgOwner toàn quyền. OrgManager (P3): ghi thu; đảo phiếu thu / hoàn / mất cọc cần quyền riêng.
+P1: chủ trọ và phó quản lý toàn quyền nghiệp vụ (M01 §3.3). P3: đảo phiếu thu / hoàn / mất cọc cần quyền riêng.
 
 ## 10. Toàn vẹn dữ liệu & concurrency
 

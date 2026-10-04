@@ -8,10 +8,22 @@
 cung cấp **sản lượng tiêu thụ chính xác, không chồng lấn, không bỏ sót** cho M07. Có **màn hình riêng** nhập chỉ số cuối kỳ
 cho cả khu (yêu cầu nghiệp vụ: "tiền điện tháng trước và tháng này").
 
+**Công tơ đi theo phòng, không theo hợp đồng** (FE-BR-17, 04/10/2026): HĐ không đăng ký điện nước; HĐ đang hiệu lực của phòng
+dùng công tơ của phòng kể từ chỉ số ngày nhận phòng (MT-BR-13).
+
 **Trong phạm vi**: lắp/gỡ/thay công tơ; chỉ số ban đầu, bàn giao, định kỳ, cuối (thanh lý), tháo; màn hình ghi chỉ số hàng loạt;
 cảnh báo bất thường; khóa chỉ số đã dùng cho phiếu đã chốt; ảnh chụp công tơ (M09, tùy chọn).
 
 **Ngoài phạm vi**: công tơ tổng chia theo người/phòng (P3); đọc công tơ IoT; OCR ảnh.
+
+**Code đợt 1 (04/10/2026)** — phần không phụ thuộc phiếu (M07):
+- Lắp / thay (phiên bản) / gỡ công tơ từng phòng; xem công tơ của phòng kèm **chỉ số mới nhất**; lịch sử chỉ số; sửa chỉ số (đơn điệu).
+- Kích hoạt HĐ: **bắt buộc chỉ số nhận phòng** cho mỗi công tơ hoạt động tại `start_date` (`value` bỏ trống = "Dùng số mới nhất").
+- Hoàn tất thanh lý: **bắt buộc chỉ số cuối** (`Final`) cho mỗi công tơ hoạt động tại `actual_end_date`.
+- Điện nước trong bản chụp giá / bản in / rà dữ liệu chỉ lấy khoản có **công tơ thực ở phòng** (phòng tính nước theo người không còn dòng nước công tơ).
+- Ngừng dùng khoản Metered còn công tơ hoạt động → 422 `FEE_HAS_ACTIVE_METERS`; HĐ hiệu lực ở phòng chưa có công tơ điện → cảnh báo `ROOM_WITHOUT_METER`.
+
+**Đợt 2 (cùng M07 — đang code)**: lưới ghi chỉ số hằng tháng (MT-UC-04) + lưu hàng loạt all-or-nothing (MT-BR-07), `MeterUsageCalculator` (§3.3, tự cộng công tơ cũ khi thay — MT-BR-15), khóa chỉ số theo phiếu đã chốt (MT-BR-06). Để sau: cảnh báo bất thường (MT-BR-08), ngày ghi lệch (MT-BR-05), lắp hàng loạt, hủy chỉ số.
 
 **Phase**: P1.
 
@@ -32,30 +44,36 @@ cảnh báo bất thường; khóa chỉ số đã dùng cho phiếu đã chốt
 
 | ID | Mô tả |
 |----|-------|
-| MT-UC-01 | Lắp công tơ cho phòng (khoản thu Metered, số serial, ngày lắp, chỉ số ban đầu) — có thể lắp hàng loạt cho cả khu |
-| MT-UC-02 | Thay công tơ (hỏng / quay vòng về 0): chỉ số tháo của công tơ cũ + chỉ số ban đầu công tơ mới trong **một** lệnh |
-| MT-UC-03 | Gỡ công tơ (không thay) |
-| MT-UC-04 | **Màn hình ghi chỉ số**: chọn khu + tháng thu (+ lọc khoản thu, tầng) → lưới mỗi dòng = (phòng, công tơ, HĐ): chỉ số cũ (ngày), ô nhập chỉ số mới, sản lượng tạm tính, cảnh báo; lưu hàng loạt |
-| MT-UC-05 | Ghi chỉ số bàn giao (gọi từ M05 khi kích hoạt) và chỉ số cuối (khi thanh lý) |
-| MT-UC-06 | Sửa/hủy chỉ số chưa bị khóa |
-| MT-UC-07 | Xem lịch sử chỉ số của công tơ, biểu đồ sản lượng |
+| MT-UC-01 ✅ | Lắp công tơ cho phòng (khoản thu Metered, số serial, ngày lắp, chỉ số ban đầu) — có thể lắp hàng loạt cho cả khu |
+| MT-UC-02 ✅ | Thay công tơ (hỏng / quay vòng về 0): chỉ số tháo của công tơ cũ + chỉ số ban đầu công tơ mới trong **một** lệnh |
+| MT-UC-03 ✅ | Gỡ công tơ (không thay) |
+| MT-UC-04 ✅ | **Màn hình ghi chỉ số**: chọn khu + tháng thu (+ lọc khoản thu, tầng) → lưới mỗi dòng = (phòng, công tơ, HĐ): chỉ số cũ (ngày), ô nhập chỉ số mới, sản lượng tạm tính, cảnh báo; lưu hàng loạt |
+| MT-UC-05 ✅ | Ghi **chỉ số nhận phòng** (`Handover`) khi kích hoạt HĐ — gợi ý = chỉ số gần nhất của công tơ, chủ trọ **chỉnh được** cho đúng ngày vào ở (MT-BR-13) — và chỉ số cuối (khi thanh lý / bỏ đi không báo) |
+| MT-UC-06 ✅ | Sửa/hủy chỉ số chưa bị khóa |
+| MT-UC-07 ✅ | Xem lịch sử chỉ số của công tơ, biểu đồ sản lượng |
 
 ### 3.2 Quy tắc nghiệp vụ
 
+Quy tắc đợt 1 đã code: MT-BR-01, 02, 03, 09, 10, 11, 13 (✅ ở đầu dòng mã khi xong).
+
 | Mã | Quy tắc | Nơi kiểm tra |
 |----|---------|-------------|
-| MT-BR-01 | Mỗi `(room, fee_type)` có tối đa **1 công tơ đang hoạt động** | DB partial unique |
-| MT-BR-02 | Công tơ chỉ gắn khoản thu `Metered`, cùng khu với phòng | Domain + FK composite `(org, property_id, fee_type_id)`, `(org, property_id, room_id)` |
-| MT-BR-03 | **Đơn điệu**: theo thứ tự `(reading_date, sequence)`, giá trị chỉ số của **cùng một công tơ** không giảm. Chèn chỉ số lùi ngày phải ≥ chỉ số liền trước và ≤ chỉ số liền sau | Application, khóa `meters` row `FOR UPDATE` |
-| MT-BR-04 | Chỉ số `Periodic` gắn `(contract_id, closing_period_start)`; tối đa 1 bản chưa hủy cho mỗi `(meter, contract, closing_period_start)`. `Final` tối đa 1 / (meter, contract). `Handover` tối đa 1 / (meter, contract) | DB partial unique |
+| MT-BR-01 ✅ | Mỗi `(room, fee_type)` có tối đa **1 công tơ đang hoạt động** | DB partial unique |
+| MT-BR-02 ✅ | Công tơ chỉ gắn khoản thu `Metered`, cùng khu với phòng | Domain + FK composite `(org, property_id, fee_type_id)`, `(org, property_id, room_id)` |
+| MT-BR-03 ✅ | **Đơn điệu**: theo thứ tự `(reading_date, sequence)`, giá trị chỉ số của **cùng một công tơ** không giảm. Chèn chỉ số lùi ngày phải ≥ chỉ số liền trước và ≤ chỉ số liền sau | Application, khóa `meters` row `FOR UPDATE` |
+| MT-BR-04 ✅ | Chỉ số `Periodic` gắn `(contract_id, closing_period_start)`; tối đa 1 bản chưa hủy cho mỗi `(meter, contract, closing_period_start)`. `Final` tối đa 1 / (meter, contract). `Handover` tối đa 1 / (meter, contract) | DB partial unique |
 | MT-BR-05 | `reading_date` của `Periodic` nằm trong `[usage_end − 7 ngày, usage_end + 15 ngày]` → ngoài khoảng: **cảnh báo** (không chặn). `reading_date` ≤ hôm nay + 1 | Application |
-| MT-BR-06 | Chỉ số đã được dùng trong dòng phiếu **Finalized** chưa Void → **khóa**: không sửa/hủy (422 `READING_LOCKED`). Nếu chỉ dùng trong phiếu Draft → cho sửa, phiếu Draft bị đánh dấu `is_stale` | Application (query M07) |
-| MT-BR-07 | Ghi chỉ số hàng loạt là **all-or-nothing**: lỗi bất kỳ dòng → không lưu dòng nào, trả lỗi theo từng dòng | Transaction |
+| MT-BR-06 ✅ | Chỉ số đã được dùng trong dòng phiếu **Finalized** chưa Void → **khóa**: không sửa/hủy (422 `READING_LOCKED`). Nếu chỉ dùng trong phiếu Draft → cho sửa, phiếu Draft bị đánh dấu `is_stale` | Application (query M07) |
+| MT-BR-07 ✅ | Ghi chỉ số hàng loạt là **all-or-nothing**: lỗi bất kỳ dòng → không lưu dòng nào, trả lỗi theo từng dòng | Transaction |
 | MT-BR-08 | Cảnh báo bất thường (không chặn): sản lượng âm (đã bị chặn bởi BR-03), = 0 khi phòng có người ở, > 3× trung bình 3 kỳ gần nhất, > ngưỡng tuyệt đối (mặc định điện 1.500 kWh, nước 100 m³ / kỳ) | Application |
-| MT-BR-09 | Thay công tơ: chỉ số `Removal` của công tơ cũ và `Initial` của công tơ mới cùng ngày; công tơ cũ `removed_date` = ngày đó. Không được thay nếu ngày thay < chỉ số cuối cùng đã ghi của công tơ cũ | Domain |
-| MT-BR-10 | Gỡ công tơ khi HĐ đang có đăng ký khoản Metered đó → yêu cầu thay công tơ mới hoặc bỏ đăng ký trước (422) | Application |
-| MT-BR-11 | HĐ có đăng ký khoản Metered thì phòng **phải có công tơ hoạt động** cho khoản đó khi kích hoạt HĐ (bổ sung CT-BR-02) | M05 Application |
-| MT-BR-12 | **Chuỗi liên tục**: chỉ số đầu của đoạn đo kỳ N = chỉ số cuối của đoạn đo kỳ N−1 (cùng HĐ, cùng công tơ) **trên phiếu chưa Void**; kỳ đầu tiên dùng chỉ số `Handover` (hoặc `Initial` nếu công tơ lắp sau khi kích hoạt). Không có khoảng hở hoặc chồng lấn | Domain (`MeterUsageCalculator`) + DB unique trên end reading |
+| MT-BR-09 ✅ | **Công tơ có phiên bản**: 1 phòng có thể có nhiều công tơ cho cùng khoản thu theo thời gian, **chỉ 1 đang hoạt động** (MT-BR-01). Thay công tơ = ngừng công tơ cũ (**bắt buộc nhập số cuối** `Removal`) + thêm công tơ mới (số ban đầu `Initial`) cùng ngày, trong 1 lệnh. Không được thay nếu ngày thay < chỉ số cuối cùng đã ghi của công tơ cũ | Domain |
+| MT-BR-10 ✅ | Gỡ công tơ (không thay) bắt buộc chỉ số tháo (`Removal`); phòng đang có HĐ hiệu lực → **cảnh báo** `ROOM_HAS_OPEN_CONTRACT` (từ kỳ sau phiếu không còn dòng của khoản đó) | Application |
+| MT-BR-11 ✅ | ~~HĐ đăng ký khoản Metered thì phòng phải có công tơ~~ — **đổi 04/10/2026**: HĐ không đăng ký Metered. Kích hoạt HĐ không bị chặn vì công tơ; phòng chưa có công tơ của khoản Metered đang dùng ở khu → cảnh báo `ROOM_WITHOUT_METER` (phòng tính nước theo người thì bỏ qua). Phòng có công tơ → bắt buộc có chỉ số `Handover` tại `start_date` (MT-BR-13) | M05 Application |
+| MT-BR-12 ✅ | **Chuỗi liên tục**: chỉ số đầu của đoạn đo kỳ N = chỉ số cuối của đoạn đo kỳ N−1 (cùng HĐ, cùng công tơ) **trên phiếu chưa Void**; kỳ đầu tiên dùng chỉ số `Handover` (hoặc `Initial` nếu công tơ lắp sau khi kích hoạt). Không có khoảng hở hoặc chồng lấn | Domain (`MeterUsageCalculator`) + DB unique trên end reading |
+| MT-BR-13 ✅ | **Chỉ số nhận phòng (mốc bắt đầu tính của HĐ)**: khi kích hoạt HĐ, **bắt buộc** nhập cho mỗi công tơ hoạt động của phòng 1 chỉ số `Handover` tại `start_date` (ngày phòng có người ở). Hai cách: **"Dùng số mới nhất"** = chỉ số gần nhất của công tơ ≤ `start_date` (số cuối của HĐ trước, hoặc số tháng trước đã dùng tính tiền) — hoặc **nhập số khác** ≥ số đó (đơn điệu MT-BR-03). Sửa lại được khi chưa bị khóa (MT-BR-06). VD: người cũ trả phòng ngày 15 ở số 100; thợ sửa chữa dùng 8 kWh; người mới vào ngày 18 ⇒ nhập **108**, người mới chỉ trả từ 108 | Domain + Application |
+| MT-BR-14 | **Sản lượng khoảng trống** giữa `Final` của HĐ trước và `Handover` của HĐ sau (VD 100 → 108: sửa chữa, phòng trống) **không tính cho người thuê nào**; báo cáo M10 hiển thị "sản lượng phòng trống" theo phòng / khu để chủ trọ đối chiếu hóa đơn EVN (LEG-05) | Domain + M10 |
+| MT-BR-15 ✅ | **Kỳ có thay công tơ**: cuối kỳ chỉ nhập số của **công tơ mới**; hệ thống tự kiểm tra trong kỳ sử dụng có thay công tơ không và cộng: (số cuối công tơ cũ − số đầu kỳ của công tơ cũ) + (số cuối kỳ công tơ mới − số ban đầu công tơ mới), nhân **một đơn giá** (giá mới — BL-BR-05). Lưới ghi chỉ số hiển thị dòng phụ "Công tơ cũ (đã thay ngày dd/MM): 1.250 → 1.320 = 70" để chủ trọ kiểm tra. Cách thay thế: không ghi công tơ phiên bản, nhập tiền điện công tơ cũ thành **phụ thu** trên phiếu nháp (BL-BR-23) | Domain (`MeterUsageCalculator`) |
+| MT-BR-16 ✅ | **Chỉ số cũ của kỳ sau** = chỉ số cuối của phiếu **đã chốt** gần nhất (MT-BR-12). Phiếu nháp chỉ "đề xuất"; khi chốt phiếu, chỉ số cuối kỳ bị khóa và trở thành chỉ số cũ của phòng cho kỳ sau | Domain |
 
 ### 3.3 Thuật toán sản lượng (dùng bởi M07)
 
@@ -82,7 +100,7 @@ Ví dụ thay công tơ giữa kỳ: cũ từ 1.250 → tháo 1.320 (70); mới 
 
 ### 3.4 Màn hình ghi chỉ số — cách xác định dòng
 
-Với khu K và tháng thu M, mỗi HĐ `Active`/`Liquidating` của K có đăng ký khoản Metered F đang hiệu lực:
+Với khu K và tháng thu M: mỗi HĐ `Active`/`Liquidating` của K × mỗi công tơ của phòng HĐ hoạt động trong kỳ sử dụng U (không cần HĐ đăng ký — FE-BR-17):
 - `Postpaid`: kỳ sử dụng U = kỳ có `PeriodStart` thuộc tháng M.
 - `Prepaid`: U = kỳ **liền trước** kỳ có `PeriodStart` thuộc tháng M (bỏ qua nếu kỳ đó trước `start_date` của HĐ).
 - HĐ `Liquidating` mà `actual_end_date` ∈ U → dòng hiển thị yêu cầu chỉ số `Final` thay vì `Periodic`.
@@ -139,6 +157,9 @@ INDEX `(meter_id, reading_date, sequence) WHERE voided_at IS NULL`.
 
 ## 5. Domain model
 
+> **Đã đổi khi code (đợt 1)**: chỉ số nằm **trong aggregate `Meter`** (không tách aggregate) — lịch sử 1 công tơ chỉ vài chục bản/năm,
+> nạp cả để kiểm đơn điệu (MT-BR-03) ngay trong domain. Thứ tự cùng ngày: `Initial` < `Handover` < `Periodic`/`Adhoc` < `Final` < `Removal`, rồi `sequence`.
+
 ```
 Meter (aggregate root; readings là aggregate riêng để tránh load toàn lịch sử)
   + Install(room, feeType, serial, date, initialValue) : (Meter, Reading Initial)
@@ -157,14 +178,29 @@ MeterUsageCalculator (domain service): Calculate(contract, feeType, usagePeriod,
 |----------|------|---------------|
 | `InstallMeterCommand` / `BulkInstallMetersCommand` | Cmd | `METER_ALREADY_ACTIVE`, `FEE_NOT_METERED` |
 | `ReplaceMeterCommand` | Cmd | `READING_NOT_MONOTONIC`, `INVALID_REPLACE_DATE` |
-| `RemoveMeterCommand` | Cmd | `METER_IN_USE_BY_CONTRACT` |
+| `RemoveMeterCommand` | Cmd | bắt buộc chỉ số tháo; cảnh báo `ROOM_HAS_OPEN_CONTRACT` (MT-BR-10) |
 | `GetMeterReadingSheetQuery` | Qry | propertyId, billingMonth (`yyyy-MM`), feeTypeIds?, floor? → rows (§3.4) |
 | `SaveMeterReadingsCommand` (Idempotency-Key) | Cmd | upsert theo khóa MT-BR-04; trả `rowErrors[]`, `warnings[]`, `staleDraftInvoiceIds[]` |
-| `RecordHandoverReadingsCommand` / `RecordFinalReadingsCommand` | Cmd (nội bộ, gọi từ M05) | |
+| `RecordHandoverReadingsCommand` / `RecordFinalReadingsCommand` | Cmd (nội bộ, gọi từ M05) | Handover: giá trị do người dùng nhập, mặc định = gợi ý MT-BR-13; sửa sau bằng `CorrectReadingCommand` khi chưa khóa |
 | `CorrectReadingCommand` / `VoidReadingCommand` | Cmd | `READING_LOCKED`, `READING_NOT_MONOTONIC` |
 | `ListMeterReadingsQuery` | Qry | theo meter, khoảng ngày |
 
 ## 7. API
+
+**Đợt 1 (đã code)**
+
+| Method | Route | Ghi chú / lỗi |
+|--------|-------|---------------|
+| GET | `/rooms/{roomId}/meters?includeRemoved=false` | công tơ + `latestReading {value, date, kind}` (để điền "Dùng số mới nhất") |
+| POST | `/rooms/{roomId}/meters` `{ feeTypeId, serialNo?, installedDate, initialValue, note? }` (Idempotency-Key) | 409 `METER_ALREADY_ACTIVE`, 422 `FEE_NOT_METERED` / `FEE_NOT_IN_PROPERTY` / `FEE_ARCHIVED` |
+| POST | `/meters/{id}/replace` `{ date, oldFinalValue, newSerialNo?, newInitialValue, note? }` | → 201 id công tơ mới; 422 `METER_REMOVED`, `READING_NOT_MONOTONIC`, `INVALID_READING_DATE` |
+| POST | `/meters/{id}/remove` `{ date, finalValue, note? }` | → 200 `{ warnings }` (`ROOM_HAS_OPEN_CONTRACT`) |
+| GET | `/meters/{id}/readings` | lịch sử (mới nhất trước) |
+| PUT | `/meter-readings/{id}` `{ value, note? }` | sửa giá trị; 422 `READING_NOT_MONOTONIC` (kèm `previousValue` / `nextValue`) |
+| POST | `/contracts/{id}/activate` `{ overrideCapacity?, handoverReadings: [{ meterId, value? }] }` | 422 `HANDOVER_READING_REQUIRED` (kèm `meterIds`) — `value` null = số mới nhất |
+| POST | `/contracts/{id}/liquidation/complete` `{ finalReadings: [{ meterId, value }] }` | 422 `FINAL_READING_REQUIRED` (kèm `meterIds`) |
+
+**Đợt 2 (thiết kế)**
 
 | Method | Route | Mã lỗi |
 |--------|-------|--------|
@@ -224,7 +260,7 @@ Idempotency-Key: 9f1c…
 | billingMonth | `yyyy-MM` |
 
 ## 9. Phân quyền
-OrgOwner toàn quyền; OrgManager (P3) ghi chỉ số khu được gán (thường là người đi ghi).
+P1: chủ trọ và phó quản lý toàn quyền nghiệp vụ (M01 §3.3). P3: phó quản lý chỉ ghi chỉ số khu được gán.
 
 ## 10. Toàn vẹn dữ liệu & concurrency
 
@@ -255,9 +291,9 @@ Audit sửa/hủy chỉ số (giá trị cũ → mới, lý do), thay/gỡ công
 
 | ID | Task | Ước lượng |
 |----|------|-----------|
-| MT-01 | Domain Meter/Reading + guards + `MeterUsageCalculator` + unit test bảng | 2d |
-| MT-02 | EF + partial unique + migration | 0.5d |
-| MT-03 | Install/Replace/Remove (+bulk) | 1d |
+| MT-01 ✅ (đợt 1) | Domain Meter + chỉ số trong aggregate + đơn điệu + unit test; `MeterUsageCalculator` ở đợt 2 | 2d |
+| MT-02 ✅ | EF + partial unique + migration `AddMeters` | 0.5d |
+| MT-03 ✅ (đợt 1, chưa bulk) | Install/Replace/Remove + chỉ số nhận phòng / chỉ số cuối gắn vào kích hoạt / thanh lý | 1d |
 | MT-04 | Reading sheet query (§3.4) — tối ưu 1–2 query cho cả khu | 1.5d |
 | MT-05 | Bulk save + warnings + stale draft | 1.5d |
 | MT-06 | Correct/Void + lock check | 0.5d |

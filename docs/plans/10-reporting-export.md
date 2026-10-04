@@ -35,7 +35,7 @@ dashboard tổng quan; nhắc việc (HĐ sắp hết hạn, cư trú chưa đă
 | RP-BR-06 | Tên sheet: tên khu cắt ≤ 31 ký tự, bỏ ký tự `[]:*?/\`, trùng thì thêm hậu tố `(2)` |
 | RP-BR-07 | Tên file: `{loai}_{yyyyMMdd-HHmm}.xlsx` (giờ VN), header `Content-Disposition` dùng `filename*=UTF-8''…` |
 | RP-BR-08 | Thống nhất thuật ngữ "Phiếu báo tiền phòng" (LEG-08) |
-| RP-BR-09 | Export chạy trong transaction `REPEATABLE READ` read-only để số liệu nhất quán giữa các sheet |
+| RP-BR-09 ✅ | Export chạy trong transaction `REPEATABLE READ` read-only để số liệu nhất quán giữa các sheet |
 
 ## 4. Dữ liệu
 Không có bảng nghiệp vụ mới (P1). P2: `export_jobs(id, organization_id, type, params jsonb, status, attachment_id, requested_by, created_at, finished_at, error)`;
@@ -77,7 +77,7 @@ POST /api/v1/exports/monthly-invoices
 propertyIds 1–50, không trùng; billingMonth `yyyy-MM`; from ≤ to, khoảng ≤ 24 tháng; layout enum.
 
 ## 9. Phân quyền
-OrgOwner; OrgManager (P3) chỉ khu được gán, `includeSensitive` cần quyền `ExportSensitive`.
+P1: chủ trọ và phó quản lý toàn quyền nghiệp vụ (M01 §3.3); `includeSensitive = true`: dữ liệu nhạy cảm (số giấy tờ đầy đủ) chỉ chủ trọ hoặc phó quản lý được chủ trọ cấp quyền (ID-BR-22) → không có quyền 403 `SENSITIVE_DATA_FORBIDDEN`. P3: theo khu được gán.
 
 ## 10. Toàn vẹn
 Số liệu nhất quán (RP-BR-09); dùng snapshot phiếu (RP-BR-04); cột khoản thu động gộp theo **tên** — 2 khu có "Wifi" khác giá vẫn chung cột (đơn giá ở từng dòng), khoản cùng tên khác nhóm → tách cột theo `tên (đơn vị)`.

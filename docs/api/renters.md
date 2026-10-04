@@ -77,7 +77,7 @@ UI: `idType = Passport` → gợi ý chọn `nationality` khác VN; nhãn ô s�
 
 | Lỗi | UI |
 |-----|----|
-| 409 `RENTER_ID_NUMBER_EXISTS` | "Số giấy tờ đã có hồ sơ" → gọi `GET /renters?idNumber=…&idType=…` để lấy hồ sơ cũ và đề xuất **dùng hồ sơ đó** |
+| 409 `RENTER_ID_NUMBER_EXISTS` | "Số giấy tờ đã có hồ sơ" → body có `existingRenterId` → mở / đề xuất **dùng hồ sơ đó** (một người được đứng tên nhiều phòng; là người ở thì chỉ ở 1 phòng) |
 | 400 `VALIDATION_FAILED` | Key `errors` trùng tên field body: `fullName`, `idNumber`… |
 
 ## Chi tiết
@@ -129,5 +129,5 @@ Tab "Lịch sử thuê" trong chi tiết: `GET /contracts?renterId={id}` — cá
 
 ## Xem số giấy tờ
 
-`POST /renters/{id}/reveal-id-number` → `{ "idNumber": "036202012345" }`.
+`POST /renters/{id}/reveal-id-number` → `{ "idNumber": "036202012345" }`. Không có quyền dữ liệu nhạy cảm → 403 `SENSITIVE_DATA_FORBIDDEN` (ẩn nút khi `canViewSensitiveData = false`).
 Mỗi lần gọi được ghi log kiểm toán. Không cache, không tự gọi; ẩn lại sau ~30 giây.

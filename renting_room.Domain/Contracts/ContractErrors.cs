@@ -52,6 +52,10 @@ public static class ContractErrors
         "Có xe đăng ký cho người không còn thuộc hợp đồng — kết thúc đăng ký xe đó trước.");
     public static readonly Error HouseholdHeadNotOccupant = Error.Validation("HOUSEHOLD_HEAD_NOT_OCCUPANT",
         "Chủ hộ phải là một trong những người ở.");
+    public static readonly Error FeeNotRegistered = Error.NotFound("CONTRACT_FEE_NOT_FOUND",
+        "Hợp đồng không có khoản thu này trong thời gian đó.");
+    public static readonly Error FeeLaterChangeExists = Error.Conflict("CONTRACT_FEE_LATER_CHANGE_EXISTS",
+        "Khoản thu đã có thay đổi từ kỳ sau — sửa / gỡ thay đổi đó trước.");
     public static readonly Error OccupantNotFound = Error.NotFound("OCCUPANT_NOT_FOUND", "Không tìm thấy người ở trong hợp đồng.");
     public static readonly Error DateOutsideContract = Error.BusinessRule("DATE_OUTSIDE_CONTRACT", "Ngày nằm ngoài thời gian hợp đồng.");
 
@@ -66,6 +70,20 @@ public static class ContractErrors
         "Chỉ hoàn tất thanh lý từ ngày trả phòng thực tế trở đi.");
     public static readonly Error TerminationGroundRequired = Error.BusinessRule("TERMINATION_GROUND_REQUIRED",
         "Bên cho thuê đơn phương chấm dứt phải nêu căn cứ theo Luật Nhà ở 2023 Điều 172.");
+    public static readonly Error ExpiredReasonInvalid = Error.BusinessRule("EXPIRED_REASON_INVALID",
+        "Chỉ chọn \"Hết hạn\" khi hợp đồng có thời hạn và ngày trả phòng từ ngày hết hạn trở đi — trả sớm hãy chọn lý do khác.");
+    public static readonly Error IndefiniteGroundOnly = Error.BusinessRule("INDEFINITE_GROUND_ONLY",
+        "Căn cứ \"thông báo chấm dứt hợp đồng không thời hạn\" chỉ dùng cho hợp đồng không thời hạn.");
+    public static readonly Error InvoiceAfterEndDate = Error.BusinessRule("INVOICE_AFTER_END_DATE",
+        "Đã có phiếu tiền phòng cho kỳ sau ngày trả phòng — hủy / xóa phiếu đó trước.");
+    public static readonly Error NotExpired = Error.BusinessRule("CONTRACT_NOT_EXPIRED", "Hợp đồng chưa quá ngày hết hạn.");
+    public static readonly Error HoldoverAlready = Error.Conflict("HOLDOVER_ALREADY", "Đã ghi nhận ở tiếp chưa ký lại.");
+    public static readonly Error ResignNoOccupantLeft = Error.BusinessRule("RESIGN_NO_OCCUPANT_LEFT",
+        "Sau ngày bàn giao không còn ai ở — thanh lý hợp đồng thay vì ký lại.");
+    public static readonly Error ResignRepresentativeNotOccupant = Error.BusinessRule("RESIGN_REPRESENTATIVE_NOT_OCCUPANT",
+        "Người đứng tên hợp đồng mới phải là một người còn ở trong phòng.");
+    public static readonly Error AbandonedNoteRequired = Error.BusinessRule("ABANDONED_NOTE_REQUIRED",
+        "Người thuê bỏ đi không báo: ghi rõ ngày phát hiện, tài sản để lại, người chứng kiến.");
 
     public static readonly Error AssetNotFound = Error.NotFound("ASSET_NOT_FOUND", "Không tìm thấy tài sản bàn giao.");
     public static readonly Error VehicleNotFound = Error.NotFound("VEHICLE_NOT_FOUND", "Không tìm thấy xe đăng ký.");

@@ -182,14 +182,17 @@ public sealed class PropertyRoomTests(ApiFactory factory)
         var owner = await _client.CreateActiveOwnerAsync();
         var token = owner.Tokens.AccessToken;
         var idNumber = TestData.NewCitizenId();
-        await _client.CreateRenterAsync(token, idNumber);
+        var existing = await _client.CreateRenterAsync(token, idNumber);
 
         var duplicate = await _client.PostJsonAsync("/api/v1/renters", new
         {
             fullName = "Người khác", dateOfBirth = "1999-01-01", gender = "Male", idType = "CitizenId",
             idNumber = $"{idNumber[..3]} {idNumber[3..6]} {idNumber[6..]}" // cùng số, khác định dạng
         }, token);
+        var problem = await duplicate.Content.ReadAsStringAsync();
         (await duplicate.ReadProblemCodeAsync()).Should().Be("RENTER_ID_NUMBER_EXISTS");
+        System.Text.Json.JsonDocument.Parse(problem).RootElement.GetProperty("existingRenterId").GetGuid()
+            .Should().Be(existing, "UI mở / chọn lại hồ sơ cũ");
 
         var search = await (await _client.GetAsync("/api/v1/renters?q=tran%20thi%20lan", token)).ReadAsync<Page<object>>();
         search.TotalCount.Should().Be(1);

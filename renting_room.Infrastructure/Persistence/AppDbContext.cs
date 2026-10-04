@@ -2,9 +2,13 @@ using System.Linq.Expressions;
 using Microsoft.EntityFrameworkCore;
 using renting_room.Application.Common.Interfaces;
 using Npgsql;
+using renting_room.Domain.Billing;
 using renting_room.Domain.Common;
 using renting_room.Domain.Contracts;
+using renting_room.Domain.Fees;
 using renting_room.Domain.Identity;
+using renting_room.Domain.Meters;
+using renting_room.Domain.Payments;
 using renting_room.Domain.Properties;
 using renting_room.Domain.Renters;
 using renting_room.Infrastructure.Idempotency;
@@ -25,6 +29,10 @@ public class AppDbContext(
     public DbSet<RoomGroup> RoomGroups => Set<RoomGroup>();
     public DbSet<Renter> Renters => Set<Renter>();
     public DbSet<ContractTemplate> ContractTemplates => Set<ContractTemplate>();
+    public DbSet<FeeType> FeeTypes => Set<FeeType>();
+    public DbSet<Meter> Meters => Set<Meter>();
+    public DbSet<Invoice> Invoices => Set<Invoice>();
+    public DbSet<Payment> Payments => Set<Payment>();
     public DbSet<Contract> Contracts => Set<Contract>();
 
     /// <summary>Bảng kỹ thuật — không đưa vào IAppDbContext để tầng Application không thao tác trực tiếp.</summary>

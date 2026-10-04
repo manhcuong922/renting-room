@@ -71,4 +71,8 @@ public static class IdentityErrors
 
     public static readonly Error UserNotLocked =
         Error.Conflict("USER_NOT_LOCKED", "Tài khoản không ở trạng thái khóa.");
+
+    public static readonly Error SensitiveDataForbidden =
+        Error.Forbidden("SENSITIVE_DATA_FORBIDDEN",
+            "Chỉ chủ trọ hoặc phó quản lý được chủ trọ cấp quyền mới xem được số giấy tờ đầy đủ.");
 }

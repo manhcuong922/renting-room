@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using renting_room.Domain.Contracts;
+using renting_room.Domain.Fees;
 using renting_room.Domain.Properties;
 using renting_room.Domain.Renters;
 
@@ -30,6 +31,7 @@ internal sealed class ContractConfiguration : IEntityTypeConfiguration<Contract>
 
         builder.HasKey(c => c.Id);
         builder.HasAlternateKey(c => new { c.OrganizationId, c.Id }).HasName("ak_contracts_organization_id_id");
+        builder.HasAlternateKey(c => new { c.OrganizationId, c.PropertyId, c.Id }).HasName("ak_contracts_organization_property_id");
         builder.ConfigureAuditable();
 
         builder.HasOne<Room>()
@@ -67,6 +69,7 @@ internal sealed class ContractConfiguration : IEntityTypeConfiguration<Contract>
         builder.Property(c => c.TerminationReason).HasConversion<string>().HasMaxLength(24);
         builder.Property(c => c.TerminationGround).HasConversion<string>().HasMaxLength(32);
         builder.Property(c => c.TerminationNote).HasMaxLength(1000);
+        builder.Property(c => c.HoldoverNote).HasMaxLength(500);
         builder.Property(c => c.CancelReason).HasMaxLength(500);
 
         // CT-BR-25: văn bản hợp đồng theo mẫu (chép từ mẫu, bất biến sau kích hoạt).
@@ -111,8 +114,13 @@ internal sealed class ContractConfiguration : IEntityTypeConfiguration<Contract>
         builder.HasMany(c => c.Vehicles).WithOne()
             .HasForeignKey(v => new { v.OrganizationId, v.ContractId }).HasPrincipalKey(c => new { c.OrganizationId, c.Id })
             .OnDelete(DeleteBehavior.Cascade);
+        // Khoản thu: FK gồm property_id ⇒ khoản thu bắt buộc cùng khu với HĐ (CT-BR-06), chặn ở DB.
+        builder.HasMany(c => c.Fees).WithOne()
+            .HasForeignKey(f => new { f.OrganizationId, f.PropertyId, f.ContractId })
+            .HasPrincipalKey(c => new { c.OrganizationId, c.PropertyId, c.Id })
+            .OnDelete(DeleteBehavior.Cascade);
 
-        foreach (var navigation in new[] { nameof(Contract.RentTerms), nameof(Contract.Occupants), nameof(Contract.Assets), nameof(Contract.Vehicles) })
+        foreach (var navigation in new[] { nameof(Contract.RentTerms), nameof(Contract.Occupants), nameof(Contract.Assets), nameof(Contract.Vehicles), nameof(Contract.Fees) })
             builder.Navigation(navigation).UsePropertyAccessMode(PropertyAccessMode.Field);
     }
 }
@@ -213,5 +221,31 @@ internal sealed class ContractTemplateConfiguration : IEntityTypeConfiguration<C
         builder.Ignore(t => t.IsArchived);
 
         builder.HasIndex(t => new { t.OrganizationId, t.Name }).IsUnique().HasDatabaseName(DbConstraints.ContractTemplateNameUnique);
+    }
+}
+
+internal sealed class ContractFeeConfiguration : IEntityTypeConfiguration<ContractFee>
+{
+    public void Configure(EntityTypeBuilder<ContractFee> builder)
+    {
+        builder.ToTable("contract_fees", t =>
+        {
+            t.HasCheckConstraint("ck_contract_fees_values",
+                "quantity > 0 AND (unit_price_override IS NULL OR unit_price_override >= 0)");
+            t.HasCheckConstraint("ck_contract_fees_dates", "effective_to IS NULL OR effective_to >= effective_from");
+        });
+        builder.HasKey(f => f.Id);
+        builder.ConfigureAuditable();
+
+        builder.HasOne<FeeType>()
+            .WithMany()
+            .HasForeignKey(f => new { f.OrganizationId, f.PropertyId, f.FeeTypeId })
+            .HasPrincipalKey(t => new { t.OrganizationId, t.PropertyId, t.Id })
+            .OnDelete(DeleteBehavior.Restrict);
+
+        builder.Property(f => f.Quantity).HasColumnType("numeric(12,2)");
+        builder.Property(f => f.UnitPriceOverride).HasColumnType("numeric(18,2)");
+        builder.HasIndex(f => new { f.OrganizationId, f.FeeTypeId }).HasDatabaseName("ix_contract_fees_fee_type");
+        // EXCLUDE (contract_id, fee_type_id, daterange) — tạo bằng SQL trong migration (CT-BR-06).
     }
 }

@@ -3,6 +3,7 @@ using Mediator;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using renting_room.Application.Common.Interfaces;
+using renting_room.Application.Common.Security;
 using renting_room.Application.Common.Validation;
 using renting_room.Domain.Common;
 using renting_room.Domain.Identity;
@@ -121,7 +122,7 @@ public sealed class UpdateLessorHandler(IAppDbContext db, ICurrentUser currentUs
     }
 }
 
-/// <summary>Xem số giấy tờ đầy đủ của bên cho thuê — luôn ghi log ai xem (C-10, ID-BR-21).</summary>
+/// <summary>Xem số giấy tờ đầy đủ của bên cho thuê — chỉ người có quyền (ID-BR-22), luôn ghi log ai xem (C-10, ID-BR-21).</summary>
 public sealed record RevealLessorIdNumberQuery(Guid PropertyId) : IRequest<Result<string>>;
 
 public sealed class RevealLessorIdNumberHandler(
@@ -130,6 +131,9 @@ public sealed class RevealLessorIdNumberHandler(
 {
     public async ValueTask<Result<string>> Handle(RevealLessorIdNumberQuery request, CancellationToken cancellationToken)
     {
+        if (!await SensitiveDataAccess.CanViewAsync(db, currentUser, cancellationToken))
+            return IdentityErrors.SensitiveDataForbidden;
+
         var encrypted = await db.Properties.AsNoTracking()
             .Where(p => p.Id == request.PropertyId)
             .Select(p => new { p.LessorIdNumberEncrypted })

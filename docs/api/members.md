@@ -7,10 +7,12 @@ Chủ trọ (`OrgOwner`) thêm **một hoặc nhiều phó quản lý** (`OrgMan
 |----------|:--------:|:----------:|
 | Xem danh sách / chi tiết thành viên | ✅ | ✅ (chỉ xem) |
 | Thêm, sửa, khóa, mở khóa, gỡ, cấp lại mật khẩu | ✅ | ❌ 403 — **ẩn nút** |
+| Cấp / thu hồi quyền xem dữ liệu nhạy cảm | ✅ | ❌ 403 — **ẩn nút** |
+| Xem / xuất / in số giấy tờ đầy đủ | ✅ | Chỉ khi được cấp (`canViewSensitiveData`) |
 
 ## Màn hình "Thành viên"
 
-- Bảng: Họ tên · SĐT / email · Vai trò · Trạng thái · Lần đăng nhập cuối · Thao tác.
+- Bảng: Họ tên · SĐT / email · Vai trò · Trạng thái · Xem số giấy tờ (công tắc, chỉ chủ trọ bật / tắt) · Lần đăng nhập cuối · Thao tác.
 - Nút **"Thêm phó quản lý"** (chỉ chủ trọ).
 - Công tắc "Hiện cả người đã gỡ" → `includeRemoved=true`.
 - Dòng chủ trọ: không có nút thao tác.
@@ -27,6 +29,7 @@ Chủ trọ (`OrgOwner`) thêm **một hoặc nhiều phó quản lý** (`OrgMan
 | POST | `/org/members/{id}/unlock` | Chủ trọ | Mở khóa |
 | POST | `/org/members/{id}/remove` | Chủ trọ | Gỡ vĩnh viễn (không khôi phục) |
 | POST | `/org/members/{id}/reset-password` | Chủ trọ | Cấp lại mật khẩu tạm |
+| PUT | `/org/members/{id}/sensitive-data-access` | Chủ trọ | `{ "allowed": true }` cấp / `false` thu hồi quyền xem số giấy tờ đầy đủ → 200 thành viên |
 
 ### Danh sách
 
@@ -43,6 +46,7 @@ Chủ trọ (`OrgOwner`) thêm **một hoặc nhiều phó quản lý** (`OrgMan
     "tempPasswordExpiresAt": "2026-10-05T13:19:05.678591+00:00",
     "lastLoginAt": null,
     "createdAt": "2026-10-02T13:19:05.754001+00:00",
+    "canViewSensitiveData": false,
     "version": "938"
   }
 ]
@@ -51,6 +55,14 @@ Chủ trọ (`OrgOwner`) thêm **một hoặc nhiều phó quản lý** (`OrgMan
 Nhãn phụ gợi ý:
 - `mustChangePassword && tempPasswordExpiresAt > now` → "Chờ kích hoạt (hết hạn dd/MM HH:mm)"
 - `mustChangePassword && tempPasswordExpiresAt <= now` → "Mật khẩu tạm đã hết hạn" + gợi ý bấm **Cấp lại mật khẩu**
+
+### Quyền xem dữ liệu nhạy cảm
+
+`PUT /org/members/{id}/sensitive-data-access` — `{ "allowed": true }` → **200** (thành viên sau khi đổi).
+
+- Mặc định phó quản lý **không** có quyền: vẫn làm mọi nghiệp vụ, nhưng số giấy tờ luôn che, không xuất Excel / in hợp đồng có số đầy đủ.
+- Thu hồi có hiệu lực **ngay** (không cần phó quản lý đăng nhập lại). Mỗi lần cấp / thu hồi được ghi log kiểm toán.
+- Dòng chủ trọ luôn `canViewSensitiveData = true`, không có công tắc (gọi với id chủ trọ → 422 `CANNOT_MODIFY_OWNER`).
 
 ### Thêm phó quản lý
 

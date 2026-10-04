@@ -3,9 +3,12 @@ using Mediator;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using renting_room.Application.Common.Interfaces;
+using renting_room.Application.Common.Models;
 using renting_room.Application.Common.Validation;
+using renting_room.Application.Meters;
 using renting_room.Domain.Common;
 using renting_room.Domain.Contracts;
+using renting_room.Domain.Meters;
 using renting_room.Domain.Properties;
 using renting_room.Domain.Renters;
 
@@ -64,6 +67,18 @@ internal sealed class ContractInputValidator : AbstractValidator<ContractInput>
         RuleFor(x => x.ContractType).IsInEnum().When(x => x.ContractType is not null);
         RuleFor(x => x.Title).OptionalText(200);
         this.ClausesRules(x => x.Clauses, "clauses");
+        RuleFor(x => x.Fees)
+            .Must(f => f is null || f.Count <= ContractFeeRules.MaxFees).WithErrorCode("OUT_OF_RANGE")
+            .WithMessage($"Tối đa {ContractFeeRules.MaxFees} khoản thu.")
+            .Must(f => f is null || f.Select(x => x.FeeTypeId).Distinct().Count() == f.Count)
+            .WithErrorCode("DUPLICATE_FEE").WithMessage("Mỗi khoản thu chỉ gắn 1 lần.");
+        RuleForEach(x => x.Fees).ChildRules(f =>
+        {
+            f.RuleFor(x => x.Quantity).Must(ContractFeeRules.IsValidQuantity).WithErrorCode("OUT_OF_RANGE")
+                .WithMessage("Số lượng 0–100, tối đa 2 số lẻ.");
+            f.RuleFor(x => x.UnitPriceOverride).Must(ContractFeeRules.IsValidOverride).WithErrorCode("INVALID_AMOUNT")
+                .WithMessage("Giá riêng 0–50.000.000đ, tối đa 2 số lẻ.");
+        });
         RuleFor(x => x.CustomFields).Must(f => f is null || f.Count <= ContractDocumentRules.MaxFields)
             .WithErrorCode("OUT_OF_RANGE").WithMessage($"Tối đa {ContractDocumentRules.MaxFields} trường.");
         RuleForEach(x => x.Occupants)
@@ -121,6 +136,11 @@ internal static class ContractDraftBuilder
         if (deposit > rent.Value * MaxDepositMonths)
             return ContractErrors.DepositTooHigh;
 
+        // CT-UC-06: khoản thu — null ⇒ tự gắn theo khu; khoản phải cùng khu, chưa ngừng dùng.
+        var fees = await ContractFeeRules.ResolveAsync(db, property.Id, input.Fees, ct);
+        if (fees.IsFailure)
+            return fees.Error!;
+
         var defaults = property.BillingDefaults;
         return new ContractDraftData(
             input.RepresentativeRenterId,
@@ -143,7 +163,8 @@ internal static class ContractDraftBuilder
             input.Note,
             occupants,
             document,
-            input.HouseholdHeadRenterId);
+            input.HouseholdHeadRenterId,
+            fees.Value!);
     }
 
     private static async Task<Result<ContractTemplate?>> LoadTemplateAsync(
@@ -196,8 +217,6 @@ public sealed class CreateContractHandler(
     IAppDbContext db, ICurrentUser currentUser, IContractNumberGenerator numberGenerator, TimeProvider clock)
     : IRequestHandler<CreateContractCommand, Result<CreatedWithWarnings>>
 {
-    private const int MaxNumberAttempts = 5;
-
     public async ValueTask<Result<CreatedWithWarnings>> Handle(CreateContractCommand request, CancellationToken cancellationToken)
     {
         // Khóa hàng phòng: không tạo được nháp đồng thời với lệnh ngừng dùng phòng (PR-BR-05).
@@ -224,14 +243,7 @@ public sealed class CreateContractHandler(
         }
         else
         {
-            // Số tự sinh có thể trùng số người dùng đã tự nhập trước đó (VD tự gõ "HD2026-0005") ⇒ lấy số kế tiếp.
-            var attempt = 0;
-            do
-            {
-                contractNo = await numberGenerator.NextAsync(
-                    currentUser.OrganizationId!.Value, clock.GetUtcNow().ToBusinessDate().Year, cancellationToken);
-            }
-            while (++attempt < MaxNumberAttempts && await db.Contracts.AnyAsync(c => c.ContractNo == contractNo, cancellationToken));
+            contractNo = await ContractNumbers.NextAsync(db, numberGenerator, currentUser, clock, cancellationToken);
         }
 
         var contract = Contract.CreateDraft(property.Id, room.Id, contractNo, data.Value!);
@@ -239,6 +251,25 @@ public sealed class CreateContractHandler(
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return new CreatedWithWarnings(contract.Id, ContractWarnings.For(contract));
+    }
+}
+
+internal static class ContractNumbers
+{
+    private const int MaxAttempts = 5;
+
+    /// <summary>Số tự sinh có thể trùng số người dùng đã tự nhập trước đó (VD tự gõ "HD2026-0005") ⇒ lấy số kế tiếp.</summary>
+    public static async Task<string> NextAsync(
+        IAppDbContext db, IContractNumberGenerator generator, ICurrentUser currentUser, TimeProvider clock, CancellationToken ct)
+    {
+        string contractNo;
+        var attempt = 0;
+        do
+        {
+            contractNo = await generator.NextAsync(currentUser.OrganizationId!.Value, clock.GetUtcNow().ToBusinessDate().Year, ct);
+        }
+        while (++attempt < MaxAttempts && await db.Contracts.AnyAsync(c => c.ContractNo == contractNo, ct));
+        return contractNo;
     }
 }
 
@@ -282,7 +313,9 @@ public sealed class CancelContractHandler(IAppDbContext db, TimeProvider clock) 
 // ============================================================ Kích hoạt (bàn giao phòng)
 
 /// <param name="OverrideCapacity">Chủ ý vượt sức chứa phòng (VD gia đình có con nhỏ) — ghi log kiểm toán.</param>
-public sealed record ActivateContractCommand(Guid Id, bool OverrideCapacity = false) : IRequest<Result>;
+/// <param name="HandoverReadings">MT-BR-13: chỉ số nhận phòng cho mỗi công tơ của phòng; value null = "Dùng số mới nhất".</param>
+public sealed record ActivateContractCommand(
+    Guid Id, bool OverrideCapacity = false, IReadOnlyList<MeterReadingInput>? HandoverReadings = null) : IRequest<Result>;
 
 /// <summary>
 /// CT-BR-01/02/18/19. Khóa theo thứ tự rooms → contracts (C-07). Hai hợp đồng cùng phòng kích hoạt song song:
@@ -314,6 +347,7 @@ public sealed class ActivateContractHandler(
         var now = clock.GetUtcNow();
         var today = now.ToBusinessDate();
         var lessor = property.Lessor;
+        var feeTypes = await ContractFeeRules.LoadTypesAsync(db, contract, cancellationToken);
         var context = new ActivationContext(
             today,
             now,
@@ -324,11 +358,16 @@ public sealed class ActivateContractHandler(
             HouseRulesSnapshot: property.HouseRulesText,
             RepresentativeDateOfBirth: representative.DateOfBirth,
             RepresentativeHasPhone: representative.Phone is not null,
-            OverrideCapacity: request.OverrideCapacity);
+            OverrideCapacity: request.OverrideCapacity,
+            UtilityPriceSnapshotJson: UtilityPriceSnapshotJson.ToJson(UtilityPriceSnapshotJson.Capture(contract, feeTypes)));
 
         var activated = contract.Activate(context);
         if (activated.IsFailure)
             return activated;
+        var handover = await ContractMeterReadings.RecordAsync(
+            db, contract, ReadingKind.Handover, contract.StartDate, request.HandoverReadings, cancellationToken);
+        if (handover.IsFailure)
+            return handover;
         if (request.OverrideCapacity && contract.ExceedsCapacity(room.MaxOccupants))
             logger.LogWarning("AUDIT: user {UserId} activated contract {ContractId} over room capacity {MaxOccupants}",
                 currentUser.UserId, contract.Id, room.MaxOccupants);

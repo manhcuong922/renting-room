@@ -5,17 +5,25 @@
 ## 1. Mục tiêu & phạm vi
 
 **Mục tiêu**: Định nghĩa các **khoản thu** (ngoài tiền phòng) của từng khu trọ và **giá theo thời gian hiệu lực**,
-chia 3 nhóm tính tiền khác nhau. Đây là "nguồn sự thật" về cách tính cho M05 (đăng ký), M06 (chỉ số), M07 (tính tiền).
+chia **2 nhóm** (chốt 04/10/2026, cho dễ hiểu). Đây là "nguồn sự thật" về cách tính cho M05 (đăng ký), M06 (chỉ số), M07 (tính tiền).
 
 | Nhóm | Code | Cách tính 1 kỳ | Ví dụ | Màn hình đặc thù |
 |------|------|----------------|-------|------------------|
-| Theo chỉ số | `Metered` | (chỉ số mới − chỉ số cũ) × đơn giá | Điện (kWh), Nước (m³), Nước nóng | Màn hình ghi chỉ số (M06) |
-| Dịch vụ cố định | `Fixed` | đơn giá × 1 (theo phòng) hoặc × số người ở (theo người) | Rác, Wifi, Vệ sinh chung, Nước theo đầu người | — |
-| Dịch vụ theo số lượng | `Quantity` | đơn giá × số lượng đăng ký | Giữ xe máy (2 xe = 2), Máy giặt | Đăng ký số lượng trên HĐ (M05) |
+| **Điện nước** (theo công tơ) | `Metered` | (chỉ số mới − chỉ số cũ) × **một đơn giá** — đi theo **công tơ của phòng**, không gắn vào HĐ | Điện (kWh), Nước (m³), Nước nóng | Màn hình ghi chỉ số (M06) |
+| **Dịch vụ** (không theo công tơ) | `Service` + cách tính `PerRoom` / `PerOccupant` / `PerUnit` | đơn giá × 1 (theo phòng) · × số người ở (theo đầu người) · × số gói đăng ký (theo số lượng) — gắn vào HĐ | Mạng 120.000/phòng; Nước 20.000/người; Rác; Giữ xe 120.000/xe — 2 xe = 2 gói | Chọn dịch vụ + số gói trên HĐ (M05) |
+| ~~Phụ thu~~ | — | **Không thuộc danh mục**: nhập tay trên phiếu nháp (M07 BL-BR-23) — sửa chữa do người thuê làm hỏng, lắp đặt thêm có thu phí đã thỏa thuận, tiền điện công tơ cũ khi thay công tơ | Khóa cửa hỏng 250.000 | Phiếu nháp |
 
 Tiền phòng **không** phải khoản thu trong danh mục — nó đi theo hợp đồng (M05).
 
-**Ngoài phạm vi P1**: giá bậc thang (tiered) cho điện — P2 (schema đã chừa `tiers`); phí tối thiểu; khoản thu dùng chung chia theo đầu người từ 1 công tơ tổng.
+Phòng tính nước **theo đầu người** dùng khoản Dịch vụ "Nước" `PerOccupant` và **không cần công tơ nước**; khi đó nước giống dịch vụ giữ xe.
+
+> ✅ **Đã chuyển code (04/10/2026)** từ 3 nhóm cũ: `Fixed/PerRoom` → `Service/PerRoom`, `Fixed/PerOccupant` → `Service/PerOccupant`, `Quantity` → `Service/PerUnit` (migration `TwoFeeGroupsAndHoldover` chuyển cả dữ liệu và bản chụp giá lúc ký).
+
+**Ngoài phạm vi P1**: phí tối thiểu; khoản thu dùng chung chia theo đầu người từ 1 công tơ tổng.
+
+**Trạng thái (04/10/2026)**: ✅ đã code — danh mục, bảng giá **một giá** (đã bỏ bậc thang), seed Điện/Nước, sao chép danh mục,
+gắn khoản **cố định / theo số lượng** vào HĐ (M05 `contract_fees`); điện nước theo công tơ đi theo phòng (FE-BR-17). Chờ M07: khóa giá theo phiếu đã chốt (`IFeePriceLockReader` đang trả null), đánh dấu draft stale.
+Chờ M06: chặn ngừng dùng khoản theo chỉ số còn công tơ.
 
 **Phase**: P1.
 
@@ -25,8 +33,8 @@ Tiền phòng **không** phải khoản thu trong danh mục — nó đi theo h�
 |-----------|------|-----------|
 | Khoản thu | `FeeType` | Một loại phí của **một khu trọ** |
 | Bảng giá | `FeePrice` | Đơn giá của khoản thu, hiệu lực từ `effective_from` đến trước bản giá kế tiếp |
-| Cơ sở tính (Fixed) | `FixedBasis` | `PerRoom` / `PerOccupant` |
-| Tự gắn | `AutoAttach` | Tự thêm vào HĐ mới tạo ở khu này (chủ trọ vẫn bỏ được) |
+| Cách tính (Dịch vụ) | `ChargeBasis` | `PerRoom` (theo phòng) / `PerOccupant` (theo đầu người) / `PerUnit` (theo số gói, VD số xe) |
+| Tự gắn | `AutoAttach` | Tự thêm vào HĐ mới tạo ở khu này (chủ trọ vẫn bỏ được). Chỉ nhóm Dịch vụ — `Metered` luôn false (FE-BR-17) |
 | Mã hệ thống | `SystemCode` | `ELECTRICITY`, `WATER` — seed khi tạo khu, phục vụ báo cáo/đối chiếu |
 
 ## 3. Nghiệp vụ
@@ -35,13 +43,13 @@ Tiền phòng **không** phải khoản thu trong danh mục — nó đi theo h�
 
 | ID | Mô tả |
 |----|-------|
-| FE-UC-01 | Khi tạo khu: seed `Điện` (Metered, kWh, system code `ELECTRICITY`) và `Nước` (Metered, m³, `WATER`) chưa có giá, `auto_attach = true` |
-| FE-UC-02 | Tạo khoản thu mới thuộc 1 nhóm; khai báo đơn vị, cơ sở tính, auto-attach, thứ tự hiển thị |
-| FE-UC-03 | Thêm bảng giá mới (đơn giá + ngày hiệu lực) |
-| FE-UC-04 | Sửa tên/đơn vị/thứ tự hiển thị/auto-attach (không đổi nhóm) |
-| FE-UC-05 | Ngừng dùng (archive) khoản thu |
-| FE-UC-06 | Sao chép danh mục khoản thu từ khu A sang khu B |
-| FE-UC-07 | Xem lịch sử giá |
+| FE-UC-01 ✅ | Khi tạo khu: seed `Điện` (Metered, kWh, system code `ELECTRICITY`) và `Nước` (Metered, m³, `WATER`) chưa có giá, `auto_attach = false` (đi theo công tơ của phòng, không gắn vào HĐ) |
+| FE-UC-02 ✅ | Tạo khoản thu mới thuộc 1 nhóm; khai báo đơn vị, cơ sở tính, auto-attach, thứ tự hiển thị |
+| FE-UC-03 ✅ | Thêm bảng giá mới (đơn giá + ngày hiệu lực) |
+| FE-UC-04 ✅ | Sửa tên/đơn vị/thứ tự hiển thị/auto-attach (không đổi nhóm) |
+| FE-UC-05 ✅ | Ngừng dùng (archive) khoản thu |
+| FE-UC-06 ✅ | Sao chép danh mục khoản thu từ khu A sang khu B |
+| FE-UC-07 ✅ | Xem lịch sử giá |
 
 ### 3.2 Quy tắc nghiệp vụ
 
@@ -49,18 +57,21 @@ Tiền phòng **không** phải khoản thu trong danh mục — nó đi theo h�
 |----|---------|-------------|
 | FE-BR-01 | Tên khoản thu unique trong khu (không phân biệt hoa thường) trong số khoản chưa archive | DB partial unique |
 | FE-BR-02 | `group` **bất biến** sau khi tạo (đổi nhóm làm sai lệch đăng ký & phiếu cũ). Cần đổi → tạo khoản mới, archive khoản cũ | Domain |
-| FE-BR-03 | `fixed_basis` bắt buộc khi group = `Fixed`, NULL với nhóm khác | CHECK |
+| FE-BR-03 | `charge_basis` bắt buộc khi group = `Service`, NULL với `Metered`. `default_quantity` chỉ cho `PerUnit` | CHECK |
 | FE-BR-04 | Tối đa 1 khoản thu chưa archive cho mỗi `system_code` trong khu | DB partial unique |
-| FE-BR-05 | Đơn giá ≥ 0 (cho phép 0 = miễn phí). Metered đơn giá ≤ 100.000đ/đơn vị (chặn nhập nhầm thêm số 0); Fixed/Quantity ≤ 50.000.000đ | Validator |
+| FE-BR-05 | Đơn giá ≥ 0 (cho phép 0 = miễn phí). Metered đơn giá ≤ 100.000đ/đơn vị (chặn nhập nhầm thêm số 0); Dịch vụ ≤ 50.000.000đ | Validator |
 | FE-BR-06 | Unique `(fee_type_id, effective_from)` | DB |
-| FE-BR-07 | **Không thêm/sửa/xóa bảng giá có `effective_from` ≤ ngày cuối của bất kỳ dòng phiếu đã chốt (Finalized, chưa Void) dùng khoản thu này** — tránh tạo mâu thuẫn giữa giá trong bảng và giá trên phiếu đã chốt | Application (query M07) |
+| FE-BR-07 ✅ | **Không thêm/sửa/xóa bảng giá có `effective_from` ≤ ngày cuối của bất kỳ dòng phiếu đã chốt (Finalized, chưa Void) dùng khoản thu này** — tránh tạo mâu thuẫn giữa giá trong bảng và giá trên phiếu đã chốt | Application (query M07) |
 | FE-BR-08 | Chỉ xóa được bản giá chưa từng được dùng bởi phiếu chưa Void (kể cả Draft → draft được đánh dấu cần tính lại) | Application |
 | FE-BR-09 | Khi thêm bản giá ảnh hưởng phiếu **Draft** → các draft liên quan được đánh dấu `is_stale = true` (M07 yêu cầu tính lại trước khi chốt) | Domain event → M07 |
-| FE-BR-10 | Giá áp cho 1 dòng phiếu = bản giá có `effective_from` lớn nhất ≤ **ngày bắt đầu khoảng dịch vụ của dòng** (`service_from`). Không chia giá trong một kỳ | Domain (M07 dùng `IFeePriceResolver`) |
-| FE-BR-11 | Không có bản giá hiệu lực tại `service_from` → dòng phiếu lỗi `FEE_PRICE_MISSING`, draft không chốt được | M07 |
-| FE-BR-12 | Archive khoản thu: các đăng ký trên HĐ (M05) **kết thúc từ kỳ kế tiếp chưa lập phiếu**; không ảnh hưởng phiếu đã có. Archive `Metered` khi còn công tơ đang hoạt động gắn khoản này → 422 (phải gỡ công tơ trước) | Application |
-| FE-BR-13 | **Cảnh báo pháp lý (L9)**: đơn giá điện > ngưỡng cấu hình hệ thống (mặc định = giá bán lẻ bậc cao nhất hiện hành, admin cập nhật) → trả `warnings[]` trong response, không chặn | Application |
-| FE-BR-14 | `PerOccupant`: số người = số occupant **đang ở tại ngày `service_from`** của kỳ (snapshot vào dòng phiếu). Thay đổi người ở giữa kỳ áp dụng từ kỳ sau | M07 |
+| FE-BR-10 ✅ | Giá áp cho 1 dòng phiếu = bản giá có `effective_from` lớn nhất ≤ **ngày bắt đầu khoảng dịch vụ của dòng** (`service_from`). Không chia giá trong một kỳ | Domain (M07 dùng `IFeePriceResolver`) |
+| FE-BR-11 ✅ | Không có bản giá hiệu lực tại `service_from` → dòng phiếu lỗi `FEE_PRICE_MISSING`, draft không chốt được | M07 |
+| FE-BR-12 | **Đã đổi khi code**: ngừng dùng khoản thu chỉ khi **không còn HĐ nháp / hiệu lực / thanh lý đang gắn** (đăng ký chưa kết thúc) → 422 `FEE_IN_USE`; gỡ khỏi HĐ trước (`DELETE /contracts/{id}/fees/{feeTypeId}`). Lý do: tự kết thúc đăng ký ở "kỳ chưa lập phiếu" cần M07 và dễ gây bất ngờ khi tính tiền. Khoản ngừng dùng không gắn được vào HĐ mới. Khoản `Metered` còn công tơ hoạt động → 422 `FEE_HAS_ACTIVE_METERS` ✅ (gỡ / thay công tơ trước) | Application |
+| FE-BR-13 ✅ | **Cảnh báo pháp lý (L9)**: đơn giá điện > ngưỡng cấu hình (`Fees:ElectricityPriceWarningThreshold`, mặc định 3.460đ/kWh) → `warnings[]` `ELECTRICITY_PRICE_ABOVE_THRESHOLD`, không chặn | Application |
+| FE-BR-14 ✅ | `PerOccupant`: số người = số occupant **đang ở tại ngày `service_from`** của kỳ (snapshot vào dòng phiếu). Thay đổi người ở giữa kỳ áp dụng từ kỳ sau | M07 |
+| FE-BR-15 ✅ | **Một giá** (đổi 04/10/2026): mỗi bản giá chỉ có `unit_price`; thành tiền = số lượng × đơn giá, làm tròn tới đồng. **Không** tính bậc thang như hộ gia đình (đã bỏ `tiers`). Giá riêng theo HĐ (`unit_price_override`) chỉ cho khoản cố định / theo số lượng | Domain `FeePrice.Amount` |
+| FE-BR-16 ✅ | **Linh hoạt theo phòng**: một khu có thể có nhiều khoản cùng loại khác cách tính (VD "Nước" theo công tơ và "Nước theo người" — `Fixed/PerOccupant`); phòng tính nước theo người thì gắn khoản "Nước theo người" vào HĐ và **không lắp công tơ nước** (M06) | M05 `contract_fees` + M06 |
+| FE-BR-17 ✅ | **Điện nước theo công tơ đi theo phòng** (04/10/2026): khoản `Metered` **không gắn vào HĐ** (gắn → 400 `FEE_METERED_FOLLOWS_ROOM`), không tự gắn. Mọi HĐ đang hiệu lực của phòng được tính theo công tơ đang hoạt động của phòng, bắt đầu từ chỉ số ngày nhận phòng (M06 MT-BR-13). Bản chụp giá lúc ký (CT-BR-19) và bản in ghi giá điện nước của khu tại ngày bắt đầu | Application `ContractFeeRules` |
 
 ## 4. Dữ liệu
 
@@ -71,17 +82,18 @@ Tiền phòng **không** phải khoản thu trong danh mục — nó đi theo h�
 | id, organization_id | uuid | N | UNIQUE (organization_id, id), UNIQUE (organization_id, property_id, id) |
 | property_id | uuid | N | FK composite |
 | name | varchar(100) | N | |
-| group | varchar(16) | N | `Metered`,`Fixed`,`Quantity` |
-| fixed_basis | varchar(16) | Y | `PerRoom`,`PerOccupant` |
+| group | varchar(16) | N | `Metered`,`Service` |
+| charge_basis | varchar(16) | Y | `PerRoom`,`PerOccupant`,`PerUnit` (đổi từ `fixed_basis`) |
 | unit | varchar(20) | N | `kWh`, `m³`, `tháng`, `người`, `xe`… |
 | system_code | varchar(20) | Y | `ELECTRICITY`,`WATER` |
 | auto_attach | bool | N | |
-| default_quantity | numeric(12,2) | Y | chỉ Quantity; mặc định 1 khi auto-attach |
+| default_quantity | numeric(12,2) | Y | chỉ `PerUnit`; mặc định 1 khi gắn |
+| vehicle_type | varchar(16) | Y | chỉ `PerUnit` — đánh dấu phí giữ xe theo loại xe (M05 CT-BR-22) ✅ |
 | sort_order | int | N | 0 |
 | archived_at | timestamptz | Y | |
 | audit, xmin | | | |
 
-CHECK `(group = 'Fixed') = (fixed_basis IS NOT NULL)`; CHECK `group = 'Quantity' OR default_quantity IS NULL`;
+CHECK `(group = 'Service') = (charge_basis IS NOT NULL)`; CHECK `charge_basis = 'PerUnit' OR default_quantity IS NULL`;
 CHECK `system_code IS NULL OR group = 'Metered'`.
 UNIQUE `(property_id, lower(name)) WHERE archived_at IS NULL`; UNIQUE `(property_id, system_code) WHERE archived_at IS NULL AND system_code IS NOT NULL`.
 
@@ -93,13 +105,15 @@ UNIQUE `(property_id, lower(name)) WHERE archived_at IS NULL`; UNIQUE `(property
 | fee_type_id | uuid | N | FK composite |
 | effective_from | date | N | |
 | unit_price | numeric(18,2) | N | ≥ 0 |
-| tiers | jsonb | Y | P2: `[{ "upTo": 50, "price": 1984 }, { "upTo": null, "price": 3460 }]` |
+| ~~tiers~~ | — | — | **Đã bỏ** (FE-BR-15 một giá) |
 | note | varchar(300) | Y | |
 | created_at/by | | | (không có updated — sửa = xóa + thêm, theo FE-BR-07/08) |
 
 UNIQUE `(fee_type_id, effective_from)`.
 
-**`system_settings`** (toàn hệ thống, admin): `electricity_price_warning_threshold numeric(18,2)`.
+~~`system_settings`~~ — **đã đổi khi code**: ngưỡng cảnh báo giá điện đọc từ cấu hình `Fees:ElectricityPriceWarningThreshold` (mặc định 3.460đ/kWh = bậc 6 chưa VAT); P2 chuyển sang bảng do admin sửa.
+
+Tên cột nhóm là `fee_group` (tránh từ khóa SQL `group`); thêm `name_normalized` (chữ thường) cho unique không phân biệt hoa thường.
 
 ## 5. Domain model
 
@@ -107,7 +121,7 @@ UNIQUE `(fee_type_id, effective_from)`.
 FeeType (aggregate root, chứa danh sách FeePrice)
   + Create(orgId, propertyId, name, group, fixedBasis?, unit, autoAttach, defaultQty?)
   + Rename / UpdateDisplay(unit, sortOrder, autoAttach, defaultQty)
-  + AddPrice(effectiveFrom, unitPrice, lockedUntil)    // lockedUntil = ngày cuối dòng phiếu đã chốt (FE-BR-07)
+  + AddPrice(effectiveFrom, unitPrice, note, lockedUntil)    // một giá; lockedUntil = ngày cuối dòng phiếu đã chốt (FE-BR-07)
   + RemovePrice(priceId, isUsed)
   + ResolvePrice(date) : FeePrice?                       // FE-BR-10
   + Archive(now)
@@ -163,7 +177,7 @@ POST /api/v1/fee-types/{id}/prices
 | sortOrder | 0–1000 |
 
 ## 9. Phân quyền
-OrgOwner toàn quyền; OrgManager (P3) chỉ đọc (giá là quyết định kinh doanh của chủ).
+P1: chủ trọ và phó quản lý toàn quyền nghiệp vụ (M01 §3.3). P3: cấu hình cho phép chỉ chủ trọ sửa giá.
 
 ## 10. Toàn vẹn dữ liệu & concurrency
 
@@ -179,7 +193,7 @@ OrgOwner toàn quyền; OrgManager (P3) chỉ đọc (giá là quyết định k
 Audit: tạo/sửa/archive khoản thu, thêm/xóa giá.
 
 ## 12. Kế hoạch test
-- Unit: `ResolvePrice` với nhiều bản giá (trước bản đầu → null; đúng ngày hiệu lực; giữa 2 bản); `AddPrice` với `lockedUntil`.
+- Unit: `ResolvePrice` với nhiều bản giá (trước bản đầu → null; đúng ngày hiệu lực; giữa 2 bản); `AddPrice` với `lockedUntil`; một giá cho mọi sản lượng; Metered không tự gắn.
 - Integration: tạo khu → có Điện/Nước; thêm giá trùng ngày → 409; thêm giá hồi tố trước kỳ đã chốt → 422; thêm giá ảnh hưởng draft → draft stale;
   archive Metered còn công tơ → 422; cảnh báo giá điện; **C-01**.
 
@@ -191,16 +205,17 @@ Audit: tạo/sửa/archive khoản thu, thêm/xóa giá.
 
 | ID | Task | Ước lượng |
 |----|------|-----------|
-| FE-01 | Domain FeeType/FeePrice + resolver + unit test | 1d |
-| FE-02 | EF + migration + seed khi tạo khu (handler `PropertyCreated`) | 0.5d |
-| FE-03 | Commands/Queries + copy | 1d |
+| FE-01 ✅ | Domain FeeType/FeePrice + resolver + unit test (bậc thang đã bỏ 04/10/2026) | 1d |
+| FE-02 ✅ | EF + migration `AddFeeCatalogAndSensitiveAccess` (EXCLUDE `contract_fees`, seed Điện/Nước `auto_attach = false` cho khu cũ) + seed khi tạo khu | 0.5d |
+| FE-03 ✅ | Commands/Queries + copy + gắn vào HĐ (M05) | 1d |
 | FE-04 | Tích hợp lock/stale với M07 (sau khi M07 có bảng) | 0.5d |
-| FE-05 | Tests | 1d |
+| FE-05 ✅ | Tests: 12 unit + 5 integration | 1d |
+| FE-06 ✅ | Đổi 3 nhóm → 2 nhóm: enum `FeeGroup { Metered, Service }` + `ChargeBasis { PerRoom, PerOccupant, PerUnit }` (thay `fixedBasis`); API tạo khoản thu nhận `group` + `chargeBasis` (bắt buộc khi `Service`); `defaultQuantity`, `vehicleType` chỉ `PerUnit`; số lượng gắn HĐ chỉ `PerUnit`; DTO khoản thu / khoản thu của HĐ / `utilityPrices` trả `chargeBasis`. Migration đổi tên cột `fixed_basis` → `charge_basis`, chuyển dữ liệu `Fixed` → `Service` (giữ basis), `Quantity` → `Service/PerUnit`, sửa CHECK, chuyển JSON `utility_price_snapshot` | 0.5d |
 
 ## 15. Câu hỏi mở
 
 | # | Câu hỏi | Đề xuất |
 |---|---------|---------|
 | Q1 | Có cần giá khác nhau theo phòng cho cùng 1 khoản? | Có — qua `unit_price_override` trên đăng ký HĐ (M05), không nhân bản khoản thu |
-| Q2 | Tính giá điện bậc thang như EVN? | P2 (`tiers`), áp theo tổng sản lượng từng phòng |
+| Q2 ✅ | Tính giá điện bậc thang như EVN? | **Không** (chốt 04/10/2026): điện trọ tính một giá/kWh. Vẫn cảnh báo giá vượt ngưỡng (FE-BR-13) và đối chiếu hóa đơn EVN (LEG-05) |
 | Q3 | Phí tối thiểu (VD nước tối thiểu 3 m³)? | Chưa hỗ trợ; dùng điều chỉnh thủ công |

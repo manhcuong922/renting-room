@@ -65,6 +65,36 @@ public static class BillingPeriodCalculator
         return Periods(contractStart, actualEnd, anchorDay, date).LastOrDefault(p => p.Contains(date));
     }
 
+    /// <summary>
+    /// C-05 prorate <c>Daily</c>: Σ (số ngày giao / độ dài kỳ chuẩn) qua các kỳ chuẩn giao với [<paramref name="start"/>, <paramref name="end"/>].
+    /// Kỳ đầy đủ ⇒ 1; kỳ gộp 03/10–04/11 (chốt ngày 5) ⇒ 2/30 + 1. Không làm tròn — làm tròn một lần ở thành tiền.
+    /// </summary>
+    public static decimal ProrationFactor(DateOnly start, DateOnly end, int anchorDay)
+    {
+        EnsureAnchorDay(anchorDay);
+        if (end < start)
+            return 0;
+
+        var standardStart = AnchorDate(start.Year, start.Month, anchorDay);
+        if (standardStart > start)
+        {
+            var previous = start.AddMonths(-1);
+            standardStart = AnchorDate(previous.Year, previous.Month, anchorDay);
+        }
+
+        decimal factor = 0;
+        while (standardStart <= end)
+        {
+            var standardEnd = NextAnchor(standardStart, anchorDay).AddDays(-1);
+            var from = standardStart > start ? standardStart : start;
+            var to = standardEnd < end ? standardEnd : end;
+            if (to >= from)
+                factor += (decimal)(to.DayNumber - from.DayNumber + 1) / (standardEnd.DayNumber - standardStart.DayNumber + 1);
+            standardStart = standardEnd.AddDays(1);
+        }
+        return factor;
+    }
+
     public static bool IsPeriodStart(DateOnly contractStart, int anchorDay, DateOnly date) =>
         Periods(contractStart, actualEnd: null, anchorDay, date).Any(p => p.Start == date);
 

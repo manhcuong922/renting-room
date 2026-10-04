@@ -6,6 +6,7 @@ using renting_room.Application.Common.Models;
 using renting_room.Application.Common.Validation;
 using renting_room.Domain.Common;
 using renting_room.Domain.Contracts;
+using renting_room.Domain.Fees;
 using renting_room.Domain.Properties;
 
 namespace renting_room.Application.Properties;
@@ -88,6 +89,8 @@ public sealed class CreatePropertyHandler(IAppDbContext db) : IRequestHandler<Cr
         property.UpdateInfo(request.Name, request.Address.ToDomain(), request.Description, request.EvnCustomerCode, request.Land.ToDomain());
 
         db.Properties.Add(property);
+        // FE-UC-01: khu mới có sẵn Điện + Nước theo công tơ (chưa có giá), tự gắn vào HĐ mới.
+        db.FeeTypes.AddRange(FeeType.DefaultsFor(property.Id));
         await db.SaveChangesAsync(cancellationToken);
         return property.Id;
     }

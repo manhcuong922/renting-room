@@ -74,7 +74,8 @@ token) và phân quyền; cung cấp `ICurrentUser` (UserId, OrganizationId, Rol
 ### 3.3 Phó quản lý (OrgManager)
 
 Chủ trọ thêm một hoặc nhiều **phó quản lý**: thao tác nghiệp vụ (khu, phòng, người thuê, hợp đồng, chỉ số, phiếu, thu tiền, xuất Excel)
-**giống chủ trọ**, nhưng không quản lý thành viên. SystemAdmin chỉ quản lý tài khoản, **không** xem dữ liệu trọ (ID-BR-11).
+**giống chủ trọ**, nhưng không quản lý thành viên và **không xem dữ liệu nhạy cảm** (số giấy tờ đầy đủ của người thuê / bên cho thuê;
+xuất Excel, in hợp đồng có số đầy đủ) trừ khi chủ trọ cấp quyền (ID-BR-22). SystemAdmin chỉ quản lý tài khoản, **không** xem dữ liệu trọ (ID-BR-11).
 
 | ID | Actor | Mô tả |
 |----|-------|-------|
@@ -84,6 +85,7 @@ Chủ trọ thêm một hoặc nhiều **phó quản lý**: thao tác nghiệp v
 | ID-UC-16 | OrgOwner | Khóa / mở khóa phó quản lý (tạm thời) |
 | ID-UC-17 | OrgOwner | Cấp lại mật khẩu tạm cho phó quản lý |
 | ID-UC-18 | OrgOwner | Gỡ phó quản lý khỏi tổ chức (vĩnh viễn) |
+| ID-UC-19 ✅ | OrgOwner | Cấp / thu hồi quyền xem dữ liệu nhạy cảm cho phó quản lý (`PUT /org/members/{id}/sensitive-data-access`) |
 
 | Mã | Quy tắc | Nơi kiểm tra |
 |----|---------|-------------|
@@ -94,7 +96,8 @@ Chủ trọ thêm một hoặc nhiều **phó quản lý**: thao tác nghiệp v
 | ID-BR-18 | SĐT/email unique toàn hệ thống ⇒ một người chỉ thuộc 1 tổ chức (P1). Cần làm cho nhiều tổ chức → P3 `memberships` | DB unique |
 | ID-BR-19 | Mọi thao tác nghiệp vụ lưu `created_by`/`updated_by` ⇒ chủ trọ biết phó quản lý nào đã làm gì (bảng `audit_logs` — C-10) | AppDbContext |
 | ID-BR-20 | Mật khẩu tạm (tạo tài khoản, cấp lại) hết hạn sau `Auth:TemporaryPasswordHours` (mặc định 72h). Đăng nhập **đúng** mật khẩu tạm nhưng đã hết hạn → 401 `TEMPORARY_PASSWORD_EXPIRED` (người cấp phải cấp lại) | Domain + LoginHandler |
-| ID-BR-21 | Phó quản lý xem được thông tin bên cho thuê của khu (M02) như chủ trọ; xem **số giấy tờ đầy đủ** của bên cho thuê / người thuê ghi audit (C-10). *(Mặc định — chủ trọ chưa xác nhận, đổi được)* | Policy + audit |
+| ID-BR-21 | Phó quản lý xem được thông tin bên cho thuê của khu (M02) và hồ sơ người thuê như chủ trọ, nhưng số giấy tờ luôn ở dạng che (`********1234`). **Đã đổi 04/10/2026** — thay mặc định cũ "phó quản lý xem số đầy đủ" bằng ID-BR-22 | Policy |
+| ID-BR-22 ✅ | **Quyền dữ liệu nhạy cảm**: chủ trọ luôn có; phó quản lý chỉ khi chủ trọ cấp (`users.can_view_sensitive_data`). Áp cho: xem số giấy tờ đầy đủ (người thuê, bên cho thuê) → 403 `SENSITIVE_DATA_FORBIDDEN`; xuất Excel `includeSensitive` → 403; in hợp đồng → **vẫn in được** nhưng số giấy tờ ở dạng che. Quyền đọc từ DB ở mỗi request (không nằm trong token) ⇒ thu hồi có hiệu lực ngay. Cấp / thu hồi ghi audit; gỡ phó quản lý ⇒ mất quyền. `/me` và danh sách thành viên trả `canViewSensitiveData` để UI ẩn nút | Domain `User` + `SensitiveDataAccess` |
 
 API (owner/manager — trong phạm vi tổ chức của mình):
 
@@ -174,6 +177,7 @@ stateDiagram-v2
 | lockout_end | timestamptz | Y | |
 | last_login_at | timestamptz | Y | |
 | temp_password_expires_at | timestamptz | Y | hạn mật khẩu tạm (ID-BR-20); NULL khi mật khẩu đã đổi |
+| can_view_sensitive_data | bool | N | false — phó quản lý được chủ trọ cấp quyền dữ liệu nhạy cảm (ID-BR-22); chủ trọ bỏ qua cờ này |
 | password_changed_at | timestamptz | Y | lần đổi mật khẩu gần nhất |
 | removed_at / removed_by | timestamptz / uuid | Y | CHECK: NOT NULL ⇔ status = `Removed` |
 | created_at/by, updated_at/by, xmin | | | |
@@ -343,9 +347,11 @@ Access token claims: `sub`, `org` (nếu có), `role`, `stamp`, `jti`, `exp`. K�
 | Hành động | SystemAdmin | OrgOwner | OrgManager |
 |-----------|:-:|:-:|:-:|
 | Quản lý tổ chức, reset/khóa user | ✅ | ❌ | ❌ |
-| API nghiệp vụ (M02–M10) | ❌ (ID-BR-11) | ✅ tổ chức mình | ✅ khu được gán |
+| API nghiệp vụ (M02–M10) | ❌ (ID-BR-11) | ✅ tổ chức mình | ✅ như chủ trọ (P1); P3 theo khu được gán |
 | `/me`, đổi mật khẩu | ✅ | ✅ | ✅ |
 | Quản lý phó quản lý (§3.3) | ❌ | ✅ | ❌ |
+| Xem / xuất / in số giấy tờ đầy đủ (ID-BR-22) | ❌ | ✅ | Chỉ khi chủ trọ cấp quyền |
+| Cấp / thu hồi quyền dữ liệu nhạy cảm | ❌ | ✅ | ❌ |
 | Xem danh sách thành viên tổ chức | ✅ (chỉ thông tin tài khoản) | ✅ | ✅ (chỉ xem) |
 
 Policies: `RequireSystemAdmin`, `RequireOrgMember` (role ∈ OrgOwner/OrgManager ∧ org Active ∧ !MustChangePassword).

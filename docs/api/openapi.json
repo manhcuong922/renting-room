@@ -820,6 +820,136 @@
         }
       }
     },
+    "/api/v1/contracts/{id}/fees/{feeTypeId}": {
+      "put": {
+        "tags": [
+          "Contracts"
+        ],
+        "summary": "HĐ đang hiệu lực: gắn thêm / đổi số lượng, giá riêng của khoản thu từ đầu một kỳ",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "feeTypeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangeContractFeeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Contracts"
+        ],
+        "summary": "HĐ đang hiệu lực: thôi tính khoản thu từ đầu kỳ ?effectiveFrom=",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "feeTypeId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "effectiveFrom",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/contracts/data-review": {
+      "get": {
+        "tags": [
+          "Contracts"
+        ],
+        "summary": "Rà HĐ đang hiệu lực tìm dữ liệu cần xem lại (quan hệ người ở, tuổi người ký, ở 2 phòng, khoản thu chưa có giá)",
+        "parameters": [
+          {
+            "name": "propertyId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/contracts/{id}/document": {
+      "get": {
+        "tags": [
+          "Contracts"
+        ],
+        "summary": "Tải văn bản hợp đồng (.docx) để in / ký — nháp có dòng \"BẢN NHÁP\"; có số giấy tờ đầy đủ (ghi log)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/api/v1/contracts/{id}/cancel": {
       "post": {
         "tags": [
@@ -1074,6 +1204,84 @@
         }
       }
     },
+    "/api/v1/contracts/{id}/holdover": {
+      "post": {
+        "tags": [
+          "Contracts"
+        ],
+        "summary": "HĐ đã hết hạn: cho ở tiếp, chưa ký lại (CT-UC-22)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HoldoverRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/contracts/{id}/re-sign": {
+      "post": {
+        "tags": [
+          "Contracts"
+        ],
+        "summary": "Ký lại cho người còn ở: thanh lý HĐ cũ tại ngày bàn giao, tạo HĐ nháp mới từ ngày hôm sau (CT-UC-21)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Khóa duy nhất cho thao tác (VD UUID). Gửi lại cùng khóa ⇒ nhận lại kết quả cũ, không thực thi lần 2.",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 8,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResignContractRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/api/v1/contracts/{id}/notice": {
       "post": {
         "tags": [
@@ -1183,6 +1391,15 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompleteLiquidationRequest"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "OK"
@@ -1441,6 +1658,1059 @@
         }
       }
     },
+    "/api/v1/properties/{propertyId}/fee-types": {
+      "get": {
+        "tags": [
+          "Fee types"
+        ],
+        "summary": "Danh sách khoản thu của khu (mảng) — kèm giá đang hiệu lực và lịch sử giá",
+        "parameters": [
+          {
+            "name": "propertyId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "includeArchived",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Fee types"
+        ],
+        "summary": "Tạo khoản thu (theo chỉ số / cố định theo phòng hoặc theo người / theo số lượng)",
+        "parameters": [
+          {
+            "name": "propertyId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Khóa duy nhất cho thao tác (VD UUID). Gửi lại cùng khóa ⇒ nhận lại kết quả cũ, không thực thi lần 2.",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 8,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateFeeTypeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/properties/{propertyId}/fee-types/copy-from/{sourcePropertyId}": {
+      "post": {
+        "tags": [
+          "Fee types"
+        ],
+        "summary": "Sao chép danh mục khoản thu từ khu khác (trùng tên bỏ qua)",
+        "parameters": [
+          {
+            "name": "propertyId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "sourcePropertyId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CopyFeeCatalogRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/fee-types/{id}": {
+      "get": {
+        "tags": [
+          "Fee types"
+        ],
+        "summary": "Chi tiết khoản thu + lịch sử giá",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Fee types"
+        ],
+        "summary": "Sửa tên / đơn vị / tự gắn / thứ tự (không đổi được cách tính)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateFeeTypeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/fee-types/{id}/archive": {
+      "post": {
+        "tags": [
+          "Fee types"
+        ],
+        "summary": "Ngừng dùng (khi không còn hợp đồng đang gắn)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/fee-types/{id}/restore": {
+      "post": {
+        "tags": [
+          "Fee types"
+        ],
+        "summary": "Khôi phục khoản thu",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/fee-types/{id}/prices": {
+      "post": {
+        "tags": [
+          "Fee types"
+        ],
+        "summary": "Thêm bảng giá mới (đơn giá hoặc bậc thang) từ ngày hiệu lực",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FeePriceInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/fee-types/{id}/prices/{priceId}": {
+      "delete": {
+        "tags": [
+          "Fee types"
+        ],
+        "summary": "Xóa bản giá (chưa thuộc kỳ đã chốt phiếu)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "priceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/invoices/generate": {
+      "post": {
+        "tags": [
+          "Invoices"
+        ],
+        "summary": "Tạo phiếu nháp theo khu + tháng thu (lọc phòng / tầng)",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Khóa duy nhất cho thao tác (VD UUID). Gửi lại cùng khóa ⇒ nhận lại kết quả cũ, không thực thi lần 2.",
+            "schema": {
+              "maxLength": 64,
+              "minLength": 8,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerateInvoicesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/invoices/recalculate": {
+      "post": {
+        "tags": [
+          "Invoices"
+        ],
+        "summary": "Tính lại phiếu nháp: theo danh sách phiếu, hoặc khu + tháng (lọc phòng / tầng); mặc định giữ ô sửa tay",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecalculateInvoicesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/invoices": {
+      "get": {
+        "tags": [
+          "Invoices"
+        ],
+        "summary": "Danh sách phiếu (khu, tháng, trạng thái, phòng, hợp đồng, tầng, còn nợ)",
+        "parameters": [
+          {
+            "name": "propertyId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "billingMonth",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "roomId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "contractId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "floor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "unpaidOnly",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/invoices/{id}": {
+      "get": {
+        "tags": [
+          "Invoices"
+        ],
+        "summary": "Chi tiết phiếu: dòng, đoạn đo công tơ, vấn đề",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Invoices"
+        ],
+        "summary": "Xóa phiếu nháp (chỉ phiếu mới nhất của hợp đồng)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/invoices/{id}/lines/{lineId}": {
+      "put": {
+        "tags": [
+          "Invoices"
+        ],
+        "summary": "Sửa tay dòng phiếu nháp (đánh dấu \"sửa tay\", giữ số hệ thống)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "lineId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditInvoiceLineRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Invoices"
+        ],
+        "summary": "Dòng hệ thống: bỏ sửa tay; phụ thu / giảm tay: xóa dòng",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "lineId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/invoices/{id}/manual-lines": {
+      "post": {
+        "tags": [
+          "Invoices"
+        ],
+        "summary": "Thêm phụ thu (lý do bắt buộc) hoặc giảm trừ vào phiếu nháp",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddInvoiceLineRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/invoices/{id}/note": {
+      "put": {
+        "tags": [
+          "Invoices"
+        ],
+        "summary": "Ghi chú in trên phiếu (nháp)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InvoiceNoteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/invoices/{id}/finalize": {
+      "post": {
+        "tags": [
+          "Invoices"
+        ],
+        "summary": "Chốt phiếu: cấp số PB, hạn thanh toán; dữ liệu nguồn đổi ⇒ 409 DRAFT_STALE",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Khóa duy nhất cho thao tác (VD UUID). Gửi lại cùng khóa ⇒ nhận lại kết quả cũ, không thực thi lần 2.",
+            "schema": {
+              "maxLength": 64,
+              "minLength": 8,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/invoices/finalize-batch": {
+      "post": {
+        "tags": [
+          "Invoices"
+        ],
+        "summary": "Chốt hàng loạt — kết quả từng phiếu",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Khóa duy nhất cho thao tác (VD UUID). Gửi lại cùng khóa ⇒ nhận lại kết quả cũ, không thực thi lần 2.",
+            "schema": {
+              "maxLength": 64,
+              "minLength": 8,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FinalizeBatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/invoices/{id}/void": {
+      "post": {
+        "tags": [
+          "Invoices"
+        ],
+        "summary": "Hủy phiếu đã chốt (chưa thu tiền, phiếu mới nhất của hợp đồng)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VoidInvoiceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/rooms/{roomId}/invoices": {
+      "get": {
+        "tags": [
+          "Invoices"
+        ],
+        "summary": "Phiếu tiền phòng của phòng (mọi hợp đồng), mới nhất trước",
+        "parameters": [
+          {
+            "name": "roomId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/rooms/{roomId}/meters": {
+      "get": {
+        "tags": [
+          "Meters"
+        ],
+        "summary": "Công tơ của phòng kèm chỉ số mới nhất",
+        "parameters": [
+          {
+            "name": "roomId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "includeRemoved",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Meters"
+        ],
+        "summary": "Lắp công tơ cho phòng (điện / nước theo công tơ) kèm chỉ số ban đầu",
+        "parameters": [
+          {
+            "name": "roomId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Khóa duy nhất cho thao tác (VD UUID). Gửi lại cùng khóa ⇒ nhận lại kết quả cũ, không thực thi lần 2.",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 8,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InstallMeterRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/meters/{id}/replace": {
+      "post": {
+        "tags": [
+          "Meters"
+        ],
+        "summary": "Thay công tơ: số cuối công tơ cũ + số ban đầu công tơ mới (cùng ngày)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Khóa duy nhất cho thao tác (VD UUID). Gửi lại cùng khóa ⇒ nhận lại kết quả cũ, không thực thi lần 2.",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 8,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReplaceMeterRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/meters/{id}/remove": {
+      "post": {
+        "tags": [
+          "Meters"
+        ],
+        "summary": "Tháo công tơ (không thay) — bắt buộc số cuối",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RemoveMeterRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/meters/{id}/readings": {
+      "get": {
+        "tags": [
+          "Meters"
+        ],
+        "summary": "Lịch sử chỉ số (mới nhất trước)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/meter-readings/{id}": {
+      "put": {
+        "tags": [
+          "Meters"
+        ],
+        "summary": "Sửa chỉ số nhập sai (vẫn phải ≥ chỉ số trước, ≤ chỉ số sau)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CorrectReadingRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/properties/{propertyId}/meter-reading-sheet": {
+      "get": {
+        "tags": [
+          "Meters"
+        ],
+        "summary": "Lưới ghi chỉ số cuối kỳ của khu theo tháng thu",
+        "parameters": [
+          {
+            "name": "propertyId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "billingMonth",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "floor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/properties/{propertyId}/meter-readings": {
+      "put": {
+        "tags": [
+          "Meters"
+        ],
+        "summary": "Lưu chỉ số cuối kỳ hàng loạt (lỗi 1 dòng ⇒ không lưu dòng nào)",
+        "parameters": [
+          {
+            "name": "propertyId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Khóa duy nhất cho thao tác (VD UUID). Gửi lại cùng khóa ⇒ nhận lại kết quả cũ, không thực thi lần 2.",
+            "schema": {
+              "maxLength": 64,
+              "minLength": 8,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveMeterReadingsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/api/v1/org/members": {
       "get": {
         "tags": [
@@ -1625,6 +2895,40 @@
         }
       }
     },
+    "/api/v1/org/members/{id}/sensitive-data-access": {
+      "put": {
+        "tags": [
+          "Organization members"
+        ],
+        "summary": "Cấp / thu hồi quyền xem dữ liệu nhạy cảm (số giấy tờ đầy đủ) cho phó quản lý",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SensitiveDataAccessRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/api/v1/org/members/{id}/reset-password": {
       "post": {
         "tags": [
@@ -1642,6 +2946,124 @@
             }
           }
         ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/contracts/{contractId}/payments": {
+      "post": {
+        "tags": [
+          "Payments"
+        ],
+        "summary": "Ghi thu (\"Đã thu\"): chỉ định phiếu hoặc tự động phiếu cũ nhất trước — cấp số PT",
+        "parameters": [
+          {
+            "name": "contractId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Khóa duy nhất cho thao tác (VD UUID). Gửi lại cùng khóa ⇒ nhận lại kết quả cũ, không thực thi lần 2.",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 8,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordPaymentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/payments": {
+      "get": {
+        "tags": [
+          "Payments"
+        ],
+        "summary": "Phiếu thu theo hợp đồng / phòng / phiếu báo",
+        "parameters": [
+          {
+            "name": "contractId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "roomId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "invoiceId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/payments/{id}/reverse": {
+      "post": {
+        "tags": [
+          "Payments"
+        ],
+        "summary": "Đảo phiếu thu nhập sai (hủy phân bổ, phiếu báo về còn nợ)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReversePaymentRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "OK"
@@ -2598,6 +4020,49 @@
           "overrideCapacity": {
             "type": "boolean",
             "nullable": true
+          },
+          "handoverReadings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MeterReadingInput"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "AddInvoiceLineRequest": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/InvoiceLineType"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "quantity": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "unitPrice": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "amount": {
+            "type": "number",
+            "format": "double"
+          },
+          "note": {
+            "type": "string",
+            "nullable": true
+          },
+          "feeTypeId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
           }
         },
         "additionalProperties": false
@@ -2843,6 +4308,26 @@
         },
         "additionalProperties": false
       },
+      "ChangeContractFeeRequest": {
+        "type": "object",
+        "properties": {
+          "quantity": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "unitPriceOverride": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "effectiveFrom": {
+            "type": "string",
+            "format": "date"
+          }
+        },
+        "additionalProperties": false
+      },
       "ChangePasswordRequest": {
         "type": "object",
         "properties": {
@@ -2879,6 +4364,15 @@
         },
         "additionalProperties": false
       },
+      "ChargeBasis": {
+        "enum": [
+          0,
+          1,
+          2
+        ],
+        "type": "integer",
+        "format": "int32"
+      },
       "ChargeMode": {
         "enum": [
           0,
@@ -2886,6 +4380,19 @@
         ],
         "type": "integer",
         "format": "int32"
+      },
+      "CompleteLiquidationRequest": {
+        "type": "object",
+        "properties": {
+          "finalReadings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MeterReadingInput"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
       },
       "ContractClause": {
         "type": "object",
@@ -2896,6 +4403,26 @@
           },
           "body": {
             "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ContractFeeRequest": {
+        "type": "object",
+        "properties": {
+          "feeTypeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "quantity": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "unitPriceOverride": {
+            "type": "number",
+            "format": "double",
             "nullable": true
           }
         },
@@ -3008,6 +4535,13 @@
             "type": "string",
             "format": "uuid",
             "nullable": true
+          },
+          "fees": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ContractFeeRequest"
+            },
+            "nullable": true
           }
         },
         "additionalProperties": false
@@ -3054,6 +4588,35 @@
         "type": "integer",
         "format": "int32"
       },
+      "CopyFeeCatalogRequest": {
+        "type": "object",
+        "properties": {
+          "includePrices": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "effectiveFrom": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "CorrectReadingRequest": {
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": "number",
+            "format": "double"
+          },
+          "note": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
       "CreateContractRequest": {
         "type": "object",
         "properties": {
@@ -3067,6 +4630,45 @@
           },
           "contract": {
             "$ref": "#/components/schemas/ContractInput"
+          }
+        },
+        "additionalProperties": false
+      },
+      "CreateFeeTypeRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "group": {
+            "$ref": "#/components/schemas/FeeGroup"
+          },
+          "chargeBasis": {
+            "$ref": "#/components/schemas/ChargeBasis"
+          },
+          "unit": {
+            "type": "string",
+            "nullable": true
+          },
+          "autoAttach": {
+            "type": "boolean"
+          },
+          "defaultQuantity": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "sortOrder": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "initialPrice": {
+            "$ref": "#/components/schemas/FeePriceInput"
+          },
+          "vehicleType": {
+            "$ref": "#/components/schemas/VehicleType"
           }
         },
         "additionalProperties": false
@@ -3262,6 +4864,31 @@
         "type": "integer",
         "format": "int32"
       },
+      "EditInvoiceLineRequest": {
+        "type": "object",
+        "properties": {
+          "quantity": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "unitPrice": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "amount": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "note": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
       "EndOccupancyRequest": {
         "type": "object",
         "properties": {
@@ -3345,6 +4972,47 @@
         },
         "additionalProperties": false
       },
+      "FeeGroup": {
+        "enum": [
+          0,
+          1
+        ],
+        "type": "integer",
+        "format": "int32"
+      },
+      "FeePriceInput": {
+        "type": "object",
+        "properties": {
+          "effectiveFrom": {
+            "type": "string",
+            "format": "date"
+          },
+          "unitPrice": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "note": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "FinalizeBatchRequest": {
+        "type": "object",
+        "properties": {
+          "invoiceIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
       "Gender": {
         "enum": [
           0,
@@ -3353,6 +5021,36 @@
         ],
         "type": "integer",
         "format": "int32"
+      },
+      "GenerateInvoicesRequest": {
+        "type": "object",
+        "properties": {
+          "propertyId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "billingMonth": {
+            "type": "string",
+            "nullable": true
+          },
+          "roomIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "nullable": true
+          },
+          "floor": {
+            "type": "string",
+            "nullable": true
+          },
+          "recalculateExistingDrafts": {
+            "type": "boolean",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
       },
       "GiveNoticeRequest": {
         "type": "object",
@@ -3368,6 +5066,16 @@
         },
         "additionalProperties": false
       },
+      "HoldoverRequest": {
+        "type": "object",
+        "properties": {
+          "note": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
       "IdDocumentType": {
         "enum": [
           0,
@@ -3376,6 +5084,53 @@
         ],
         "type": "integer",
         "format": "int32"
+      },
+      "InstallMeterRequest": {
+        "type": "object",
+        "properties": {
+          "feeTypeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "serialNo": {
+            "type": "string",
+            "nullable": true
+          },
+          "installedDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "initialValue": {
+            "type": "number",
+            "format": "double"
+          },
+          "note": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "InvoiceLineType": {
+        "enum": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ],
+        "type": "integer",
+        "format": "int32"
+      },
+      "InvoiceNoteRequest": {
+        "type": "object",
+        "properties": {
+          "note": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
       },
       "LandParcelInput": {
         "type": "object",
@@ -3459,6 +5214,9 @@
           },
           "organization": {
             "$ref": "#/components/schemas/MeOrganizationDto"
+          },
+          "canViewSensitiveData": {
+            "type": "boolean"
           }
         },
         "additionalProperties": false
@@ -3476,6 +5234,21 @@
           },
           "name": {
             "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "MeterReadingInput": {
+        "type": "object",
+        "properties": {
+          "meterId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "value": {
+            "type": "number",
+            "format": "double",
             "nullable": true
           }
         },
@@ -3726,6 +5499,32 @@
         "type": "integer",
         "format": "int32"
       },
+      "PeriodicReadingInput": {
+        "type": "object",
+        "properties": {
+          "meterId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "contractId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "closingPeriodStart": {
+            "type": "string",
+            "format": "date"
+          },
+          "readingDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "value": {
+            "type": "number",
+            "format": "double"
+          }
+        },
+        "additionalProperties": false
+      },
       "ProrationMode": {
         "enum": [
           0,
@@ -3733,6 +5532,79 @@
         ],
         "type": "integer",
         "format": "int32"
+      },
+      "RecalculateInvoicesRequest": {
+        "type": "object",
+        "properties": {
+          "invoiceIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "nullable": true
+          },
+          "propertyId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "billingMonth": {
+            "type": "string",
+            "nullable": true
+          },
+          "roomIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "nullable": true
+          },
+          "floor": {
+            "type": "string",
+            "nullable": true
+          },
+          "keepManualEdits": {
+            "type": "boolean",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "RecordPaymentRequest": {
+        "type": "object",
+        "properties": {
+          "amount": {
+            "type": "number",
+            "format": "double"
+          },
+          "method": {
+            "$ref": "#/components/schemas/PaymentMethod"
+          },
+          "paidAt": {
+            "type": "string",
+            "format": "date"
+          },
+          "invoiceId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "payerName": {
+            "type": "string",
+            "nullable": true
+          },
+          "reference": {
+            "type": "string",
+            "nullable": true
+          },
+          "note": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
       },
       "RefreshTokenRequest": {
         "type": "object",
@@ -3767,6 +5639,24 @@
             "type": "string",
             "format": "date",
             "nullable": true
+          },
+          "note": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "RemoveMeterRequest": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "finalValue": {
+            "type": "number",
+            "format": "double"
           },
           "note": {
             "type": "string",
@@ -3853,6 +5743,61 @@
         },
         "additionalProperties": false
       },
+      "ReplaceMeterRequest": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "oldFinalValue": {
+            "type": "number",
+            "format": "double"
+          },
+          "newSerialNo": {
+            "type": "string",
+            "nullable": true
+          },
+          "newInitialValue": {
+            "type": "number",
+            "format": "double"
+          },
+          "note": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ResignContractRequest": {
+        "type": "object",
+        "properties": {
+          "handoverDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "representativeRenterId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "endDate": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ReversePaymentRequest": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
       "RoomGroupMembersRequest": {
         "type": "object",
         "properties": {
@@ -3921,6 +5866,28 @@
         },
         "additionalProperties": false
       },
+      "SaveMeterReadingsRequest": {
+        "type": "object",
+        "properties": {
+          "readings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PeriodicReadingInput"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "SensitiveDataAccessRequest": {
+        "type": "object",
+        "properties": {
+          "allowed": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
       "StartLiquidationRequest": {
         "type": "object",
         "properties": {
@@ -3956,7 +5923,8 @@
           0,
           1,
           2,
-          3
+          3,
+          4
         ],
         "type": "integer",
         "format": "int32"
@@ -3967,7 +5935,8 @@
           1,
           2,
           3,
-          4
+          4,
+          5
         ],
         "type": "integer",
         "format": "int32"
@@ -4047,6 +6016,39 @@
           },
           "noDeposit": {
             "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "UpdateFeeTypeRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "unit": {
+            "type": "string",
+            "nullable": true
+          },
+          "autoAttach": {
+            "type": "boolean"
+          },
+          "defaultQuantity": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "sortOrder": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "version": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "vehicleType": {
+            "$ref": "#/components/schemas/VehicleType"
           }
         },
         "additionalProperties": false
@@ -4238,6 +6240,16 @@
         ],
         "type": "integer",
         "format": "int32"
+      },
+      "VoidInvoiceRequest": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
       }
     },
     "securitySchemes": {

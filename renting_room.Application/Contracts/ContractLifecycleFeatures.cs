@@ -3,9 +3,13 @@ using Mediator;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using renting_room.Application.Common.Interfaces;
+using renting_room.Application.Common.Models;
 using renting_room.Application.Common.Validation;
+using renting_room.Application.Meters;
+using renting_room.Domain.Billing;
 using renting_room.Domain.Common;
 using renting_room.Domain.Contracts;
+using renting_room.Domain.Meters;
 using renting_room.Domain.Renters;
 
 namespace renting_room.Application.Contracts;
@@ -139,6 +143,72 @@ public sealed class ExtendContractHandler(IAppDbContext db) : IRequestHandler<Ex
             contract => Task.FromResult(contract.Extend(request.NewEndDate)), cancellationToken));
 }
 
+/// <summary>CT-UC-22: HĐ quá hạn, chủ trọ cho ở tiếp chưa ký lại (CT-BR-45).</summary>
+public sealed record StartHoldoverCommand(Guid ContractId, string? Note) : IRequest<Result>;
+
+public sealed class StartHoldoverCommandValidator : AbstractValidator<StartHoldoverCommand>
+{
+    public StartHoldoverCommandValidator() => RuleFor(x => x.Note).OptionalText(500);
+}
+
+public sealed class StartHoldoverHandler(IAppDbContext db, TimeProvider clock) : IRequestHandler<StartHoldoverCommand, Result>
+{
+    public ValueTask<Result> Handle(StartHoldoverCommand request, CancellationToken cancellationToken) =>
+        new(ContractMutation.RunAsync(db, request.ContractId,
+            contract => Task.FromResult(contract.StartHoldover(clock.GetUtcNow().ToBusinessDate(), request.Note)), cancellationToken));
+}
+
+/// <summary>
+/// CT-UC-21: ký lại cho người còn ở — trong 1 transaction: HĐ cũ bắt đầu thanh lý tại ngày bàn giao X, tạo HĐ nháp mới từ X+1
+/// (chép điều khoản, dịch vụ, người ở còn lại, xe của họ). Chủ trọ xem lại nháp rồi kích hoạt như bình thường.
+/// </summary>
+public sealed record ResignContractCommand(Guid ContractId, DateOnly HandoverDate, Guid RepresentativeRenterId, DateOnly? EndDate)
+    : IRequest<Result<CreatedWithWarnings>>;
+
+public sealed class ResignContractCommandValidator : AbstractValidator<ResignContractCommand>
+{
+    public ResignContractCommandValidator()
+    {
+        RuleFor(x => x.RepresentativeRenterId).NotEmpty().WithErrorCode("REQUIRED");
+        RuleFor(x => x.EndDate)
+            .Must((x, end) => end is null || end <= x.HandoverDate.AddYears(10))
+            .WithErrorCode("INVALID_END_DATE").WithMessage("Thời hạn hợp đồng mới tối đa 10 năm.");
+    }
+}
+
+public sealed class ResignContractHandler(
+    IAppDbContext db, ICurrentUser currentUser, IContractNumberGenerator numberGenerator, TimeProvider clock)
+    : IRequestHandler<ResignContractCommand, Result<CreatedWithWarnings>>
+{
+    public ValueTask<Result<CreatedWithWarnings>> Handle(ResignContractCommand request, CancellationToken cancellationToken) =>
+        new(ContractMutation.RunAsync<CreatedWithWarnings>(db, request.ContractId, async old =>
+        {
+            var data = old.ResignDraft(request.HandoverDate, request.RepresentativeRenterId, request.EndDate);
+            if (data.IsFailure)
+                return data.Error!;
+
+            if (await LiquidationGuards.HasInvoiceAfterAsync(db, old.Id, request.HandoverDate, cancellationToken))
+                return ContractErrors.InvoiceAfterEndDate;
+            var contractNo = await ContractNumbers.NextAsync(db, numberGenerator, currentUser, clock, cancellationToken);
+            var liquidation = old.StartLiquidation(request.HandoverDate, TerminationReason.MutualAgreement, null,
+                $"Ký lại cho người còn ở — hợp đồng mới {contractNo}", clock.GetUtcNow().ToBusinessDate());
+            if (liquidation.IsFailure)
+                return liquidation.Error!;
+
+            var next = Contract.CreateDraft(old.PropertyId, old.RoomId, contractNo, data.Value!, previousContractId: old.Id);
+            var renterIds = data.Value!.Occupants.Select(o => o.RenterId).ToList();
+            foreach (var vehicle in old.ResignVehicles(renterIds, next.StartDate))
+            {
+                var registered = next.RegisterVehicle(vehicle);
+                if (registered.IsFailure)
+                    return registered.Error!;
+            }
+
+            db.Contracts.Add(next);
+            return new CreatedWithWarnings(next.Id, ContractWarnings.For(next));
+        }, cancellationToken));
+}
+
 public sealed record GiveNoticeCommand(Guid ContractId, DateOnly NoticeDate, DateOnly PlannedMoveOutDate) : IRequest<Result<NoticeResult>>;
 
 public sealed class GiveNoticeHandler(IAppDbContext db) : IRequestHandler<GiveNoticeCommand, Result<NoticeResult>>
@@ -169,8 +239,18 @@ public sealed class StartLiquidationCommandValidator : AbstractValidator<StartLi
 public sealed class StartLiquidationHandler(IAppDbContext db, TimeProvider clock) : IRequestHandler<StartLiquidationCommand, Result>
 {
     public ValueTask<Result> Handle(StartLiquidationCommand request, CancellationToken cancellationToken) =>
-        new(ContractMutation.RunAsync(db, request.ContractId, contract => Task.FromResult(contract.StartLiquidation(
-            request.ActualEndDate, request.Reason, request.Ground, request.Note, clock.GetUtcNow().ToBusinessDate())), cancellationToken));
+        new(ContractMutation.RunAsync(db, request.ContractId, async contract =>
+            await LiquidationGuards.HasInvoiceAfterAsync(db, contract.Id, request.ActualEndDate, cancellationToken)
+                ? Result.Failure(ContractErrors.InvoiceAfterEndDate)
+                : contract.StartLiquidation(request.ActualEndDate, request.Reason, request.Ground, request.Note, clock.GetUtcNow().ToBusinessDate()),
+            cancellationToken));
+}
+
+internal static class LiquidationGuards
+{
+    /// <summary>CT-BR-11: còn phiếu (chưa hủy) của kỳ bắt đầu sau ngày trả phòng ⇒ phải hủy / xóa trước (tránh thu tiền kỳ sau khi đã trả phòng).</summary>
+    public static Task<bool> HasInvoiceAfterAsync(IAppDbContext db, Guid contractId, DateOnly actualEndDate, CancellationToken ct) =>
+        db.Invoices.AnyAsync(i => i.ContractId == contractId && i.Status != InvoiceStatus.Void && i.PeriodStart > actualEndDate, ct);
 }
 
 /// <summary>Quay lại Active ⇒ ngày kết thúc thực tế bỏ trống; nếu phòng đã có HĐ mới sau đó, EXCLUDE trong DB trả 409.</summary>
@@ -197,13 +277,20 @@ public sealed class CancelLiquidationHandler(IAppDbContext db) : IRequestHandler
         }, cancellationToken));
 }
 
-public sealed record CompleteLiquidationCommand(Guid ContractId) : IRequest<Result>;
+/// <param name="FinalReadings">CT-BR-12: chỉ số cuối (ngày trả phòng) cho mỗi công tơ của phòng — bắt buộc nhập số.</param>
+public sealed record CompleteLiquidationCommand(Guid ContractId, IReadOnlyList<MeterReadingInput>? FinalReadings = null) : IRequest<Result>;
 
 public sealed class CompleteLiquidationHandler(IAppDbContext db, TimeProvider clock) : IRequestHandler<CompleteLiquidationCommand, Result>
 {
     public ValueTask<Result> Handle(CompleteLiquidationCommand request, CancellationToken cancellationToken) =>
-        new(ContractMutation.RunAsync(db, request.ContractId,
-            contract => Task.FromResult(contract.CompleteLiquidation(clock.GetUtcNow())), cancellationToken));
+        new(ContractMutation.RunAsync(db, request.ContractId, async contract =>
+        {
+            var completed = contract.CompleteLiquidation(clock.GetUtcNow());
+            if (completed.IsFailure)
+                return completed;
+            return await ContractMeterReadings.RecordAsync(
+                db, contract, ReadingKind.Final, contract.ActualEndDate!.Value, request.FinalReadings, cancellationToken);
+        }, cancellationToken));
 }
 
 // ============================================================ Tài sản bàn giao
@@ -333,9 +420,12 @@ public sealed class RegisterVehicleHandler(IAppDbContext db, TimeProvider clock)
                 return Result.Failure<CreatedWithWarnings>(registered.Error!);
 
             var vehicle = registered.Value!;
-            IReadOnlyList<ContractWarning> warnings = vehicle.PlateNumber is { } normalized && !ContractWarnings.IsUsualPlate(normalized)
-                ? [ContractWarnings.UnusualPlate(normalized)]
-                : [];
+            var warnings = new List<Warning>();
+            if (vehicle.PlateNumber is { } normalized && !ContractWarnings.IsUsualPlate(normalized))
+                warnings.Add(ContractWarnings.UnusualPlate(normalized));
+            var parkingFees = await ContractFeeRules.LoadParkingFeesAsync(db, contract.PropertyId, cancellationToken);
+            warnings.AddRange(ContractWarnings.For(contract, parkingFees, clock.GetUtcNow().ToBusinessDate())
+                .Where(w => w.Code == "PARKING_QUANTITY_MISMATCH"));
             return Result.Success(new CreatedWithWarnings(vehicle.Id, warnings));
         }, cancellationToken));
 
