@@ -1,6 +1,7 @@
 using Mediator;
 using renting_room.Application.Common.Models;
 using renting_room.Application.Contracts;
+using renting_room.Application.Meters;
 using renting_room.Domain.Contracts;
 using renting_room.Idempotency;
 using renting_room.Security;
@@ -15,6 +16,8 @@ public sealed record CancelContractRequest(string Reason);
 
 public sealed record UpdateContractNoteRequest(string? Note);
 
+public sealed record ChangeContractFeeRequest(decimal? Quantity, decimal? UnitPriceOverride, DateOnly EffectiveFrom);
+
 public sealed record AddOccupantRequest(
     Guid RenterId, DateOnly MoveInDate, DateOnly? ExpectedEndDate, string? Relationship, string? Note, bool? OverrideCapacity,
     OccupantRelationship? RelationshipType = null, bool? GuardianConsent = null);
@@ -22,11 +25,17 @@ public sealed record AddOccupantRequest(
 public sealed record EndOccupancyRequest(DateOnly MoveOutDate);
 
 /// <param name="OverrideCapacity">Chủ ý vượt sức chứa phòng — có ghi log kiểm toán.</param>
-public sealed record ActivateContractRequest(bool? OverrideCapacity);
+public sealed record ActivateContractRequest(bool? OverrideCapacity, IReadOnlyList<MeterReadingInput>? HandoverReadings);
+
+public sealed record CompleteLiquidationRequest(IReadOnlyList<MeterReadingInput>? FinalReadings);
 
 public sealed record ChangeRentRequest(DateOnly EffectiveFrom, decimal MonthlyRent, string? AddendumNo, string? Note);
 
 public sealed record ExtendContractRequest(DateOnly NewEndDate);
+
+public sealed record HoldoverRequest(string? Note);
+
+public sealed record ResignContractRequest(DateOnly HandoverDate, Guid RepresentativeRenterId, DateOnly? EndDate);
 
 public sealed record GiveNoticeRequest(DateOnly NoticeDate, DateOnly PlannedMoveOutDate);
 
@@ -42,6 +51,7 @@ public sealed record EndVehicleRequest(DateOnly EndDate);
 public static class ContractEndpoints
 {
     private const string Route = $"{EndpointHelpers.ApiPrefix}/contracts";
+    private const string DocxContentType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
     public static void MapContractEndpoints(this IEndpointRouteBuilder app)
     {
@@ -72,12 +82,34 @@ public static class ContractEndpoints
                 (await sender.Send(new UpdateContractNoteCommand(id, body.Note), ct)).ToHttp())
             .WithSummary("Sửa ghi chú nội bộ (mọi trạng thái trừ đã hủy) — nội dung đã ký đổi qua phụ lục");
 
+        group.MapPut("/{id:guid}/fees/{feeTypeId:guid}", async (Guid id, Guid feeTypeId, ChangeContractFeeRequest b, ISender sender, CancellationToken ct) =>
+                (await sender.Send(new ChangeContractFeeCommand(id, feeTypeId, b.Quantity, b.UnitPriceOverride, b.EffectiveFrom), ct)).ToHttp())
+            .WithSummary("HĐ đang hiệu lực: gắn thêm / đổi số lượng, giá riêng của khoản thu từ đầu một kỳ");
+        group.MapDelete("/{id:guid}/fees/{feeTypeId:guid}", async (Guid id, Guid feeTypeId, DateOnly effectiveFrom, ISender sender, CancellationToken ct) =>
+                (await sender.Send(new RemoveContractFeeCommand(id, feeTypeId, effectiveFrom), ct)).ToHttp())
+            .WithSummary("HĐ đang hiệu lực: thôi tính khoản thu từ đầu kỳ ?effectiveFrom=");
+
+        group.MapGet("/data-review", async (Guid? propertyId, ISender sender, CancellationToken ct) =>
+                Results.Ok(await sender.Send(new GetContractDataReviewQuery(propertyId), ct)))
+            .WithSummary("Rà HĐ đang hiệu lực tìm dữ liệu cần xem lại (quan hệ người ở, tuổi người ký, ở 2 phòng, khoản thu chưa có giá)");
+
+        group.MapGet("/{id:guid}/document", async (Guid id, ISender sender, CancellationToken ct) =>
+            {
+                var result = await sender.Send(new GetContractDocumentQuery(id), ct);
+                return result.IsSuccess
+                    ? Results.File(result.Value!.Content, DocxContentType, result.Value.FileName)
+                    : result.ToHttp();
+            })
+            .WithNoStore()
+            .Produces(StatusCodes.Status200OK, contentType: DocxContentType)
+            .WithSummary("Tải văn bản hợp đồng (.docx) để in / ký — nháp có dòng \"BẢN NHÁP\"; có số giấy tờ đầy đủ (ghi log)");
+
         group.MapPost("/{id:guid}/cancel", async (Guid id, CancelContractRequest body, ISender sender, CancellationToken ct) =>
                 (await sender.Send(new CancelContractCommand(id, body.Reason), ct)).ToHttp())
             .WithSummary("Hủy hợp đồng nháp");
 
         group.MapPost("/{id:guid}/activate", async (Guid id, ActivateContractRequest? body, ISender sender, CancellationToken ct) =>
-                (await sender.Send(new ActivateContractCommand(id, body?.OverrideCapacity ?? false), ct)).ToHttp())
+                (await sender.Send(new ActivateContractCommand(id, body?.OverrideCapacity ?? false, body?.HandoverReadings), ct)).ToHttp())
             .WithIdempotency(required: false)
             .WithSummary("Kích hoạt (bàn giao phòng): kiểm tra bên cho thuê, người ký ≥ 18 tuổi, sức chứa; chụp snapshot");
 
@@ -102,6 +134,13 @@ public static class ContractEndpoints
         group.MapPost("/{id:guid}/extend", async (Guid id, ExtendContractRequest b, ISender sender, CancellationToken ct) =>
                 (await sender.Send(new ExtendContractCommand(id, b.NewEndDate), ct)).ToHttp())
             .WithSummary("Gia hạn hợp đồng");
+        group.MapPost("/{id:guid}/holdover", async (Guid id, HoldoverRequest? b, ISender sender, CancellationToken ct) =>
+                (await sender.Send(new StartHoldoverCommand(id, b?.Note), ct)).ToHttp())
+            .WithSummary("HĐ đã hết hạn: cho ở tiếp, chưa ký lại (CT-UC-22)");
+        group.MapPost("/{id:guid}/re-sign", async (Guid id, ResignContractRequest b, ISender sender, CancellationToken ct) =>
+                (await sender.Send(new ResignContractCommand(id, b.HandoverDate, b.RepresentativeRenterId, b.EndDate), ct)).ToCreated(Route))
+            .WithIdempotency(required: true)
+            .WithSummary("Ký lại cho người còn ở: thanh lý HĐ cũ tại ngày bàn giao, tạo HĐ nháp mới từ ngày hôm sau (CT-UC-21)");
         group.MapPost("/{id:guid}/notice", async (Guid id, GiveNoticeRequest b, ISender sender, CancellationToken ct) =>
                 (await sender.Send(new GiveNoticeCommand(id, b.NoticeDate, b.PlannedMoveOutDate), ct)).ToHttp())
             .WithSummary("Báo trả phòng — trả cảnh báo nếu báo trước ít hơn thỏa thuận (thường 30 ngày)");
@@ -113,8 +152,8 @@ public static class ContractEndpoints
         group.MapPost("/{id:guid}/liquidation/cancel", async (Guid id, ISender sender, CancellationToken ct) =>
                 (await sender.Send(new CancelLiquidationCommand(id), ct)).ToHttp())
             .WithSummary("Hủy thanh lý, quay lại đang hiệu lực");
-        group.MapPost("/{id:guid}/liquidation/complete", async (Guid id, ISender sender, CancellationToken ct) =>
-                (await sender.Send(new CompleteLiquidationCommand(id), ct)).ToHttp())
+        group.MapPost("/{id:guid}/liquidation/complete", async (Guid id, CompleteLiquidationRequest? body, ISender sender, CancellationToken ct) =>
+                (await sender.Send(new CompleteLiquidationCommand(id, body?.FinalReadings), ct)).ToHttp())
             .WithSummary("Hoàn tất thanh lý — kết thúc hợp đồng, đóng người ở và xe");
 
         // ---- Tài sản bàn giao

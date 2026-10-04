@@ -5,7 +5,7 @@
 ## 1. Mục tiêu & phạm vi
 
 **Mục tiêu**: Lưu **hồ sơ người thuê / người ở** (renter) rõ ràng, chính xác, bảo vệ dữ liệu cá nhân; theo dõi
-**tình trạng cư trú** (đăng ký tạm trú, thông báo lưu trú, khai báo tạm trú người nước ngoài) và **tạm vắng** của từng người.
+**tình trạng cư trú** (đăng ký tạm trú, thông báo lưu trú) và **tạm vắng** của từng người.
 
 **Trong phạm vi**: CRUD hồ sơ, tìm kiếm, chống trùng theo số giấy tờ; ghi nhận đồng ý xử lý dữ liệu;
 bản ghi cư trú + trạng thái + file xác nhận; bản ghi tạm vắng; ẩn danh hóa theo yêu cầu.
@@ -21,7 +21,7 @@ bản ghi cư trú + trạng thái + file xác nhận; bản ghi tạm vắng; �
 | Người thuê | `Renter` | Một con người (hồ sơ). Có thể là người đại diện ký HĐ và/hoặc người ở (occupant) — vai trò nằm ở M05 |
 | Giấy tờ | `IdDocument` | `CitizenId` (CCCD/thẻ căn cước 12 số), `LegacyId` (CMND 9 số – chỉ để lưu lịch sử), `Passport` |
 | Bản ghi cư trú | `ResidenceRecord` | Theo dõi thủ tục cư trú của 1 người ở tại 1 hợp đồng |
-| Loại cư trú | `ResidenceType` | `TemporaryResidence` (tạm trú ≥30 ngày), `StayNotice` (lưu trú <30 ngày), `ForeignerResidence` |
+| Loại cư trú | `ResidenceType` | `TemporaryResidence` (tạm trú ≥30 ngày), `StayNotice` (lưu trú <30 ngày). Người nước ngoài: ngoài phạm vi (L7) |
 | Tạm vắng | `AbsenceRecord` | Khoảng thời gian người ở vắng mặt (ghi nhận thông tin) |
 | Đồng ý | `Consent` | Ghi nhận người thuê đồng ý cho chủ trọ thu thập/xử lý dữ liệu (L11) |
 
@@ -48,12 +48,12 @@ bản ghi cư trú + trạng thái + file xác nhận; bản ghi tạm vắng; �
 | Mã | Quy tắc | Nơi kiểm tra |
 |----|---------|-------------|
 | RT-BR-01 | Bắt buộc: họ tên, ngày sinh, giới tính, loại + số giấy tờ, quốc tịch. SĐT không bắt buộc (trẻ em, người già) nhưng **người đại diện ký HĐ phải có SĐT** (kiểm ở M05) | Validator / M05 |
-| RT-BR-02 | Số giấy tờ unique **trong tổ chức** theo `(id_type, id_number_hash)`. Trùng → 409 kèm id hồ sơ cũ để dùng lại (không tạo bản sao) | DB unique |
+| RT-BR-02 ✅ | Số giấy tờ unique **trong tổ chức** theo `(id_type, id_number_hash)`. Trùng → 409 `RENTER_ID_NUMBER_EXISTS` kèm `existingRenterId` để dùng lại hồ sơ (không tạo bản sao). Một hồ sơ được **đứng tên nhiều phòng** (CT-BR-10); là **người ở** thì chỉ ở 1 phòng tại một thời điểm (CT-BR-31) | DB unique + Application |
 | RT-BR-03 | Số giấy tờ có thể **sửa** (nhập sai) nhưng mọi thay đổi được audit; không cho sửa khi hồ sơ đã ẩn danh | Domain |
-| RT-BR-04 | Quốc tịch ≠ `VN` ⇒ loại giấy tờ bắt buộc `Passport` (hoặc giấy tờ khác ghi chú) ; quốc tịch `VN` và ≥ 14 tuổi ⇒ `CitizenId` (khuyến nghị, cảnh báo nếu khác) | Validator (cảnh báo) |
+| RT-BR-04 | ~~Quốc tịch ≠ VN ⇒ bắt buộc hộ chiếu~~ — **bỏ (04/10/2026)**: hệ thống phục vụ người thuê Việt Nam. Giữ `nationality` (mặc định `VN`) và loại giấy tờ `Passport` cho người Việt dùng hộ chiếu; không kiểm tra theo quốc tịch | — |
 | RT-BR-05 | Không xóa vật lý hồ sơ đã gắn hợp đồng. Archive = ẩn khỏi tìm kiếm mặc định | Application |
 | RT-BR-06 | Ẩn danh hóa: chỉ khi không có HĐ `Draft/Active/Liquidating`; thay họ tên = "Đã ẩn danh #xxxx", xóa SĐT/email/địa chỉ/ngày sinh/số giấy tờ/liên hệ khẩn cấp; hard delete file nhạy cảm (M09, FS-BR-09); **thay cả bản snapshot tên** trên phiếu báo (`invoices.snapshot_representative_name`) và phiếu thu (`payer_name`) — ngoại lệ duy nhất cho quy tắc bất biến C-06, chỉ chạy qua lệnh ẩn danh, có audit; **xóa giá trị cá nhân trong `audit_logs.changes`** của renter đó. Giữ liên kết & số liệu tài chính. Không đảo ngược | Domain + Application |
-| RT-BR-07 | **Bản ghi cư trú tự sinh** khi occupant được thêm vào HĐ và HĐ ở trạng thái Active (hoặc khi kích hoạt HĐ): loại theo LEG-03 (dự kiến ở ≥ 30 ngày → `TemporaryResidence`; < 30 → `StayNotice`; nước ngoài → `ForeignerResidence`), trạng thái `Pending` | Domain event từ M05, xử lý trong cùng transaction |
+| RT-BR-07 | **Bản ghi cư trú tự sinh** khi occupant được thêm vào HĐ và HĐ ở trạng thái Active (hoặc khi kích hoạt HĐ): loại theo LEG-03 (dự kiến ở ≥ 30 ngày → `TemporaryResidence`; < 30 → `StayNotice`), trạng thái `Pending` | Domain event từ M05, xử lý trong cùng transaction |
 | RT-BR-08 | Mỗi (occupant stay của HĐ, loại) có tối đa 1 bản ghi cư trú chưa đóng (`Pending/Submitted/Registered`) | DB partial unique |
 | RT-BR-09 | `Registered` yêu cầu `registered_at`; `valid_until` (nếu có) > `registered_at` | Domain + CHECK |
 | RT-BR-10 | Occupant rời đi (M05) ⇒ bản ghi cư trú đang mở chuyển cờ `needs_deregistration = true` (nhắc chủ trọ); chủ trọ xác nhận → `Closed` | Domain event |
@@ -124,7 +124,7 @@ method varchar(20) (`PaperSigned`,`ContractClause`,`Verbal`), given_at date, wit
 | contract_id | uuid | N | FK composite (M05) |
 | occupancy_id | uuid | N | FK composite → contract_occupants (M05) |
 | property_id | uuid | N | denormalized để lọc nhanh; phải = khu của HĐ (kiểm ở domain khi tạo) |
-| type | varchar(24) | N | `TemporaryResidence`,`StayNotice`,`ForeignerResidence` |
+| type | varchar(24) | N | `TemporaryResidence`,`StayNotice` |
 | status | varchar(16) | N | `Pending`,`Submitted`,`Registered`,`Rejected`,`NotRequired`,`Closed` |
 | submitted_at | date | Y | |
 | registered_at | date | Y | |
@@ -162,7 +162,7 @@ Renter (aggregate root)
   + Archive(), Anonymize(now)                         // RT-BR-06
 IdDocument (VO): Type, Number(normalized) — validate theo type
 ResidenceRecord (aggregate root)
-  + CreateForOccupancy(occupancy, renter, expectedStayDays, nationality)  // chọn type
+  + CreateForOccupancy(occupancy, renter, expectedStayDays)  // chọn type
   + Submit(date, ref?), Register(date, validUntil?, ref?), Reject(reason), MarkNotRequired(reason)
   + Extend(newValidUntil), FlagDeregistration(), Close(date)
 AbsenceRecord (entity, aggregate riêng): Create(...), Update(...)
@@ -225,13 +225,13 @@ POST /api/v1/renters
 | — Passport | `^[A-Z0-9]{6,20}$` (uppercase) | |
 | idDocument.issueDate | ≤ hôm nay, ≥ dateOfBirth | |
 | nationality | ISO alpha-2 có trong danh mục | |
-| phone | như M01 (VN); người nước ngoài cho phép `+` quốc tế E.164 | `INVALID_PHONE` |
+| phone | như M01 (VN) | `INVALID_PHONE` |
 | email | định dạng | |
 | absence | from ≤ to; khoảng ≤ 366 ngày | |
 | residence.validUntil | > registeredAt | |
 
 ## 9. Phân quyền
-OrgOwner toàn quyền. OrgManager (P3): chỉ renter đang/đã ở trong khu được gán; **không** reveal số giấy tờ trừ khi được cấp quyền `ViewSensitive`. SystemAdmin: không.
+P1: chủ trọ và phó quản lý toàn quyền nghiệp vụ (M01 §3.3); reveal số giấy tờ (`POST /renters/{id}/reveal-id-number`): dữ liệu nhạy cảm (số giấy tờ đầy đủ) chỉ chủ trọ hoặc phó quản lý được chủ trọ cấp quyền (ID-BR-22), không có quyền → 403 `SENSITIVE_DATA_FORBIDDEN`. P3: theo khu được gán. SystemAdmin: không.
 
 ## 10. Toàn vẹn dữ liệu & concurrency
 

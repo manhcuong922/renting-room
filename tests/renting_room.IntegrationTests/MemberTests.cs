@@ -42,6 +42,57 @@ public sealed class MemberTests(ApiFactory factory)
     }
 
     [Fact]
+    public async Task Manager_SeesFullIdNumbers_OnlyAfterOwnerGrants_RevokeTakesEffectImmediately()
+    {
+        var owner = await _client.CreateActiveOwnerAsync();
+        var (credentials, manager) = await AddActiveManagerAsync(owner);
+        var idNumber = TestData.NewCitizenId();
+        var (propertyId, _, _, contractId) = await _client.CreateActiveContractAsync(owner.Tokens.AccessToken, TestData.Today(factory));
+        var renterId = await _client.CreateRenterAsync(owner.Tokens.AccessToken, idNumber);
+
+        async Task<HttpStatusCode> RevealAsync() =>
+            (await _client.PostJsonAsync($"/api/v1/renters/{renterId}/reveal-id-number", null, manager.AccessToken)).StatusCode;
+        async Task<HttpResponseMessage> ExportAsync() =>
+            await _client.PostJsonAsync("/api/v1/exports/renters", new { propertyIds = new[] { propertyId }, includeSensitive = true }, manager.AccessToken);
+
+        // Mặc định: phó quản lý vẫn thao tác được, nhưng không xem được số giấy tờ đầy đủ.
+        var denied = await _client.PostJsonAsync($"/api/v1/renters/{renterId}/reveal-id-number", null, manager.AccessToken);
+        denied.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await denied.ReadProblemCodeAsync()).Should().Be("SENSITIVE_DATA_FORBIDDEN");
+        (await (await ExportAsync()).ReadProblemCodeAsync()).Should().Be("SENSITIVE_DATA_FORBIDDEN");
+        (await _client.PostJsonAsync($"/api/v1/properties/{propertyId}/lessor/reveal-id-number", null, manager.AccessToken))
+            .StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        var print = await _client.GetAsync($"/api/v1/contracts/{contractId}/document", manager.AccessToken);
+        print.StatusCode.Should().Be(HttpStatusCode.OK, "in hợp đồng vẫn được — số giấy tờ in dạng che");
+        using (var stream = new MemoryStream(await print.Content.ReadAsByteArrayAsync()))
+        using (var doc = DocumentFormat.OpenXml.Packaging.WordprocessingDocument.Open(stream, false))
+        {
+            var text = doc.MainDocumentPart!.Document.Body!.InnerText;
+            text.Should().Contain("********");
+            System.Text.RegularExpressions.Regex.IsMatch(text, @"\d{12}").Should().BeFalse("không có số CCCD 12 chữ số đầy đủ nào");
+        }
+        (await _client.GetAsync($"/api/v1/renters/{renterId}", manager.AccessToken)).StatusCode.Should().Be(HttpStatusCode.OK);
+
+        // Chủ trọ cấp quyền ⇒ xem được; thu hồi ⇒ bị chặn ngay, không cần đăng nhập lại.
+        var granted = await _client.PutJsonAsync($"{MembersUrl}/{credentials.UserId}/sensitive-data-access", new { allowed = true }, owner.Tokens.AccessToken);
+        granted.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await granted.ReadAsync<System.Text.Json.JsonElement>()).GetProperty("canViewSensitiveData").GetBoolean().Should().BeTrue();
+        var revealed = await _client.PostJsonAsync($"/api/v1/renters/{renterId}/reveal-id-number", null, manager.AccessToken);
+        (await revealed.ReadAsync<System.Text.Json.JsonElement>()).GetProperty("idNumber").GetString().Should().Be(idNumber);
+        (await ExportAsync()).StatusCode.Should().Be(HttpStatusCode.OK);
+
+        await _client.PutJsonAsync($"{MembersUrl}/{credentials.UserId}/sensitive-data-access", new { allowed = false }, owner.Tokens.AccessToken);
+        (await RevealAsync()).Should().Be(HttpStatusCode.Forbidden);
+
+        // Phó quản lý không tự cấp quyền được; không áp lên tài khoản chủ trọ.
+        (await _client.PutJsonAsync($"{MembersUrl}/{credentials.UserId}/sensitive-data-access", new { allowed = true }, manager.AccessToken))
+            .StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        var ownerId = (await (await _client.GetAsync("/api/v1/me", owner.Tokens.AccessToken)).ReadAsync<System.Text.Json.JsonElement>()).GetProperty("id").GetGuid();
+        (await (await _client.PutJsonAsync($"{MembersUrl}/{ownerId}/sensitive-data-access", new { allowed = false }, owner.Tokens.AccessToken))
+            .ReadProblemCodeAsync()).Should().Be("CANNOT_MODIFY_OWNER");
+    }
+
+    [Fact]
     public async Task Manager_CannotManageMembers()
     {
         var owner = await _client.CreateActiveOwnerAsync();

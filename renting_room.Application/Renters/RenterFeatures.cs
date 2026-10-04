@@ -3,6 +3,7 @@ using Mediator;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using renting_room.Application.Common.Interfaces;
+using renting_room.Application.Common.Security;
 using renting_room.Application.Common.Models;
 using renting_room.Application.Common.Validation;
 using renting_room.Domain.Common;
@@ -136,8 +137,9 @@ public sealed class CreateRenterHandler(IAppDbContext db, ICurrentUser currentUs
     public async ValueTask<Result<Guid>> Handle(CreateRenterCommand request, CancellationToken cancellationToken)
     {
         var idNumber = protector.ProtectIdNumber(currentUser.OrganizationId!.Value, request.Renter.IdType, request.Renter.IdNumber!);
-        if (await db.Renters.AnyAsync(r => r.IdNumberHash == idNumber.Hash, cancellationToken))
-            return RenterErrors.IdNumberExists;
+        var existingId = await db.Renters.Where(r => r.IdNumberHash == idNumber.Hash).Select(r => (Guid?)r.Id).FirstOrDefaultAsync(cancellationToken);
+        if (existingId is { } existing)
+            return RenterErrors.IdNumberExistsFor(existing);
 
         var renter = Renter.Create(request.Renter.ToProfile(), idNumber);
         db.Renters.Add(renter);
@@ -171,8 +173,9 @@ public sealed class UpdateRenterHandler(IAppDbContext db, ICurrentUser currentUs
             : protector.ProtectIdNumber(currentUser.OrganizationId!.Value, request.Renter.IdType, request.Renter.IdNumber);
 
         if (idNumber.Hash != renter.IdNumberHash
-            && await db.Renters.AnyAsync(r => r.IdNumberHash == idNumber.Hash && r.Id != renter.Id, cancellationToken))
-            return RenterErrors.IdNumberExists;
+            && await db.Renters.Where(r => r.IdNumberHash == idNumber.Hash && r.Id != renter.Id)
+                .Select(r => (Guid?)r.Id).FirstOrDefaultAsync(cancellationToken) is { } existing)
+            return RenterErrors.IdNumberExistsFor(existing);
 
         db.SetExpectedVersion(renter, request.Version);
         renter.Update(request.Renter.ToProfile(), idNumber);
@@ -246,7 +249,7 @@ public sealed class GetRenterHandler(IAppDbContext db) : IRequestHandler<GetRent
     }
 }
 
-/// <summary>Xem số giấy tờ đầy đủ — luôn ghi log ai xem (C-10).</summary>
+/// <summary>Xem số giấy tờ đầy đủ — chỉ người có quyền (ID-BR-22), luôn ghi log ai xem (C-10).</summary>
 public sealed record RevealRenterIdNumberQuery(Guid Id) : IRequest<Result<string>>;
 
 public sealed class RevealRenterIdNumberHandler(
@@ -255,6 +258,9 @@ public sealed class RevealRenterIdNumberHandler(
 {
     public async ValueTask<Result<string>> Handle(RevealRenterIdNumberQuery request, CancellationToken cancellationToken)
     {
+        if (!await SensitiveDataAccess.CanViewAsync(db, currentUser, cancellationToken))
+            return IdentityErrors.SensitiveDataForbidden;
+
         var encrypted = await db.Renters.AsNoTracking()
             .Where(r => r.Id == request.Id).Select(r => r.IdNumberEncrypted).FirstOrDefaultAsync(cancellationToken);
         if (encrypted is null)

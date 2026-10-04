@@ -1,4 +1,5 @@
 using System.Text.Json;
+using renting_room.Application.Common.Models;
 using System.Text.Json.Serialization;
 using renting_room.Domain.Common;
 using renting_room.Domain.Contracts;
@@ -35,7 +36,8 @@ public sealed record ContractInput(
     string? Title = null,
     IReadOnlyList<ContractClause>? Clauses = null,
     IReadOnlyDictionary<string, JsonElement>? CustomFields = null,
-    Guid? HouseholdHeadRenterId = null);
+    Guid? HouseholdHeadRenterId = null,
+    IReadOnlyList<ContractFeeRequest>? Fees = null);
 
 /// <param name="RelationshipType">Quan hệ với người đứng tên — bắt buộc với người không đứng tên (CT-BR-28).</param>
 /// <param name="GuardianConsent">Người chưa thành niên: đã có đồng ý của cha, mẹ hoặc người giám hộ (CT-BR-30).</param>
@@ -60,10 +62,8 @@ public sealed record ContractSummaryDto(
     int OccupantCount,
     bool IsOverdue,
     ContractType ContractType,
-    decimal DepositAmount);
-
-/// <summary>Kết quả tạo mới kèm cảnh báo mềm (không chặn) — 201 <c>{ id, warnings }</c>.</summary>
-public sealed record CreatedWithWarnings(Guid Id, IReadOnlyList<ContractWarning> Warnings);
+    decimal DepositAmount,
+    IReadOnlyList<ContractFlag>? Flags = null);
 
 public sealed record RentTermDto(Guid Id, DateOnly EffectiveFrom, decimal MonthlyRent, string? AddendumNo, string? Note);
 
@@ -124,8 +124,14 @@ public sealed record ContractDetailDto(
     IReadOnlyList<AssetDto> Assets,
     IReadOnlyList<VehicleDto> Vehicles,
     ContractDocumentDto Document,
-    IReadOnlyList<ContractWarning> Warnings,
+    IReadOnlyList<Warning> Warnings,
     Guid? HouseholdHeadRenterId,
+    IReadOnlyList<ContractFeeDto> Fees,
+    IReadOnlyList<UtilityPriceItem> UtilityPrices,
+    IReadOnlyList<ContractFlag> Flags,
+    DateOnly? HoldoverSince,
+    string? HoldoverNote,
+    Guid? PreviousContractId,
     string Version);
 
 /// <summary>Văn bản hợp đồng (CT-BR-25): loại, tiêu đề, điều khoản, định nghĩa trường (chụp từ mẫu) và giá trị đã nhập.</summary>

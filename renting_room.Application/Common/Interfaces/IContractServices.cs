@@ -6,6 +6,12 @@ public interface IContractNumberGenerator
     Task<string> NextAsync(Guid organizationId, int year, CancellationToken cancellationToken);
 }
 
+/// <summary>Cấp số chứng từ <c>{prefix}{yyyy}-{000000}</c> theo tổ chức/năm: <c>PB</c> phiếu báo (BL-BR-13), <c>PT</c> phiếu thu (PM-BR-15).</summary>
+public interface IDocumentNumberGenerator
+{
+    Task<string> NextAsync(Guid organizationId, string prefix, int year, CancellationToken cancellationToken);
+}
+
 /// <summary>
 /// Kỳ đầu tiên chưa có phiếu đã chốt của hợp đồng (CT-BR-05). Hiện thực thật ở M07 (Billing);
 /// trước khi có M07 trả null = chưa kỳ nào bị khóa.

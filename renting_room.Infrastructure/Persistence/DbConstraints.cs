@@ -1,6 +1,9 @@
+using renting_room.Domain.Billing;
 using renting_room.Domain.Common;
 using renting_room.Domain.Contracts;
+using renting_room.Domain.Fees;
 using renting_room.Domain.Identity;
+using renting_room.Domain.Meters;
 using renting_room.Domain.Properties;
 using renting_room.Domain.Renters;
 
@@ -23,6 +26,14 @@ public static class DbConstraints
     public const string RentTermUnique = "ux_contract_rent_terms_effective_from";
     public const string ActivePlateUnique = "ux_contract_vehicles_active_plate";
     public const string ContractTemplateNameUnique = "ux_contract_templates_name";
+    public const string FeeNameUnique = "ux_fee_types_name";
+    public const string FeeSystemCodeUnique = "ux_fee_types_system_code";
+    public const string FeePriceDateUnique = "ux_fee_prices_effective_from";
+    public const string ContractFeePeriodExclusion = "ex_contract_fees_period";
+    public const string MeterActiveUnique = "ux_meters_active";
+    public const string HandoverReadingUnique = "ux_meter_readings_handover";
+    public const string InvoicePeriodUnique = "ux_invoices_period";
+    public const string SegmentEndReadingUnique = "ux_invoice_meter_segments_end";
 
     /// <summary>EXCLUDE constraint tạo bằng SQL trong migration (EF không khai báo được).</summary>
     public const string ContractRoomPeriodExclusion = "ex_contracts_room_period";
@@ -40,6 +51,13 @@ public static class DbConstraints
         [RentTermUnique] = ContractErrors.RentTermExists,
         [ActivePlateUnique] = ContractErrors.PlateAlreadyRegistered,
         [ContractTemplateNameUnique] = ContractTemplateErrors.NameTaken,
+        [FeeNameUnique] = FeeErrors.NameTaken,
+        [FeeSystemCodeUnique] = FeeErrors.SystemCodeTaken,
+        [FeePriceDateUnique] = FeeErrors.PriceDateExists,
+        [ContractFeePeriodExclusion] = ContractErrors.FeeLaterChangeExists,
+        [MeterActiveUnique] = MeterErrors.AlreadyActive,
+        [InvoicePeriodUnique] = Error.Conflict("INVOICE_EXISTS", "Kỳ này đã có phiếu — tải lại."),
+        [SegmentEndReadingUnique] = BillingErrors.DraftStale,
         [ContractRoomPeriodExclusion] = ContractErrors.RoomPeriodOverlap,
         [OccupantPeriodExclusion] = ContractErrors.OccupantOverlap
     };

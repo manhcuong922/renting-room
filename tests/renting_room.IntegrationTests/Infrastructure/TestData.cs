@@ -126,4 +126,21 @@ public static class TestData
         activated.StatusCode.Should().Be(HttpStatusCode.NoContent, await activated.Content.ReadAsStringAsync());
         return (propertyId, roomId, renterId, contractId);
     }
+
+    /// <summary>Id khoản thu theo tên trong khu (VD "Điện", "Nước" có sẵn khi tạo khu).</summary>
+    public static async Task<Guid> FeeIdAsync(this HttpClient client, string token, Guid propertyId, string name)
+    {
+        var fees = await (await client.GetAsync($"/api/v1/properties/{propertyId}/fee-types", token)).ReadAsync<List<System.Text.Json.JsonElement>>();
+        return fees.Single(f => f.GetProperty("name").GetString() == name).GetProperty("id").GetGuid();
+    }
+
+    /// <summary>Lắp công tơ cho phòng (M06) — trả id công tơ.</summary>
+    public static async Task<Guid> InstallMeterAsync(
+        this HttpClient client, string token, Guid roomId, Guid feeTypeId, DateOnly installedDate, decimal initialValue = 0)
+    {
+        var response = await client.PostJsonAsync($"/api/v1/rooms/{roomId}/meters",
+            new { feeTypeId, serialNo = (string?)null, installedDate, initialValue }, token);
+        response.StatusCode.Should().Be(HttpStatusCode.Created, await response.Content.ReadAsStringAsync());
+        return await response.ReadIdAsync();
+    }
 }

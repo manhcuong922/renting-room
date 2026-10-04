@@ -157,7 +157,7 @@ public sealed class ContractTests(ApiFactory factory)
         var token = owner.Tokens.AccessToken;
         var today = TestData.Today(factory);
         var (_, roomId, renterId, first) = await _client.CreateActiveContractAsync(token, today.AddDays(-30));
-        await _client.PostJsonAsync($"/api/v1/contracts/{first}/liquidation/start", new { actualEndDate = today.AddDays(-1), reason = "Expired" }, token);
+        await _client.PostJsonAsync($"/api/v1/contracts/{first}/liquidation/start", new { actualEndDate = today.AddDays(-1), reason = "MutualAgreement" }, token);
 
         var next = await _client.CreateContractAsync(token, roomId, renterId, today);
         (await _client.PostJsonAsync($"/api/v1/contracts/{next}/activate", null, token)).StatusCode.Should().Be(HttpStatusCode.NoContent);
@@ -272,7 +272,7 @@ public sealed class ContractTests(ApiFactory factory)
         (await (await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/assets",
                 new { name = "Giường", quantity = 1 }, token)).ReadProblemCodeAsync()).Should().Be("CONTRACT_NOT_DRAFT");
 
-        await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/liquidation/start", new { actualEndDate = today.AddDays(20), reason = "Expired" }, token);
+        await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/liquidation/start", new { actualEndDate = today.AddDays(20), reason = "MutualAgreement" }, token);
         (await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/assets/{assetId}/return",
             new { conditionAtReturn = "Hỏng remote", compensationValue = 200_000 }, token)).StatusCode.Should().Be(HttpStatusCode.NoContent);
     }

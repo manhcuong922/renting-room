@@ -45,8 +45,13 @@ public static class DependencyInjection
             .ValidateOnStart();
         services.AddSingleton<IPersonalDataProtector, PersonalDataProtector>();
         services.AddScoped<IContractNumberGenerator, ContractNumberGenerator>();
-        services.AddScoped<IInvoiceLockReader, NoInvoiceLockReader>();
+        services.AddScoped<IInvoiceLockReader, InvoiceLockReader>();
+        services.AddScoped<IDocumentNumberGenerator, DocumentNumberGenerator>();
         services.AddSingleton<ISpreadsheetWriter, ClosedXmlSpreadsheetWriter>();
+        services.AddSingleton<IWordDocumentWriter, OpenXmlWordWriter>();
+        services.AddOptions<FeeOptions>().Bind(configuration.GetSection(FeeOptions.SectionName));
+        services.AddSingleton<IFeeSettings, FeeSettings>();
+        services.AddScoped<IFeePriceLockReader, FeePriceLockReader>();
 
         services.AddOptions<IdempotencyOptions>()
             .Bind(configuration.GetSection(IdempotencyOptions.SectionName))

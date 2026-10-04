@@ -4,6 +4,8 @@ using Microsoft.EntityFrameworkCore;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Common.Models;
 using renting_room.Application.Common.Validation;
+using renting_room.Application.Contracts;
+using renting_room.Domain.Billing;
 using renting_room.Domain.Common;
 using renting_room.Domain.Contracts;
 using renting_room.Domain.Properties;
@@ -22,7 +24,10 @@ public sealed record RoomSpecInput(
     public RoomSpec ToDomain() => new(Floor, AreaM2, MaxOccupants, ListedRent, DefaultDeposit, Amenities ?? [], Description);
 }
 
-public sealed record CurrentContractDto(Guid Id, string ContractNo, string RepresentativeName, DateOnly StartDate, DateOnly? EndDate, int OccupantCount);
+/// <param name="Flags">PR-BR-16: việc cần xử lý của HĐ (người ký đã rời đi, quá hạn chờ quyết định, ở tiếp chưa ký…).</param>
+public sealed record CurrentContractDto(
+    Guid Id, string ContractNo, string RepresentativeName, DateOnly StartDate, DateOnly? EndDate, int OccupantCount,
+    IReadOnlyList<ContractFlag>? Flags = null);
 
 public sealed record RoomDto(
     Guid Id,
@@ -39,7 +44,8 @@ public sealed record RoomDto(
     RoomDisplayStatus Status,
     string? MaintenanceNote,
     CurrentContractDto? CurrentContract,
-    string Version);
+    string Version,
+    decimal OutstandingAmount = 0);
 
 internal static class RoomSpecRules
 {
@@ -72,9 +78,13 @@ internal sealed class RoomRow
     public CurrentContractDto? Current { get; init; }
     public RoomDisplayStatus Status { get; init; }
 
-    public RoomDto ToDto() => new(
+    /// <summary>PR-BR-16 / PM-UC-12: tổng phiếu đã chốt chưa thu đủ của phòng (mọi HĐ) ⇒ nhãn "Còn nợ".</summary>
+    public decimal OutstandingAmount { get; init; }
+
+    public RoomDto ToDto(IReadOnlyDictionary<Guid, IReadOnlyList<ContractFlag>> flags) => new(
         Room.Id, Room.PropertyId, PropertyCode, Room.Code, Room.Floor, Room.AreaM2, Room.MaxOccupants, Room.ListedRent,
-        Room.DefaultDeposit, Room.Amenities, Room.Description, Status, Room.MaintenanceNote, Current, Room.Version.ToString());
+        Room.DefaultDeposit, Room.Amenities, Room.Description, Status, Room.MaintenanceNote,
+        Current is null ? null : Current with { Flags = flags.GetValueOrDefault(Current.Id, []) }, Room.Version.ToString(), OutstandingAmount);
 }
 
 internal static class RoomStatusQuery
@@ -95,8 +105,11 @@ internal static class RoomStatusQuery
                     db.Renters.Where(x => x.Id == c.RepresentativeRenterId).Select(x => x.FullName).First(),
                     c.StartDate,
                     c.EndDate,
-                    c.Occupants.Count(o => o.MoveInDate <= today && (o.MoveOutDate == null || o.MoveOutDate >= today))))
+                    c.Occupants.Count(o => o.MoveInDate <= today && (o.MoveOutDate == null || o.MoveOutDate >= today)),
+                    null))
                 .FirstOrDefault(),
+            Outstanding = db.Invoices.Where(i => i.RoomId == r.Id && i.Status == InvoiceStatus.Finalized)
+                .Sum(i => (decimal?)(i.TotalAmount - i.PaidAmount)) ?? 0,
             // Giữ chỗ: có hợp đồng nháp, hoặc đã kích hoạt nhưng ngày bàn giao ở tương lai (kích hoạt trước 1 ngày).
             HasDraft = db.Contracts.Any(c => c.RoomId == r.Id
                 && (c.Status == ContractStatus.Draft || (c.Status == ContractStatus.Active && c.StartDate > today)))
@@ -106,12 +119,20 @@ internal static class RoomStatusQuery
             Room = x.Room,
             PropertyCode = x.PropertyCode,
             Current = x.Current,
+            OutstandingAmount = x.Outstanding,
             Status = x.Room.ArchivedAt != null ? RoomDisplayStatus.Archived
                 : x.Room.IsUnderMaintenance ? RoomDisplayStatus.Maintenance
                 : x.Current != null ? RoomDisplayStatus.Occupied
                 : x.HasDraft ? RoomDisplayStatus.Reserved
                 : RoomDisplayStatus.Vacant
         });
+
+    public static async Task<IReadOnlyList<RoomDto>> ToDtosAsync(
+        this IReadOnlyList<RoomRow> rows, IAppDbContext db, DateOnly today, CancellationToken ct)
+    {
+        var flags = await ContractFlagReader.LoadAsync(db, rows.Where(r => r.Current is not null).Select(r => r.Current!.Id), today, ct);
+        return rows.Select(r => r.ToDto(flags)).ToList();
+    }
 
     /// <summary>
     /// Phòng còn HĐ đang chiếm: hiệu lực / đang thanh lý / (tùy chọn) nháp, và HĐ đã kết thúc mà hôm nay vẫn là ngày trả phòng
@@ -265,7 +286,7 @@ public sealed class UpdateRoomHandler(IAppDbContext db, TimeProvider clock) : IR
         await db.SaveChangesAsync(cancellationToken);
 
         var row = await db.Rooms.AsNoTracking().Where(r => r.Id == room.Id).ToRows(db, today).FirstAsync(cancellationToken);
-        return row.ToDto();
+        return (await new[] { row }.ToDtosAsync(db, today, cancellationToken))[0];
     }
 }
 
@@ -383,7 +404,7 @@ public sealed class ListRoomsHandler(IAppDbContext db, TimeProvider clock) : IRe
             .Take(request.PageSize)
             .ToListAsync(cancellationToken);
 
-        return new PagedResult<RoomDto>(rows.Select(r => r.ToDto()).ToList(), request.Page, request.PageSize, total);
+        return new PagedResult<RoomDto>(await rows.ToDtosAsync(db, today, cancellationToken), request.Page, request.PageSize, total);
     }
 }
 
@@ -393,11 +414,12 @@ public sealed class GetRoomHandler(IAppDbContext db, TimeProvider clock) : IRequ
 {
     public async ValueTask<Result<RoomDto>> Handle(GetRoomQuery request, CancellationToken cancellationToken)
     {
+        var today = clock.GetUtcNow().ToBusinessDate();
         var row = await db.Rooms.AsNoTracking()
             .Where(r => r.Id == request.Id)
-            .ToRows(db, clock.GetUtcNow().ToBusinessDate())
+            .ToRows(db, today)
             .FirstOrDefaultAsync(cancellationToken);
 
-        return row is null ? PropertyErrors.RoomNotFound : row.ToDto();
+        return row is null ? PropertyErrors.RoomNotFound : (await new[] { row }.ToDtosAsync(db, today, cancellationToken))[0];
     }
 }

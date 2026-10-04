@@ -39,10 +39,3 @@ public sealed class ContractNumberGenerator(AppDbContext db) : IContractNumberGe
         return $"HD{year}-{values[0]:0000}";
     }
 }
-
-/// <summary>Chưa có M07 (Billing): chưa kỳ nào bị khóa bởi phiếu đã chốt. Thay bằng hiện thực thật khi làm M07.</summary>
-public sealed class NoInvoiceLockReader : IInvoiceLockReader
-{
-    public Task<DateOnly?> GetFirstOpenPeriodStartAsync(Guid contractId, CancellationToken cancellationToken) =>
-        Task.FromResult<DateOnly?>(null);
-}

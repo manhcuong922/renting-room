@@ -203,7 +203,7 @@ UI:
 
 ### Xem số giấy tờ đầy đủ
 
-`POST /properties/{id}/lessor/reveal-id-number` → `{ "idNumber": "001080012345" }` (mỗi lần gọi được ghi log kiểm toán).
+`POST /properties/{id}/lessor/reveal-id-number` → `{ "idNumber": "001080012345" }` (mỗi lần gọi được ghi log kiểm toán). Không có quyền dữ liệu nhạy cảm → 403 `SENSITIVE_DATA_FORBIDDEN`.
 
 ## Ngân hàng
 

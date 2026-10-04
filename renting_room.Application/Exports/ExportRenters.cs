@@ -1,10 +1,13 @@
+using System.Data;
 using FluentValidation;
 using Mediator;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using renting_room.Application.Common.Interfaces;
+using renting_room.Application.Common.Security;
 using renting_room.Application.Common.Validation;
 using renting_room.Domain.Common;
+using renting_room.Domain.Identity;
 using renting_room.Domain.Contracts;
 using renting_room.Domain.Properties;
 using renting_room.Domain.Renters;
@@ -62,7 +65,8 @@ public static class ExportErrors
 
 /// <summary>
 /// RP-BR-01: id khu / nhóm / phòng không thuộc tổ chức ⇒ 404 cả request. RP-BR-03: số giấy tờ che mặc định;
-/// xuất đầy đủ ghi log AUDIT. RP-BR-05: tối đa 20.000 dòng.
+/// xuất đầy đủ ghi log AUDIT. RP-BR-05: tối đa 20.000 dòng. RP-BR-09: đếm + đọc trong 1 transaction REPEATABLE READ
+/// (cùng một snapshot) — có người sửa dữ liệu giữa chừng thì file vẫn nhất quán và không vượt giới hạn đã kiểm.
 /// </summary>
 public sealed class ExportRentersHandler(
     IAppDbContext db,
@@ -79,17 +83,23 @@ public sealed class ExportRentersHandler(
         if (missing is not null)
             return missing;
 
+        if (request.IncludeSensitive && !await SensitiveDataAccess.CanViewAsync(db, currentUser, cancellationToken))
+            return IdentityErrors.SensitiveDataForbidden;
+
         var now = clock.GetUtcNow();
         var today = now.ToBusinessDate();
         var from = request.FromDate ?? request.ToDate ?? today;
         var to = request.ToDate ?? request.FromDate ?? today;
 
+        await using var snapshot = await db.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, cancellationToken);
         var query = RenterExportQuery.Build(db, request, from, to);
         if (await query.CountAsync(cancellationToken) > ExportErrors.MaxRows)
             return ExportErrors.TooLarge;
+        var loaded = await query.ToListAsync(cancellationToken);
+        await snapshot.CommitAsync(cancellationToken);
 
         // Trong mỗi hợp đồng: chủ hộ trước, rồi người đứng tên, sau đó theo thứ tự quan hệ như sổ hộ (vợ/chồng → cha mẹ → con → …).
-        var rows = (await query.ToListAsync(cancellationToken))
+        var rows = loaded
             .OrderBy(r => r.PropertyCode, StringComparer.Ordinal).ThenBy(r => r.Floor, StringComparer.Ordinal)
             .ThenBy(r => r.RoomCode, StringComparer.Ordinal).ThenBy(r => r.ContractNo, StringComparer.Ordinal)
             .ThenByDescending(r => r.IsHouseholdHead).ThenByDescending(r => r.IsRepresentative)

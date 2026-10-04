@@ -71,6 +71,7 @@ Mọi lỗi có dạng ProblemDetails (xem [conventions.md](conventions.md#lỗi
 | `USER_ALREADY_LOCKED` / `USER_NOT_LOCKED` / `USER_REMOVED` | 409 | Tải lại |
 | `MANAGER_LIMIT_REACHED` | 422 | Đã đủ số phó quản lý |
 | `CANNOT_MODIFY_OWNER` / `CANNOT_LOCK_OWNER` | 422 | Không thao tác trên chủ trọ — ẩn nút |
+| `SENSITIVE_DATA_FORBIDDEN` | 403 | Phó quản lý chưa được cấp quyền xem số giấy tờ đầy đủ / xuất đầy đủ — ẩn nút theo `canViewSensitiveData`, báo "Cần chủ trọ cấp quyền" |
 
 ## Khu trọ & phòng
 
@@ -93,7 +94,7 @@ Mọi lỗi có dạng ProblemDetails (xem [conventions.md](conventions.md#lỗi
 | Code | HTTP | UI |
 |------|------|----|
 | `RENTER_NOT_FOUND` | 404 | |
-| `RENTER_ID_NUMBER_EXISTS` | 409 | Tìm theo số giấy tờ → đề xuất dùng hồ sơ cũ |
+| `RENTER_ID_NUMBER_EXISTS` | 409 | Body có `existingRenterId` → đề xuất dùng hồ sơ cũ |
 | `ID_NUMBER_REQUIRED` | 400 | Ô số giấy tờ |
 
 ## Hợp đồng
@@ -131,6 +132,13 @@ Cảnh báo mềm (không phải lỗi, nằm trong `warnings` của response 2x
 | `RENT_TERM_EXISTS` | 409 | Đã có phụ lục từ ngày này |
 | `CANNOT_EXTEND_INDEFINITE` | 422 | HĐ không thời hạn |
 | `TERMINATION_GROUND_REQUIRED` | 422 | Chọn căn cứ chấm dứt |
+| `EXPIRED_REASON_INVALID` | 422 | "Hết hạn" chỉ cho HĐ có thời hạn, trả phòng từ ngày hết hạn — chọn lý do khác |
+| `INDEFINITE_GROUND_ONLY` | 422 | Căn cứ "HĐ không thời hạn" dùng sai cho HĐ có thời hạn |
+| `ABANDONED_NOTE_REQUIRED` | 422 | Bỏ đi không báo: nhập ghi chú |
+| `CONTRACT_NOT_EXPIRED` | 422 | "Ở tiếp chưa ký lại" chỉ khi đã quá ngày hết hạn |
+| `HOLDOVER_ALREADY` | 409 | Đã ghi nhận ở tiếp — tải lại |
+| `RESIGN_REPRESENTATIVE_NOT_OCCUPANT` | 422 | Ký lại: chọn người đứng tên trong số người còn ở |
+| `RESIGN_NO_OCCUPANT_LEFT` | 422 | Ký lại: không còn ai ở — thanh lý |
 | `LIQUIDATION_BEFORE_END_DATE` | 422 | Chưa tới ngày trả phòng |
 | `PLATE_ALREADY_REGISTERED` | 409 | Biển số đang gửi ở HĐ khác |
 | `VEHICLE_ALREADY_ENDED` | 409 | Tải lại |
@@ -141,6 +149,63 @@ Cảnh báo mềm (không phải lỗi, nằm trong `warnings` của response 2x
 |------|------|----|
 | `EXPORT_TOO_LARGE` | 422 | > 20.000 dòng — thu hẹp bộ lọc |
 | `VALIDATION_FAILED` với `toDate` (`INVALID_DATE_RANGE`) | 400 | Lỗi dưới ô ngày |
+
+## Công tơ
+
+| Code | HTTP | UI |
+|------|------|----|
+| `METER_NOT_FOUND` / `READING_NOT_FOUND` | 404 | Tải lại |
+| `METER_ALREADY_ACTIVE` | 409 | Phòng đã có công tơ khoản này — dùng "Thay công tơ" |
+| `FEE_NOT_METERED` | 422 | Chỉ lắp công tơ cho điện nước theo công tơ |
+| `METER_REMOVED` | 422 | Công tơ đã tháo |
+| `INVALID_READING_DATE` | 422 | Ngày ngoài thời gian công tơ hoạt động / trước chỉ số đã ghi |
+| `READING_NOT_MONOTONIC` | 422 | Chỉ số phải ≥ `previousValue` và ≤ `nextValue` (trong body) |
+| `HANDOVER_READING_REQUIRED` | 422 | Kích hoạt: nhập chỉ số nhận phòng cho các công tơ trong `meterIds` |
+| `FINAL_READING_REQUIRED` | 422 | Hoàn tất thanh lý: nhập chỉ số cuối cho các công tơ trong `meterIds` |
+| `METER_NOT_IN_ROOM` | 422 | Công tơ không thuộc phòng / không hoạt động tại ngày đó — tải lại danh sách |
+
+Cảnh báo mềm: `ROOM_WITHOUT_METER` (HĐ hiệu lực, phòng chưa có công tơ điện), `ROOM_HAS_OPEN_CONTRACT` (tháo công tơ khi phòng đang thuê).
+
+## Phiếu tiền phòng & thu tiền
+
+| Code | HTTP | UI |
+|------|------|----|
+| `INVOICE_NOT_FOUND` / `INVOICE_LINE_NOT_FOUND` / `PAYMENT_NOT_FOUND` | 404 | Tải lại |
+| `INVOICE_NOT_DRAFT` | 422 | Phiếu đã chốt / hủy — chỉ đọc |
+| `INVOICE_NOT_FINALIZED` | 422 | Phiếu chưa chốt — chốt trước khi thu / hủy |
+| `INVOICE_HAS_ISSUES` | 422 | Còn thiếu chỉ số / giá (`issues` trong body) — xử lý rồi Tính lại |
+| `DRAFT_STALE` | 409 | Dữ liệu nguồn đã đổi — bấm Tính lại rồi chốt |
+| `NEGATIVE_TOTAL` | 422 | Tổng phiếu âm — bớt giảm trừ |
+| `NOTE_REQUIRED` | 400 | Nhập lý do / ghi chú (phụ thu, sửa tiền phòng) |
+| `INVOICE_HAS_PAYMENTS` | 422 | Đảo phiếu thu trước khi hủy phiếu |
+| `NOT_LATEST_INVOICE` | 422 | Hủy / xóa phiếu kỳ sau trước |
+| `INVOICE_EXISTS` | 409 | Kỳ đã có phiếu (tạo song song) — tải lại |
+| `INVALID_BILLING_MONTH` | 400 | Tháng thu dạng yyyy-MM |
+| `READINGS_INVALID` | 422 | Lưu chỉ số: tô đỏ dòng theo `rowErrors[].index`, chưa lưu dòng nào |
+| `READING_LOCKED` | 422 | Chỉ số đã dùng cho phiếu đã chốt — hủy phiếu trước |
+| `PAYMENT_EXCEEDS_DEBT` | 422 | Số tiền lớn hơn số còn nợ |
+| `NO_OUTSTANDING_INVOICE` | 422 | Không còn phiếu nào chưa thu đủ |
+| `PAYMENT_ALREADY_REVERSED` | 409 | Phiếu thu đã đảo — tải lại |
+| `INVOICE_AFTER_END_DATE` | 422 | Bắt đầu thanh lý / ký lại: còn phiếu kỳ sau ngày trả phòng — hủy / xóa trước |
+
+Cảnh báo trên phiếu (`issues`, `severity: "Warning"`): `EDITED_BASE_CHANGED` (ô sửa tay mà số hệ thống tính lại đã đổi).
+
+## Khoản thu
+
+| Code | HTTP | UI |
+|------|------|----|
+| `FEE_TYPE_NOT_FOUND` / `FEE_PRICE_NOT_FOUND` / `CONTRACT_FEE_NOT_FOUND` | 404 | |
+| `FEE_NAME_TAKEN` / `FEE_SYSTEM_CODE_TAKEN` / `FEE_PRICE_DATE_EXISTS` | 409 | Ô tên / ngày |
+| `FEE_PRICE_LOCKED` | 422 | Ngày thuộc kỳ đã chốt phiếu |
+| `FEE_METERED_FOLLOWS_ROOM` | 400 | Điện / nước theo công tơ đi theo phòng — không gắn vào hợp đồng |
+| `FEE_IN_USE` | 422 | Gỡ khỏi hợp đồng trước khi ngừng dùng |
+| `FEE_HAS_ACTIVE_METERS` | 422 | Còn công tơ đang hoạt động — tháo / thay công tơ trước khi ngừng dùng |
+| `FEE_ARCHIVED` / `FEE_NOT_IN_PROPERTY` | 422 | Chọn khoản khác khi gắn vào hợp đồng |
+| `INVALID_QUANTITY` | 400 | Dịch vụ không theo số gói — bỏ trống số lượng |
+| `INVALID_CHARGE_BASIS` | 400 | Điện nước không chọn cách tính dịch vụ / dịch vụ phải chọn cách tính |
+| `CONTRACT_FEE_LATER_CHANGE_EXISTS` | 409 | Đã có thay đổi từ kỳ sau |
+
+Cảnh báo mềm: `ELECTRICITY_PRICE_ABOVE_THRESHOLD`, `PARKING_QUANTITY_MISMATCH` (số xe đăng ký ≠ số lượng phí giữ xe), `LESSOR_TERMINATION_SHORT_NOTICE` (bên cho thuê đơn phương chấm dứt, báo trước < 30 ngày; HĐ không thời hạn < 90 ngày), `LESSEE_TERMINATION_SHORT_NOTICE` (bên thuê báo trước chưa đủ), `LESSEE_ABANDONED` (bỏ đi không báo — hướng dẫn xử lý).
 
 ## Mẫu hợp đồng
 

@@ -97,5 +97,8 @@ public static class RenterErrors
 {
     public static readonly Error RenterNotFound = Error.NotFound("RENTER_NOT_FOUND", "Không tìm thấy người thuê.");
     public static readonly Error IdNumberExists = Error.Conflict("RENTER_ID_NUMBER_EXISTS",
-        "Số giấy tờ đã có trong hệ thống — hãy dùng lại hồ sơ cũ.");
+        "Số giấy tờ đã có trong hệ thống — hãy dùng lại hồ sơ cũ (một người được đứng tên nhiều phòng).");
+
+    /// <summary>RT-BR-02: kèm <c>existingRenterId</c> để UI mở / chọn hồ sơ cũ.</summary>
+    public static Error IdNumberExistsFor(Guid existingRenterId) => IdNumberExists.WithDetail("existingRenterId", existingRenterId);
 }

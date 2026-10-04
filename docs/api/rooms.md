@@ -12,7 +12,9 @@
 | 4 | `Reserved` — Giữ chỗ | Có hợp đồng Nháp, hoặc HĐ đã kích hoạt nhưng ngày bắt đầu ở tương lai | Vàng |
 | 5 | `Vacant` — Trống | Còn lại | Xanh lá |
 
-Khi `Occupied`, `currentContract` chứa tóm tắt hợp đồng (người đại diện, số người đang ở, ngày hết hạn).
+Khi `Occupied`, `currentContract` chứa tóm tắt hợp đồng (người đại diện, số người đang ở, ngày hết hạn) và `flags` — nhãn cần xử lý trên ô
+phòng: `RepresentativeMovedOut` "Người ký đã rời đi", `NoOccupantLeft` "Không còn người ở", `ExpiredAwaitingDecision` "Quá hạn — chờ quyết định",
+`Holdover` "Ở tiếp chưa ký lại" (chi tiết: [contracts.md](contracts.md#cần-xử-lý-flags)). Hợp đồng quá hạn **vẫn là `Occupied`**.
 
 ## Màn hình
 
@@ -67,14 +69,19 @@ Sắp xếp sẵn theo mã khu → mã phòng.
         "representativeName": "Trần Thị Lan",
         "startDate": "2026-10-02",
         "endDate": "2027-10-02",
-        "occupantCount": 1
+        "occupantCount": 1,
+        "flags": []
       },
-      "version": "946"
+      "version": "946",
+      "outstandingAmount": 2378000
     }
   ],
   "page": 1, "pageSize": 20, "totalCount": 2, "totalPages": 1
 }
 ```
+
+`outstandingAmount` = tổng còn nợ của các phiếu đã chốt của phòng (mọi hợp đồng) — > 0 thì hiện nhãn **"Còn nợ"** + số tiền trên ô phòng
+([payments.md](payments.md)).
 
 `GET /rooms/{id}` trả đúng một phần tử như trên.
 

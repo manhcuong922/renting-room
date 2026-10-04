@@ -177,7 +177,7 @@ public sealed class ContractTests
         contract.AddAsset(new AssetInput("Giường", 1, null, null, null)).Error.Should().Be(ContractErrors.NotDraft);
         contract.RecordAssetReturn(asset.Id, "Hỏng remote", 200_000).Error.Should().Be(ContractErrors.NotLiquidating);
 
-        contract.StartLiquidation(Start.AddMonths(1), TerminationReason.Expired, null, null, Start.AddMonths(1));
+        contract.StartLiquidation(Start.AddMonths(1), TerminationReason.MutualAgreement, null, null, Start.AddMonths(1));
         contract.RecordAssetReturn(asset.Id, "Hỏng remote", 200_000).IsSuccess.Should().BeTrue();
         contract.Assets.Single().CompensationValue.Should().Be(200_000);
     }
@@ -220,5 +220,149 @@ public sealed class ContractTests
     public void ChangeRent_IsNotAllowedOnDraft()
     {
         NewDraft().ChangeRent(new DateOnly(2026, 11, 5), 4_000_000, null, null, null).Error.Should().Be(ContractErrors.NotActive);
+    }
+
+    private static Contract NewActiveIndefinite()
+    {
+        var contract = Contract.CreateDraft(Guid.NewGuid(), Guid.NewGuid(), "hd2026-0002", Draft(OccupantA) with { EndDate = null });
+        contract.Activate(Context()).IsSuccess.Should().BeTrue();
+        return contract;
+    }
+
+    private static IEnumerable<string> WarningCodes(Contract contract) => ContractWarnings.For(contract).Select(w => w.Code);
+
+    [Fact]
+    public void ExpiredReason_OnlyForFixedTermContract_EndingOnOrAfterEndDate()
+    {
+        var end = Start.AddYears(1).AddDays(-1);
+        NewActive().StartLiquidation(end.AddDays(-10), TerminationReason.Expired, null, null, end.AddDays(-10))
+            .Error.Should().Be(ContractErrors.ExpiredReasonInvalid, "trả sớm hơn hạn không phải hết hạn");
+        NewActiveIndefinite().StartLiquidation(Start.AddMonths(2), TerminationReason.Expired, null, null, Start.AddMonths(2))
+            .Error.Should().Be(ContractErrors.ExpiredReasonInvalid, "HĐ không thời hạn không bao giờ hết hạn");
+        NewActive().StartLiquidation(end, TerminationReason.Expired, null, null, end).IsSuccess.Should().BeTrue();
+    }
+
+    [Fact]
+    public void IndefiniteContract_LessorEndsWithNinetyDayNotice_CannotExtend()
+    {
+        NewActiveIndefinite().Extend(Start.AddYears(1)).Error.Should().Be(ContractErrors.CannotExtendIndefinite);
+        NewActive().StartLiquidation(Start.AddMonths(1), TerminationReason.LessorUnilateral, TerminationGround.IndefiniteTermNotice, null, Start)
+            .Error.Should().Be(ContractErrors.IndefiniteGroundOnly);
+
+        var shortNotice = NewActiveIndefinite();
+        shortNotice.StartLiquidation(Start.AddDays(45), TerminationReason.LessorUnilateral, TerminationGround.IndefiniteTermNotice, null, Start)
+            .IsSuccess.Should().BeTrue();
+        WarningCodes(shortNotice).Should().Contain("LESSOR_TERMINATION_SHORT_NOTICE");
+
+        var enough = NewActiveIndefinite();
+        enough.StartLiquidation(Start.AddDays(90), TerminationReason.LessorUnilateral, TerminationGround.IndefiniteTermNotice, null, Start)
+            .IsSuccess.Should().BeTrue("được hẹn trước 90 ngày dù mức thường là 60");
+        WarningCodes(enough).Should().NotContain("LESSOR_TERMINATION_SHORT_NOTICE");
+        NewActiveIndefinite().StartLiquidation(Start.AddDays(91), TerminationReason.LessorUnilateral, TerminationGround.IndefiniteTermNotice, null, Start)
+            .Error.Should().Be(ContractErrors.InvalidEndDate);
+    }
+
+    [Fact]
+    public void Abandoned_AllowsPastMoveOutDate_RequiresNote_AndWarns()
+    {
+        var today = Start.AddMonths(3);
+        NewActive().StartLiquidation(today.AddDays(-12), TerminationReason.Abandoned, null, null, today)
+            .Error.Should().Be(ContractErrors.AbandonedNoteRequired);
+
+        var contract = NewActive();
+        contract.StartLiquidation(today.AddDays(-12), TerminationReason.Abandoned, null,
+            "Phát hiện phòng bỏ trống, còn 1 vali; tổ trưởng chứng kiến", today).IsSuccess.Should().BeTrue();
+
+        contract.ActualEndDate.Should().Be(today.AddDays(-12));
+        WarningCodes(contract).Should().Contain("LESSEE_ABANDONED");
+    }
+
+    [Fact]
+    public void LesseeLeavingWithoutEnoughNotice_IsWarned()
+    {
+        var noNotice = NewActive();
+        noNotice.StartLiquidation(Start.AddMonths(2), TerminationReason.LesseeUnilateral, null, null, Start.AddMonths(2));
+        WarningCodes(noNotice).Should().Contain("LESSEE_TERMINATION_SHORT_NOTICE");
+
+        var noticed = NewActive();
+        noticed.GiveNotice(Start.AddMonths(1), Start.AddMonths(2));
+        noticed.StartLiquidation(Start.AddMonths(2), TerminationReason.LesseeUnilateral, null, null, Start.AddMonths(2));
+        WarningCodes(noticed).Should().NotContain("LESSEE_TERMINATION_SHORT_NOTICE");
+    }
+
+    // ------------------------------------------------------------------ CT-BR-44/45: cờ cần chủ trọ xử lý
+
+    private static Contract NewActiveWith(params Guid[] occupants)
+    {
+        var contract = NewDraft(occupants);
+        contract.Activate(Context(maxOccupants: 4)).IsSuccess.Should().BeTrue();
+        return contract;
+    }
+
+    private static void MoveOut(Contract contract, Guid renterId, DateOnly date) =>
+        contract.EndOccupancy(contract.Occupants.Single(o => o.RenterId == renterId).Id, date).IsSuccess.Should().BeTrue();
+
+    [Fact]
+    public void RepresentativeMovesOut_WhileOthersStay_IsFlagged_RoomStillHasContract()
+    {
+        var contract = NewActiveWith(Representative, OccupantA);
+        var today = Start.AddMonths(2);
+        MoveOut(contract, Representative, today.AddDays(-1));
+
+        contract.Flags(today).Should().Equal(ContractFlag.RepresentativeMovedOut);
+        contract.Status.Should().Be(ContractStatus.Active);
+        ContractWarnings.For(contract, today: today).Select(w => w.Code).Should().Contain("REPRESENTATIVE_MOVED_OUT");
+
+        MoveOut(contract, OccupantA, today);
+        contract.Flags(today).Should().Equal([ContractFlag.NoOccupantLeft], "người cuối cùng chuyển đi ⇒ nhắc thanh lý, không tự về phòng trống");
+    }
+
+    [Fact]
+    public void RepresentativeWhoNeverLivedThere_IsNotFlagged()
+    {
+        var contract = NewActiveWith(OccupantA, OccupantB); // bố ký cho con, không ở
+        contract.Flags(Start.AddMonths(1)).Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Expired_AwaitsDecision_HoldoverThenExtend()
+    {
+        var contract = NewActive();
+        var end = Start.AddYears(1).AddDays(-1);
+
+        contract.StartHoldover(end, null).Error.Should().Be(ContractErrors.NotExpired);
+        contract.Flags(end.AddDays(1)).Should().Equal(ContractFlag.ExpiredAwaitingDecision);
+
+        contract.StartHoldover(end.AddDays(3), "Chưa kịp ký lại").IsSuccess.Should().BeTrue();
+        contract.Flags(end.AddDays(10)).Should().Equal(ContractFlag.Holdover);
+        contract.StartHoldover(end.AddDays(4), null).Error.Should().Be(ContractErrors.HoldoverAlready);
+
+        contract.Extend(end.AddYears(1)).IsSuccess.Should().BeTrue();
+        contract.HoldoverSince.Should().BeNull();
+        contract.Flags(end.AddDays(10)).Should().BeEmpty();
+    }
+
+    [Fact]
+    public void ResignDraft_CopiesTermsAndRemainingOccupants()
+    {
+        var contract = NewActiveWith(Representative, OccupantA, OccupantB);
+        var handover = Start.AddMonths(3);
+        MoveOut(contract, Representative, handover);
+
+        contract.ResignDraft(handover, Representative, null).Error.Should().Be(ContractErrors.ResignRepresentativeNotOccupant);
+        var data = contract.ResignDraft(handover, OccupantA, null).Value!;
+
+        data.StartDate.Should().Be(handover.AddDays(1));
+        data.RepresentativeRenterId.Should().Be(OccupantA);
+        data.Occupants.Select(o => o.RenterId).Should().BeEquivalentTo([OccupantA, OccupantB]);
+        data.Occupants.Should().OnlyContain(o => o.MoveInDate == handover.AddDays(1) && o.RelationshipType == null,
+            "chủ hộ cũ (người ký) đã đi ⇒ khai lại quan hệ với người đứng tên mới");
+        data.MonthlyRent.Should().Be(3_500_000);
+        data.DepositAmount.Should().Be(3_500_000);
+        data.BillingAnchorDay.Should().Be(contract.BillingAnchorDay);
+
+        MoveOut(contract, OccupantA, handover);
+        MoveOut(contract, OccupantB, handover);
+        contract.ResignDraft(handover, OccupantA, null).Error.Should().Be(ContractErrors.ResignNoOccupantLeft);
     }
 }

@@ -162,3 +162,41 @@ public sealed class ContractVehicle : TenantEntity
 }
 
 public sealed record VehicleInput(Guid? RenterId, VehicleType VehicleType, string? PlateNumber, string? BrandColor, DateOnly RegisteredFrom, string? Note);
+
+/// <summary>
+/// Đăng ký khoản thu của HĐ trong một khoảng hiệu lực [EffectiveFrom, EffectiveTo] (CT-BR-06). Đổi số lượng / giá riêng
+/// từ một kỳ = đóng bản cũ ngày trước đó + thêm bản mới ⇒ giữ lịch sử để tính lại các kỳ cũ.
+/// </summary>
+public sealed class ContractFee : TenantEntity
+{
+    private ContractFee() { } // EF Core
+
+    internal ContractFee(Guid contractId, Guid propertyId, ContractFeeInput input, DateOnly effectiveFrom)
+    {
+        Id = Guid.NewGuid();
+        ContractId = contractId;
+        PropertyId = propertyId;
+        FeeTypeId = input.FeeTypeId;
+        Quantity = input.Quantity;
+        UnitPriceOverride = input.UnitPriceOverride;
+        EffectiveFrom = effectiveFrom;
+    }
+
+    public Guid ContractId { get; private set; }
+    public Guid PropertyId { get; private set; }
+    public Guid FeeTypeId { get; private set; }
+    public decimal Quantity { get; private set; }
+    public decimal? UnitPriceOverride { get; private set; }
+    public DateOnly EffectiveFrom { get; private set; }
+    public DateOnly? EffectiveTo { get; private set; }
+
+    public bool Covers(DateOnly date) => EffectiveFrom <= date && (EffectiveTo is null || EffectiveTo >= date);
+
+    internal void Replace(ContractFeeInput input)
+    {
+        Quantity = input.Quantity;
+        UnitPriceOverride = input.UnitPriceOverride;
+    }
+
+    internal void EndOn(DateOnly date) => EffectiveTo = date;
+}

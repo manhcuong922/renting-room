@@ -1,8 +1,12 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using renting_room.Domain.Billing;
 using renting_room.Domain.Common;
 using renting_room.Domain.Contracts;
+using renting_room.Domain.Fees;
 using renting_room.Domain.Identity;
+using renting_room.Domain.Meters;
+using renting_room.Domain.Payments;
 using renting_room.Domain.Properties;
 using renting_room.Domain.Renters;
 
@@ -18,7 +22,11 @@ public interface IAppDbContext
     DbSet<RoomGroup> RoomGroups { get; }
     DbSet<Renter> Renters { get; }
     DbSet<ContractTemplate> ContractTemplates { get; }
+    DbSet<FeeType> FeeTypes { get; }
     DbSet<Contract> Contracts { get; }
+    DbSet<Meter> Meters { get; }
+    DbSet<Invoice> Invoices { get; }
+    DbSet<Payment> Payments { get; }
 
     /// <summary>Dùng cho transaction tường minh khi một use case cần nhiều lệnh ghi nguyên tử.</summary>
     DatabaseFacade Database { get; }

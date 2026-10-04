@@ -196,6 +196,31 @@ public sealed class ChangeManagerStatusHandler(
     }
 }
 
+/// <summary>ID-BR-22: chủ trọ cấp / thu hồi quyền xem dữ liệu nhạy cảm cho phó quản lý — ghi log kiểm toán.</summary>
+public sealed record SetSensitiveDataAccessCommand(Guid Id, bool Allowed) : IRequest<Result<MemberDto>>;
+
+public sealed class SetSensitiveDataAccessHandler(
+    IAppDbContext db, ICurrentUser currentUser, ILogger<SetSensitiveDataAccessHandler> logger)
+    : IRequestHandler<SetSensitiveDataAccessCommand, Result<MemberDto>>
+{
+    public async ValueTask<Result<MemberDto>> Handle(SetSensitiveDataAccessCommand request, CancellationToken cancellationToken)
+    {
+        var manager = await ManagerLookup.FindAsync(db, currentUser, request.Id, cancellationToken);
+        if (manager.IsFailure)
+            return manager.Error!;
+
+        var user = manager.Value!;
+        var changed = user.SetSensitiveDataAccess(request.Allowed);
+        if (changed.IsFailure)
+            return changed.Error!;
+
+        await db.SaveChangesAsync(cancellationToken);
+        logger.LogWarning("AUDIT: owner {ActorId} {Action} sensitive data access of manager {UserId}",
+            currentUser.UserId, request.Allowed ? "granted" : "revoked", user.Id);
+        return await db.Users.AsNoTracking().Where(u => u.Id == user.Id).ToDto().FirstAsync(cancellationToken);
+    }
+}
+
 public sealed record ResetManagerPasswordCommand(Guid Id) : IRequest<Result<TemporaryCredentials>>;
 
 public sealed class ResetManagerPasswordHandler(

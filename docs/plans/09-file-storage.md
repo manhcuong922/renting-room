@@ -85,7 +85,7 @@ IAttachmentOwnerResolver: ExistsAsync(ownerType, ownerId) — mỗi module đăn
 ownerType/category enum + ánh xạ FS-BR-03; description ≤ 300; tên file làm sạch (bỏ ký tự điều khiển, `/ \ : * ? " < > |`).
 
 ## 9. Phân quyền
-Theo quyền trên owner. OrgManager (P3): file nhạy cảm cần quyền `ViewSensitive`.
+Theo quyền trên owner (P1: chủ trọ và phó quản lý toàn quyền nghiệp vụ (M01 §3.3)). File nhạy cảm (ảnh giấy tờ): dữ liệu nhạy cảm (số giấy tờ đầy đủ) chỉ chủ trọ hoặc phó quản lý được chủ trọ cấp quyền (ID-BR-22).
 
 ## 10. Toàn vẹn dữ liệu
 

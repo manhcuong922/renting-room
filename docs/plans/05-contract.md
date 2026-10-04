@@ -44,12 +44,12 @@ cho người chưa thành niên; chặn một người ở 2 phòng cùng lúc.
 
 | ID | Mô tả |
 |----|-------|
-| CT-UC-01 | Tạo HĐ nháp: chọn phòng, người đại diện, người ở, ngày bắt đầu, thời hạn, giá thuê, tiền cọc, cài đặt kỳ thu (mặc định từ khu), khoản thu (auto-attach từ M04, chỉnh được), điều khoản (text) |
+| CT-UC-01 | Tạo HĐ nháp: chọn phòng, người đại diện, người ở, ngày bắt đầu, thời hạn (bỏ trống = không thời hạn), giá thuê, tiền cọc, cài đặt kỳ thu (mặc định từ khu), khoản thu **cố định / theo số lượng** (auto-attach từ M04, chỉnh được — điện nước theo công tơ đi theo phòng, FE-BR-17), điều khoản (text) |
 | CT-UC-02 | Sửa HĐ nháp (mọi trường) / hủy nháp |
 | CT-UC-03 | **Kích hoạt** (bàn giao phòng): nhập chỉ số bàn giao cho các công tơ (M06), (tùy chọn) ghi nhận tiền cọc đã nhận (M08) |
 | CT-UC-04 | Thêm người ở (ngày vào, **quan hệ với người đứng tên**, đồng ý của người giám hộ nếu < 18 tuổi) / ghi nhận người ở rời đi (ngày ra) |
 | CT-UC-05 | Phụ lục: đổi giá thuê từ kỳ X; gia hạn `end_date`; đổi tiền cọc thỏa thuận |
-| CT-UC-06 | Đổi đăng ký khoản thu từ kỳ X (thêm/bỏ khoản, đổi số lượng xe, giá riêng) |
+| CT-UC-06 ✅ | Đổi đăng ký khoản thu từ kỳ X (thêm/bỏ khoản, đổi số lượng xe, giá riêng) — nháp qua `fees[]`, đang hiệu lực qua `PUT/DELETE /contracts/{id}/fees/{feeTypeId}` |
 | CT-UC-07 | Báo trả phòng: ghi nhận ngày báo, ngày dự kiến trả; cảnh báo nếu < `notice_days` |
 | CT-UC-08 | Bắt đầu thanh lý (đặt `actual_end_date`) → ghi chỉ số cuối → tạo phiếu quyết toán (M07) → cấn trừ/hoàn cọc (M08) → hoàn tất |
 | CT-UC-09 | Hủy thanh lý (quay về Active) khi chưa chốt phiếu quyết toán |
@@ -58,28 +58,31 @@ cho người chưa thành niên; chặn một người ở 2 phòng cùng lúc.
 | CT-UC-12 | Chuyển phòng: kết thúc HĐ cũ + tạo HĐ mới với `previous_contract_id`, chuyển cọc (M08) |
 | CT-UC-13 | Ghi **tài sản bàn giao** (điều hòa, giường, chìa khóa…) và tình trạng; khi trả phòng ghi tình trạng lúc trả + giá trị bồi thường |
 | CT-UC-14 | Đăng ký **xe gửi** (biển số, loại, màu) — đối chiếu số lượng khoản phí giữ xe |
-| CT-UC-15 | (P2) In hợp đồng / phụ lục / biên bản bàn giao từ mẫu, điền sẵn dữ liệu snapshot |
+| CT-UC-15 ✅ | In hợp đồng ra **.docx** (`GET /contracts/{id}/document`) từ bản chụp lúc ký + mẫu + khoản thu + tiền bằng chữ; nháp có dòng "BẢN NHÁP". Còn lại P2: PDF, phụ lục, biên bản bàn giao riêng |
 | CT-UC-16 ✅ | Quản lý **mẫu hợp đồng**: tạo từ mẫu gợi ý (thuê trọ / thuê trọ không cọc / thuê nhà nguyên căn), sửa tiêu đề, điều khoản, trường tùy biến, ngừng dùng / khôi phục |
 | CT-UC-17 ✅ | Tạo / sửa HĐ nháp **theo mẫu**: chép tiêu đề, điều khoản, định nghĩa trường vào HĐ; nhập giá trị trường tùy biến (VD cách tính điện, tiền nước/người, wifi); ghi đè tiêu đề / điều khoản cho riêng HĐ |
 | CT-UC-18 ✅ | Lọc **nhóm hợp đồng không cọc / có cọc** trong danh sách HĐ |
+| CT-UC-20 ✅ | **Dữ liệu cần xem lại** (`GET /contracts/data-review`): quan hệ người ở không còn hợp lý, người đứng tên < 18 tuổi tại ngày ký, một người ở 2 phòng, khoản thu chưa có giá |
 | CT-UC-19 ✅ | Khai **quan hệ người ở với người đứng tên** (vợ, chồng, con, cha mẹ, cùng ở thuê…) — dữ liệu để lập tờ khai tạm trú chung hộ và xuất danh sách (M10 E1) |
+| CT-UC-21 ✅ | **Ký lại cho người còn ở** — `POST /contracts/{id}/re-sign` `{ handoverDate, representativeRenterId, endDate? }`: trong 1 transaction (1) HĐ cũ bắt đầu thanh lý tại `handoverDate` = X (lý do `MutualAgreement`, ghi chú "Ký lại cho người còn ở — HĐ mới …"); (2) tạo **HĐ nháp mới** từ X+1, `previous_contract_id` = HĐ cũ, chép: giá thuê hiện hành, cài đặt kỳ thu, ngày báo trước, phương thức thanh toán, cọc + điều khoản cọc (thông tin — PM-BR-19), mẫu / tiêu đề / điều khoản / trường tùy biến, khoản dịch vụ đang áp tại X+1, **người ở còn ở sau X** (vào ở X+1; giữ quan hệ nếu chủ hộ còn ở, ngược lại xóa quan hệ để khai lại so với người đứng tên mới), xe đang đăng ký của người đứng tên mới / người ở được chép. `endDate` bỏ trống = không thời hạn. Người đứng tên mới phải là một người còn ở (422 `RESIGN_REPRESENTATIVE_NOT_OCCUPANT`); không còn ai ở sau X → 422 `RESIGN_NO_OCCUPANT_LEFT`; lỗi thanh lý như CT-BR-11. → 201 `{ id: <HĐ nháp mới>, warnings }`. Chủ trọ xem lại nháp rồi kích hoạt như bình thường; cọc chuyển bằng M08 PM-UC-09 |
+| CT-UC-22 ✅ | **Quyết định khi HĐ hết hạn mà người thuê vẫn ở** (CT-BR-45): (1) Gia hạn / ký phụ lục — `POST /contracts/{id}/extend` (xóa trạng thái ở tiếp); (2) **Ở tiếp, chưa ký lại** — `POST /contracts/{id}/holdover` `{ note? }` → 204; HĐ chưa quá hạn → 422 `CONTRACT_NOT_EXPIRED`, đã ghi nhận → 409 `HOLDOVER_ALREADY`; (3) **Không cho thuê tiếp** → `POST /contracts/{id}/liquidation/start` |
 
 ### 3.2 Quy tắc nghiệp vụ
 
 | Mã | Quy tắc | Nơi kiểm tra |
 |----|---------|-------------|
 | CT-BR-01 | Một phòng **không thể có 2 HĐ chồng lấn thời gian** trong các trạng thái `Active/Liquidating/Ended`. Khoảng chiếm phòng = `[start_date, COALESCE(actual_end_date, 'infinity')]` | **DB EXCLUDE constraint** (btree_gist) |
-| CT-BR-02 | Kích hoạt yêu cầu: phòng không archive/bảo trì; người đại diện có SĐT; ≥ 1 người ở; giá thuê > 0; **mỗi khoản Metered HĐ đăng ký phải có công tơ đang hoạt động** trên phòng (MT-BR-11) và có **chỉ số bàn giao** cho công tơ đó; `start_date` ≤ hôm nay + 1 (kích hoạt = bàn giao thực tế; cho phép lùi ngày khi nhập HĐ cũ) | Domain + Application |
+| CT-BR-02 | Kích hoạt yêu cầu: phòng không archive/bảo trì; người đại diện có SĐT; ≥ 1 người ở; giá thuê > 0; `start_date` ≤ hôm nay + 1 (kích hoạt = bàn giao thực tế; cho phép lùi ngày khi nhập HĐ cũ). **Đổi 04/10/2026**: không còn bắt HĐ đăng ký công tơ. Khi M06 có: màn hình kích hoạt **bắt nhập chỉ số nhận phòng** cho từng công tơ đang hoạt động của phòng tại ngày vào ở — nút "Dùng số mới nhất" (chỉ số cuối của HĐ trước / chỉ số tháng trước) hoặc nhập số khác ≥ số đó (MT-BR-13); phòng chưa có công tơ điện → **cảnh báo**, không chặn (phòng tính nước theo người không cần công tơ nước) | Domain + Application |
 | CT-BR-03 | `end_date` (nếu có) > `start_date`. Hết `end_date` mà chưa thanh lý → HĐ **vẫn Active** (cờ dẫn xuất `IsOverdue`), vẫn lập phiếu bình thường — không tự kết thúc | Thiết kế |
 | CT-BR-04 | Cài đặt kỳ thu (`billing_anchor_day`, `charge_mode`, `proration_mode`, `payment_due_days`) **snapshot** từ khu khi tạo; **khóa** sau khi có phiếu đầu tiên chưa Void (đổi anchor làm vỡ chuỗi kỳ) | Domain (cờ `has_invoices` kiểm qua M07) |
-| CT-BR-05 | Giá thuê theo `contract_rent_terms`; bản đầu tiên `effective_from = start_date`. Phụ lục giá chỉ cho hợp đồng **Active** (nháp sửa trực tiếp). Bản mới phải có `effective_from` là **ngày bắt đầu một kỳ** (C-05) và ≥ kỳ đầu tiên chưa có phiếu **Finalized** (draft của các kỳ đó → stale) | Domain |
+| CT-BR-05 | Giá thuê theo `contract_rent_terms`; bản đầu tiên `effective_from = start_date`. Phụ lục giá chỉ cho hợp đồng **Active** (nháp sửa trực tiếp). Bản mới phải có `effective_from` là **ngày bắt đầu một kỳ** (C-05) và ≥ kỳ đầu tiên chưa có phiếu **Finalized** (draft của các kỳ đó → stale) | Domain — ✅ khóa thật theo phiếu đã chốt (M07 đợt 1) |
 | CT-BR-06 | `contract_fees`: mỗi `(contract, fee_type)` các khoảng hiệu lực không chồng lấn; `effective_from` là đầu kỳ, cùng quy tắc khóa như CT-BR-05. Khoản thu phải thuộc **cùng khu** với HĐ | DB EXCLUDE + FK composite `(organization_id, property_id, fee_type_id)` |
-| CT-BR-07 | `quantity`: Quantity > 0; Metered/Fixed = 1. `unit_price_override` ≥ 0 hoặc NULL (dùng giá danh mục) | CHECK |
+| CT-BR-07 | `quantity`: Quantity > 0; Fixed = 1. Khoản `Metered` không gắn vào HĐ (FE-BR-17). `unit_price_override` ≥ 0 hoặc NULL (dùng giá danh mục) | CHECK + Application |
 | CT-BR-08 | Người ở: `move_in_date` ≥ `start_date` của HĐ; `move_out_date` (nếu có) ≥ `move_in_date` và ≤ `actual_end_date` (nếu có). Cùng 1 renter không có 2 khoảng ở chồng lấn trong cùng HĐ. Đã ghi chuyển đi thì **không ghi lại** (409 `OCCUPANT_ALREADY_MOVED_OUT`) — muốn ở tiếp thì thêm lại như người ở mới | Domain + DB EXCLUDE |
 | CT-BR-09 | Số người ở đồng thời ≤ `rooms.max_occupants` — vượt → 422 `ROOM_CAPACITY_EXCEEDED` trừ khi `overrideCapacity=true` (ghi audit) — áp dụng cả khi **thêm người ở** và khi **kích hoạt** (VD gia đình có con nhỏ ở phòng 2 người) | Application |
-| CT-BR-10 | Một renter đang ở (occupancy mở) tại HĐ khác → **cảnh báo**, không chặn (có thể thuê 2 phòng) | Application |
-| CT-BR-11 | Bắt đầu thanh lý: `actual_end_date` ≥ `start_date` và ≥ `move_in_date` muộn nhất; ≤ hôm nay + 60 ngày; **không tồn tại phiếu Regular chưa Void có `period_start` > `actual_end_date`** (phải hủy trước — tránh thu tiền kỳ sau khi đã trả phòng); không tồn tại chỉ số `Periodic` chưa hủy có `closing_period_start` > `actual_end_date`. Trong trạng thái `Liquidating` M07 **không** tạo phiếu định kỳ cho kỳ bắt đầu sau `actual_end_date` | Domain + Application |
-| CT-BR-12 | Hoàn tất thanh lý yêu cầu: có chỉ số cuối cho mọi công tơ đang tính; phiếu quyết toán `Finalized`; mọi phiếu của HĐ `Paid` hoặc `Void`; số dư cọc = 0; số dư có (credit) = 0. Tự đặt `move_out_date = actual_end_date` cho người ở còn mở → phát `OccupancyEnded` | Application (transaction) |
+| CT-BR-10 | ~~Một renter đang ở tại HĐ khác → cảnh báo, không chặn~~ — **thay bằng CT-BR-31** (03/10/2026): là **người ở** thì không được ở 2 phòng cùng lúc (409). Vẫn được **đứng tên** (người đại diện ký) nhiều HĐ / nhiều phòng — không kiểm tra | Application |
+| CT-BR-11 ✅ | Bắt đầu thanh lý: `actual_end_date` ≥ `start_date` và ≥ `move_in_date` muộn nhất; ≤ hôm nay + 60 ngày; **không tồn tại phiếu Regular chưa Void có `period_start` > `actual_end_date`** (phải hủy trước — tránh thu tiền kỳ sau khi đã trả phòng); không tồn tại chỉ số `Periodic` chưa hủy có `closing_period_start` > `actual_end_date`. Trong trạng thái `Liquidating` M07 **không** tạo phiếu định kỳ cho kỳ bắt đầu sau `actual_end_date` | Domain + Application |
+| CT-BR-12 | Hoàn tất thanh lý yêu cầu: **có chỉ số cuối (`Final`, ngày = `actual_end_date`) cho mọi công tơ hoạt động của phòng** — gửi trong `finalReadings` (✅ đợt 1 M06, thiếu → 422 `FINAL_READING_REQUIRED`); phiếu quyết toán `Finalized`; mọi phiếu của HĐ `Paid` hoặc `Void`; số dư cọc = 0; số dư có (credit) = 0 (phần phiếu / cọc chờ M07, M08). Tự đặt `move_out_date = actual_end_date` cho người ở còn mở → phát `OccupancyEnded` | Application (transaction) |
 | CT-BR-13 | Không xóa HĐ khác `Draft`. Nháp chỉ **hủy** (`Cancelled`, lý do) — giữ lại lịch sử | Domain |
 | CT-BR-14 | HĐ không đổi phòng. Chuyển phòng = HĐ mới (CT-UC-12) | Thiết kế |
 | CT-BR-15 | `contract_no`: người dùng nhập hoặc tự sinh `HD{yyyy}-{seq:0000}`; unique trong tổ chức | DB unique |
@@ -88,8 +91,8 @@ cho người chưa thành niên; chặn một người ở 2 phòng cùng lúc.
 | CT-BR-18 | **Người đại diện ký phải đủ 18 tuổi** tại ngày ký (`signed_date`, nếu trống dùng ngày kích hoạt) — BLDS 2015 Điều 117. Người ở có thể dưới 18 tuổi | Domain |
 | CT-BR-19 | Kích hoạt yêu cầu khu có **thông tin bên cho thuê đầy đủ** (PR-BR-12). Khi kích hoạt chụp **snapshot bất biến**: `signing_snapshot` (bên cho thuê, bên thuê, phòng, ngân hàng), `utility_price_snapshot` (đơn giá điện, nước, dịch vụ tại ngày bắt đầu), `house_rules_snapshot` — sửa khu sau đó không đổi hợp đồng đã ký | Application |
 | CT-BR-20 | `effective_date` mặc định = `signed_date` (Luật Nhà ở 2023 Điều 164: không thỏa thuận thì hiệu lực từ lúc ký); ràng buộc `signed_date ≤ effective_date` (có thể sau ngày bàn giao: dọn vào trước, ký sau). Không ghi ngày ký: HĐ nhập lại (bắt đầu trong quá khứ) lấy ngày bắt đầu, HĐ mới lấy hôm nay | Validator + CHECK |
-| CT-BR-21 | Kết thúc phải có `termination_reason`: `Expired`, `MutualAgreement`, `LesseeUnilateral`, `LessorUnilateral`, `RoomTransfer`. `LessorUnilateral` bắt buộc `termination_ground` thuộc Điều 172 khoản 2 (`RentArrears3Months`, `WrongPurpose`, `UnauthorizedRenovation`) hoặc `Other` + mô tả; báo trước < 30 ngày → cảnh báo (trừ bất khả kháng) | Domain + Application |
-| CT-BR-22 | Tổng số xe đăng ký đang hiệu lực theo loại ≠ số lượng khoản phí giữ xe tương ứng → **cảnh báo** (không chặn) | Application |
+| CT-BR-21 ✅ | Kết thúc phải có `termination_reason`: `Expired`, `MutualAgreement`, `LesseeUnilateral`, `LessorUnilateral`, `RoomTransfer`, `Abandoned` (CT-BR-41). `Expired` chỉ khi HĐ **có thời hạn** và `actual_end_date ≥ end_date` → ngược lại 422 `EXPIRED_REASON_INVALID`. `LessorUnilateral` bắt buộc `termination_ground` thuộc Điều 172 khoản 2 (`RentArrears3Months`, `WrongPurpose`, `UnauthorizedRenovation`), `IndefiniteTermNotice` (CT-BR-42) hoặc `Other` + mô tả; báo trước < 30 ngày → cảnh báo `LESSOR_TERMINATION_SHORT_NOTICE` (tính `actual_end_date − liquidation_started_on`). Bên thuê đơn phương (`LesseeUnilateral`) mà chưa báo trước / báo < `notice_days` → cảnh báo `LESSEE_TERMINATION_SHORT_NOTICE` (xử lý cọc theo điều khoản) | Domain + Application |
+| CT-BR-22 ✅ | Tổng số xe đăng ký đang hiệu lực theo loại ≠ số lượng khoản phí giữ xe tương ứng → **cảnh báo** `PARKING_QUANTITY_MISMATCH` (không chặn). Khoản phí giữ xe = khoản `Quantity` có `fee_types.vehicle_type` | Domain `ContractWarnings` (chi tiết HĐ + đăng ký xe) |
 | CT-BR-23 | Tài sản bàn giao: ghi tình trạng lúc trả khi thanh lý; tổng `compensation_value` được **gợi ý** làm khoản trừ cọc — chủ trọ xác nhận mới tạo bút toán (M08) | Application |
 | CT-BR-24 | Hợp đồng là giấy tờ chứng minh chỗ ở hợp pháp để đăng ký tạm trú, không cần công chứng (NĐ 154/2024) ⇒ phải in được đầy đủ thông tin 2 bên + địa chỉ phòng | Thiết kế (CT-UC-15) |
 | CT-BR-25 | **Mẫu hợp đồng** theo tổ chức (`contract_templates`: tên duy nhất, loại `RoomRental`/`WholeHouseRental`, tiêu đề, điều khoản jsonb, định nghĩa trường jsonb). Tạo/sửa nháp **chép** tiêu đề, điều khoản, định nghĩa trường vào hợp đồng (`title`, `clauses`, `custom_field_definitions`) ⇒ sửa/ngừng mẫu không đổi HĐ đã kích hoạt. Mẫu ngừng dùng không chọn được cho HĐ mới; nháp đang gắn mẫu vẫn sửa được | Application + FK composite `(organization_id, template_id)` |
@@ -108,6 +111,11 @@ cho người chưa thành niên; chặn một người ở 2 phòng cùng lúc.
 | CT-BR-38 ✅ | Sửa nháp làm chủ xe (`contract_vehicles.renter_id`) không còn là người đứng tên / người ở → 422 `VEHICLE_OWNER_NOT_IN_CONTRACT`; kết thúc đăng ký xe đó trước | Domain |
 | CT-BR-39 ✅ | **Cảnh báo mềm** (không chặn) trả trong `warnings` của tạo HĐ / đăng ký xe / chi tiết HĐ: `DEPOSIT_ABOVE_THREE_MONTHS` (cọc > 3 tháng tiền thuê ban đầu), `PLATE_FORMAT_UNUSUAL` (biển số sau chuẩn hóa không khớp `^[0-9]{2}[A-Z]{1,2}[0-9]?[0-9]{4,5}$`) | Domain `ContractWarnings` |
 | CT-BR-40 ✅ | Ghi chú nội bộ (`note`) sửa được ở mọi trạng thái trừ `Cancelled` qua `PUT /contracts/{id}/note`; nội dung đã ký (điều khoản, giá, trường tùy biến) chỉ đổi qua phụ lục | Domain |
+| CT-BR-41 ✅ | **Trả phòng bất chợt / bỏ đi không báo** (`Abandoned`): `actual_end_date` được lùi về quá khứ (ngày phát hiện hoặc ngày cuối còn ở, ≥ `start_date` và ≥ ngày vào ở muộn nhất); ghi chú bắt buộc (ngày phát hiện, đồ để lại, người chứng kiến) → 422 `ABANDONED_NOTE_REQUIRED`. Cảnh báo `LESSEE_ABANDONED` nhắc: lập biên bản kiểm kê đồ để lại có người làm chứng, chốt chỉ số công tơ ngày phát hiện (M06 `Final`), khai báo xóa tạm trú (LEG-04), xử lý cọc theo điều khoản (M08 — cấn trừ / mất cọc), nợ không đòi được → xóa nợ (PM-BR-16). Phiếu kỳ sau `actual_end_date` phải hủy trước (CT-BR-11) | Domain + Application |
+| CT-BR-42 ✅ | **HĐ không thời hạn** (`end_date` NULL — Luật Nhà ở 2023 Điều 171, BLDS Điều 474): không gia hạn (422 `CANNOT_EXTEND_INDEFINITE`), không vào danh sách sắp hết hạn / quá hạn, không chọn lý do `Expired`. Bên cho thuê chấm dứt bằng căn cứ `IndefiniteTermNotice` (chỉ cho HĐ không thời hạn → 422 `INDEFINITE_GROUND_ONLY`): được hẹn ngày trả phòng tới **90 ngày** sau ngày bắt đầu thanh lý (thay mức 60 ngày của CT-BR-11); báo trước < 90 ngày → cảnh báo `LESSOR_TERMINATION_SHORT_NOTICE`. Bên thuê chấm dứt: như CT-BR-21 (báo trước `notice_days`) | Domain |
+| CT-BR-43 ✅ | Bản in (CT-UC-15): ngoài thỏa thuận lúc ký, in cả khoản gắn **sau khi ký** dù hiệu lực từ đúng ngày bắt đầu (trước đây bị bỏ sót). Người không có quyền dữ liệu nhạy cảm (ID-BR-22) nhận bản in có số giấy tờ ở dạng che | Application |
+| CT-BR-44 ✅ | **Người đứng tên rời đi khi còn người ở**: người đứng tên là người ở của HĐ và đã chuyển đi (`move_out_date ≤ hôm nay`) trong khi còn người ở khác (`move_out_date` trống hoặc > hôm nay) → HĐ **vẫn hiệu lực**, phòng vẫn "Đang thuê"; HĐ có cờ `RepresentativeMovedOut` + cảnh báo `REPRESENTATIVE_MOVED_OUT` "Phòng còn người ở nhưng người ký hợp đồng đã rời đi — cần ký hợp đồng mới" cho tới khi ký lại (CT-UC-21) hoặc thanh lý. Phân biệt: **trả phòng 1 người** = ghi chuyển đi người đó; **trả cả phòng** = thanh lý (mọi người ra). HĐ đang hiệu lực mà không còn ai ở → cờ `NoOccupantLeft` + cảnh báo `NO_OCCUPANT_LEFT` "Không còn người ở — thanh lý?"; phòng chỉ về "Trống" khi thanh lý xong (PR-BR-02). Người đứng tên không phải người ở (VD bố ký cho con) → không cảnh báo. Cờ là **dẫn xuất** theo ngày (domain `Contract.Flags(today)`), trả trong `flags` của danh sách HĐ, chi tiết HĐ và `currentContract` của phòng | Domain + Application |
+| CT-BR-45 ✅ | **Hết hạn mà vẫn ở** (`end_date < hôm nay`, HĐ `Active`): phòng **vẫn "Đang thuê"** (không bao giờ tự về Trống); cờ `ExpiredAwaitingDecision` + cảnh báo `CONTRACT_EXPIRED_DECISION_NEEDED` cho tới khi chủ trọ chọn CT-UC-22. Chọn "Ở tiếp, chưa ký lại" → lưu `holdover_since` (= hôm nay) + `holdover_note`, cờ đổi thành `Holdover` + cảnh báo `HOLDOVER_SIGN_ADDENDUM` "Đang ở tiếp từ dd/MM chưa ký lại — nên ký phụ lục gia hạn" (vẫn tính tiền theo điều khoản cũ, kỳ thu tiếp tục — CT-BR-03; lịch kỳ thu mặc định hiện tới 12 tháng sau hôm nay); nhắc lặp mỗi 30 ngày thuộc nhắc việc P2 (chưa code). Gia hạn → xóa `holdover_since`. Lý do: BLDS 2015 **không** tự gia hạn HĐ hết hạn; người thuê vẫn ở và trả tiền là giao dịch mới xác lập bằng hành vi — khuyến nghị ký phụ lục (HĐ thuê nhà phải lập văn bản — Điều 163). Ràng buộc: chỉ áp cho HĐ **đã ký** (đã kích hoạt); thêm người ở / đổi giá sau `end_date` vẫn yêu cầu gia hạn trước (CT-BR-37). Phòng chỉ về "Trống" khi chủ trọ thu lại phòng (thanh lý xong) | Domain + Application |
 
 ### 3.3 Vòng đời
 
@@ -157,6 +165,8 @@ stateDiagram-v2
 | terms_text | text | Y | điều khoản quyền/nghĩa vụ (LEG-01) |
 | note | text | Y | |
 | previous_contract_id | uuid | Y | chuyển phòng / tái ký |
+| holdover_since | date | Y | CT-BR-45 — ngày chủ trọ chọn "ở tiếp, chưa ký lại"; xóa khi gia hạn |
+| holdover_note | varchar(500) | Y | CT-BR-45 |
 | activated_at / ended_at / cancelled_at | timestamptz | Y | |
 | cancel_reason | varchar(500) | Y | |
 | **Bổ sung theo Luật Nhà ở 2023 Điều 163–164, 172** | | | |
@@ -166,7 +176,7 @@ stateDiagram-v2
 | payment_methods | varchar(20)[] | N | mặc định `{Cash,BankTransfer}` |
 | deposit_terms | text | Y | điều kiện hoàn / mất cọc |
 | signing_snapshot | jsonb | Y | CT-BR-19 — bản chụp lúc ký: bên cho thuê, bên thuê (người đứng tên), phòng (mã, tầng, diện tích, sức chứa), ngân hàng, tên & địa chỉ khu (số giấy tờ lưu dạng mã hóa) |
-| utility_price_snapshot | jsonb | Y | CT-BR-19 — `[{feeTypeId, name, unit, unitPrice, quantity}]` |
+| utility_price_snapshot | jsonb | Y | CT-BR-19 ✅ — chụp khi kích hoạt: `[{feeTypeId, name, group, fixedBasis, unit, quantity, unitPrice, isOverride}]` (điện nước theo công tơ của khu + khoản gắn HĐ đang áp tại ngày bắt đầu; `unitPrice` null = lúc ký chưa có giá). API `utilityPrices`; bản in dùng làm thỏa thuận gốc |
 | house_rules_snapshot | text | Y | CT-BR-19 |
 | termination_reason | varchar(24) | Y | CT-BR-21; NOT NULL khi Ended |
 | termination_ground | varchar(32) | Y | CT-BR-21 |
@@ -300,6 +310,8 @@ OccupantRelationshipRules.Check(representative, [(OccupantInput, PersonFacts)]) 
 | POST | `/contracts/{id}/occupants`; POST `/contracts/{id}/occupants/{occId}/end` | 422 `ROOM_CAPACITY_EXCEEDED` |
 | POST | `/contracts/{id}/rent-terms` | 422 `NOT_PERIOD_START`, `PERIOD_ALREADY_BILLED` |
 | POST | `/contracts/{id}/extend` | |
+| POST | `/contracts/{id}/holdover` `{ note? }` — ở tiếp chưa ký lại (CT-UC-22) | 422 `CONTRACT_NOT_EXPIRED`, 409 `HOLDOVER_ALREADY` |
+| POST | `/contracts/{id}/re-sign` `{ handoverDate, representativeRenterId, endDate? }` — ký lại cho người còn ở (CT-UC-21) → 201 HĐ nháp mới | 422 `RESIGN_NO_OCCUPANT_LEFT`, `RESIGN_REPRESENTATIVE_NOT_OCCUPANT` |
 | PUT | `/contracts/{id}/fees/{feeTypeId}` `{quantity, unitPriceOverride, effectiveFrom}`; DELETE `…?effectiveFrom=` | |
 | POST | `/contracts/{id}/notice` | |
 | POST | `/contracts/{id}/liquidation/start` · `/cancel` · `/complete`; GET `/contracts/{id}/liquidation/preview` | 422 `LIQUIDATION_NOT_SETTLED` |
@@ -334,7 +346,7 @@ POST /api/v1/contracts
     { "renterId": "…", "relationshipType": "NephewNiece", "relationship": "Cháu gọi bằng cậu", "guardianConsent": true }
   ],
   "templateId": "…mẫu thuê trọ",
-  "customFields": { "electricity_pricing": "Theo giá nhà nước (bậc thang EVN)", "water_pricing": "Theo đầu người", "water_unit_price": 20000, "wifi_included": true },
+  "customFields": { "overnight_guest_policy": "Phải báo và được chủ nhà đồng ý", "gate_closing_time": "23:00", "pets_allowed": false },
   "termsText": "…"
 }
 ```
@@ -382,7 +394,7 @@ Idempotency-Key: 5b0d…
 | handoverReadings[].value | ≥ chỉ số gần nhất của công tơ (M06) |
 
 ## 9. Phân quyền
-Chủ trọ (`OrgOwner`) và phó quản lý (`OrgManager`) toàn quyền nghiệp vụ hợp đồng (M01 §3.3). P3: phân quyền theo khu, quyền `Liquidate` riêng.
+P1: chủ trọ và phó quản lý toàn quyền nghiệp vụ (M01 §3.3); in hợp đồng có số giấy tờ đầy đủ: dữ liệu nhạy cảm (số giấy tờ đầy đủ) chỉ chủ trọ hoặc phó quản lý được chủ trọ cấp quyền (ID-BR-22) — người khác nhận bản che số. P3: phân quyền theo khu, quyền `Liquidate` riêng.
 
 ## 10. Toàn vẹn dữ liệu & concurrency
 
@@ -436,8 +448,9 @@ Audit toàn bộ lệnh thay đổi; `overrideCapacity` ghi rõ. File HĐ (M09) 
 | CT-11 ✅ | Mẫu hợp đồng (CRUD, mẫu gợi ý, trường tùy biến, chép vào HĐ) | 1.5d |
 | CT-12 ✅ | Hợp đồng không cọc + lọc `hasDeposit` | 0.5d |
 | CT-13 ✅ | Quan hệ người ở với người đứng tên, đồng ý người giám hộ, chặn ở 2 phòng | 1.5d |
-| CT-14 | In HĐ từ mẫu (PDF/DOCX) dùng `title` + `clauses` + `custom_field_values` + snapshot (CT-UC-15) | 2d |
+| CT-14 ✅ | In HĐ (.docx) dùng `title` + `clauses` + `custom_field_values` + snapshot + khoản thu (CT-UC-15); PDF: P2 | 2d |
 | CT-15 ✅ | Rà lần 2 (03/10/2026): vượt sức chứa khi kích hoạt, chuyển đi 2 lần, hủy thanh lý khi đã sang phòng khác, trần cọc, ngày trả phòng, xe khi dời ngày bắt đầu | 0.5d |
+| CT-17 ✅ | Khoản thu của HĐ (`contract_fees`, EXCLUDE theo khoảng hiệu lực), in văn bản .docx (OpenXML), báo cáo dữ liệu cần xem lại | 2d |
 | CT-16 ✅ | Hoàn thiện mục P2 / câu hỏi mở: ghi chú HĐ đang hiệu lực, cảnh báo mềm, HĐ quá hạn, chủ xe khi đổi người đứng tên, chủ hộ, khóa theo người thuê | 1.5d |
 
 ## 15. Câu hỏi mở
@@ -450,7 +463,7 @@ Audit toàn bộ lệnh thay đổi; `overrideCapacity` ghi rõ. File HĐ (M09) 
 | Q4 | Thuê nguyên căn nhiều phòng 1 HĐ? | Ngoài phạm vi P1 — thuê nguyên căn: khai báo căn nhà là 1 khu có 1 phòng |
 | Q5 ✅ | Người đứng tên **không ở cùng** (bố mẹ ký cho con) — ai là chủ hộ khi đăng ký tạm trú? | Đã làm: `household_head_renter_id` chọn trong số người ở, quan hệ khai so với chủ hộ (CT-BR-36) |
 | Q6 | Có kiểm tra giới tính của **người đứng tên** khi khai vợ/chồng (Luật HN&GĐ không thừa nhận hôn nhân cùng giới)? | Chưa chặn — chỉ kiểm giới tính người được khai; cặp đôi cùng giới khai "Cùng ở thuê" / "Khác" |
-| Q7 | Trường tùy biến điện / nước trùng với khoản thu M04 khi M04 hoàn thành? | Khi có M04: khoản thu là nguồn tính tiền; trường tùy biến chỉ để in văn bản. Cân nhắc tự điền trường từ `contract_fees` |
+| Q7 ✅ | Trường tùy biến điện / nước trùng với khoản thu M04? | Đã có M04: **khoản thu là nguồn duy nhất** để tính tiền và in văn bản (Điều "Tiền điện, nước và dịch vụ" sinh từ `contract_fees`). Trường điện nước trong mẫu gợi ý trở thành tùy chọn — nên bỏ khỏi mẫu của tổ chức để tránh nhập 2 nơi |
 | Q8 ✅ | HĐ **quá hạn** — thêm người ở sau `end_date` | Đã làm: giữ quy tắc buộc gia hạn trước, trả mã riêng `CONTRACT_EXPIRED_EXTEND_FIRST` để UI hiện nút "Gia hạn" (CT-BR-37) |
 | Q9 ✅ | Đổi người đứng tên ở bản nháp khi xe đã đăng ký cho người đứng tên cũ | Đã làm: chặn với `VEHICLE_OWNER_NOT_IN_CONTRACT` (CT-BR-38) |
 | Q10 | Sửa hồ sơ người thuê (ngày sinh / giới tính) **sau khi** HĐ đã kích hoạt làm quan hệ không còn hợp lý | Không kiểm lại (HĐ đã ký giữ bản chụp); P2 báo cáo "dữ liệu cần xem lại" |

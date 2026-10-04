@@ -172,25 +172,18 @@ public sealed class ChangeContractTemplateStateHandler(IAppDbContext db, TimePro
 
 /// <summary>
 /// Điểm xuất phát cho chủ trọ. Điều khoản theo mẫu thực tế + các nội dung Luật Nhà ở 2023 Điều 163 yêu cầu
-/// (bàn giao, quyền và nghĩa vụ, chấm dứt, giải quyết tranh chấp). Trường tùy biến chỉ để GHI NHẬN thỏa thuận
-/// trên hợp đồng — tính tiền điện/nước tự động thuộc module khoản thu (M04).
+/// (bàn giao, quyền và nghĩa vụ, chấm dứt, giải quyết tranh chấp). Điện / nước / dịch vụ KHÔNG còn là trường tùy biến:
+/// khai báo bằng khoản thu (M04) — vừa tính tiền vừa in vào văn bản (05-contract Q7). Trường tùy biến chỉ cho thỏa thuận
+/// mà khoản thu không thể hiện được.
 /// </summary>
 public static class ContractTemplatePresets
 {
-    private static readonly string[] PaymentTimes = ["Đầu tháng", "Cuối tháng"];
-
-    private static readonly CustomFieldDefinition[] UtilityFields =
+    private static readonly CustomFieldDefinition[] LivingRules =
     [
-        new("electricity_pricing", "Cách tính tiền điện", CustomFieldType.Select, true,
-            ["Theo giá nhà nước (bậc thang EVN)", "Đơn giá cố định theo kWh"], null, "Tính theo chỉ số công tơ"),
-        new("electricity_unit_price", "Đơn giá điện (nếu giá cố định)", CustomFieldType.Money, false, null, "đ/kWh", null),
-        new("electricity_payment_time", "Thời điểm trả tiền điện", CustomFieldType.Select, false, PaymentTimes, null, null),
-        new("water_pricing", "Cách tính tiền nước", CustomFieldType.Select, true,
-            ["Theo đầu người", "Theo khối (m³)", "Trọn gói theo phòng"], null, null),
-        new("water_unit_price", "Đơn giá nước", CustomFieldType.Money, true, null, "đ", "VD 20.000đ/người hoặc đ/m³"),
-        new("water_payment_time", "Thời điểm trả tiền nước", CustomFieldType.Select, false, PaymentTimes, null, null),
-        new("wifi_included", "Có cung cấp wifi", CustomFieldType.Boolean, false, null, null, null),
-        new("other_services", "Dịch vụ khác (rác, giữ xe…)", CustomFieldType.LongText, false, null, null, "Ghi rõ đơn giá từng dịch vụ")
+        new("overnight_guest_policy", "Khách ở qua đêm", CustomFieldType.Select, true,
+            ["Phải báo và được chủ nhà đồng ý", "Không cho phép", "Không hạn chế"], null, "Bên B chịu trách nhiệm về hành vi của khách"),
+        new("gate_closing_time", "Giờ đóng cổng", CustomFieldType.Text, false, null, null, "VD 23:00, hoặc \"Tự do (có chìa khóa)\""),
+        new("pets_allowed", "Cho phép nuôi thú cưng", CustomFieldType.Boolean, false, null, null, null)
     ];
 
     private static readonly ContractClause DisputeClause = new("Giải quyết tranh chấp",
@@ -220,7 +213,7 @@ public static class ContractTemplatePresets
                 "- Khi chấm dứt hợp đồng, bên A hoàn trả tiền đặt cọc cho bên B sau khi trừ các khoản bên B còn nợ hoặc phải bồi thường (nếu có)."),
             DisputeClause
         ],
-        UtilityFields);
+        LivingRules);
 
     public static readonly ContractTemplateInput WholeHouseRental = new(
         "Thuê nhà nguyên căn (mẫu chuẩn)",
@@ -254,7 +247,7 @@ public static class ContractTemplatePresets
             new("usage_purpose", "Mục đích sử dụng", CustomFieldType.Select, true, ["Để ở", "Kinh doanh", "Để ở kết hợp kinh doanh"], null, null),
             new("rent_payment_cycle", "Kỳ trả tiền thuê", CustomFieldType.Select, true, ["Hằng tháng", "3 tháng/lần", "6 tháng/lần", "12 tháng/lần"], null, null),
             new("sublease_allowed", "Cho phép cho thuê lại", CustomFieldType.Boolean, false, null, null, null),
-            .. UtilityFields
+            .. LivingRules
         ]);
 
     /// <summary>CT-BR-27: không đặt cọc ⇒ bù rủi ro bằng trả tiền thuê trước và quyền chấm dứt khi chậm trả.</summary>
@@ -279,7 +272,7 @@ public static class ContractTemplatePresets
         [
             new("late_payment_days", "Số ngày chậm trả tối đa", CustomFieldType.Number, true, null, "ngày",
                 "Quá số ngày này bên A được chấm dứt hợp đồng"),
-            .. UtilityFields
+            .. LivingRules
         ],
         NoDeposit: true);
 

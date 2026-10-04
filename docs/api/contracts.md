@@ -46,11 +46,15 @@ Hết hạn mà chưa thanh lý thì hợp đồng **vẫn hiệu lực và vẫ
 | Kết thúc gửi xe | `POST …/vehicles/{vehicleId}/end` | ✅ | ✅ | ✅ | |
 | Phụ lục đổi giá | `POST /contracts/{id}/rent-terms` | | ✅ | | |
 | Gia hạn | `POST /contracts/{id}/extend` | | ✅ (có `endDate`) | | |
+| Ở tiếp chưa ký lại (đã quá hạn) | `POST /contracts/{id}/holdover` | | ✅ (cờ `ExpiredAwaitingDecision`) | | |
+| Ký lại cho người còn ở | `POST /contracts/{id}/re-sign` | | ✅ (hay dùng khi cờ `RepresentativeMovedOut`) | | |
 | Ghi nhận báo trả phòng | `POST /contracts/{id}/notice` | | ✅ | | |
 | Bắt đầu thanh lý | `POST /contracts/{id}/liquidation/start` | | ✅ | | |
 | Hủy thanh lý | `POST /contracts/{id}/liquidation/cancel` | | | ✅ | |
 | Hoàn tất thanh lý | `POST /contracts/{id}/liquidation/complete` | | | ✅ (hôm nay ≥ `actualEndDate`) | |
 | Xem kỳ thu | `GET /contracts/{id}/billing-periods` | ✅ | ✅ | ✅ | ✅ |
+| Đổi / gỡ khoản thu từ đầu kỳ | `PUT` / `DELETE /contracts/{id}/fees/{feeTypeId}` | (sửa qua `PUT` nháp) | ✅ | | |
+| **Tải văn bản (.docx)** | `GET /contracts/{id}/document` | ✅ (có dòng "BẢN NHÁP") | ✅ | ✅ | ✅ |
 
 Gọi sai trạng thái → 422 `CONTRACT_NOT_DRAFT` / `CONTRACT_NOT_ACTIVE` / `CONTRACT_NOT_LIQUIDATING` / `CONTRACT_NOT_EDITABLE`
 (thường do dữ liệu cũ — tải lại).
@@ -96,7 +100,8 @@ Sắp xếp: ngày bắt đầu mới nhất trước.
 }
 ```
 
-Mỗi dòng có thêm `contractType` (`RoomRental` / `WholeHouseRental`) để hiện nhãn loại và `depositAmount` (0 → nhãn "Không cọc").
+Mỗi dòng có thêm `contractType` (`RoomRental` / `WholeHouseRental`) để hiện nhãn loại, `depositAmount` (0 → nhãn "Không cọc")
+và `flags` — việc chủ trọ cần xử lý (xem [Cần xử lý](#cần-xử-lý-flags)).
 
 Cột: Số HĐ · Khu/Phòng (`propertyCode`-`roomCode`) · Người đại diện · Thời hạn · Giá hiện tại · Số người · Trạng thái.
 
@@ -147,12 +152,9 @@ Cột: Số HĐ · Khu/Phòng (`propertyCode`-`roomCode`) · Người đại di�
     "title": null,
     "clauses": null,
     "customFields": {
-      "electricity_pricing": "Theo giá nhà nước (bậc thang EVN)",
-      "electricity_payment_time": "Cuối tháng",
-      "water_pricing": "Theo đầu người",
-      "water_unit_price": 20000,
-      "water_payment_time": "Đầu tháng",
-      "wifi_included": true
+      "overnight_guest_policy": "Phải báo và được chủ nhà đồng ý",
+      "gate_closing_time": "23:00",
+      "pets_allowed": false
     }
   }
 }
@@ -185,6 +187,7 @@ Cột: Số HĐ · Khu/Phòng (`propertyCode`-`roomCode`) · Người đại di�
 | `contract.termsText` | | | Điều khoản bổ sung ≤ 50.000 |
 | `contract.occupants[]` | | `[]` | ≤ 20, không trùng người; `moveInDate` null = `startDate`, không trước `startDate`. Mỗi người không đứng tên cần `relationshipType` (+ `guardianConsent` nếu < 18 tuổi) — xem [Người ở](#người-ở) |
 | `contract.householdHeadRenterId` | | Người đứng tên | **Chủ hộ** khi đăng ký tạm trú chung — phải là một người trong `occupants` (400 `HOUSEHOLD_HEAD_NOT_OCCUPANT`). Quan hệ của người ở khai so với chủ hộ. Dùng khi người đứng tên không ở cùng (VD bố mẹ ký cho con) |
+| `contract.fees[]` | | **null** ⇒ tự gắn các khoản "tự gắn" của khu; `[]` ⇒ không khoản nào | `{ feeTypeId, quantity?, unitPriceOverride? }` — xem [Khoản thu của hợp đồng](#khoản-thu-của-hợp-đồng) |
 | `contract.templateId` | | Không dùng mẫu | Mẫu chưa ngừng dùng (`CONTRACT_TEMPLATE_ARCHIVED`); có mẫu thì `contractType` lấy theo mẫu |
 | `contract.contractType` | | Theo mẫu, hoặc `RoomRental` | `RoomRental` / `WholeHouseRental` — chỉ dùng khi không chọn mẫu |
 | `contract.title` | | Tiêu đề của mẫu / theo loại | ≤ 200 — ghi đè tiêu đề |
@@ -278,10 +281,23 @@ Nhiều bản **nháp** cho cùng một phòng được phép (đàm phán song 
     "contractType": "RoomRental",
     "title": "HỢP ĐỒNG THUÊ PHÒNG TRỌ",
     "clauses": [ { "heading": "Trách nhiệm của bên A", "body": "- Bàn giao phòng…" } ],
-    "customFieldDefinitions": [ { "key": "water_unit_price", "label": "Đơn giá nước", "type": "Money", "required": true, "options": null, "unit": "đ", "hint": "VD 20.000đ/người hoặc đ/m³" } ],
-    "customFields": { "water_pricing": "Theo đầu người", "water_unit_price": 20000, "wifi_included": true }
+    "customFieldDefinitions": [ { "key": "overnight_guest_policy", "label": "Khách ở qua đêm", "type": "Select", "required": true,
+      "options": ["Phải báo và được chủ nhà đồng ý", "Không cho phép", "Không hạn chế"], "unit": null, "hint": null } ],
+    "customFields": { "overnight_guest_policy": "Phải báo và được chủ nhà đồng ý", "gate_closing_time": "23:00", "pets_allowed": false }
   },
   "householdHeadRenterId": null,
+  "utilityPrices": [
+    { "feeTypeId": "…", "name": "Điện", "group": "Metered", "chargeBasis": null, "unit": "kWh", "quantity": 1,
+      "unitPrice": 3500, "isOverride": false },
+    { "feeTypeId": "…", "name": "Nước theo người", "group": "Service", "chargeBasis": "PerOccupant", "unit": "người", "quantity": 1,
+      "unitPrice": 20000, "isOverride": false }
+  ],
+  "fees": [
+    { "id": "…", "feeTypeId": "…", "name": "Giữ xe máy", "group": "Service", "chargeBasis": "PerUnit", "unit": "xe", "quantity": 2,
+      "unitPriceOverride": 80000, "currentUnitPrice": 80000, "effectiveFrom": "2026-10-02", "effectiveTo": null },
+    { "id": "…", "feeTypeId": "…", "name": "Nước theo người", "group": "Service", "chargeBasis": "PerOccupant", "unit": "người", "quantity": 1,
+      "unitPriceOverride": null, "currentUnitPrice": 20000, "effectiveFrom": "2026-10-02", "effectiveTo": null }
+  ],
   "warnings": [],
   "version": "965"
 }
@@ -303,6 +319,79 @@ Nhiều bản **nháp** cho cùng một phòng được phép (đàm phán song 
 - **Tab Văn bản**: `document.title`, `document.clauses`, và bảng "Thông tin bổ sung" — duyệt `document.customFieldDefinitions`
   theo thứ tự, lấy giá trị ở `document.customFields[key]` (định nghĩa đã chụp vào hợp đồng, không phụ thuộc mẫu hiện tại).
 
+## Khoản thu của hợp đồng
+
+Danh mục khoản thu của khu: [fees.md](fees.md). Mỗi hợp đồng chọn khoản áp cho phòng, VD phòng A "Nước" theo số, phòng B "Nước theo người".
+
+**Bản nháp** — gửi trong `contract.fees` (thay toàn bộ):
+
+```json
+"fees": [
+  { "feeTypeId": "…nước theo người" },
+  { "feeTypeId": "…giữ xe", "quantity": 2, "unitPriceOverride": 80000 }
+]
+```
+
+| Trường | Quy tắc |
+|--------|---------|
+| `feeTypeId` | Thuộc **cùng khu** với phòng (422 `FEE_NOT_IN_PROPERTY`), chưa ngừng dùng (422 `FEE_ARCHIVED`), không trùng; **không** phải khoản theo công tơ (400 `FEE_METERED_FOLLOWS_ROOM`) |
+| `quantity` | Chỉ khoản theo số lượng (0–100, mặc định = số lượng mặc định của khoản); khoản khác để trống |
+| `unitPriceOverride` | Giá riêng cho phòng này (thay bảng giá của khu); null = theo bảng giá |
+
+UI wizard: danh sách checkbox khoản thu **cố định / theo số lượng** của khu (lọc bỏ `group = Metered`), tích sẵn các khoản `autoAttach`;
+dịch vụ `PerUnit` có ô số gói; nút "Giá riêng". Hiện thêm dòng chỉ đọc "Điện, nước: theo công tơ của phòng — giá hiện tại …".
+
+`utilityPrices` = **đơn giá điện nước dịch vụ theo thỏa thuận lúc ký** (chụp khi kích hoạt — CT-BR-19; nháp tính theo hiện tại):
+điện / nước theo công tơ của khu + các khoản gắn với hợp đồng.
+Đổi giá của khu sau đó không làm đổi hợp đồng đã ký; `unitPrice = null` nghĩa là lúc ký khoản đó chưa có giá.
+
+**Đang hiệu lực** — đổi từ **đầu một kỳ thu** (chọn từ `GET /billing-periods`), giữ lịch sử để tính lại kỳ cũ:
+
+- `PUT /contracts/{id}/fees/{feeTypeId}` `{ "quantity": 2, "unitPriceOverride": null, "effectiveFrom": "2026-11-01" }` → 204.
+  Gắn thêm khoản mới hoặc đổi số lượng / giá riêng: bản cũ kết thúc ngày trước `effectiveFrom`.
+- `DELETE /contracts/{id}/fees/{feeTypeId}?effectiveFrom=2026-11-01` → 204: thôi tính từ kỳ đó.
+
+Lỗi: 422 `NOT_PERIOD_START`, `PERIOD_ALREADY_BILLED`, `DATE_OUTSIDE_CONTRACT`, `CONTRACT_NOT_ACTIVE`; 409 `CONTRACT_FEE_LATER_CHANGE_EXISTS`
+(đã có thay đổi từ kỳ sau); 404 `CONTRACT_FEE_NOT_FOUND`. Trong chi tiết, `fees` gồm cả bản đã kết thúc (`effectiveTo`) — bản đang áp dụng có
+`effectiveTo = null`; `currentUnitPrice` = giá riêng hoặc giá hiện hành của khu.
+
+## Văn bản hợp đồng (.docx)
+
+`GET /contracts/{id}/document` → file `hop-dong_HD2026-0001.docx` (A4, Times New Roman 13) để in, ký, lưu:
+
+- Quốc hiệu, tiêu đề (theo mẫu), số HĐ, ngày & nơi ký.
+- Bên A, bên B (**số giấy tờ đầy đủ** — thao tác được ghi log), bảng người cùng ở + quan hệ với chủ hộ (chỉ người còn ở tại thời điểm in;
+  HĐ đã kết thúc: người ở tại ngày trả phòng).
+- Các điều: phòng/nhà cho thuê, thời hạn, giá thuê (kèm **bằng chữ**), kỳ & hình thức thanh toán, **điện nước dịch vụ theo thỏa thuận lúc ký**
+  (`utilityPrices`) + các thay đổi sau đó in thành dòng "Từ ngày …",
+  đặt cọc (hoặc "không đặt cọc"), thỏa thuận bổ sung (trường tùy biến), điều khoản của mẫu, tài sản bàn giao, xe gửi, thỏa thuận khác, hiệu lực.
+- Khối chữ ký 2 bên; phụ lục nội quy (nếu có).
+- Hợp đồng đã ký in theo **bản chụp lúc ký**; bản nháp in theo dữ liệu hiện tại và có dòng đỏ "BẢN NHÁP".
+
+Tải ở web như file Excel (xem [exports.md](exports.md)) với `responseType: 'blob'`.
+
+## Dữ liệu cần xem lại
+
+`GET /contracts/data-review?propertyId=` → mảng vấn đề của các HĐ đang hiệu lực / đang thanh lý (chỉ đọc):
+
+```json
+[
+  { "contractId": "…", "contractNo": "HD2026-0003", "propertyCode": "KMAU", "roomCode": "101",
+    "code": "RELATIONSHIP_AGE_MISMATCH", "message": "Quan hệ không khớp tuổi: …", "renterId": "…", "renterName": "Con" },
+  { "contractId": "…", "contractNo": "HD2026-0003", "propertyCode": "KMAU", "roomCode": "101",
+    "code": "FEE_PRICE_MISSING", "message": "Khoản thu \"Điện\" chưa có giá — thêm bảng giá trước khi lập phiếu.", "renterId": null, "renterName": null }
+]
+```
+
+| `code` | Ý nghĩa |
+|--------|---------|
+| `RELATIONSHIP_*`, `GUARDIAN_CONSENT_REQUIRED`, `SPOUSE_UNDER_MARRIAGE_AGE`, `MULTIPLE_SPOUSES` | Quan hệ người ở không còn hợp lý theo hồ sơ hiện tại (thường do sửa ngày sinh / giới tính sau khi ký) |
+| `REPRESENTATIVE_UNDERAGE` | Người đứng tên chưa đủ 18 tuổi tại ngày ký theo hồ sơ hiện tại |
+| `OCCUPANT_LIVES_ELSEWHERE` | Một người đang ở 2 phòng (dữ liệu cũ / nhập lùi ngày) |
+| `FEE_PRICE_MISSING` | Khoản thu đang gắn chưa có giá — sẽ không lập được phiếu |
+
+UI: trang "Cần xem lại" hoặc badge số lượng trên dashboard; mỗi dòng link tới hợp đồng / hồ sơ người thuê.
+
 ## Sửa nháp / hủy nháp
 
 - `PUT /contracts/{id}` — `{ "contract": { …như khi tạo… }, "version": "965" }` → 204. Đổi người đứng tên / người ở mà còn xe đăng ký cho người không thuộc HĐ nữa → 422 `VEHICLE_OWNER_NOT_IN_CONTRACT` (kết thúc đăng ký xe đó trước). **Thay toàn bộ** nội dung, kể cả danh sách
@@ -311,11 +400,29 @@ Nhiều bản **nháp** cho cùng một phòng được phép (đàm phán song 
 
 ## Kích hoạt (bàn giao phòng)
 
-`POST /contracts/{id}/activate` (body tùy chọn; nên gửi `Idempotency-Key`) → 204.
+`POST /contracts/{id}/activate` (nên gửi `Idempotency-Key`) → 204.
 
 ```json
-{ "overrideCapacity": true }
+{
+  "overrideCapacity": false,
+  "handoverReadings": [
+    { "meterId": "…điện", "value": 108 },
+    { "meterId": "…nước", "value": null }
+  ]
+}
 ```
+
+**Chỉ số nhận phòng** (bắt buộc khi phòng có công tơ): mỗi công tơ đang hoạt động của phòng tại `startDate` một dòng — lấy danh sách từ
+`GET /rooms/{roomId}/meters`. Mỗi dòng 2 lựa chọn: **"Dùng số mới nhất"** (`value: null` = `latestReading`, thường là số cuối của người
+thuê trước) hoặc **nhập số khác** ≥ số đó (VD sửa chữa phòng đã dùng thêm điện). Phòng không có công tơ thì bỏ trống mảng.
+
+| Lỗi công tơ | Khi nào |
+|-------------|---------|
+| 422 `HANDOVER_READING_REQUIRED` | Thiếu công tơ nào (`meterIds` trong body lỗi) |
+| 422 `READING_NOT_MONOTONIC` | Số nhập nhỏ hơn số mới nhất (`previousValue`, `meterId`) |
+| 422 `METER_NOT_IN_ROOM` | `meterId` không phải công tơ đang hoạt động của phòng |
+
+Chi tiết hợp đồng đang hiệu lực mà phòng chưa có công tơ điện → cảnh báo `ROOM_WITHOUT_METER`.
 
 `overrideCapacity` chỉ gửi khi người dùng **xác nhận** vượt sức chứa (VD gia đình có con nhỏ ở phòng 2 người) sau khi nhận
 422 `ROOM_CAPACITY_EXCEEDED` — thao tác được ghi log kiểm toán.
@@ -408,10 +515,57 @@ UI: radio "Chủ hộ" trên danh sách người ở ở bước 2 wizard; đổ
   lấy `start` của `GET /billing-periods`, không cho gõ ngày tự do.
 - Trùng ngày với phụ lục có sẵn → 409 `RENT_TERM_EXISTS`. Kỳ đã lập phiếu → 422 `PERIOD_ALREADY_BILLED` (khi có module thu tiền).
 
+## Cần xử lý (`flags`)
+
+Danh sách HĐ, chi tiết HĐ và `currentContract` của phòng có `flags` (tính theo hôm nay, chỉ HĐ đang hiệu lực). Chi tiết HĐ có thêm câu
+cảnh báo tương ứng trong `warnings`. **Phòng vẫn "Đang thuê"** trong mọi trường hợp dưới — chỉ về "Trống" khi thanh lý xong.
+
+| Cờ | Khi nào | Cảnh báo | Nút gợi ý |
+|----|---------|----------|-----------|
+| `RepresentativeMovedOut` | Người ký (là người ở) đã chuyển đi, còn người khác ở | `REPRESENTATIVE_MOVED_OUT` | **Ký lại cho người còn ở** |
+| `NoOccupantLeft` | Không còn ai ở mà HĐ vẫn hiệu lực | `NO_OCCUPANT_LEFT` | **Thanh lý** |
+| `ExpiredAwaitingDecision` | Đã quá `endDate`, chủ trọ chưa quyết định | `CONTRACT_EXPIRED_DECISION_NEEDED` | **Gia hạn** · **Cho ở tiếp, chưa ký** · **Thu lại phòng** (thanh lý) |
+| `Holdover` | Đã chọn "ở tiếp, chưa ký lại" (`holdoverSince`) | `HOLDOVER_SIGN_ADDENDUM` | **Gia hạn** (ký phụ lục) · **Thu lại phòng** |
+
+Người ký không phải người ở (VD bố ký cho con) thì không có cờ `RepresentativeMovedOut`.
+"Trả phòng 1 người" = `POST …/occupants/{id}/end`; "trả cả phòng" = thanh lý.
+
 ## Gia hạn
 
 `POST /contracts/{id}/extend` — `{ "newEndDate": "2028-10-01" }` → 204.
 Phải sau `endDate` hiện tại, tối đa 10 năm từ hôm nay. HĐ không thời hạn → 422 `CANNOT_EXTEND_INDEFINITE` (ẩn nút khi `endDate` null).
+Gia hạn xóa trạng thái "ở tiếp, chưa ký lại".
+
+## Ở tiếp, chưa ký lại
+
+`POST /contracts/{id}/holdover` — `{ "note": "Hẹn ký lại cuối tháng" }` (note tùy chọn, ≤ 500) → 204.
+Chi tiết HĐ trả `holdoverSince`, `holdoverNote`. Vẫn tính tiền theo điều khoản cũ, kỳ thu chạy tiếp. Luật không tự gia hạn HĐ hết hạn —
+nên ký phụ lục sớm (nút Gia hạn).
+
+| Lỗi | Khi nào |
+|-----|---------|
+| 422 `CONTRACT_NOT_EXPIRED` | HĐ chưa quá `endDate` (hoặc không thời hạn) |
+| 409 `HOLDOVER_ALREADY` | Đã ghi nhận trước đó |
+
+## Ký lại cho người còn ở
+
+`POST /contracts/{id}/re-sign` — **Idempotency-Key**
+
+```json
+{ "handoverDate": "2026-11-15", "representativeRenterId": "…người còn ở", "endDate": null }
+```
+
+→ **201** `{ "id": "<HĐ nháp mới>", "warnings": [] }`. Trong 1 thao tác:
+1. HĐ cũ **bắt đầu thanh lý** tại `handoverDate` (lý do `MutualAgreement`, ghi chú tự sinh).
+2. Tạo **HĐ nháp mới** từ `handoverDate + 1`, `previousContractId` = HĐ cũ, chép: giá thuê hiện hành, kỳ thu, cọc + điều khoản cọc,
+   mẫu / điều khoản / trường tùy biến, dịch vụ đang áp, người ở còn lại, xe của họ. `endDate` null = không thời hạn.
+3. Quan hệ người ở giữ nguyên nếu chủ hộ còn ở; ngược lại bỏ trống → **mở nháp mới để khai lại quan hệ** rồi kích hoạt như bình thường.
+
+| Lỗi | Khi nào |
+|-----|---------|
+| 422 `RESIGN_REPRESENTATIVE_NOT_OCCUPANT` | Người đứng tên mới không phải người còn ở sau `handoverDate` |
+| 422 `RESIGN_NO_OCCUPANT_LEFT` | Không còn ai ở — dùng thanh lý |
+| 422 `INVALID_END_DATE` | `handoverDate` sai (như bắt đầu thanh lý) hoặc `endDate` ≤ ngày bắt đầu mới |
 
 ## Báo trả phòng
 
@@ -449,12 +603,26 @@ sequenceDiagram
 
 | Trường | Quy tắc |
 |--------|---------|
-| `actualEndDate` | ≥ `startDate`, ≥ ngày vào ở của mọi người ở, ≤ hôm nay + 60 ngày |
-| `reason` | `Expired` · `MutualAgreement` · `LesseeUnilateral` · `LessorUnilateral` · `RoomTransfer` |
-| `ground` | **Bắt buộc khi `LessorUnilateral`** (`TERMINATION_GROUND_REQUIRED`): `RentArrears3Months` · `WrongPurpose` · `UnauthorizedRenovation` · `Other` |
-| `note` | ≤ 1000; bắt buộc khi `ground = Other` |
+| `actualEndDate` | ≥ `startDate`, ≥ ngày vào ở của mọi người ở, ≤ hôm nay + 60 ngày (căn cứ `IndefiniteTermNotice`: + 90 ngày). Được chọn ngày **quá khứ** (người thuê đã đi) |
+| `reason` | `Expired` · `MutualAgreement` · `LesseeUnilateral` · `LessorUnilateral` · `RoomTransfer` · `Abandoned` (bỏ đi không báo) |
+| `ground` | **Bắt buộc khi `LessorUnilateral`** (`TERMINATION_GROUND_REQUIRED`): `RentArrears3Months` · `WrongPurpose` · `UnauthorizedRenovation` · `IndefiniteTermNotice` (chỉ HĐ không thời hạn) · `Other` |
+| `note` | ≤ 1000; bắt buộc khi `ground = Other` hoặc `reason = Abandoned` |
 
-UI: chọn `reason = LessorUnilateral` → hiện dropdown căn cứ (theo Luật Nhà ở 2023 Điều 172).
+Còn phiếu tiền phòng (chưa hủy) của kỳ bắt đầu **sau** `actualEndDate` → 422 `INVOICE_AFTER_END_DATE` (hủy / xóa phiếu đó trước).
+
+| Lỗi | Khi nào |
+|-----|---------|
+| 422 `EXPIRED_REASON_INVALID` | Chọn "Hết hạn" cho HĐ không thời hạn, hoặc ngày trả phòng trước ngày hết hạn |
+| 422 `INDEFINITE_GROUND_ONLY` | `IndefiniteTermNotice` cho HĐ có thời hạn |
+| 422 `ABANDONED_NOTE_REQUIRED` | `Abandoned` mà không ghi chú |
+
+UI:
+- Chỉ hiện "Hết hạn" khi HĐ có `endDate` và ngày trả phòng ≥ `endDate`.
+- Chọn `reason = LessorUnilateral` → hiện dropdown căn cứ (Luật Nhà ở 2023 Điều 172; HĐ không thời hạn: "Thông báo chấm dứt HĐ không thời hạn — 90 ngày", Điều 171).
+- Chọn `Abandoned` → ô ghi chú bắt buộc với gợi ý "ngày phát hiện, đồ để lại, người chứng kiến", cho chọn ngày trong quá khứ.
+
+Cảnh báo (trong `warnings` của chi tiết HĐ khi đang thanh lý): `LESSOR_TERMINATION_SHORT_NOTICE` (< 30 ngày, HĐ không thời hạn < 90 ngày),
+`LESSEE_TERMINATION_SHORT_NOTICE` (bên thuê chưa báo trước đủ số ngày của HĐ), `LESSEE_ABANDONED` (hướng dẫn xử lý khi người thuê bỏ đi).
 
 ### Ghi tình trạng tài sản — `POST /contracts/{id}/assets/{assetId}/return`
 
@@ -468,7 +636,13 @@ Bị chặn nếu phòng đã có HĐ mới (409 `ROOM_PERIOD_OVERLAP`) hoặc n
 
 ### Hoàn tất — `POST /contracts/{id}/liquidation/complete`
 
+```json
+{ "finalReadings": [ { "meterId": "…điện", "value": 1338 } ] }
+```
+
 Chỉ từ ngày `actualEndDate` trở đi (`LIQUIDATION_BEFORE_END_DATE`) → UI vô hiệu nút và hiện "Hoàn tất được từ dd/MM".
+**Chỉ số cuối** bắt buộc nhập số (không có "dùng số mới nhất") cho mỗi công tơ hoạt động của phòng tại `actualEndDate`
+— thiếu → 422 `FINAL_READING_REQUIRED` (`meterIds`); nhỏ hơn chỉ số trước → 422 `READING_NOT_MONOTONIC`.
 Phòng vẫn tính "Đang thuê" **trong ngày trả phòng**, sang hôm sau mới Trống.
 
 ## Tài sản bàn giao (khi còn nháp)

@@ -19,7 +19,7 @@ Nút **"Xuất Excel"** ở danh sách người thuê / danh sách khu / sơ đ�
 | Phòng (chọn nhiều) | `roomIds` | `GET /rooms?propertyId=` |
 | Thời điểm: "Đang ở hôm nay" / "Trong khoảng ngày" | `fromDate`, `toDate` | |
 | Chia sheet: theo khu / theo tầng / gộp 1 sheet | `layout` | |
-| ☐ Hiện đầy đủ số giấy tờ | `includeSensitive` | Cảnh báo: dữ liệu cá nhân, thao tác được ghi log |
+| ☐ Hiện đầy đủ số giấy tờ | `includeSensitive` | Cảnh báo: dữ liệu cá nhân, thao tác được ghi log. **Ẩn** khi `canViewSensitiveData = false` (gửi `true` → 403 `SENSITIVE_DATA_FORBIDDEN`) |
 
 Các bộ lọc kết hợp **AND** (VD khu A + tầng 2 = tầng 2 của khu A).
 

@@ -120,6 +120,55 @@
 | R-89 ✅ | Dời ngày bắt đầu nháp về sau, xe đã đăng ký giữ nguyên ngày cũ | Xe "giữ" trước ngày bắt đầu HĐ ⇒ M07 tính phí giữ xe trước khi thuê | Dời `registered_from` theo | CT-BR-35 |
 | R-90 ✅ | Plan lệch code: PUT HĐ Active sửa ghi chú (plan có, code không), phân quyền phó quản lý "P3 theo khu" (code: toàn quyền) | Người làm UI / tester hiểu sai | Sửa plan theo thực tế, ghi phần chưa làm là P2/P3 | 05-contract §7, §9 |
 
+## B6. Rà code M04 + bản in + báo cáo, đối chiếu plan — 04/10/2026
+
+| # | Vấn đề | Kịch bản lỗi | Xử lý | Nơi sửa |
+|---|--------|--------------|-------|---------|
+| R-91 ✅ | Bản in lấy khoản thu **hiện tại** thay vì thỏa thuận lúc ký | Khu tăng giá nước sau khi ký ⇒ in lại HĐ cũ ra giá mới — sai văn bản đã ký | In theo `utility_price_snapshot` + các thay đổi sau ký thành dòng "Từ ngày …" | CT-UC-15 |
+| R-92 ✅ | Plan lệch code: `utility_price_snapshot` (CT-BR-19) có cột nhưng chưa bao giờ ghi | Không chứng minh được đơn giá đã thỏa thuận (R-58) | Chụp khi kích hoạt; API `utilityPrices` | CT-BR-19 |
+| R-93 ✅ | Định dạng tiền làm tròn đơn giá lẻ | 15.500,5đ/m³ in thành 15.501 đ | `#,##0.##` | `VietnameseMoney` |
+| R-94 ✅ | Bản in liệt kê cả người đã chuyển đi | Văn bản sai danh sách người ở | Chỉ người còn ở tại thời điểm in (HĐ kết thúc: tại ngày trả phòng) | CT-UC-15 |
+| R-95 ✅ | Plan lệch code: chưa có cảnh báo số xe ≠ phí giữ xe (CT-BR-22) | Thu thiếu / thừa phí giữ xe | `fee_types.vehicle_type` + cảnh báo | CT-BR-22 |
+| R-96 ✅ | Plan lệch code: chưa cảnh báo bên cho thuê đơn phương chấm dứt báo trước < 30 ngày (CT-BR-21) | Chủ trọ vi phạm Điều 172 mà không biết | `liquidation_started_on` + cảnh báo | CT-BR-21 |
+| R-97 ✅ | Plan lệch code (Q7): mẫu gợi ý vẫn bắt buộc nhập điện nước bằng trường tùy biến | Nhập 2 nơi (khoản thu + trường), dễ lệch | Mẫu gợi ý thay bằng quy định sinh hoạt (khách qua đêm, giờ đóng cổng, thú cưng) | `ContractTemplatePresets` |
+| R-98 ✅ | **Plan tự mâu thuẫn**: CT-BR-10 (ở 2 nơi → cảnh báo) vs CT-BR-31 (→ chặn) | Người làm UI / tester hiểu sai | Giữ CT-BR-31; CT-BR-10 ghi là đã thay thế; đứng tên nhiều phòng vẫn được | 05-contract |
+
+## B7. Xử lý 16 bất cập theo quyết định của chủ trọ — 04/10/2026
+
+| # | Vấn đề | Kịch bản lỗi | Xử lý | Nơi sửa |
+|---|--------|--------------|-------|---------|
+| R-99 ✅ | Phó quản lý xem / xuất / in được số giấy tờ đầy đủ; plan các module ghi quyền khác nhau | Lộ dữ liệu cá nhân qua tài khoản phụ | Quyền dữ liệu nhạy cảm do chủ trọ cấp, đọc DB mỗi request; reveal / export đầy đủ → 403; in → che số. Thống nhất dòng phân quyền M02–M10 = "P1 như chủ trọ, trừ dữ liệu nhạy cảm" | ID-BR-21/22, LEG-06 |
+| R-100 ✅ | M04 tự gắn Điện/Nước vào mọi HĐ + MT-BR-11 bắt phòng có công tơ | Phòng tính nước theo người bị chặn kích hoạt; HĐ và công tơ lệch nhau | Điện nước theo công tơ **đi theo phòng**, không gắn HĐ (400 `FEE_METERED_FOLLOWS_ROOM`); MT-BR-11 thành cảnh báo | FE-BR-17, CT-BR-02, MT-BR-11, BL-BR-05 |
+| R-101 ✅ | Chỉ số đầu HĐ mới lấy cứng chỉ số cuối HĐ trước | Người mới trả tiền điện dùng khi sửa chữa / phòng trống | Chỉ số nhận phòng chỉnh được tại ngày vào ở; sản lượng khoảng trống không tính cho ai, hiện ở báo cáo | MT-BR-13/14 |
+| R-102 ✅ | Bậc thang điện (M04) chưa được M07 dùng; chủ trọ không dùng bậc thang | Tính sai / phức tạp không cần thiết | Một giá; bỏ `tiers` khỏi code + DB | FE-BR-15, BL-BR-05 |
+| R-103 ✅ | Thay công tơ giữa kỳ khi công tơ cũ hỏng không có chỉ số tháo | Không lập được phiếu hoặc mất sản lượng | Dòng thủ công gắn khoản thu trong phiếu nháp | BL-BR-23 |
+| R-104 ✅ | M08 chưa tính HĐ không cọc / mức cọc | Ghi cọc mâu thuẫn với HĐ | Cọc trên HĐ chỉ lưu trữ; sổ cọc độc lập | PM-BR-19 |
+| R-105 ✅ | Plan lệch code: 409 trùng giấy tờ không kèm id hồ sơ cũ | UI phải tự tìm lại hồ sơ | `existingRenterId` trong ProblemDetails | RT-BR-02 |
+| R-106 ✅ | Nhánh người nước ngoài (RT-BR-04, `ForeignerResidence`, L7 chưa xác minh) | Làm tính năng không ai dùng, căn cứ chưa chắc | Bỏ khỏi phạm vi; giữ `nationality` / `Passport` | L7, RT-BR-04/07 |
+| R-107 ✅ | Chưa có lý do "bỏ đi không báo" | Chủ trọ chọn sai lý do; không có hướng dẫn xử lý đồ để lại / cọc / tạm trú | `Abandoned` + ghi chú bắt buộc + cảnh báo hướng dẫn | CT-BR-41 |
+| R-108 ✅ | HĐ không thời hạn: luật cho chấm dứt sau 90 ngày nhưng thanh lý chỉ hẹn trước tối đa 60 ngày | Không bao giờ báo trước đủ 90 ngày trong hệ thống ⇒ luôn bị cảnh báo sai | Căn cứ `IndefiniteTermNotice` được hẹn tới 90 ngày, cảnh báo < 90 | CT-BR-42, L4b |
+| R-109 ✅ | Lý do `Expired` chọn được cho HĐ không thời hạn / trả sớm | Báo cáo lý do kết thúc sai; che giấu chấm dứt trước hạn | 422 `EXPIRED_REASON_INVALID` | CT-BR-21 |
+| R-110 ✅ | Khoản gắn sau khi ký nhưng hiệu lực từ ngày bắt đầu không có trên bản in | Văn bản thiếu khoản đang thu | In mọi khoản không có trong bản chụp lúc ký | CT-BR-43 |
+| R-111 ✅ | M02 chưa tính ngày trả phòng (đã có ở M05 + code) | Đếm phòng trống sai | PR-BR-02/05 | 02-property-room |
+| R-112 ✅ | Plan lệch code: export không cùng transaction | Đếm và dữ liệu lệch nhau khi có người sửa giữa chừng | `REPEATABLE READ` | RP-BR-09 |
+
+## B8. Quyết định nghiệp vụ phiếu tiền phòng, công tơ, hết hạn — 04/10/2026
+
+| # | Vấn đề | Kịch bản lỗi | Xử lý | Nơi sửa |
+|---|--------|--------------|-------|---------|
+| R-113 ✅ | 3 nhóm khoản thu khó hiểu; phòng tính nước theo người vẫn "có" nước theo công tơ | In thừa dòng nước công tơ; chủ trọ nhầm nhóm | 2 nhóm: Điện nước (công tơ, theo phòng) / Dịch vụ (theo phòng · đầu người · số gói); phụ thu nhập trên phiếu | M04 FE-06 |
+| R-114 ✅ | Người đứng tên rời đi, người khác vẫn ở | HĐ mất người chịu trách nhiệm mà không ai biết | Cờ `REPRESENTATIVE_MOVED_OUT` + ký lại cho người còn ở | CT-BR-44, CT-UC-21 |
+| R-115 ✅ | HĐ hết hạn mà người thuê vẫn ở | Báo phòng trống sai; không có quyết định của chủ trọ | Phòng vẫn Đang thuê; chủ trọ chọn gia hạn / ở tiếp chưa ký / thu lại phòng | CT-BR-45, CT-UC-22, PR-BR-02 |
+| R-116 | Phiếu nháp chỉ cho sửa tiền phòng | Không xử lý được case lệch thực tế | Sửa tay mọi ô, đánh dấu + giữ giá trị hệ thống; tính lại theo phòng / tầng / khu | BL-BR-07, BL-UC-06 |
+| R-117 | Thay công tơ giữa kỳ | Thiếu / thu trùng tiền điện | 2 cách: phụ thu tay hoặc công tơ phiên bản tự cộng | BL-BR-23, MT-BR-09/15 — ✅ đợt 1 M06: ghi thay công tơ phiên bản; phần tính tiền chờ M07 |
+| R-118 | Giá điện đổi giữa kỳ | Tranh cãi giá nào | Cả kỳ tính giá mới (giá tại ngày cuối kỳ sử dụng) | BL-BR-05 |
+| R-119 ✅ | Bản in / bản chụp giá lấy mọi khoản điện nước của khu | Phòng tính nước theo người vẫn in dòng nước theo công tơ | Chỉ lấy khoản có công tơ thực ở phòng; công tơ lắp sau khi ký in theo giá ngày bắt đầu | FE-BR-17, M06 đợt 1 |
+| R-120 ✅ | Kích hoạt / thanh lý không ghi mốc công tơ | Không có chỉ số đầu / cuối để tính tiền điện của từng người thuê | Bắt buộc chỉ số nhận phòng (hoặc dùng số mới nhất) và chỉ số cuối | MT-BR-13, CT-BR-12 |
+| R-121 ✅ | Phiếu đầu tiên của HĐ nhập từ trước bị chặn vì "chưa lập phiếu kỳ trước" (BL-BR-21) | Không lập được phiếu nào cho HĐ cũ đưa vào phần mềm | Phiếu đầu tiên lập ở kỳ bất kỳ; chỉ số đầu = chỉ số gần nhất ≤ đầu kỳ; từ phiếu thứ 2 mới bắt tuần tự | BL-BR-21 |
+| R-122 ✅ | Prepaid: điện nước kỳ cuối không có phiếu nào thu (chưa có phiếu Final) | Mất tiền điện tháng cuối | Phiếu kỳ cuối gộp điện nước tới chỉ số cuối HĐ | M07 đợt 1 |
+| R-123 ✅ | Thu vượt nợ khi chưa có số dư có | Tiền thừa không có chỗ ghi ⇒ lệch sổ | Chặn `PAYMENT_EXCEEDS_DEBT` tới đợt 2 | M08 đợt 1 |
+| R-124 ✅ | EF gộp các index unique trùng cột (chỉ số lắp / nhận phòng) | Migration thiếu ràng buộc ⇒ trùng chỉ số | Đặt tên index + `HasDatabaseName`, kiểm tra trong DB | M06 |
+
 ## C. Rủi ro còn lại / cần quyết định
 
 | # | Vấn đề | Ảnh hưởng | Đề xuất |
@@ -134,7 +183,12 @@
 | O-08 ⚠️ | Chủ trọ cần thu theo **giường** / nhiều phòng 1 HĐ | Không hỗ trợ P1 | Workaround: mỗi giường 1 `Room` |
 | O-09 ✅ | Người đứng tên không ở cùng ⇒ "chủ hộ" khi đăng ký tạm trú là người khác | Quan hệ khai so với người đứng tên không khớp tờ khai | Đã làm `household_head_renter_id` (CT-BR-36) |
 | O-10 ✅ | CT-BR-31 (không ở 2 phòng) chỉ kiểm ở Application | 2 request song song thêm cùng người vào 2 phòng có thể lọt | Đã làm: advisory lock theo người thuê trong transaction (05-contract §10) |
-| O-11 ⚠️ | Trường tùy biến điện / nước trùng khoản thu M04 | Nhập 2 nơi, lệch nhau | Khi có M04: tự điền trường từ `contract_fees` (05-contract Q7) |
+| O-11 ✅ | Trường tùy biến điện / nước trùng khoản thu M04 | Nhập 2 nơi, lệch nhau | M04 đã có: văn bản HĐ in điện nước từ `contract_fees`; khuyến nghị bỏ trường điện nước khỏi mẫu (05-contract Q7) |
+| O-12 ⚠️ | Giá điện tham chiếu & định mức theo TT 60/2025 | Ngưỡng cảnh báo cố định trong cấu hình có thể lỗi thời khi EVN đổi giá | Cập nhật `Fees:ElectricityPriceWarningThreshold`; P2 bảng cấu hình do admin sửa; M07 xử lý định mức theo số người kê khai |
+| O-13 ⚠️ | Điện một giá (FE-BR-15) | TT 60/2025: tổng tiền điện thu không vượt hóa đơn EVN; một giá cao có thể vượt khi phòng dùng ít | Giữ cảnh báo ngưỡng (FE-BR-13) + làm đối chiếu hóa đơn (LEG-05, M10 E7) |
+| O-14 ⚠️ | Đồ của người bỏ đi không báo (CT-BR-41) | Tự ý xử lý đồ có thể bị khiếu nại | Hệ thống chỉ nhắc lập biên bản có người làm chứng; cách xử lý đồ / cọc cần ghi trong điều khoản HĐ — hỏi luật sư |
+| O-15 ⚠️ | "Ở tiếp chưa ký lại" (CT-BR-45) | BLDS 2015 không tự gia hạn; tranh chấp khó chứng minh điều khoản đang áp | Nhắc ký phụ lục mỗi 30 ngày; bản in ghi rõ HĐ đã hết hạn |
+| O-16 ⚠️ | Sửa tay phiếu (BL-BR-07) | Sửa tay quá nhiều làm số liệu báo cáo lệch nguồn | Báo cáo M10 có cột "đã sửa tay"; audit từng ô sửa |
 
 ## D. Ma trận kiểm tra chéo (đã đối chiếu)
 

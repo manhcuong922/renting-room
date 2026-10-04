@@ -150,10 +150,12 @@ async function ensureFreshToken() {
   "role": "OrgOwner",
   "mustChangePassword": false,
   "lastLoginAt": "2026-10-02T13:19:05.194016+00:00",
-  "organization": { "id": "e22cfc70-…", "code": "MAU-9080", "name": "Nhà trọ Mẫu" }
+  "organization": { "id": "e22cfc70-…", "code": "MAU-9080", "name": "Nhà trọ Mẫu" },
+  "canViewSensitiveData": true
 }
 ```
 
 - `organization` = `null` với `SystemAdmin`.
+- `canViewSensitiveData`: chủ trọ luôn `true`; phó quản lý `true` khi chủ trọ cấp quyền — `false` thì ẩn nút xem / xuất số giấy tờ đầy đủ ([conventions.md](conventions.md#dữ-liệu-cá-nhân)).
 - Header app: hiện `organization.name` + `fullName` + nhãn vai trò.
 - Hiện chưa có API tự sửa họ tên/SĐT — chủ trọ sửa cho phó quản lý ([members.md](members.md)), admin sửa chủ trọ (P2).

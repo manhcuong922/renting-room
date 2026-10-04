@@ -146,11 +146,22 @@ Vượt giới hạn → **429 `TOO_MANY_REQUESTS`** + header `Retry-After` (gi�
 | `RoomDisplayStatus` | `Vacant` Trống · `Reserved` Giữ chỗ · `Occupied` Đang thuê · `Maintenance` Bảo trì · `Archived` Ngừng dùng |
 | `ContractStatus` | `Draft` Nháp · `Active` Đang hiệu lực · `Liquidating` Đang thanh lý · `Ended` Đã kết thúc · `Cancelled` Đã hủy |
 | `PaymentMethod` | `Cash` Tiền mặt · `BankTransfer` Chuyển khoản · `EWallet` Ví điện tử |
-| `TerminationReason` | `Expired` Hết hạn · `MutualAgreement` Hai bên thỏa thuận · `LesseeUnilateral` Bên thuê đơn phương · `LessorUnilateral` Bên cho thuê đơn phương · `RoomTransfer` Chuyển phòng |
-| `TerminationGround` | `RentArrears3Months` Nợ tiền thuê từ 3 tháng · `WrongPurpose` Sử dụng sai mục đích · `UnauthorizedRenovation` Tự ý đục phá, cải tạo · `Other` Khác |
+| `TerminationReason` | `Expired` Hết hạn · `MutualAgreement` Hai bên thỏa thuận · `LesseeUnilateral` Bên thuê đơn phương · `LessorUnilateral` Bên cho thuê đơn phương · `RoomTransfer` Chuyển phòng · `Abandoned` Bỏ đi không báo |
+| `TerminationGround` | `RentArrears3Months` Nợ tiền thuê từ 3 tháng · `WrongPurpose` Sử dụng sai mục đích · `UnauthorizedRenovation` Tự ý đục phá, cải tạo · `IndefiniteTermNotice` Thông báo chấm dứt HĐ không thời hạn (90 ngày) · `Other` Khác |
 | `VehicleType` | `Motorbike` Xe máy · `Bicycle` Xe đạp · `ElectricBike` Xe điện · `Car` Ô tô |
+| `FeeGroup` | `Metered` Điện nước (theo công tơ) · `Service` Dịch vụ |
+| `ChargeBasis` | `PerRoom` Theo phòng · `PerOccupant` Theo đầu người · `PerUnit` Theo số gói |
+| `InvoiceStatus` | `Draft` Nháp · `Finalized` Đã chốt · `Void` Đã hủy |
+| `InvoiceLineType` | `Rent` Tiền phòng · `Metered` Điện nước · `Service` Dịch vụ · `Surcharge` Phụ thu · `ManualDiscount` Giảm trừ |
+| `InvoicePaymentStatus` | `Unpaid` Chưa thu · `PartiallyPaid` Thu một phần · `Paid` Đã thu đủ · `Overdue` Quá hạn |
+| `ReadingKind` | `Initial` Lắp công tơ · `Handover` Nhận phòng · `Periodic` Cuối kỳ · `Adhoc` Kiểm tra · `Final` Cuối hợp đồng · `Removal` Tháo công tơ |
+| `ContractFlag` | `RepresentativeMovedOut` Người ký đã rời đi · `NoOccupantLeft` Không còn người ở · `ExpiredAwaitingDecision` Quá hạn — chờ quyết định · `Holdover` Ở tiếp chưa ký lại |
 
 ## Dữ liệu cá nhân
 
 Số giấy tờ (CCCD / hộ chiếu) **luôn trả dạng che** `"********2345"`. Muốn xem đầy đủ: gọi endpoint `reveal-id-number` (POST) —
 mỗi lần xem đều được ghi log. UI: nút "Hiện số" có biểu tượng con mắt, không tự động gọi.
+
+**Quyền dữ liệu nhạy cảm**: chủ trọ luôn có; phó quản lý chỉ khi chủ trọ cấp. Đọc `canViewSensitiveData` từ `GET /me`:
+`false` ⇒ **ẩn** nút 👁, ô "Hiện đầy đủ số giấy tờ" khi xuất Excel. Gọi khi không có quyền → 403 `SENSITIVE_DATA_FORBIDDEN`
+(quyền có thể bị thu hồi giữa chừng — xử lý lỗi này bằng thông báo, không đăng xuất). In hợp đồng vẫn được, số giấy tờ in dạng che.

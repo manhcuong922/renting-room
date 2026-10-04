@@ -30,6 +30,14 @@ public sealed class User : AuditableEntity
     public DateTimeOffset? RemovedAt { get; private set; }
     public Guid? RemovedBy { get; private set; }
 
+    /// <summary>
+    /// ID-BR-22: phó quản lý được chủ trọ cấp quyền xem dữ liệu nhạy cảm (số giấy tờ đầy đủ, xuất file / in có số đầy đủ).
+    /// Chủ trọ luôn có quyền — cờ này chỉ có nghĩa với phó quản lý.
+    /// </summary>
+    public bool CanViewSensitiveData { get; private set; }
+
+    public bool HasSensitiveDataAccess => Role == UserRole.OrgOwner || (Role == UserRole.OrgManager && CanViewSensitiveData);
+
     /// <summary>Tên đăng nhập hiển thị: ưu tiên SĐT, sau đó email.</summary>
     public string Username => PhoneNormalized ?? EmailNormalized!;
 
@@ -155,11 +163,24 @@ public sealed class User : AuditableEntity
             return Result.Failure(IdentityErrors.UserRemoved);
 
         Status = UserStatus.Removed;
+        CanViewSensitiveData = false;
         RemovedAt = now;
         RemovedBy = removedBy;
         PhoneNormalized = null;
         EmailNormalized = $"removed-{Id:N}@removed.invalid";
         RotateSecurityStamp();
+        return Result.Success();
+    }
+
+    /// <summary>Chủ trọ cấp / thu hồi quyền xem dữ liệu nhạy cảm của phó quản lý (ID-BR-22).</summary>
+    public Result SetSensitiveDataAccess(bool allowed)
+    {
+        if (Role != UserRole.OrgManager)
+            return Result.Failure(IdentityErrors.CannotModifyOwner);
+        if (Status == UserStatus.Removed)
+            return Result.Failure(IdentityErrors.UserRemoved);
+
+        CanViewSensitiveData = allowed;
         return Result.Success();
     }
 
