@@ -16,6 +16,7 @@ namespace renting_room.Application.Billing;
 public sealed record InvoiceSummaryDto(
     Guid Id,
     string? InvoiceNo,
+    InvoiceType Type,
     InvoiceStatus Status,
     InvoicePaymentStatus? PaymentStatus,
     Guid PropertyId,
@@ -71,7 +72,7 @@ public sealed record InvoiceDetailDto(
 internal static class InvoiceMapping
 {
     public static InvoiceSummaryDto ToSummary(this Invoice i, DateOnly today) => new(
-        i.Id, i.InvoiceNo, i.Status, i.PaymentStatus(today), i.PropertyId, i.RoomId, i.SnapshotRoomCode, i.ContractId,
+        i.Id, i.InvoiceNo, i.Type, i.Status, i.PaymentStatus(today), i.PropertyId, i.RoomId, i.SnapshotRoomCode, i.ContractId,
         i.SnapshotContractNo, i.SnapshotRepresentativeName, $"{i.BillingMonth:yyyy-MM}", i.PeriodStart, i.PeriodEnd,
         i.TotalAmount, i.PaidAmount, i.Outstanding, i.DueDate, i.Issues.Count(x => x.Severity == InvoiceIssue.Error), i.Version.ToString());
 
@@ -316,7 +317,7 @@ public sealed class FinalizeInvoiceHandler(IAppDbContext db, IDocumentNumberGene
         var period = InvoiceInputs.CurrentPeriod(contract, invoice);
         if (period is null || period.End != invoice.PeriodEnd)
             return BillingErrors.DraftStale;
-        var calculation = InvoiceCalculator.Calculate(await InvoiceInputs.LoadAsync(db, contract, period, invoice.Id, ct));
+        var calculation = InvoiceCalculator.Calculate(await InvoiceInputs.LoadAsync(db, contract, period, invoice.Id, ct, invoice.Type));
         if (!invoice.SystemPartMatches(calculation))
             return BillingErrors.DraftStale;
 

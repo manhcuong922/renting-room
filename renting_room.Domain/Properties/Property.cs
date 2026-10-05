@@ -22,6 +22,7 @@ public sealed class Property : TenantEntity
     public int DefaultPaymentDueDays { get; private set; }
     public ProrationMode DefaultProrationMode { get; private set; }
     public int DefaultNoticeDays { get; private set; }
+    public int DefaultRentCycleMonths { get; private set; } = 1;
 
     // Bên cho thuê (PR-BR-12) — lưu phẳng thành cột lessor_*
     public LessorType? LessorType { get; private set; }
@@ -55,7 +56,7 @@ public sealed class Property : TenantEntity
     public bool IsArchived => ArchivedAt is not null;
 
     public BillingDefaults BillingDefaults =>
-        new(DefaultBillingAnchorDay, DefaultChargeMode, DefaultPaymentDueDays, DefaultProrationMode, DefaultNoticeDays);
+        new(DefaultBillingAnchorDay, DefaultChargeMode, DefaultPaymentDueDays, DefaultProrationMode, DefaultNoticeDays, DefaultRentCycleMonths);
 
     public PropertyAddress Address => new(StreetAddress, CommuneName, ProvinceName, CommuneCode, ProvinceCode);
 
@@ -105,6 +106,7 @@ public sealed class Property : TenantEntity
         DefaultPaymentDueDays = defaults.PaymentDueDays;
         DefaultProrationMode = defaults.ProrationMode;
         DefaultNoticeDays = defaults.NoticeDays;
+        DefaultRentCycleMonths = defaults.RentCycleMonths;
     }
 
     /// <summary>Sửa bên cho thuê không ảnh hưởng hợp đồng đã kích hoạt — hợp đồng giữ snapshot (PR-BR-15).</summary>

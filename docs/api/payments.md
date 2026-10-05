@@ -30,7 +30,7 @@ Quyền: chủ trọ và phó quản lý.
 ```json
 {
   "id": "…", "receiptNo": "PT2026-000045", "contractId": "…", "amount": 3378000, "method": "Cash", "paidAt": "2026-11-07",
-  "payerName": null, "reference": null, "note": null, "status": "Recorded", "reversedAt": null, "reverseReason": null,
+  "payerName": null, "reference": null, "note": null, "status": "Recorded", "kind": "Receipt", "reversedAt": null, "reverseReason": null,
   "allocations": [ { "invoiceId": "…", "invoiceNo": "PB2026-000101", "amount": 3378000 } ]
 }
 ```
@@ -40,7 +40,11 @@ Quyền: chủ trọ và phó quản lý.
 | 422 `PAYMENT_EXCEEDS_DEBT` | Số tiền lớn hơn số còn nợ của phiếu (hoặc tổng nợ của HĐ) — chưa hỗ trợ trả thừa |
 | 422 `NO_OUTSTANDING_INVOICE` | HĐ không còn phiếu nào chưa thu đủ |
 | 422 `INVOICE_NOT_FINALIZED` | Phiếu còn nháp / đã hủy |
-| 400 `INVALID_PAID_AT` | Ngày thu ở tương lai |
+| 400 `INVALID_PAID_AT` | Ngày thu ở tương lai, hoặc trước ngày bắt đầu HĐ quá 60 ngày |
+| 422 `CONTRACT_NOT_BILLABLE` | HĐ đã kết thúc (hoàn tất thanh lý đã xử lý hết nợ) |
+
+`kind`: `Receipt` tiền thật · `WriteOff` **bỏ nợ** — chỉ sinh khi hoàn tất thanh lý chọn "Bỏ nợ", không tính doanh thu.
+Số phiếu thu `PT{năm lập phiếu}-…` (ghi bù ngày thu năm trước vẫn mang năm hiện tại).
 
 ## Đảo phiếu thu
 

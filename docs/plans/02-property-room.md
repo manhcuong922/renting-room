@@ -50,7 +50,7 @@ cài đặt thu mặc định của khu; thông tin hợp đồng điện EVN c�
 | PR-BR-02 | Trạng thái phòng **không lưu cứng** "Occupied". Tính **theo ngày** D (mặc định hôm nay, C-04): `Occupied` = tồn tại HĐ `Active`/`Liquidating` có `start_date ≤ D ≤ COALESCE(actual_end_date, ∞)` **hoặc HĐ `Ended` có `start_date ≤ D ≤ actual_end_date`** (ngày trả phòng vẫn tính là đang thuê — CT-BR-33); `Reserved` = không Occupied và có HĐ `Draft` (chưa hủy) của phòng; còn lại `Vacant`. **HĐ quá hạn (`end_date` đã qua) vẫn là `Occupied`** cho tới khi thanh lý (CT-BR-45); người đứng tên rời đi nhưng còn người ở vẫn `Occupied` (CT-BR-44). Phòng về `Vacant` chỉ khi chủ trọ thanh lý xong. Một phòng có thể đồng thời có HĐ cũ đang thanh lý và HĐ mới bắt đầu sau `actual_end_date` cũ | Query (M05) ✅ |
 | PR-BR-03 | Chỉ đặt `Maintenance` khi phòng không có hợp đồng `Active`/`Liquidating` | Application (đọc M05) trong transaction |
 | PR-BR-04 | Phòng `Maintenance` hoặc `Archived` không được **kích hoạt** hợp đồng mới | M05 kiểm tra |
-| PR-BR-05 | Archive phòng / bắt đầu bảo trì chỉ khi không có hợp đồng `Draft`/`Active`/`Liquidating` **và không có HĐ `Ended` có `actual_end_date ≥ hôm nay`** (người thuê còn ở trong ngày trả phòng — CT-BR-33); archive khu chỉ khi mọi phòng đã archive hoặc archivable (archive phòng kèm theo trong cùng transaction) | Application ✅ |
+| PR-BR-05 | Archive phòng / bắt đầu bảo trì chỉ khi không có hợp đồng `Draft`/`Active`/`Liquidating` **và không có HĐ `Ended` có `actual_end_date ≥ hôm nay`** (người thuê còn ở trong ngày trả phòng — CT-BR-33); archive khu chỉ khi mọi phòng đã archive hoặc archivable (archive phòng kèm theo trong cùng transaction) **Công tơ không bị tháo** khi phòng ngừng dùng / bảo trì: công tơ vẫn chạy (sửa chữa, thử phòng dùng điện) — phần dùng khi phòng trống không tính cho ai (MT-BR-14); HĐ mới chọn "dùng số mới nhất" hoặc nhập số khác khi kích hoạt (MT-BR-13) | Application ✅ |
 | PR-BR-06 | `max_occupants` ≥ 1; giảm `max_occupants` xuống dưới số người đang ở → 422 | Application |
 | PR-BR-07 | Nhóm phòng chỉ chứa phòng **cùng khu** với nhóm | DB FK composite `(organization_id, property_id, room_id)` |
 | PR-BR-08 | Xóa nhóm phòng: cho phép nếu không có quy tắc điều chỉnh (M07) đang `Active` tham chiếu; nếu có → 409 | Application |
@@ -88,6 +88,7 @@ cài đặt thu mặc định của khu; thông tin hợp đồng điện EVN c�
 | default_payment_due_days | smallint | N | 0–60, mặc định 5 |
 | default_proration_mode | varchar(16) | N | `Daily` / `FullPeriod` |
 | default_notice_days | smallint | N | 0–180, mặc định 30 (L4) |
+| default_rent_cycle_months | smallint | N | 1 / 2 / 3 / 6 / 12, mặc định 1 — chu kỳ đóng tiền phòng mặc định cho HĐ mới (BL-BR-26) ✅ |
 | evn_customer_code | varchar(20) | Y | mã khách hàng điện, tham chiếu đối chiếu |
 | **Bên cho thuê** (PR-BR-12) | | | |
 | lessor_type | varchar(16) | Y | `Individual`,`Organization` |

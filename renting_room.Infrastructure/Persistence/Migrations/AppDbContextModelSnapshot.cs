@@ -161,6 +161,10 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("voided_at");
 
+                    b.Property<decimal>("WrittenOffAmount")
+                        .HasColumnType("numeric(18,0)")
+                        .HasColumnName("written_off_amount");
+
                     b.HasKey("Id")
                         .HasName("pk_invoices");
 
@@ -200,6 +204,8 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                             t.HasCheckConstraint("ck_invoices_total", "total_amount >= 0 OR status = 'Draft'");
 
                             t.HasCheckConstraint("ck_invoices_void_reason", "status <> 'Void' OR void_reason IS NOT NULL");
+
+                            t.HasCheckConstraint("ck_invoices_written_off", "written_off_amount >= 0 AND written_off_amount <= paid_amount");
                         });
                 });
 
@@ -593,6 +599,10 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(16)")
                         .HasColumnName("proration_mode");
 
+                    b.Property<int>("RentCycleMonths")
+                        .HasColumnType("integer")
+                        .HasColumnName("rent_cycle_months");
+
                     b.Property<Guid>("RepresentativeRenterId")
                         .HasColumnType("uuid")
                         .HasColumnName("representative_renter_id");
@@ -713,6 +723,8 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                             t.HasCheckConstraint("ck_contracts_end_after_start", "end_date IS NULL OR end_date > start_date");
 
                             t.HasCheckConstraint("ck_contracts_liquidation_end", "status NOT IN ('Liquidating','Ended') OR actual_end_date IS NOT NULL");
+
+                            t.HasCheckConstraint("ck_contracts_rent_cycle", "rent_cycle_months IN (1, 2, 3, 6, 12)");
 
                             t.HasCheckConstraint("ck_contracts_settings", "billing_anchor_day BETWEEN 1 AND 31 AND deposit_amount >= 0 AND copies_count BETWEEN 1 AND 10");
 
@@ -1236,6 +1248,10 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("OrganizationId")
                         .HasColumnType("uuid")
                         .HasColumnName("organization_id");
+
+                    b.Property<string>("Tiers")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("tiers");
 
                     b.Property<decimal>("UnitPrice")
                         .HasColumnType("numeric(18,2)")
@@ -1947,6 +1963,12 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("created_by");
 
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasColumnName("kind");
+
                     b.Property<string>("Method")
                         .IsRequired()
                         .HasMaxLength(20)
@@ -2192,6 +2214,10 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(16)")
                         .HasColumnName("default_proration_mode");
 
+                    b.Property<int>("DefaultRentCycleMonths")
+                        .HasColumnType("integer")
+                        .HasColumnName("default_rent_cycle_months");
+
                     b.Property<string>("Description")
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)")
@@ -2345,6 +2371,8 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                             t.HasCheckConstraint("ck_properties_anchor_day", "default_billing_anchor_day BETWEEN 1 AND 31");
 
                             t.HasCheckConstraint("ck_properties_lessor_organization", "lessor_type IS DISTINCT FROM 'Organization' OR (lessor_tax_code IS NOT NULL AND lessor_representative_name IS NOT NULL)");
+
+                            t.HasCheckConstraint("ck_properties_rent_cycle", "default_rent_cycle_months IN (1, 2, 3, 6, 12)");
                         });
                 });
 

@@ -19,7 +19,7 @@ cảnh báo bất thường; khóa chỉ số đã dùng cho phiếu đã chốt
 **Code đợt 1 (04/10/2026)** — phần không phụ thuộc phiếu (M07):
 - Lắp / thay (phiên bản) / gỡ công tơ từng phòng; xem công tơ của phòng kèm **chỉ số mới nhất**; lịch sử chỉ số; sửa chỉ số (đơn điệu).
 - Kích hoạt HĐ: **bắt buộc chỉ số nhận phòng** cho mỗi công tơ hoạt động tại `start_date` (`value` bỏ trống = "Dùng số mới nhất").
-- Hoàn tất thanh lý: **bắt buộc chỉ số cuối** (`Final`) cho mỗi công tơ hoạt động tại `actual_end_date`.
+- Hoàn tất thanh lý: **bắt buộc chỉ số cuối** (`Final`) cho mỗi công tơ hoạt động tại `actual_end_date` (✅ đã chuyển sang bước lập phiếu quyết toán `POST /contracts/{id}/final-invoice`, MT-UC-05).
 - Điện nước trong bản chụp giá / bản in / rà dữ liệu chỉ lấy khoản có **công tơ thực ở phòng** (phòng tính nước theo người không còn dòng nước công tơ).
 - Ngừng dùng khoản Metered còn công tơ hoạt động → 422 `FEE_HAS_ACTIVE_METERS`; HĐ hiệu lực ở phòng chưa có công tơ điện → cảnh báo `ROOM_WITHOUT_METER`.
 
@@ -48,7 +48,7 @@ cảnh báo bất thường; khóa chỉ số đã dùng cho phiếu đã chốt
 | MT-UC-02 ✅ | Thay công tơ (hỏng / quay vòng về 0): chỉ số tháo của công tơ cũ + chỉ số ban đầu công tơ mới trong **một** lệnh |
 | MT-UC-03 ✅ | Gỡ công tơ (không thay) |
 | MT-UC-04 ✅ | **Màn hình ghi chỉ số**: chọn khu + tháng thu (+ lọc khoản thu, tầng) → lưới mỗi dòng = (phòng, công tơ, HĐ): chỉ số cũ (ngày), ô nhập chỉ số mới, sản lượng tạm tính, cảnh báo; lưu hàng loạt |
-| MT-UC-05 ✅ | Ghi **chỉ số nhận phòng** (`Handover`) khi kích hoạt HĐ — gợi ý = chỉ số gần nhất của công tơ, chủ trọ **chỉnh được** cho đúng ngày vào ở (MT-BR-13) — và chỉ số cuối (khi thanh lý / bỏ đi không báo) |
+| MT-UC-05 ✅ | Ghi **chỉ số nhận phòng** (`Handover`) khi kích hoạt HĐ — "dùng số mới nhất" hoặc nhập số khác (MT-BR-13) — và **chỉ số cuối** (`Final`) khi trả phòng. **Đổi 04/10/2026 ✅**: chỉ số cuối nhập ở bước **lập phiếu quyết toán** (M07 BL-UC-11) thay vì lúc hoàn tất — vì phiếu quyết toán cần chỉ số cuối để tính điện nước |
 | MT-UC-06 ✅ | Sửa/hủy chỉ số chưa bị khóa |
 | MT-UC-07 ✅ | Xem lịch sử chỉ số của công tơ, biểu đồ sản lượng |
 
@@ -74,6 +74,7 @@ Quy tắc đợt 1 đã code: MT-BR-01, 02, 03, 09, 10, 11, 13 (✅ ở đầu d
 | MT-BR-14 | **Sản lượng khoảng trống** giữa `Final` của HĐ trước và `Handover` của HĐ sau (VD 100 → 108: sửa chữa, phòng trống) **không tính cho người thuê nào**; báo cáo M10 hiển thị "sản lượng phòng trống" theo phòng / khu để chủ trọ đối chiếu hóa đơn EVN (LEG-05) | Domain + M10 |
 | MT-BR-15 ✅ | **Kỳ có thay công tơ**: cuối kỳ chỉ nhập số của **công tơ mới**; hệ thống tự kiểm tra trong kỳ sử dụng có thay công tơ không và cộng: (số cuối công tơ cũ − số đầu kỳ của công tơ cũ) + (số cuối kỳ công tơ mới − số ban đầu công tơ mới), nhân **một đơn giá** (giá mới — BL-BR-05). Lưới ghi chỉ số hiển thị dòng phụ "Công tơ cũ (đã thay ngày dd/MM): 1.250 → 1.320 = 70" để chủ trọ kiểm tra. Cách thay thế: không ghi công tơ phiên bản, nhập tiền điện công tơ cũ thành **phụ thu** trên phiếu nháp (BL-BR-23) | Domain (`MeterUsageCalculator`) |
 | MT-BR-16 ✅ | **Chỉ số cũ của kỳ sau** = chỉ số cuối của phiếu **đã chốt** gần nhất (MT-BR-12). Phiếu nháp chỉ "đề xuất"; khi chốt phiếu, chỉ số cuối kỳ bị khóa và trở thành chỉ số cũ của phòng cho kỳ sau | Domain |
+| MT-BR-17 | Phòng **ngừng dùng / bảo trì không tháo công tơ** — công tơ vẫn chạy khi không có người thuê (sửa chữa, thử phòng); phần dùng khi phòng trống không tính cho ai (MT-BR-14), hiển thị trong báo cáo sản lượng phòng trống | Thiết kế |
 
 ### 3.3 Thuật toán sản lượng (dùng bởi M07)
 
@@ -103,7 +104,7 @@ Ví dụ thay công tơ giữa kỳ: cũ từ 1.250 → tháo 1.320 (70); mới 
 Với khu K và tháng thu M: mỗi HĐ `Active`/`Liquidating` của K × mỗi công tơ của phòng HĐ hoạt động trong kỳ sử dụng U (không cần HĐ đăng ký — FE-BR-17):
 - `Postpaid`: kỳ sử dụng U = kỳ có `PeriodStart` thuộc tháng M.
 - `Prepaid`: U = kỳ **liền trước** kỳ có `PeriodStart` thuộc tháng M (bỏ qua nếu kỳ đó trước `start_date` của HĐ).
-- HĐ `Liquidating` mà `actual_end_date` ∈ U → dòng hiển thị yêu cầu chỉ số `Final` thay vì `Periodic`.
+- HĐ `Liquidating` mà `actual_end_date` ∈ U → **không** hiện trên lưới: chỉ số cuối nhập khi lập phiếu quyết toán (M07 BL-UC-11).
 - Dòng hiển thị **rõ khoảng U** (VD "05/10 – 04/11") để tránh nhầm tháng.
 
 ## 4. Dữ liệu
@@ -198,7 +199,7 @@ MeterUsageCalculator (domain service): Calculate(contract, feeType, usagePeriod,
 | GET | `/meters/{id}/readings` | lịch sử (mới nhất trước) |
 | PUT | `/meter-readings/{id}` `{ value, note? }` | sửa giá trị; 422 `READING_NOT_MONOTONIC` (kèm `previousValue` / `nextValue`) |
 | POST | `/contracts/{id}/activate` `{ overrideCapacity?, handoverReadings: [{ meterId, value? }] }` | 422 `HANDOVER_READING_REQUIRED` (kèm `meterIds`) — `value` null = số mới nhất |
-| POST | `/contracts/{id}/liquidation/complete` `{ finalReadings: [{ meterId, value }] }` | 422 `FINAL_READING_REQUIRED` (kèm `meterIds`) |
+| POST | `/contracts/{id}/final-invoice` `{ finalReadings: [{ meterId, value }] }` (lập phiếu quyết toán) | 422 `FINAL_READING_REQUIRED` (kèm `meterIds`) |
 
 **Đợt 2 (thiết kế)**
 

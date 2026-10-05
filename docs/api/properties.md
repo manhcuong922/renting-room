@@ -69,7 +69,7 @@ Bước 4  Tạo phòng hàng loạt                      POST /properties/{id}/
   "description": null,
   "evnCustomerCode": null,
   "land": { "parcelNo": null, "mapSheetNo": null, "ownershipCertificateNo": null },
-  "billingDefaults": { "anchorDay": 1, "chargeMode": "Prepaid", "paymentDueDays": 5, "prorationMode": "Daily", "noticeDays": 30 }
+  "billingDefaults": { "anchorDay": 1, "chargeMode": "Prepaid", "paymentDueDays": 5, "prorationMode": "Daily", "noticeDays": 30, "rentCycleMonths": 1 }
 }
 ```
 
@@ -94,7 +94,8 @@ Bước 4  Tạo phòng hàng loạt                      POST /properties/{id}/
 | `chargeMode` | `Prepaid` / `Postpaid` | "Thu tiền phòng đầu kỳ / cuối kỳ" |
 | `paymentDueDays` | 0–60 | "Hạn đóng sau ngày chốt (ngày)" |
 | `prorationMode` | `Daily` / `FullPeriod` | "Tháng lẻ tính theo ngày ở / tính tròn tháng" |
-| `noticeDays` | 0–180 | "Số ngày báo trước khi trả phòng" |
+| `noticeDays` | 0–180 | "Số ngày báo trước khi trả phòng" (mặc định 30 — báo trước 1 tháng) |
+| `rentCycleMonths` | 1 / 2 / 3 / 6 / 12 | "Đóng tiền phòng mỗi … tháng" (bỏ trống = 1) — 400 `INVALID_RENT_CYCLE` |
 
 ## Chi tiết
 
@@ -110,7 +111,7 @@ Bước 4  Tạo phòng hàng loạt                      POST /properties/{id}/
   "description": null,
   "evnCustomerCode": null,
   "land": { "parcelNo": null, "mapSheetNo": null, "ownershipCertificateNo": null },
-  "billingDefaults": { "anchorDay": 1, "chargeMode": "Prepaid", "paymentDueDays": 5, "prorationMode": "Daily", "noticeDays": 30 },
+  "billingDefaults": { "anchorDay": 1, "chargeMode": "Prepaid", "paymentDueDays": 5, "prorationMode": "Daily", "noticeDays": 30, "rentCycleMonths": 1 },
   "lessor": {
     "type": "Individual",
     "name": "Nguyễn Văn Chủ",
@@ -150,7 +151,7 @@ Bước 4  Tạo phòng hàng loạt                      POST /properties/{id}/
   "description": "Gần ĐH Quốc gia",
   "evnCustomerCode": "PD0100123456",
   "land": null,
-  "billingDefaults": { "anchorDay": 5, "chargeMode": "Prepaid", "paymentDueDays": 5, "prorationMode": "Daily", "noticeDays": 30 },
+  "billingDefaults": { "anchorDay": 5, "chargeMode": "Prepaid", "paymentDueDays": 5, "prorationMode": "Daily", "noticeDays": 30, "rentCycleMonths": 1 },
   "version": "944"
 }
 ```

@@ -7,7 +7,9 @@ public sealed record AddressInput(string StreetAddress, string CommuneName, stri
 
 public sealed record LandParcelInput(string? ParcelNo, string? MapSheetNo, string? OwnershipCertificateNo);
 
-public sealed record BillingDefaultsInput(int AnchorDay, ChargeMode ChargeMode, int PaymentDueDays, ProrationMode ProrationMode, int NoticeDays);
+/// <param name="RentCycleMonths">Chu kỳ đóng tiền phòng mặc định — 1/2/3/6/12 (bỏ trống = 1).</param>
+public sealed record BillingDefaultsInput(
+    int AnchorDay, ChargeMode ChargeMode, int PaymentDueDays, ProrationMode ProrationMode, int NoticeDays, int? RentCycleMonths = null);
 
 public sealed record PropertySummaryDto(
     Guid Id,
@@ -66,7 +68,8 @@ internal static class PropertyMapping
         p.Description,
         p.EvnCustomerCode,
         new LandParcelInput(p.LandParcelNo, p.LandMapSheetNo, p.OwnershipCertificateNo),
-        new BillingDefaultsInput(p.DefaultBillingAnchorDay, p.DefaultChargeMode, p.DefaultPaymentDueDays, p.DefaultProrationMode, p.DefaultNoticeDays),
+        new BillingDefaultsInput(p.DefaultBillingAnchorDay, p.DefaultChargeMode, p.DefaultPaymentDueDays, p.DefaultProrationMode, p.DefaultNoticeDays,
+            p.DefaultRentCycleMonths),
         p.Lessor is { } l
             ? new LessorDto(
                 l.Type, l.Name, l.Address, l.Phone, l.Email, l.IdType,
@@ -87,5 +90,5 @@ internal static class PropertyMapping
         new(land?.ParcelNo, land?.MapSheetNo, land?.OwnershipCertificateNo);
 
     public static BillingDefaults ToDomain(this BillingDefaultsInput b) =>
-        new(b.AnchorDay, b.ChargeMode, b.PaymentDueDays, b.ProrationMode, b.NoticeDays);
+        new(b.AnchorDay, b.ChargeMode, b.PaymentDueDays, b.ProrationMode, b.NoticeDays, b.RentCycleMonths ?? 1);
 }

@@ -20,6 +20,7 @@ internal sealed class InvoiceConfiguration : IEntityTypeConfiguration<Invoice>
             t.HasCheckConstraint("ck_invoices_period", "period_end >= period_start");
             t.HasCheckConstraint("ck_invoices_total", "total_amount >= 0 OR status = 'Draft'");
             t.HasCheckConstraint("ck_invoices_paid", "paid_amount >= 0 AND paid_amount <= GREATEST(total_amount, 0)");
+            t.HasCheckConstraint("ck_invoices_written_off", "written_off_amount >= 0 AND written_off_amount <= paid_amount");
             t.HasCheckConstraint("ck_invoices_number", "status = 'Draft' OR (invoice_no IS NOT NULL AND issue_date IS NOT NULL AND due_date IS NOT NULL)");
             t.HasCheckConstraint("ck_invoices_void_reason", "status <> 'Void' OR void_reason IS NOT NULL");
         });
@@ -38,7 +39,7 @@ internal sealed class InvoiceConfiguration : IEntityTypeConfiguration<Invoice>
         builder.Property(i => i.Type).HasColumnName("invoice_type").HasConversion<string>().HasMaxLength(8);
         builder.Property(i => i.Status).HasConversion<string>().HasMaxLength(12);
         builder.Property(i => i.InvoiceNo).HasMaxLength(20);
-        foreach (var money in new[] { nameof(Invoice.Subtotal), nameof(Invoice.DiscountTotal), nameof(Invoice.TotalAmount), nameof(Invoice.PaidAmount) })
+        foreach (var money in new[] { nameof(Invoice.Subtotal), nameof(Invoice.DiscountTotal), nameof(Invoice.TotalAmount), nameof(Invoice.PaidAmount), nameof(Invoice.WrittenOffAmount) })
             builder.Property(money).HasColumnType("numeric(18,0)");
         builder.Property(i => i.SnapshotRoomCode).HasMaxLength(20).IsRequired();
         builder.Property(i => i.SnapshotContractNo).HasMaxLength(30).IsRequired();
@@ -160,6 +161,7 @@ internal sealed class PaymentConfiguration : IEntityTypeConfiguration<Payment>
         builder.Property(p => p.Amount).HasColumnType("numeric(18,0)");
         builder.Property(p => p.Method).HasConversion<string>().HasMaxLength(20);
         builder.Property(p => p.Status).HasConversion<string>().HasMaxLength(10);
+        builder.Property(p => p.Kind).HasConversion<string>().HasMaxLength(10);
         builder.Property(p => p.PayerName).HasMaxLength(200);
         builder.Property(p => p.Reference).HasMaxLength(100);
         builder.Property(p => p.Note).HasMaxLength(500);

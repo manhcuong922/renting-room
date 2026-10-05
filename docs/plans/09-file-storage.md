@@ -16,7 +16,7 @@
 | Thuật ngữ | Code | Định nghĩa |
 |-----------|------|-----------|
 | Tệp đính kèm | `Attachment` | Metadata 1 file + vị trí lưu |
-| Chủ sở hữu | `OwnerType` + `OwnerId` | `Property`, `Room`, `Renter`, `Contract`, `ResidenceRecord`, `MeterReading`, `Invoice`, `Payment`, `DepositTransaction`, `ContractAsset` |
+| Chủ sở hữu | `OwnerType` + `OwnerId` | `Property`, `Room`, `Renter`, `Contract`, `ResidenceRecord` (P2), `MeterReading`, `Invoice`, `Payment`, `DepositTransaction`, `ContractAsset` |
 | Danh mục | `Category` | `ContractScan`, `ContractAddendum`, `HandoverMinutes`, `IdCardFront`, `IdCardBack`, `Portrait`, `ResidenceConfirmation`, `MeterPhoto`, `RoomPhoto`, `PaymentProof`, `ComplianceDoc`, `AuthorizationDoc` (giấy ủy quyền cho thuê — M02 PR-BR-13), `LessorIdCard` (giấy tờ bên cho thuê), `AssetPhoto` (tài sản bàn giao — M05 CT-UC-13), `Other` |
 | Nhạy cảm | `IsSensitive` | Suy từ category (IdCard*, LessorIdCard, Portrait, ResidenceConfirmation, ContractScan, AuthorizationDoc) |
 

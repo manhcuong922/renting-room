@@ -18,7 +18,8 @@ public sealed record UtilityPriceItem(
     string Unit,
     decimal Quantity,
     decimal? UnitPrice,
-    bool IsOverride);
+    bool IsOverride,
+    IReadOnlyList<PriceTier>? Tiers = null);
 
 public static class UtilityPriceSnapshotJson
 {
@@ -33,7 +34,7 @@ public static class UtilityPriceSnapshotJson
         var metered = types.Values
             .Where(t => t.Group == FeeGroup.Metered && t.PropertyId == contract.PropertyId && !t.IsArchived)
             .Select(t => (t.SortOrder, Item: new UtilityPriceItem(t.Id, t.Name, t.Group, null, t.Unit, 1,
-                t.ResolvePrice(contract.StartDate)?.UnitPrice, IsOverride: false)));
+                t.ResolvePrice(contract.StartDate)?.UnitPrice, IsOverride: false, t.ResolvePrice(contract.StartDate)?.Tiers)));
         var attached = contract.Fees
             .Where(f => f.Covers(contract.StartDate) && types.TryGetValue(f.FeeTypeId, out var t) && t.Group != FeeGroup.Metered)
             .Select(f =>

@@ -88,7 +88,7 @@ public sealed class ContractEdgeCaseTests(ApiFactory factory)
         var today = TestData.Today(factory);
         var (_, roomId, _, contractId) = await _client.CreateActiveContractAsync(token, today.AddDays(-30));
         await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/liquidation/start", new { actualEndDate = today, reason = "MutualAgreement" }, token);
-        (await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/liquidation/complete", null, token)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+        await _client.SettleAndCompleteAsync(token, contractId);
 
         (await (await _client.PostJsonAsync($"/api/v1/rooms/{roomId}/archive", null, token)).ReadProblemCodeAsync())
             .Should().Be("ROOM_HAS_CONTRACTS");

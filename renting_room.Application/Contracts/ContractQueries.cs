@@ -144,7 +144,7 @@ public sealed class GetContractHandler(IAppDbContext db, TimeProvider clock) : I
             contract.RepresentativeRenterId, names.GetValueOrDefault(contract.RepresentativeRenterId, string.Empty),
             contract.SignedDate, contract.SignedPlace, contract.EffectiveDate, contract.StartDate, contract.EndDate, contract.ActualEndDate,
             contract.NoticeGivenDate, contract.PlannedMoveOutDate, contract.NoticeDays, contract.DepositAmount, contract.DepositTerms,
-            new BillingSettingsInput(contract.BillingAnchorDay, contract.ChargeMode, contract.ProrationMode, contract.PaymentDueDays),
+            new BillingSettingsInput(contract.BillingAnchorDay, contract.ChargeMode, contract.ProrationMode, contract.PaymentDueDays, contract.RentCycleMonths),
             contract.PaymentMethods, contract.CopiesCount, contract.TermsText, contract.Note,
             contract.CurrentRent(today), contract.IsOverdue(today),
             snapshot?.ToLessorDto(), snapshot?.ToRoomDto(), snapshot?.ToRepresentativeDto(), contract.HouseRulesSnapshot,

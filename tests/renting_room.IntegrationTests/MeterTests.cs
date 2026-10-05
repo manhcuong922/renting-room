@@ -94,7 +94,9 @@ public sealed class MeterTests(ApiFactory factory)
         var today = TestData.Today(factory);
         var propertyId = await _client.CreatePropertyAsync(token);
         var roomId = await _client.CreateRoomAsync(token, propertyId);
-        var oldMeter = await _client.InstallMeterAsync(token, roomId, await _client.FeeIdAsync(token, propertyId, "Điện"), today.AddDays(-30), 1250);
+        var electricity = await _client.FeeIdAsync(token, propertyId, "Điện");
+        await _client.PostJsonAsync($"/api/v1/fee-types/{electricity}/prices", new { effectiveFrom = today.AddDays(-60), unitPrice = 3500 }, token);
+        var oldMeter = await _client.InstallMeterAsync(token, roomId, electricity, today.AddDays(-30), 1250);
         var contractId = await _client.CreateContractAsync(token, roomId, await _client.CreateRenterAsync(token), today.AddDays(-20));
         (await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/activate",
             new { handoverReadings = new[] { new { meterId = oldMeter, value = (decimal?)null } } }, token)).StatusCode.Should().Be(HttpStatusCode.NoContent);
@@ -110,10 +112,12 @@ public sealed class MeterTests(ApiFactory factory)
         all.Single(m => m.GetProperty("id").GetGuid() == oldMeter).GetProperty("replacedByMeterId").GetGuid().Should().Be(newMeter);
 
         await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/liquidation/start", new { actualEndDate = today, reason = "MutualAgreement" }, token);
-        var noFinal = await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/liquidation/complete", null, token);
-        (await noFinal.ReadProblemCodeAsync()).Should().Be("FINAL_READING_REQUIRED");
-        (await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/liquidation/complete",
-            new { finalReadings = new[] { new { meterId = newMeter, value = (decimal?)45 } } }, token)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+        // Chỉ số cuối nhập khi lập phiếu quyết toán (MT-UC-05).
+        (await (await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/liquidation/complete", null, token)).ReadProblemCodeAsync())
+            .Should().Be("FINAL_READING_REQUIRED");
+        (await (await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/final-invoice", new { finalReadings = (object?)null }, token))
+            .ReadProblemCodeAsync()).Should().Be("FINAL_READING_REQUIRED");
+        await _client.SettleAndCompleteAsync(token, contractId, new[] { new { meterId = newMeter, value = (decimal?)45 } });
 
         (await ReadingsAsync(token, newMeter)).First().GetProperty("kind").GetString().Should().Be("Final");
     }

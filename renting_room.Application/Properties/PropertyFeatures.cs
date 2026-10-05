@@ -37,6 +37,9 @@ internal static class PropertyRules
             v.RuleFor(x => billing(x)!.NoticeDays).InclusiveBetween(0, 180).OverridePropertyName("billingDefaults.noticeDays").WithErrorCode("OUT_OF_RANGE");
             v.RuleFor(x => billing(x)!.ChargeMode).IsInEnum().OverridePropertyName("billingDefaults.chargeMode");
             v.RuleFor(x => billing(x)!.ProrationMode).IsInEnum().OverridePropertyName("billingDefaults.prorationMode");
+            v.RuleFor(x => billing(x)!.RentCycleMonths).Must(m => m is null || BillingDefaults.AllowedRentCycles.Contains(m.Value))
+                .OverridePropertyName("billingDefaults.rentCycleMonths").WithErrorCode("INVALID_RENT_CYCLE")
+                .WithMessage("Chu kỳ đóng tiền phòng: 1, 2, 3, 6 hoặc 12 tháng.");
         });
     }
 

@@ -135,7 +135,7 @@ Cột: Số HĐ · Khu/Phòng (`propertyCode`-`roomCode`) · Người đại di�
     "monthlyRent": 3500000,
     "depositAmount": 3500000,
     "depositTerms": "Hoàn cọc khi trả phòng đúng hạn, trừ chi phí hư hỏng.",
-    "billing": { "anchorDay": 1, "chargeMode": "Prepaid", "prorationMode": "Daily", "paymentDueDays": 5 },
+    "billing": { "anchorDay": 1, "chargeMode": "Prepaid", "prorationMode": "Daily", "paymentDueDays": 5, "rentCycleMonths": 1 },
     "noticeDays": 30,
     "paymentMethods": ["Cash", "BankTransfer"],
     "copiesCount": 2,
@@ -221,7 +221,7 @@ Nhiều bản **nháp** cho cùng một phòng được phép (đàm phán song 
   "noticeDays": 30,
   "depositAmount": 0,
   "depositTerms": null,
-  "billing": { "anchorDay": 1, "chargeMode": "Prepaid", "prorationMode": "Daily", "paymentDueDays": 5 },
+  "billing": { "anchorDay": 1, "chargeMode": "Prepaid", "prorationMode": "Daily", "paymentDueDays": 5, "rentCycleMonths": 1 },
   "paymentMethods": ["Cash", "BankTransfer"],
   "copiesCount": 2,
   "termsText": null,
@@ -632,18 +632,48 @@ Cảnh báo (trong `warnings` của chi tiết HĐ khi đang thanh lý): `LESSOR
 
 ### Hủy thanh lý — `POST /contracts/{id}/liquidation/cancel` → quay lại `Active`.
 
-Bị chặn nếu phòng đã có HĐ mới (409 `ROOM_PERIOD_OVERLAP`) hoặc người ở đã sang phòng khác (409 `OCCUPANT_LIVES_ELSEWHERE`).
+Bị chặn nếu phòng đã có HĐ mới (409 `ROOM_PERIOD_OVERLAP`), người ở đã sang phòng khác (409 `OCCUPANT_LIVES_ELSEWHERE`), hoặc
+phiếu quyết toán **đã chốt** (422 `FINAL_INVOICE_FINALIZED` — hủy phiếu đó trước). Nháp quyết toán bị xóa, chỉ số cuối bị hủy.
 
-### Hoàn tất — `POST /contracts/{id}/liquidation/complete`
+### Lập phiếu quyết toán — `POST /contracts/{id}/final-invoice`
+
+Bước trả phòng sau khi bắt đầu thanh lý: nhập **chỉ số cuối** từng công tơ (ngày trả phòng) → hệ thống lập **phiếu quyết toán nháp**
+(`summary.type = "Final"` — xem [invoices.md](invoices.md#phiếu-quyết-toán)) — sửa tay / phụ thu (VD phạt báo trễ) như phiếu thường rồi chốt.
 
 ```json
 { "finalReadings": [ { "meterId": "…điện", "value": 1338 } ] }
 ```
 
-Chỉ từ ngày `actualEndDate` trở đi (`LIQUIDATION_BEFORE_END_DATE`) → UI vô hiệu nút và hiện "Hoàn tất được từ dd/MM".
-**Chỉ số cuối** bắt buộc nhập số (không có "dùng số mới nhất") cho mỗi công tơ hoạt động của phòng tại `actualEndDate`
-— thiếu → 422 `FINAL_READING_REQUIRED` (`meterIds`); nhỏ hơn chỉ số trước → 422 `READING_NOT_MONOTONIC`.
-Phòng vẫn tính "Đang thuê" **trong ngày trả phòng**, sang hôm sau mới Trống.
+→ **201** chi tiết phiếu. Chỉ số cuối đã nhập trước đó thì `value: null` = giữ, có số = sửa.
+
+| Lỗi | Khi nào |
+|-----|---------|
+| 422 `FINAL_READING_REQUIRED` (`meterIds`) | Thiếu chỉ số cuối của công tơ nào |
+| 422 `READING_NOT_MONOTONIC` | Chỉ số cuối nhỏ hơn chỉ số trước |
+| 409 `FINAL_INVOICE_EXISTS` | Đã có phiếu quyết toán — mở phiếu đó |
+| 409 `INVOICE_DRAFT_EXISTS` | Còn phiếu nháp — chốt / xóa trước |
+| 422 `PREVIOUS_PERIOD_NOT_BILLED` | Chưa lập phiếu các kỳ trước |
+| 422 `CONTRACT_NOT_LIQUIDATING` | HĐ chưa bắt đầu thanh lý |
+
+### Hoàn tất — `POST /contracts/{id}/liquidation/complete`
+
+```json
+{ "settlement": null, "method": null, "paidAt": null, "reason": null }
+```
+
+Điều kiện (lỗi theo thứ tự): từ ngày `actualEndDate` (`LIQUIDATION_BEFORE_END_DATE`) · có chỉ số cuối mọi công tơ (`FINAL_READING_REQUIRED`) ·
+không còn phiếu nháp (`INVOICE_DRAFT_EXISTS`) · **phiếu quyết toán đã chốt** (`FINAL_INVOICE_REQUIRED`).
+
+**Còn nợ** (phiếu đã chốt chưa thu đủ) và không gửi `settlement` → 422 `CONTRACT_HAS_DEBT` (body có `outstanding`) — UI hiện cảnh báo
+"Hợp đồng còn nợ X đ" với 2 nút:
+
+| Nút | Gửi lại | Kết quả |
+|-----|---------|---------|
+| **Đã thu toàn bộ** | `{ "settlement": "CollectAll", "method": "Cash", "paidAt": null }` | Ghi 1 phiếu thu đúng số còn nợ (mặc định tiền mặt, hôm nay) |
+| **Bỏ nợ** (người thuê trốn / không đòi được) | `{ "settlement": "WriteOff", "reason": "Bỏ đi không trả" }` | Đóng nợ không thu tiền, phiếu thành `WrittenOff`, **không tính doanh thu**; `reason` bắt buộc |
+
+→ 204, HĐ `Ended`, đóng người ở và xe. Sau đó không ghi / đảo phiếu thu cho HĐ này (`CONTRACT_NOT_BILLABLE`).
+Cọc, hoàn tiền phòng chưa ở, bồi thường: chưa làm. Phòng vẫn tính "Đang thuê" **trong ngày trả phòng**, sang hôm sau mới Trống.
 
 ## Tài sản bàn giao (khi còn nháp)
 
@@ -684,6 +714,9 @@ Kết thúc: `POST /contracts/{id}/vehicles/{vehicleId}/end` `{ "endDate": "2026
 ```
 
 - Kỳ chạy từ ngày chốt (`billing.anchorDay`) tới trước ngày chốt kế tiếp. Kỳ đầu lẻ nếu ngày bắt đầu không trùng ngày chốt.
+- **Chu kỳ đóng tiền phòng** `billing.rentCycleMonths` (1 / 2 / 3 / 6 / 12, bỏ trống = mặc định của khu): mỗi tháng vẫn có phiếu (điện nước, dịch vụ);
+  tiền phòng × số tháng chỉ ở **phiếu tháng đầu chu kỳ**. VD 3 tháng: tháng 1 đóng tiền phòng 3 tháng + điện nước dịch vụ, tháng 2–3 chỉ điện nước
+  dịch vụ, tháng 4 đóng tiền phòng 3 tháng tiếp. Đổi giá thuê giữa chu kỳ đã thu → 422 `PERIOD_ALREADY_BILLED`.
 - `billingMonth` = "tháng thu" (`yyyy-MM`) hiển thị "Tháng 10/2026".
 - `until` mặc định: ngày trả phòng → ngày kết thúc → hôm nay + 12 tháng (tối đa 10 năm từ ngày bắt đầu).
 - Kỳ cuối chỉ bị cắt ở **ngày trả phòng thực tế**, không cắt ở `endDate`.

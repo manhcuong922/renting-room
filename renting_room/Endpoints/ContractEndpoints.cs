@@ -1,4 +1,5 @@
 using Mediator;
+using renting_room.Application.Billing;
 using renting_room.Application.Common.Models;
 using renting_room.Application.Contracts;
 using renting_room.Application.Meters;
@@ -27,7 +28,9 @@ public sealed record EndOccupancyRequest(DateOnly MoveOutDate);
 /// <param name="OverrideCapacity">Chủ ý vượt sức chứa phòng — có ghi log kiểm toán.</param>
 public sealed record ActivateContractRequest(bool? OverrideCapacity, IReadOnlyList<MeterReadingInput>? HandoverReadings);
 
-public sealed record CompleteLiquidationRequest(IReadOnlyList<MeterReadingInput>? FinalReadings);
+public sealed record CompleteLiquidationRequest(DebtSettlement? Settlement, PaymentMethod? Method, DateOnly? PaidAt, string? Reason);
+
+public sealed record FinalInvoiceRequest(IReadOnlyList<MeterReadingInput>? FinalReadings);
 
 public sealed record ChangeRentRequest(DateOnly EffectiveFrom, decimal MonthlyRent, string? AddendumNo, string? Note);
 
@@ -153,8 +156,15 @@ public static class ContractEndpoints
                 (await sender.Send(new CancelLiquidationCommand(id), ct)).ToHttp())
             .WithSummary("Hủy thanh lý, quay lại đang hiệu lực");
         group.MapPost("/{id:guid}/liquidation/complete", async (Guid id, CompleteLiquidationRequest? body, ISender sender, CancellationToken ct) =>
-                (await sender.Send(new CompleteLiquidationCommand(id, body?.FinalReadings), ct)).ToHttp())
-            .WithSummary("Hoàn tất thanh lý — kết thúc hợp đồng, đóng người ở và xe");
+                (await sender.Send(new CompleteLiquidationCommand(id, body?.Settlement, body?.Method, body?.PaidAt, body?.Reason), ct)).ToHttp())
+            .WithSummary("Hoàn tất thanh lý: cần phiếu quyết toán đã chốt; còn nợ ⇒ settlement CollectAll (đã thu toàn bộ) / WriteOff (bỏ nợ)");
+        group.MapPost("/{id:guid}/final-invoice", async (Guid id, FinalInvoiceRequest? body, ISender sender, CancellationToken ct) =>
+            {
+                var result = await sender.Send(new CreateFinalInvoiceCommand(id, body?.FinalReadings), ct);
+                return result.IsSuccess ? Results.Created($"{EndpointHelpers.ApiPrefix}/invoices/{result.Value!.Summary.Id}", result.Value) : result.ToHttp();
+            })
+            .WithIdempotency(required: false)
+            .WithSummary("Lập phiếu quyết toán khi trả phòng (nhập chỉ số cuối) — nháp sửa được như phiếu thường");
 
         // ---- Tài sản bàn giao
         group.MapPost("/{id:guid}/assets", async (Guid id, AssetRequest b, ISender sender, CancellationToken ct) =>

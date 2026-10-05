@@ -32,18 +32,31 @@ internal static class InvoiceInputs
     /// Dữ liệu nguồn cho <see cref="InvoiceCalculator"/>: dịch vụ + điện nước có công tơ ở phòng (kèm giá), công tơ của phòng (kèm chỉ số),
     /// chỉ số cuối của đoạn đo gần nhất trên phiếu chưa hủy kỳ trước (chuỗi liên tục MT-BR-12).
     /// </summary>
+    /// <param name="type"><c>Final</c> ⇒ kèm bối cảnh quyết toán (tiền phòng kỳ cuối đã thu chưa, kỳ cuối đã có phiếu thường chưa) và
+    /// nối chuỗi chỉ số cả với phiếu thường của chính kỳ cuối.</param>
     public static async Task<InvoiceCalcInput> LoadAsync(
-        IAppDbContext db, Contract contract, BillingPeriod period, Guid? excludeInvoiceId, CancellationToken ct)
+        IAppDbContext db, Contract contract, BillingPeriod period, Guid? excludeInvoiceId, CancellationToken ct,
+        InvoiceType type = InvoiceType.Regular)
     {
+        var isFinal = type == InvoiceType.Final;
         var types = await ContractFeeRules.LoadTypesAsync(db, contract, ct);
         var meters = await db.Meters.AsNoTracking().Include(m => m.Readings).Where(m => m.RoomId == contract.RoomId).ToListAsync(ct);
-        var previous = await db.Invoices.AsNoTracking()
-            .Where(i => i.ContractId == contract.Id && i.Status != InvoiceStatus.Void && i.PeriodStart < period.Start
-                && (excludeInvoiceId == null || i.Id != excludeInvoiceId))
+        var others = db.Invoices.AsNoTracking()
+            .Where(i => i.ContractId == contract.Id && i.Status != InvoiceStatus.Void && (excludeInvoiceId == null || i.Id != excludeInvoiceId));
+        var previous = await others.Where(i => isFinal ? i.PeriodStart <= period.Start : i.PeriodStart < period.Start)
             .SelectMany(i => i.Segments.Select(s => new { s.MeterId, s.EndReadingId, i.PeriodStart }))
             .ToListAsync(ct);
         var lastEnd = previous.GroupBy(s => s.MeterId).ToDictionary(g => g.Key, g => g.MaxBy(s => s.PeriodStart)!.EndReadingId);
-        return new InvoiceCalcInput(contract, period, types, meters, lastEnd);
+
+        FinalSettlement? final = null;
+        if (isFinal)
+        {
+            var rentCovered = await others.SelectMany(i => i.Lines)
+                .AnyAsync(l => l.Type == InvoiceLineType.Rent && l.ServiceFrom <= period.Start && l.ServiceTo >= period.Start, ct);
+            var hasRegular = await others.AnyAsync(i => i.Type == InvoiceType.Regular && i.PeriodStart == period.Start, ct);
+            final = new FinalSettlement(rentCovered, hasRegular);
+        }
+        return new InvoiceCalcInput(contract, period, types, meters, lastEnd, final);
     }
 
     /// <summary>Kỳ hiện tại của phiếu theo HĐ (có thể bị cắt ngắn nếu HĐ đã bắt đầu thanh lý).</summary>
@@ -76,7 +89,7 @@ public sealed class GenerateInvoicesCommandValidator : AbstractValidator<Generat
 /// BL-UC-01: tạo phiếu nháp kỳ có ngày bắt đầu thuộc tháng thu cho từng HĐ của khu — mỗi HĐ 1 transaction, khóa HĐ (C-07).
 /// Bỏ qua kèm lý do: đã có phiếu, đã lập kỳ sau, chưa lập kỳ trước (BL-BR-21 — trừ phiếu đầu tiên của HĐ), không có kỳ trong tháng.
 /// </summary>
-public sealed class GenerateInvoicesHandler(IAppDbContext db, TimeProvider clock) : IRequestHandler<GenerateInvoicesCommand, Result<GenerateInvoicesResult>>
+public sealed class GenerateInvoicesHandler(IAppDbContext db) : IRequestHandler<GenerateInvoicesCommand, Result<GenerateInvoicesResult>>
 {
     public async ValueTask<Result<GenerateInvoicesResult>> Handle(GenerateInvoicesCommand request, CancellationToken cancellationToken)
     {
@@ -127,6 +140,9 @@ public sealed class GenerateInvoicesHandler(IAppDbContext db, TimeProvider clock
         var period = BillingMonths.PeriodIn(contract, month);
         if (period is null)
             return ("NO_PERIOD_IN_MONTH", false);
+        // BL-BR-02: kỳ chứa ngày trả phòng do phiếu quyết toán đảm nhận.
+        if (contract.ActualEndDate is { } actualEnd && actualEnd <= period.End)
+            return ("USE_FINAL_INVOICE", false);
 
         var invoices = await db.Invoices.Include(i => i.Lines).Include(i => i.Segments).AsSplitQuery()
             .Where(i => i.ContractId == contractId && i.Status != InvoiceStatus.Void).ToListAsync(ct);
@@ -220,7 +236,7 @@ public sealed class RecalculateInvoicesHandler(IAppDbContext db) : IRequestHandl
             return false;
 
         var period = InvoiceInputs.CurrentPeriod(contract, invoice) ?? new BillingPeriod(invoice.PeriodStart, invoice.PeriodEnd);
-        var calculation = InvoiceCalculator.Calculate(await InvoiceInputs.LoadAsync(db, contract, period, invoice.Id, ct));
+        var calculation = InvoiceCalculator.Calculate(await InvoiceInputs.LoadAsync(db, contract, period, invoice.Id, ct, invoice.Type));
         invoice.ApplyCalculation(calculation, keepManualEdits, period.End);
         await db.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);

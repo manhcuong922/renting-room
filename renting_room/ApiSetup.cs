@@ -3,7 +3,7 @@ using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.HttpOverrides;
-using Microsoft.OpenApi.Models;
+using Microsoft.OpenApi;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Errors;
 using renting_room.Idempotency;
@@ -27,6 +27,9 @@ internal static class ApiSetup
             // "version" trả ra dạng chuỗi (xmin) — client gửi lại nguyên chuỗi đó khi cập nhật.
             options.SerializerOptions.NumberHandling = JsonNumberHandling.AllowReadingFromString;
         });
+        // Swagger mô tả enum theo JsonOptions của MVC — khai báo cùng converter để openapi.json ghi enum dạng chuỗi như response thật.
+        services.Configure<Microsoft.AspNetCore.Mvc.JsonOptions>(options =>
+            options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 
         // JSON sai cú pháp / thiếu body → ném BadHttpRequestException để GlobalExceptionHandler trả ProblemDetails.
         services.Configure<RouteHandlerOptions>(options => options.ThrowOnBadRequest = true);
@@ -58,14 +61,14 @@ internal static class ApiSetup
         });
 
         // Sau reverse proxy (nginx, load balancer): chỉ tin X-Forwarded-For/Proto từ proxy đã khai báo.
-        // KHÔNG BAO GIỜ xóa trắng KnownProxies/KnownNetworks — khi đó client tự giả IP được và vượt rate limit.
+        // KHÔNG BAO GIỜ xóa trắng KnownProxies/KnownIPNetworks — khi đó client tự giả IP được và vượt rate limit.
         services.Configure<ForwardedHeadersOptions>(options =>
         {
             options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
             foreach (var proxy in configuration.GetSection("ReverseProxy:KnownProxies").Get<string[]>() ?? [])
                 options.KnownProxies.Add(IPAddress.Parse(proxy));
             foreach (var network in configuration.GetSection("ReverseProxy:KnownNetworks").Get<string[]>() ?? [])
-                options.KnownNetworks.Add(ParseNetwork(network));
+                options.KnownIPNetworks.Add(ParseNetwork(network));
         });
 
         services.AddHealthChecks().AddDbContextCheck<AppDbContext>("database", tags: [ReadyTag]);
@@ -74,18 +77,19 @@ internal static class ApiSetup
         services.AddSwaggerGen(options =>
         {
             options.SwaggerDoc("v1", new OpenApiInfo { Title = "Renting Room API", Version = "v1" });
-            var bearer = new OpenApiSecurityScheme
+            options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
             {
                 Name = "Authorization",
                 Type = SecuritySchemeType.Http,
                 Scheme = "bearer",
                 BearerFormat = "JWT",
                 In = ParameterLocation.Header,
-                Description = "Dán access token (không cần gõ chữ 'Bearer').",
-                Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "Bearer" }
-            };
-            options.AddSecurityDefinition("Bearer", bearer);
-            options.AddSecurityRequirement(new OpenApiSecurityRequirement { [bearer] = [] });
+                Description = "Dán access token (không cần gõ chữ 'Bearer')."
+            });
+            options.AddSecurityRequirement(document => new OpenApiSecurityRequirement
+            {
+                [new OpenApiSecuritySchemeReference("Bearer", document)] = []
+            });
             options.OperationFilter<IdempotencyHeaderOperationFilter>();
         });
 
@@ -130,14 +134,10 @@ internal static class ApiSetup
     }
 
     /// <summary>"10.0.0.0/8" → IPNetwork.</summary>
-    private static Microsoft.AspNetCore.HttpOverrides.IPNetwork ParseNetwork(string cidr)
-    {
-        var parts = cidr.Split('/');
-        if (parts.Length != 2 || !IPAddress.TryParse(parts[0], out var prefix) || !int.TryParse(parts[1], out var length))
-            throw new InvalidOperationException($"ReverseProxy:KnownNetworks entry '{cidr}' is not a valid CIDR.");
-
-        return new Microsoft.AspNetCore.HttpOverrides.IPNetwork(prefix, length);
-    }
+    private static System.Net.IPNetwork ParseNetwork(string cidr) =>
+        System.Net.IPNetwork.TryParse(cidr, out var network)
+            ? network
+            : throw new InvalidOperationException($"ReverseProxy:KnownNetworks entry '{cidr}' is not a valid CIDR.");
 
     /// <summary>
     /// Sau proxy mà không khai báo proxy ⇒ mọi client có chung IP của proxy ⇒ giới hạn đăng nhập theo IP

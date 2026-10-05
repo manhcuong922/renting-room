@@ -15,7 +15,7 @@ có thể tạo tài khoản nhân viên quản lý.
 **Trong phạm vi**
 - Quản lý tổ chức (chủ trọ) & tài khoản do Admin cấp.
 - Khu trọ, phòng, nhóm phòng.
-- Hồ sơ người thuê, người ở cùng, theo dõi tạm trú / lưu trú / tạm vắng.
+- Hồ sơ người thuê, người ở cùng (P1); theo dõi thủ tục tạm trú / lưu trú / tạm vắng (P2).
 - Hợp đồng (lưu trữ thông tin + file scan), phụ lục giá, thanh lý.
 - Danh mục khoản thu 3 nhóm: **Theo chỉ số** (điện, nước, …), **Dịch vụ cố định** (rác, wifi…),
   **Dịch vụ theo số lượng** (giữ xe ×N…).
@@ -47,7 +47,7 @@ Căn cứ pháp lý & quy tắc LEG-xx: [00-legal-basis.md](00-legal-basis.md).
 - Mediator (`Mediator.Abstractions` source-gen) + FluentValidation pipeline (đã có `ValidationBehavior`).
 - EF Core + **PostgreSQL** (Npgsql). Một DB, một schema `public` (module tách bằng tiền tố bảng không cần thiết — dùng tên rõ nghĩa).
 - Xuất Excel: **ClosedXML** (MIT). Lưu file: abstraction `IFileStorage` (Local disk → S3/MinIO).
-- ⚠️ **.NET 8 hết hỗ trợ ngày 10/11/2026** → nâng `TargetFramework` lên **net10.0** (LTS) ở Phase 0 (task P0-01).
+- ✅ Đã nâng lên **net10.0** (LTS, SDK 10.0.4xx) — EF Core 10 / Npgsql 10, Swashbuckle 10 (Microsoft.OpenApi v2). .NET 8 hết hỗ trợ 10/11/2026.
 
 ## 4. Bản đồ module
 
@@ -55,7 +55,7 @@ Căn cứ pháp lý & quy tắc LEG-xx: [00-legal-basis.md](00-legal-basis.md).
 |----|--------|-----------|-------|-----------|
 | M01 | Identity & Access (tổ chức, tài khoản, phân quyền) | [01-identity-access.md](01-identity-access.md) | P0–P1 | — |
 | M02 | Property & Room (khu trọ, phòng, nhóm phòng) | [02-property-room.md](02-property-room.md) | P1 | M01 |
-| M03 | Renter & Residence (người thuê, cư trú, tạm vắng) | [03-renter-residence.md](03-renter-residence.md) | P1 | M01, M09 |
+| M03 | Renter & Residence (người thuê; cư trú = người ở trong phòng — thủ tục tạm trú, tạm vắng: P2) | [03-renter-residence.md](03-renter-residence.md) | P1 | M01, M09 |
 | M04 | Fee Catalog (danh mục khoản thu, bảng giá) | [04-fee-catalog.md](04-fee-catalog.md) | P1 | M02 |
 | M05 | Contract (hợp đồng, người ở, phụ lục, thanh lý) | [05-contract.md](05-contract.md) | P1 | M02, M03, M04 |
 | M06 | Meter Reading (công tơ, ghi chỉ số) | [06-meter-reading.md](06-meter-reading.md) | P1 | M02, M04, M05 |
@@ -105,15 +105,15 @@ Tạo/tìm người thuê (theo số giấy tờ) → chọn **mẫu hợp đồ
 ### F4. Chu kỳ hàng tháng (M06 → M07 → M08 → M10)
 1. Màn hình **ghi chỉ số**: chọn khu + tháng thu → lưới phòng có chỉ số cũ, nhập chỉ số mới.
 2. **Tạo phiếu nháp** hàng loạt cho khu (idempotent).
-3. Chủ trọ rà soát: **sửa tiền phòng của tháng** (không đổi giá phòng), thêm khoản phát sinh, giảm giá;
-   quy tắc giảm/tăng theo phòng / nhóm phòng / cả khu được áp tự động.
+3. Chủ trọ rà soát phiếu nháp: **sửa tay** mọi ô, thêm phụ thu / giảm trừ, tính lại theo phòng / tầng / khu
+   (quy tắc giảm/tăng tự động: đợt 2).
 4. **Chốt phiếu** (Finalize) → phiếu bất biến, có số phiếu.
-5. **Thu tiền** (toàn phần/một phần), cấn trừ cọc khi thanh lý.
+5. **Thu tiền** (toàn phần/một phần). Cấn trừ cọc: để sau.
 6. **Xuất Excel** tiền phòng tháng cho 1/nhiều khu.
 
 ### F5. Trả phòng / thanh lý (M05, M06, M07, M08)
-Báo trả phòng (ngày dự kiến) → bắt đầu thanh lý → ghi chỉ số cuối → phiếu **quyết toán** (prorate) →
-cấn trừ cọc / hoàn cọc → hoàn tất thanh lý (hợp đồng `Ended`) → nhắc xử lý cư trú khi người ở rời đi.
+Báo trả phòng (ngày dự kiến) → bắt đầu thanh lý → ghi chỉ số cuối → phiếu **quyết toán** (thu phần còn thiếu) →
+hoàn tất thanh lý: còn nợ ⇒ "Đã thu toàn bộ" / "Bỏ nợ" (hợp đồng `Ended`). Cọc, hoàn tiền, cư trú: để sau.
 
 ## 6. Quy ước dùng chung (cross-cutting) — BẮT BUỘC
 
@@ -129,7 +129,7 @@ cấn trừ cọc / hoàn cọc → hoàn tất thanh lý (hợp đồng `Ended`
 - Phase 3: cân nhắc PostgreSQL Row-Level Security làm lớp bảo vệ thứ hai.
 
 ### C-02 Định danh
-- Khóa chính `uuid`, sinh **UUIDv7** (`Guid.CreateVersion7()` trên .NET 9+; với .NET 8 dùng package `UUIDNext`) — sắp xếp theo thời gian, index tốt.
+- Khóa chính `uuid`, sinh **UUIDv7** (`Guid.CreateVersion7()` có sẵn trên .NET 10) — sắp xếp theo thời gian, index tốt.
 - Mã nghiệp vụ dễ đọc (`code`, `invoice_no`) unique **trong tổ chức**.
 
 ### C-03 Tiền & số lượng
@@ -227,7 +227,7 @@ cấn trừ cọc / hoàn cọc → hoàn tất thanh lý (hợp đồng `Ended`
 
 | Phase | Nội dung | Exit criteria |
 |-------|----------|---------------|
-| **P0 Foundation** | Nâng net10.0; secrets; multi-tenant infra (C-01), audit (C-10), ProblemDetails (C-09), idempotency (C-08), TimeProvider (C-04), BillingPeriodCalculator (C-05), Testcontainers; M01 auth | Đăng nhập được; test cô lập tổ chức chạy xanh trên CI |
+| **P0 Foundation** | **Nâng net10.0 ✅**; secrets; multi-tenant infra (C-01), audit (C-10 — **để sau**, hiện chỉ ghi log ứng dụng `AUDIT:`), ProblemDetails (C-09), idempotency (C-08), TimeProvider (C-04), BillingPeriodCalculator (C-05), Testcontainers; M01 auth | Đăng nhập được; test cô lập tổ chức chạy xanh trên CI |
 | **P1 MVP** | M01–M09 đầy đủ; M10 các export chính | Chạy trọn F1→F5 trên 1 khu 20 phòng trong integration/E2E test |
 | **P2** | **Gửi phiếu tiền phòng qua Zalo kèm mã VietQR** (BL-UC-13), in hợp đồng / phụ lục / biên bản bàn giao từ mẫu (CT-UC-15), nhắc việc (hợp đồng sắp hết hạn, tạm trú chưa đăng ký, giấy tờ PCCC hết hạn), đối chiếu hóa đơn điện EVN, dashboard, báo cáo doanh thu năm, export bất đồng bộ | — |
 | **P3 B2B** | Thanh toán online / đối soát ngân hàng (sau gửi Zalo), giới hạn `OrgManager` theo khu, gói dịch vụ & giới hạn (số khu/phòng), RLS, admin impersonation có audit | — |
@@ -243,7 +243,7 @@ lưu cứng). Vì chưa có dữ liệu thật → **xóa migration `InitialCrea
 
 | ID | Task | Ước lượng |
 |----|------|-----------|
-| P0-01 | Nâng 4 project lên `net10.0`, cập nhật package (EF Core 10, Npgsql 10) | 0.5d |
+| P0-01 ✅ | Nâng 4 project lên `net10.0`, cập nhật package (EF Core 10, Npgsql 10) | 0.5d |
 | P0-02 | Chuyển connection string sang User Secrets / env; validate secrets khi khởi động | 0.25d |
 | P0-03 | `ICurrentUser`, `TimeProvider` VN, base entity `TenantEntity` (Id, OrganizationId, CreatedAt/By, UpdatedAt/By) | 0.5d |
 | P0-04 | Global query filter + SaveChanges guard + interceptor audit | 1d |

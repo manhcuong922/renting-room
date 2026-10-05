@@ -24,13 +24,13 @@ public sealed class InvoiceTests
         return fee;
     }
 
-    private static Contract Active(ChargeMode mode, DateOnly? start = null)
+    private static Contract Active(ChargeMode mode, DateOnly? start = null, int rentCycleMonths = 1, DateOnly? endDate = null)
     {
         var from = start ?? Start;
-        var data = new ContractDraftData(RenterA, from, null, null, null, null, 3_500_000, 0, null, 5, mode, ProrationMode.Daily, 5, 30,
+        var data = new ContractDraftData(RenterA, from, endDate, null, null, null, 3_500_000, 0, null, 5, mode, ProrationMode.Daily, 5, 30,
             [PaymentMethod.Cash], 2, null, null,
             [new OccupantInput(RenterA, from, null, null, null), new OccupantInput(RenterB, from, null, null, null, OccupantRelationship.CoTenant)],
-            Fees: [new ContractFeeInput(WaterPerPerson.Id, 1, null), new ContractFeeInput(Parking.Id, 2, null)]);
+            Fees: [new ContractFeeInput(WaterPerPerson.Id, 1, null), new ContractFeeInput(Parking.Id, 2, null)], RentCycleMonths: rentCycleMonths);
         var contract = Contract.CreateDraft(PropertyId, RoomId, "HD2026-0001", data);
         contract.Activate(new ActivationContext(from, DateTimeOffset.UtcNow, true, 4, true, "{}", null, new DateOnly(1990, 1, 1), true))
             .IsSuccess.Should().BeTrue();
@@ -160,5 +160,55 @@ public sealed class InvoiceTests
         invoice.ApplyPayment(-1_000_000);
         invoice.Void("Sai", DateTimeOffset.UtcNow).IsSuccess.Should().BeTrue();
         invoice.Segments.Should().OnlyContain(s => s.Voided);
+    }
+
+    [Theory]
+    [InlineData(40, 40 * 2000)]
+    [InlineData(88, 50 * 2000 + 38 * 3000)]
+    [InlineData(0, 0)]
+    public void TieredPrice_ChargesEachSliceAtItsRate(int kWh, int expected)
+    {
+        var fee = FeeType.Create(PropertyId, "Điện bậc", FeeGroup.Metered, null, "kWh", false, null, 0);
+        var price = fee.AddPrice(Start, 0, null, null, [new PriceTier(50, 2000), new PriceTier(null, 3000)]).Value!;
+
+        price.IsTiered.Should().BeTrue();
+        price.UnitPrice.Should().Be(2000, "đơn giá hiển thị = giá bậc 1");
+        price.Amount(kWh).Should().Be(expected);
+        price.HighestPrice.Should().Be(3000);
+        WaterPerPerson.AddPrice(Start.AddDays(3), 0, null, null, [new PriceTier(null, 1)]).Error.Should().Be(FeeErrors.TiersForMeteredOnly);
+    }
+
+    [Fact]
+    public void RentCycle_CutAtEndDate_WhenContractEndsMidCycle()
+    {
+        var contract = Active(ChargeMode.Prepaid, rentCycleMonths: 3, endDate: Start.AddMonths(2).AddDays(-1)); // HĐ 2 tháng, chu kỳ 3 tháng
+        var rent = Calculate(contract, contract.BillingPeriods(Start).First()).Lines.Single(l => l.Type == InvoiceLineType.Rent);
+
+        rent.Quantity.Should().Be(2, "chu kỳ cuối chỉ tính tới ngày hết hạn");
+        rent.Amount.Should().Be(7_000_000);
+    }
+
+    [Fact]
+    public void FinalInvoice_LastPeriodNotBilled_ChargesRentForDaysStayed_ServicesProrated()
+    {
+        var contract = Active(ChargeMode.Postpaid);
+        contract.StartLiquidation(Start.AddDays(14), TerminationReason.MutualAgreement, null, null, Start.AddDays(14)).IsSuccess.Should().BeTrue();
+        var meter = MeterWithHandover(contract, 108);
+        meter.Record(ReadingKind.Final, Start.AddDays(14), 130, contract.Id, null);
+        var period = contract.BillingPeriods(contract.ActualEndDate!.Value).Last();
+
+        var result = InvoiceCalculator.Calculate(new InvoiceCalcInput(contract, period,
+            new Dictionary<Guid, FeeType> { [Electricity.Id] = Electricity, [WaterPerPerson.Id] = WaterPerPerson, [Parking.Id] = Parking },
+            [meter], new Dictionary<Guid, Guid>(), new FinalSettlement(RentCovered: false, LastPeriodHasRegular: false)));
+
+        var factor = 15m / 31; // 05/10–19/10 trong kỳ chuẩn 05/10–04/11
+        result.Lines.Single(l => l.Type == InvoiceLineType.Rent).Amount.Should().Be(Invoice.Money(3_500_000 * factor));
+        result.Lines.Single(l => l.Type == InvoiceLineType.Metered).Quantity.Should().Be(22, "từ chỉ số nhận phòng tới chỉ số cuối");
+        result.Lines.Should().Contain(l => l.Type == InvoiceLineType.Service);
+
+        var covered = InvoiceCalculator.Calculate(new InvoiceCalcInput(contract, period,
+            new Dictionary<Guid, FeeType> { [Electricity.Id] = Electricity, [WaterPerPerson.Id] = WaterPerPerson, [Parking.Id] = Parking },
+            [meter], new Dictionary<Guid, Guid>(), new FinalSettlement(RentCovered: true, LastPeriodHasRegular: true)));
+        covered.Lines.Select(l => l.Type).Should().Equal(InvoiceLineType.Metered); // tiền phòng, dịch vụ đã thu — không hoàn (để sau)
     }
 }

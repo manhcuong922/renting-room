@@ -31,7 +31,10 @@ public enum InvoicePaymentStatus
     Unpaid,
     PartiallyPaid,
     Paid,
-    Overdue
+    Overdue,
+
+    /// <summary>Đã đóng bằng "bỏ nợ" (PM-BR-16) — không tính doanh thu.</summary>
+    WrittenOff
 }
 
 /// <summary>Vấn đề của phiếu nháp: <c>Error</c> chặn chốt (thiếu chỉ số, thiếu giá…), <c>Warning</c> chỉ nhắc.</summary>
@@ -94,6 +97,9 @@ public sealed class Invoice : TenantEntity
 
     /// <summary>Tổng đã thu — M08 cập nhật trong cùng transaction với phân bổ (PM-BR-05).</summary>
     public decimal PaidAmount { get; private set; }
+
+    /// <summary>Phần đã đóng bằng "bỏ nợ" (nằm trong <see cref="PaidAmount"/>) — loại khỏi doanh thu (PM-BR-16).</summary>
+    public decimal WrittenOffAmount { get; private set; }
     public List<InvoiceIssue> Issues { get; private set; } = [];
     public string SnapshotRoomCode { get; private set; } = null!;
     public string SnapshotContractNo { get; private set; } = null!;
@@ -111,7 +117,7 @@ public sealed class Invoice : TenantEntity
 
     public static Invoice CreateDraft(
         Guid propertyId, Guid roomId, Guid contractId, DateOnly periodStart, DateOnly periodEnd,
-        string roomCode, string contractNo, string representativeName, InvoiceCalculation calculation)
+        string roomCode, string contractNo, string representativeName, InvoiceCalculation calculation, InvoiceType type = InvoiceType.Regular)
     {
         var invoice = new Invoice
         {
@@ -119,7 +125,7 @@ public sealed class Invoice : TenantEntity
             PropertyId = propertyId,
             RoomId = roomId,
             ContractId = contractId,
-            Type = InvoiceType.Regular,
+            Type = type,
             PeriodStart = periodStart,
             PeriodEnd = periodEnd,
             BillingMonth = new DateOnly(periodStart.Year, periodStart.Month, 1),
@@ -133,6 +139,7 @@ public sealed class Invoice : TenantEntity
     }
 
     public InvoicePaymentStatus? PaymentStatus(DateOnly today) => Status != InvoiceStatus.Finalized ? null
+        : PaidAmount >= TotalAmount && WrittenOffAmount > 0 ? InvoicePaymentStatus.WrittenOff
         : PaidAmount >= TotalAmount ? InvoicePaymentStatus.Paid
         : DueDate < today ? InvoicePaymentStatus.Overdue
         : PaidAmount > 0 ? InvoicePaymentStatus.PartiallyPaid
@@ -332,8 +339,8 @@ public sealed class Invoice : TenantEntity
         return Result.Success();
     }
 
-    /// <summary>M08: cộng / trừ tiền đã thu (PM-BR-04/05) — giữ 0 ≤ đã thu ≤ tổng.</summary>
-    public void ApplyPayment(decimal delta)
+    /// <summary>M08: cộng / trừ tiền đã thu (PM-BR-04/05) — giữ 0 ≤ đã thu ≤ tổng; <paramref name="writeOff"/> = bỏ nợ (PM-BR-16).</summary>
+    public void ApplyPayment(decimal delta, bool writeOff = false)
     {
         if (Status != InvoiceStatus.Finalized)
             throw new InvalidOperationException("Payments apply to finalized invoices only.");
@@ -341,6 +348,8 @@ public sealed class Invoice : TenantEntity
         if (paid < 0 || paid > TotalAmount)
             throw new InvalidOperationException("Paid amount out of range.");
         PaidAmount = paid;
+        if (writeOff)
+            WrittenOffAmount += delta;
     }
 
     public void UpdateNote(string? note) => Note = TextNormalizer.TrimToNull(note);
@@ -521,6 +530,17 @@ public static class BillingErrors
         "Chỉ hủy / xóa được phiếu mới nhất của hợp đồng — hủy các phiếu kỳ sau trước.");
     public static readonly Error DraftStale = Error.Conflict("DRAFT_STALE",
         "Dữ liệu nguồn (giá, chỉ số, người ở…) đã đổi sau khi tạo nháp — tính lại rồi chốt.");
+    public static readonly Error FinalExists = Error.Conflict("FINAL_INVOICE_EXISTS", "Hợp đồng đã có phiếu quyết toán — mở phiếu đó để sửa.");
+    public static readonly Error FinalRequired = Error.BusinessRule("FINAL_INVOICE_REQUIRED", "Lập và chốt phiếu quyết toán trước khi hoàn tất thanh lý.");
+    public static readonly Error FinalFinalized = Error.BusinessRule("FINAL_INVOICE_FINALIZED",
+        "Phiếu quyết toán đã chốt — hủy phiếu quyết toán trước khi hủy thanh lý.");
+    public static readonly Error DraftExists = Error.Conflict("INVOICE_DRAFT_EXISTS", "Hợp đồng còn phiếu nháp — chốt hoặc xóa trước.");
+    public static readonly Error PreviousNotBilled = Error.BusinessRule("PREVIOUS_PERIOD_NOT_BILLED", "Chưa lập phiếu kỳ trước — lập lần lượt từng kỳ.");
+
+    public static Error HasDebt(decimal outstanding) =>
+        Error.BusinessRule("CONTRACT_HAS_DEBT", $"Hợp đồng còn nợ {outstanding:N0}đ — chọn \"Đã thu toàn bộ\" hoặc \"Bỏ nợ\".")
+            .WithDetail("outstanding", outstanding);
+
     public static readonly Error InvalidBillingMonth = Error.Validation("INVALID_BILLING_MONTH", "Tháng thu dạng yyyy-MM.");
 
     public static Error HasIssues(IReadOnlyCollection<string> codes) =>

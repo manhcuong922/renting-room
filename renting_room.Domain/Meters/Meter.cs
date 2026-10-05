@@ -155,6 +155,10 @@ public sealed class Meter : TenantEntity
         return reading;
     }
 
+    /// <summary>Hủy chỉ số chưa khóa (VD chỉ số cuối khi hủy thanh lý) — giữ lịch sử, không xóa.</summary>
+    public void VoidReading(Guid readingId, string reason, DateTimeOffset now) =>
+        _readings.FirstOrDefault(r => r.Id == readingId && r.VoidedAt is null)?.Void(reason, now);
+
     private Result CheckMonotonic(DateOnly date, ReadingKind kind, long sequence, decimal value, MeterReading? exclude)
     {
         var key = (date, kind, sequence);
@@ -216,6 +220,12 @@ public sealed class MeterReading : TenantEntity
     public string? Note { get; private set; }
     public DateTimeOffset? VoidedAt { get; private set; }
     public string? VoidReason { get; private set; }
+
+    internal void Void(string reason, DateTimeOffset now)
+    {
+        VoidedAt = now;
+        VoidReason = reason;
+    }
 
     internal void Correct(decimal value, string? note)
     {

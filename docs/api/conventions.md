@@ -153,7 +153,10 @@ Vượt giới hạn → **429 `TOO_MANY_REQUESTS`** + header `Retry-After` (gi�
 | `ChargeBasis` | `PerRoom` Theo phòng · `PerOccupant` Theo đầu người · `PerUnit` Theo số gói |
 | `InvoiceStatus` | `Draft` Nháp · `Finalized` Đã chốt · `Void` Đã hủy |
 | `InvoiceLineType` | `Rent` Tiền phòng · `Metered` Điện nước · `Service` Dịch vụ · `Surcharge` Phụ thu · `ManualDiscount` Giảm trừ |
-| `InvoicePaymentStatus` | `Unpaid` Chưa thu · `PartiallyPaid` Thu một phần · `Paid` Đã thu đủ · `Overdue` Quá hạn |
+| `InvoicePaymentStatus` | `Unpaid` Chưa thu · `PartiallyPaid` Thu một phần · `Paid` Đã thu đủ · `Overdue` Quá hạn · `WrittenOff` Đã bỏ nợ |
+| `InvoiceType` | `Regular` Phiếu tháng · `Final` Phiếu quyết toán |
+| `PaymentKind` | `Receipt` Tiền thu · `WriteOff` Bỏ nợ |
+| `DebtSettlement` | `CollectAll` Đã thu toàn bộ · `WriteOff` Bỏ nợ |
 | `ReadingKind` | `Initial` Lắp công tơ · `Handover` Nhận phòng · `Periodic` Cuối kỳ · `Adhoc` Kiểm tra · `Final` Cuối hợp đồng · `Removal` Tháo công tơ |
 | `ContractFlag` | `RepresentativeMovedOut` Người ký đã rời đi · `NoOccupantLeft` Không còn người ở · `ExpiredAwaitingDecision` Quá hạn — chờ quyết định · `Holdover` Ở tiếp chưa ký lại |
 

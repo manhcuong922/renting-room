@@ -102,7 +102,8 @@ public sealed class GetMeterReadingSheetHandler(IAppDbContext db) : IRequestHand
         {
             var period = BillingMonths.PeriodIn(contract, month);
             var usage = period is null ? null : UsagePeriod.For(contract, period);
-            if (usage is null)
+            // HĐ trả phòng trong kỳ sử dụng ⇒ chỉ số cuối nhập khi lập phiếu quyết toán, không qua lưới.
+            if (usage is null || contract.ActualEndDate <= usage.End)
                 continue;
             // Chỉ số cuối của đoạn đo gần nhất trên phiếu chưa hủy kỳ trước (MT-BR-12) — như khi tính phiếu.
             var lastEnd = segments.Where(x => x.ContractId == contract.Id && x.PeriodStart < period!.Start)

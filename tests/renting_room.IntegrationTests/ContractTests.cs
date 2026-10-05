@@ -69,8 +69,9 @@ public sealed class ContractTests(ApiFactory factory)
         var start = await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/liquidation/start",
             new { actualEndDate = today, reason = "MutualAgreement" }, token);
         start.StatusCode.Should().Be(HttpStatusCode.NoContent, await start.Content.ReadAsStringAsync());
-        (await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/liquidation/complete", null, token))
-            .StatusCode.Should().Be(HttpStatusCode.NoContent);
+        (await (await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/liquidation/complete", null, token))
+            .ReadProblemCodeAsync()).Should().Be("FINAL_INVOICE_REQUIRED", "phải lập và chốt phiếu quyết toán trước");
+        await _client.SettleAndCompleteAsync(token, contractId);
 
         var ended = await GetAsync(token, contractId);
         ended.Status.Should().Be("Ended");

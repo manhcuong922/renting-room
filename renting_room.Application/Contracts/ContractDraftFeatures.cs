@@ -45,6 +45,9 @@ internal sealed class ContractInputValidator : AbstractValidator<ContractInput>
             RuleFor(x => x.Billing!.PaymentDueDays).InclusiveBetween(0, 60).OverridePropertyName("billing.paymentDueDays").WithErrorCode("OUT_OF_RANGE");
             RuleFor(x => x.Billing!.ChargeMode).IsInEnum().OverridePropertyName("billing.chargeMode");
             RuleFor(x => x.Billing!.ProrationMode).IsInEnum().OverridePropertyName("billing.prorationMode");
+            RuleFor(x => x.Billing!.RentCycleMonths).Must(m => m is null || BillingDefaults.AllowedRentCycles.Contains(m.Value))
+                .OverridePropertyName("billing.rentCycleMonths").WithErrorCode("INVALID_RENT_CYCLE")
+                .WithMessage("Chu kỳ đóng tiền phòng: 1, 2, 3, 6 hoặc 12 tháng.");
         });
         RuleFor(x => x.NoticeDays).InclusiveBetween(0, 180).When(x => x.NoticeDays is not null).WithErrorCode("OUT_OF_RANGE");
         RuleFor(x => x.PaymentMethods)
@@ -164,7 +167,8 @@ internal static class ContractDraftBuilder
             occupants,
             document,
             input.HouseholdHeadRenterId,
-            fees.Value!);
+            fees.Value!,
+            input.Billing?.RentCycleMonths ?? defaults.RentCycleMonths);
     }
 
     private static async Task<Result<ContractTemplate?>> LoadTemplateAsync(

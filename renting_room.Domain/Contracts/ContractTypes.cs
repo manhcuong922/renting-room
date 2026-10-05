@@ -100,7 +100,8 @@ public sealed record ContractDraftData(
     IReadOnlyCollection<OccupantInput> Occupants,
     ContractDocument? Document = null,
     Guid? HouseholdHeadRenterId = null,
-    IReadOnlyCollection<ContractFeeInput>? Fees = null);
+    IReadOnlyCollection<ContractFeeInput>? Fees = null,
+    int RentCycleMonths = 1);
 
 /// <summary>Khoản thu gắn vào HĐ (CT-UC-06): số lượng (nhóm Quantity), giá riêng của HĐ (null = theo bảng giá của khu).</summary>
 public sealed record ContractFeeInput(Guid FeeTypeId, decimal Quantity, decimal? UnitPriceOverride);
