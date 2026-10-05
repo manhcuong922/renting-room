@@ -186,6 +186,13 @@ Cảnh báo mềm: `ROOM_WITHOUT_METER` (HĐ hiệu lực, phòng chưa có côn
 | `PAYMENT_EXCEEDS_DEBT` | 422 | Số tiền lớn hơn số còn nợ |
 | `NO_OUTSTANDING_INVOICE` | 422 | Không còn phiếu nào chưa thu đủ |
 | `PAYMENT_ALREADY_REVERSED` | 409 | Phiếu thu đã đảo — tải lại |
+| `FINAL_INVOICE_EXISTS` | 409 | Đã có phiếu quyết toán — mở phiếu đó |
+| `FINAL_INVOICE_REQUIRED` | 422 | Hoàn tất thanh lý: lập + chốt phiếu quyết toán trước |
+| `FINAL_INVOICE_FINALIZED` | 422 | Hủy thanh lý: hủy phiếu quyết toán đã chốt trước |
+| `INVOICE_DRAFT_EXISTS` | 409 | Còn phiếu nháp — chốt hoặc xóa |
+| `PREVIOUS_PERIOD_NOT_BILLED` | 422 | Lập phiếu các kỳ trước trước |
+| `CONTRACT_HAS_DEBT` | 422 | Hoàn tất thanh lý: còn nợ `outstanding` — chọn "Đã thu toàn bộ" / "Bỏ nợ" |
+| `CONTRACT_NOT_BILLABLE` | 422 | HĐ đã kết thúc — không ghi / đảo phiếu thu |
 | `INVOICE_AFTER_END_DATE` | 422 | Bắt đầu thanh lý / ký lại: còn phiếu kỳ sau ngày trả phòng — hủy / xóa trước |
 
 Cảnh báo trên phiếu (`issues`, `severity: "Warning"`): `EDITED_BASE_CHANGED` (ô sửa tay mà số hệ thống tính lại đã đổi).
@@ -197,6 +204,8 @@ Cảnh báo trên phiếu (`issues`, `severity: "Warning"`): `EDITED_BASE_CHANGE
 | `FEE_TYPE_NOT_FOUND` / `FEE_PRICE_NOT_FOUND` / `CONTRACT_FEE_NOT_FOUND` | 404 | |
 | `FEE_NAME_TAKEN` / `FEE_SYSTEM_CODE_TAKEN` / `FEE_PRICE_DATE_EXISTS` | 409 | Ô tên / ngày |
 | `FEE_PRICE_LOCKED` | 422 | Ngày thuộc kỳ đã chốt phiếu |
+| `FEE_TIERS_METERED_ONLY` | 400 | Giá theo bậc chỉ cho điện nước theo công tơ |
+| `INVALID_RENT_CYCLE` | 400 | Chu kỳ đóng tiền phòng: 1, 2, 3, 6 hoặc 12 tháng |
 | `FEE_METERED_FOLLOWS_ROOM` | 400 | Điện / nước theo công tơ đi theo phòng — không gắn vào hợp đồng |
 | `FEE_IN_USE` | 422 | Gỡ khỏi hợp đồng trước khi ngừng dùng |
 | `FEE_HAS_ACTIVE_METERS` | 422 | Còn công tơ đang hoạt động — tháo / thay công tơ trước khi ngừng dùng |

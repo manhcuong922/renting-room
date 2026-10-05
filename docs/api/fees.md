@@ -11,7 +11,7 @@ Quyền: chủ trọ và phó quản lý.
 
 | Nhóm | `group` | `chargeBasis` | Cách tính 1 kỳ | Ví dụ |
 |------|---------|---------------|----------------|-------|
-| **Điện nước** | `Metered` | — | (chỉ số mới − chỉ số cũ) × **một đơn giá** (không bậc thang) — theo công tơ của **phòng** | Điện 3.500đ/kWh, Nước 15.000đ/m³ |
+| **Điện nước** | `Metered` | — | (chỉ số mới − chỉ số cũ) × **một giá hoặc giá theo bậc** — theo công tơ của **phòng** | Điện 3.500đ/kWh, Nước 15.000đ/m³ |
 | **Dịch vụ** | `Service` | `PerRoom` | đơn giá × 1 | Mạng 120.000đ/phòng, Rác 20.000đ/phòng |
 | | | `PerOccupant` | đơn giá × **số người ở** đầu kỳ | Nước 20.000đ/người |
 | | | `PerUnit` | đơn giá × **số gói** đăng ký trên hợp đồng | Giữ xe 120.000đ/xe — 2 xe = 2 gói |
@@ -44,8 +44,8 @@ Khu mới tạo **có sẵn** "Điện" (kWh) và "Nước" (m³) theo công tơ
   {
     "id": "…", "propertyId": "…", "name": "Điện", "group": "Metered", "chargeBasis": null, "unit": "kWh",
     "systemCode": "ELECTRICITY", "autoAttach": false, "defaultQuantity": null, "sortOrder": 0, "isArchived": false,
-    "currentPrice": { "id": "…", "effectiveFrom": "2026-10-01", "unitPrice": 3500, "note": null },
-    "prices": [ { "id": "…", "effectiveFrom": "2026-10-01", "unitPrice": 3500, "note": null } ],
+    "currentPrice": { "id": "…", "effectiveFrom": "2026-10-01", "unitPrice": 3500, "note": null, "tiers": null },
+    "prices": [ { "id": "…", "effectiveFrom": "2026-10-01", "unitPrice": 3500, "note": null, "tiers": null } ],
     "version": "1203"
   }
 ]
@@ -89,20 +89,34 @@ Phí giữ xe: `{ "name": "Giữ xe máy", "group": "Service", "chargeBasis": "P
 
 `POST /fee-types/{id}/prices`
 
+**Một giá**:
+
 ```json
 { "effectiveFrom": "2026-11-01", "unitPrice": 3800, "note": "Tăng theo giá EVN" }
 ```
+
+**Theo bậc** (chỉ điện nước theo công tơ — chủ trọ chọn kiểu nào cũng được cho từng bản giá):
+
+```json
+{ "effectiveFrom": "2026-11-01", "tiers": [ { "upTo": 50, "price": 1984 }, { "upTo": 100, "price": 2050 }, { "upTo": null, "price": 2380 } ] }
+```
+
+`upTo` là mốc **lũy kế** (0–50, 51–100, trên 100), tăng dần, bậc cuối `null`. 120 kWh = 50×1.984 + 50×2.050 + 20×2.380.
+Bậc tính theo **lượng tiêu thụ của kỳ**, không quy đổi theo số ngày ở. Bản giá trả `tiers` (null = một giá); `unitPrice` = giá bậc 1.
+Đổi từ một giá sang theo bậc (hoặc ngược lại) = thêm bản giá mới.
 
 → **201** `{ "id": "…", "warnings": [ … ] }`
 
 | Quy tắc | Lỗi |
 |---------|-----|
-| `unitPrice` bắt buộc; ≥ 0, tối đa 2 số lẻ; theo chỉ số ≤ 100.000đ/đơn vị, loại khác ≤ 50 triệu | 400 |
+| `unitPrice` bắt buộc (trừ khi gửi `tiers`); ≥ 0, tối đa 2 số lẻ; theo chỉ số ≤ 100.000đ/đơn vị, loại khác ≤ 50 triệu | 400 |
+| `tiers`: 1–10 bậc, `upTo` tăng dần, bậc cuối `null`, giá mỗi bậc ≤ 100.000đ | 400 `INVALID_TIERS` |
+| Giá theo bậc cho dịch vụ | 400 `FEE_TIERS_METERED_ONLY` |
 | Trùng ngày hiệu lực với bản giá có sẵn | 409 `FEE_PRICE_DATE_EXISTS` |
 | Ngày hiệu lực thuộc kỳ đã chốt phiếu (khi có module phiếu) | 422 `FEE_PRICE_LOCKED` |
 | Ngày hiệu lực quá hôm nay + 1 năm | 400 |
 
-Cảnh báo (vẫn lưu): `ELECTRICITY_PRICE_ABOVE_THRESHOLD` — giá điện cao hơn mức tham chiếu (mặc định 3.460đ/kWh, cấu hình
+Cảnh báo (vẫn lưu): `ELECTRICITY_PRICE_ABOVE_THRESHOLD` — giá điện (theo bậc: bậc cao nhất) cao hơn mức tham chiếu (mặc định 3.460đ/kWh, cấu hình
 `Fees:ElectricityPriceWarningThreshold`). Tiền điện thu của người thuê không được vượt giá bán lẻ (TT 60/2025/TT-BCT).
 
 Giá không sửa — **xóa rồi thêm lại**. Giá áp cho một kỳ = bản giá mới nhất có ngày hiệu lực ≤ ngày bắt đầu kỳ.

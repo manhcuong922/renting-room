@@ -13,7 +13,7 @@ public sealed class BillingTests(ApiFactory factory)
     private sealed record Setup(string Token, Guid PropertyId, Guid RoomId, Guid ContractId, Guid MeterId, Guid ElectricityId, DateOnly Start);
 
     /// <summary>Kỳ thu ngày 1, bắt đầu ngày 1 của 2 tháng trước ⇒ các kỳ là tháng tròn, không phụ thuộc ngày chạy test.</summary>
-    private async Task<Setup> ArrangeAsync(string chargeMode)
+    private async Task<Setup> ArrangeAsync(string chargeMode, int rentCycleMonths = 1)
     {
         var owner = await _client.CreateActiveOwnerAsync();
         var token = owner.Tokens.AccessToken;
@@ -37,7 +37,7 @@ public sealed class BillingTests(ApiFactory factory)
             contract = new
             {
                 representativeRenterId = renter, startDate = start, monthlyRent = 3_000_000, depositAmount = 0,
-                billing = new { anchorDay = 1, chargeMode, prorationMode = "Daily", paymentDueDays = 5 },
+                billing = new { anchorDay = 1, chargeMode, prorationMode = "Daily", paymentDueDays = 5, rentCycleMonths },
                 occupants = new[] { new { renterId = renter } },
                 fees = new[] { new { feeTypeId = water } }
             }
@@ -186,5 +186,113 @@ public sealed class BillingTests(ApiFactory factory)
         (await (await _client.PostJsonAsync($"/api/v1/contracts/{s.ContractId}/liquidation/start",
                 new { actualEndDate = s.Start.AddDays(20), reason = "MutualAgreement" }, s.Token))
             .ReadProblemCodeAsync()).Should().Be("INVOICE_AFTER_END_DATE");
+    }
+
+    private async Task<JsonElement> FinalizeAsync(Setup s, Guid invoiceId)
+    {
+        var response = await _client.PostJsonAsync($"/api/v1/invoices/{invoiceId}/finalize", null, s.Token);
+        response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+        return await response.ReadAsync<JsonElement>();
+    }
+
+    [Fact]
+    public async Task MoveOutMidPeriod_FinalInvoiceChargesRemainingElectricity_WriteOffDebt_EndsContract()
+    {
+        var s = await ArrangeAsync("Prepaid");
+        var secondMonth = s.Start.AddMonths(1);
+
+        // Phiếu tháng 1 (không điện — trả trước), tháng 2 (tiền phòng tháng 2 + điện tháng 1), đều đã chốt.
+        await GenerateAsync(s, s.Start);
+        await FinalizeAsync(s, Id(await InvoiceForAsync(s, s.Start)));
+        (await SaveReadingAsync(s, s.Start, 150)).StatusCode.Should().Be(HttpStatusCode.OK);
+        await GenerateAsync(s, secondMonth);
+        await FinalizeAsync(s, Id(await InvoiceForAsync(s, secondMonth)));
+
+        // Ở nửa tháng 2 rồi đi: tiền phòng tháng 2 đã thu trọn (không hoàn — để sau), điện nửa tháng 2 chưa ai thu.
+        var moveOut = secondMonth.AddDays(14);
+        (await _client.PostJsonAsync($"/api/v1/contracts/{s.ContractId}/liquidation/start",
+            new { actualEndDate = moveOut, reason = "LesseeUnilateral" }, s.Token)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+        var created = await _client.PostJsonAsync($"/api/v1/contracts/{s.ContractId}/final-invoice",
+            new { finalReadings = new[] { new { meterId = s.MeterId, value = (decimal?)170 } } }, s.Token);
+        created.StatusCode.Should().Be(HttpStatusCode.Created, await created.Content.ReadAsStringAsync());
+        var final = await created.ReadAsync<JsonElement>();
+        final.GetProperty("lines").EnumerateArray().Select(l => (l.GetProperty("type").GetString(), l.GetProperty("quantity").GetDecimal()))
+            .Should().Equal(("Metered", 20m)); // 150 → 170; tiền phòng, nước đã thu ở phiếu tháng 2
+        (await (await _client.PostJsonAsync($"/api/v1/contracts/{s.ContractId}/final-invoice", new { finalReadings = (object?)null }, s.Token))
+            .ReadProblemCodeAsync()).Should().Be("FINAL_INVOICE_EXISTS");
+
+        // Phụ thu phạt báo trễ trên phiếu quyết toán rồi chốt.
+        await _client.PostJsonAsync($"/api/v1/invoices/{Id(final)}/manual-lines",
+            new { type = "Surcharge", description = "Phạt báo trả phòng muộn", amount = 500_000, note = "Theo điều khoản HĐ" }, s.Token);
+        Total(await FinalizeAsync(s, Id(final))).Should().Be(20 * 3500 + 500_000);
+
+        // Còn nợ ⇒ cảnh báo; người thuê trốn ⇒ bỏ nợ (không tính doanh thu).
+        var warn = await _client.PostJsonAsync($"/api/v1/contracts/{s.ContractId}/liquidation/complete", new { settlement = (string?)null }, s.Token);
+        (await warn.ReadProblemCodeAsync()).Should().Be("CONTRACT_HAS_DEBT");
+        (await _client.PostJsonAsync($"/api/v1/contracts/{s.ContractId}/liquidation/complete",
+            new { settlement = "WriteOff", reason = "Người thuê bỏ đi không trả" }, s.Token)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        var contract = await (await _client.GetAsync($"/api/v1/contracts/{s.ContractId}", s.Token)).ReadAsync<JsonElement>();
+        contract.GetProperty("status").GetString().Should().Be("Ended");
+        var page = await (await _client.GetAsync($"/api/v1/invoices?contractId={s.ContractId}", s.Token)).ReadAsync<JsonElement>();
+        page.GetProperty("items").EnumerateArray().Select(i => i.GetProperty("paymentStatus").GetString()).Should().Contain("WrittenOff");
+        var payments = await (await _client.GetAsync($"/api/v1/payments?contractId={s.ContractId}", s.Token)).ReadAsync<List<JsonElement>>();
+        payments.Should().Contain(p => p.GetProperty("kind").GetString() == "WriteOff");
+        (await (await _client.PostJsonAsync($"/api/v1/contracts/{s.ContractId}/payments",
+                new { amount = 1000, method = "Cash", paidAt = TestData.Today(factory) }, s.Token))
+            .ReadProblemCodeAsync()).Should().Be("CONTRACT_NOT_BILLABLE");
+    }
+
+    [Fact]
+    public async Task ThreeMonthRentCycle_RentOnlyInFirstMonth_OtherMonthsUtilitiesOnly_RentChangeLockedUntilCycleEnd()
+    {
+        var s = await ArrangeAsync("Prepaid", rentCycleMonths: 3);
+        var secondMonth = s.Start.AddMonths(1);
+
+        await GenerateAsync(s, s.Start);
+        var first = await InvoiceForAsync(s, s.Start);
+        var rent = first.GetProperty("lines").EnumerateArray().Single(l => l.GetProperty("type").GetString() == "Rent");
+        rent.GetProperty("amount").GetDecimal().Should().Be(9_000_000, "tháng đầu đóng 3 tháng tiền phòng");
+        rent.GetProperty("quantity").GetDecimal().Should().Be(3);
+        rent.GetProperty("description").GetString().Should().StartWith("Tiền phòng 3 tháng");
+        await FinalizeAsync(s, Id(first));
+
+        await SaveReadingAsync(s, s.Start, 150);
+        await GenerateAsync(s, secondMonth);
+        var second = await InvoiceForAsync(s, secondMonth);
+        second.GetProperty("lines").EnumerateArray().Select(l => l.GetProperty("type").GetString())
+            .Should().BeEquivalentTo(["Metered", "Service"], "tháng 2 chỉ thu điện nước, dịch vụ");
+
+        // Giá thuê đổi giữa chu kỳ đã thu ⇒ khóa tới hết chu kỳ.
+        (await (await _client.PostJsonAsync($"/api/v1/contracts/{s.ContractId}/rent-terms",
+                new { effectiveFrom = secondMonth, monthlyRent = 3_500_000 }, s.Token))
+            .ReadProblemCodeAsync()).Should().Be("PERIOD_ALREADY_BILLED");
+    }
+
+    [Fact]
+    public async Task TieredElectricityPrice_ChargesEachSliceAtItsRate()
+    {
+        var s = await ArrangeAsync("Postpaid");
+        var tiered = await _client.PostJsonAsync($"/api/v1/fee-types/{s.ElectricityId}/prices", new
+        {
+            effectiveFrom = s.Start,
+            tiers = new object[] { new { upTo = 50, price = 2000 }, new { upTo = (int?)null, price = 3000 } }
+        }, s.Token);
+        tiered.StatusCode.Should().Be(HttpStatusCode.Created, await tiered.Content.ReadAsStringAsync());
+
+        await SaveReadingAsync(s, s.Start, 188);
+        await GenerateAsync(s, s.Start);
+        var metered = (await InvoiceForAsync(s, s.Start)).GetProperty("lines").EnumerateArray()
+            .Single(l => l.GetProperty("type").GetString() == "Metered");
+        metered.GetProperty("amount").GetDecimal().Should().Be(50 * 2000 + 38 * 3000);
+        metered.GetProperty("description").GetString().Should().Be("Điện (giá bậc)");
+
+        var fees = await (await _client.GetAsync($"/api/v1/properties/{s.PropertyId}/fee-types", s.Token)).ReadAsync<List<JsonElement>>();
+        var water = fees.Single(f => f.GetProperty("name").GetString() == "Nước theo người").GetProperty("id").GetGuid();
+        (await (await _client.PostJsonAsync($"/api/v1/fee-types/{water}/prices", new
+            {
+                effectiveFrom = s.Start.AddDays(1), tiers = new object[] { new { upTo = (int?)null, price = 20000 } }
+            }, s.Token))
+            .ReadProblemCodeAsync()).Should().Be("FEE_TIERS_METERED_ONLY");
     }
 }

@@ -4,15 +4,18 @@
 
 ## 1. Mục tiêu & phạm vi
 
-**Mục tiêu**: Lưu **hồ sơ người thuê / người ở** (renter) rõ ràng, chính xác, bảo vệ dữ liệu cá nhân; theo dõi
-**tình trạng cư trú** (đăng ký tạm trú, thông báo lưu trú) và **tạm vắng** của từng người.
+**Mục tiêu**: Lưu **hồ sơ người thuê / người ở** (renter) rõ ràng, chính xác, bảo vệ dữ liệu cá nhân.
 
-**Trong phạm vi**: CRUD hồ sơ, tìm kiếm, chống trùng theo số giấy tờ; ghi nhận đồng ý xử lý dữ liệu;
-bản ghi cư trú + trạng thái + file xác nhận; bản ghi tạm vắng; ẩn danh hóa theo yêu cầu.
+> **Đổi phạm vi (chốt 04/10/2026) — phần cư trú để sau**: thông tin cư trú **chính là hồ sơ người thuê + người ở trong phòng**
+> (thêm người vào phòng đã lưu đủ thông tin — M05 `contract_occupants`, kèm quan hệ với chủ hộ CT-BR-28..30). Làm giấy tờ tạm trú
+> (khoảng 1 lần / năm), bản ghi thủ tục, tạm vắng, nhắc việc, sự kiện domain: **xử lý sau** — các mục đánh dấu ⏸ bên dưới.
+
+**Trong phạm vi (P1)**: CRUD hồ sơ, tìm kiếm, chống trùng theo số giấy tờ; ghi nhận đồng ý xử lý dữ liệu; ẩn danh hóa theo yêu cầu.
+Người ở / chuyển đi: M05. ⏸ P2: bản ghi cư trú + trạng thái + file xác nhận; tạm vắng.
 
 **Ngoài phạm vi**: nộp hồ sơ lên VNeID/Cổng DVC; xác thực CCCD với CSDL quốc gia; OCR CCCD (P3).
 
-**Phase**: P1 (hồ sơ + bản ghi cư trú), P2 (nhắc việc tự động, dashboard tuân thủ).
+**Phase**: P1 (hồ sơ người thuê); P2 (theo dõi thủ tục tạm trú, nhắc việc tự động, tạm vắng).
 
 ## 2. Thuật ngữ
 
@@ -36,12 +39,12 @@ bản ghi cư trú + trạng thái + file xác nhận; bản ghi tạm vắng; �
 | RT-UC-03 | Sửa hồ sơ |
 | RT-UC-04 | Xem lịch sử thuê của người (các hợp đồng, phòng, thời gian) |
 | RT-UC-05 | Ghi nhận đồng ý xử lý dữ liệu (phương thức: ký giấy / điều khoản trong HĐ / xác nhận miệng có chứng cứ) |
-| RT-UC-06 | Xem / cập nhật bản ghi cư trú: trạng thái, ngày nộp, ngày được xác nhận, hạn tạm trú, số tham chiếu, ảnh xác nhận |
-| RT-UC-07 | Ghi nhận tạm vắng (từ ngày – đến ngày, lý do, đã khai báo hay chưa) |
-| RT-UC-08 | Danh sách "cần xử lý cư trú": người ở chưa đăng ký / sắp hết hạn tạm trú / đã rời đi chưa xử lý |
+| RT-UC-06 ⏸ P2 | Xem / cập nhật bản ghi cư trú: trạng thái, ngày nộp, ngày được xác nhận, hạn tạm trú, số tham chiếu, ảnh xác nhận |
+| RT-UC-07 ⏸ P2 | Ghi nhận tạm vắng (từ ngày – đến ngày, lý do, đã khai báo hay chưa) |
+| RT-UC-08 ⏸ P2 | Danh sách "cần xử lý cư trú": người ở chưa đăng ký / sắp hết hạn tạm trú / đã rời đi chưa xử lý |
 | RT-UC-09 | Ẩn danh hóa hồ sơ theo yêu cầu (khi không còn hợp đồng hiệu lực & hết thời hạn lưu giữ) |
 | RT-UC-10 | Xem số giấy tờ đầy đủ (có audit) |
-| RT-UC-11 | Chuẩn bị thông tin tờ khai tạm trú (CT01) cho người ở: quan hệ với chủ hộ, đồng ý của cha mẹ / người giám hộ (người < 18 tuổi) — lấy từ người ở của HĐ (M05 CT-BR-28, 30); xuất danh sách E1 (M10) để đối chiếu |
+| RT-UC-11 ⏸ P2 | Chuẩn bị thông tin tờ khai tạm trú (CT01) cho người ở: quan hệ với chủ hộ, đồng ý của cha mẹ / người giám hộ (người < 18 tuổi) — lấy từ người ở của HĐ (M05 CT-BR-28, 30); xuất danh sách E1 (M10) để đối chiếu |
 
 ### 3.2 Quy tắc nghiệp vụ
 
@@ -53,15 +56,15 @@ bản ghi cư trú + trạng thái + file xác nhận; bản ghi tạm vắng; �
 | RT-BR-04 | ~~Quốc tịch ≠ VN ⇒ bắt buộc hộ chiếu~~ — **bỏ (04/10/2026)**: hệ thống phục vụ người thuê Việt Nam. Giữ `nationality` (mặc định `VN`) và loại giấy tờ `Passport` cho người Việt dùng hộ chiếu; không kiểm tra theo quốc tịch | — |
 | RT-BR-05 | Không xóa vật lý hồ sơ đã gắn hợp đồng. Archive = ẩn khỏi tìm kiếm mặc định | Application |
 | RT-BR-06 | Ẩn danh hóa: chỉ khi không có HĐ `Draft/Active/Liquidating`; thay họ tên = "Đã ẩn danh #xxxx", xóa SĐT/email/địa chỉ/ngày sinh/số giấy tờ/liên hệ khẩn cấp; hard delete file nhạy cảm (M09, FS-BR-09); **thay cả bản snapshot tên** trên phiếu báo (`invoices.snapshot_representative_name`) và phiếu thu (`payer_name`) — ngoại lệ duy nhất cho quy tắc bất biến C-06, chỉ chạy qua lệnh ẩn danh, có audit; **xóa giá trị cá nhân trong `audit_logs.changes`** của renter đó. Giữ liên kết & số liệu tài chính. Không đảo ngược | Domain + Application |
-| RT-BR-07 | **Bản ghi cư trú tự sinh** khi occupant được thêm vào HĐ và HĐ ở trạng thái Active (hoặc khi kích hoạt HĐ): loại theo LEG-03 (dự kiến ở ≥ 30 ngày → `TemporaryResidence`; < 30 → `StayNotice`), trạng thái `Pending` | Domain event từ M05, xử lý trong cùng transaction |
-| RT-BR-08 | Mỗi (occupant stay của HĐ, loại) có tối đa 1 bản ghi cư trú chưa đóng (`Pending/Submitted/Registered`) | DB partial unique |
-| RT-BR-09 | `Registered` yêu cầu `registered_at`; `valid_until` (nếu có) > `registered_at` | Domain + CHECK |
-| RT-BR-10 | Occupant rời đi (M05) ⇒ bản ghi cư trú đang mở chuyển cờ `needs_deregistration = true` (nhắc chủ trọ); chủ trọ xác nhận → `Closed` | Domain event |
-| RT-BR-11 | Tạm vắng: `from_date ≤ to_date`; không chồng lấn với tạm vắng khác của cùng người trong cùng HĐ; phải nằm trong thời gian ở của occupant | Domain + EXCLUDE |
-| RT-BR-12 | Tạm vắng **không** tự động giảm tiền (chủ trọ dùng điều chỉnh thủ công M07 nếu muốn) | Thiết kế |
+| RT-BR-07 ⏸ P2 | **Bản ghi cư trú tự sinh** khi occupant được thêm vào HĐ và HĐ ở trạng thái Active (hoặc khi kích hoạt HĐ): loại theo LEG-03 (dự kiến ở ≥ 30 ngày → `TemporaryResidence`; < 30 → `StayNotice`), trạng thái `Pending` | Domain event từ M05, xử lý trong cùng transaction |
+| RT-BR-08 ⏸ P2 | Mỗi (occupant stay của HĐ, loại) có tối đa 1 bản ghi cư trú chưa đóng (`Pending/Submitted/Registered`) | DB partial unique |
+| RT-BR-09 ⏸ P2 | `Registered` yêu cầu `registered_at`; `valid_until` (nếu có) > `registered_at` | Domain + CHECK |
+| RT-BR-10 ⏸ P2 | Occupant rời đi (M05) ⇒ bản ghi cư trú đang mở chuyển cờ `needs_deregistration = true` (nhắc chủ trọ); chủ trọ xác nhận → `Closed` | Domain event |
+| RT-BR-11 ⏸ P2 | Tạm vắng: `from_date ≤ to_date`; không chồng lấn với tạm vắng khác của cùng người trong cùng HĐ; phải nằm trong thời gian ở của occupant | Domain + EXCLUDE |
+| RT-BR-12 ⏸ P2 | Tạm vắng **không** tự động giảm tiền (chủ trọ dùng điều chỉnh thủ công M07 nếu muốn) | Thiết kế |
 | RT-BR-13 | Tuổi: ngày sinh ≤ hôm nay và ≥ 1900-01-01 | Validator |
 | RT-BR-14 | Trẻ em chưa có thẻ căn cước: dùng **số định danh cá nhân** 12 số (giấy khai sinh / VNeID) với loại `CitizenId`; ngày cấp, nơi cấp để trống (Luật Căn cước 2023) | Validator (12 số) |
-| RT-BR-15 | Bản ghi cư trú (P1) lấy "quan hệ với chủ hộ" từ `contract_occupants.relationship_type` và cờ `guardian_consent`; người ở < 18 tuổi thiếu đồng ý ⇒ không chuyển được sang `Submitted` | Application (khi làm phần cư trú) |
+| RT-BR-15 ⏸ P2 | Bản ghi cư trú (P1) lấy "quan hệ với chủ hộ" từ `contract_occupants.relationship_type` và cờ `guardian_consent`; người ở < 18 tuổi thiếu đồng ý ⇒ không chuyển được sang `Submitted` | Application (khi làm phần cư trú) |
 
 ### 3.3 Vòng đời bản ghi cư trú
 

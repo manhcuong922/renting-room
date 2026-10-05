@@ -1,4 +1,4 @@
-using Microsoft.OpenApi.Models;
+using Microsoft.OpenApi;
 using Swashbuckle.AspNetCore.SwaggerGen;
 
 namespace renting_room.Idempotency;
@@ -19,7 +19,7 @@ internal sealed class IdempotencyHeaderOperationFilter : IOperationFilter
             In = ParameterLocation.Header,
             Required = metadata.IsRequired,
             Description = "Khóa duy nhất cho thao tác (VD UUID). Gửi lại cùng khóa ⇒ nhận lại kết quả cũ, không thực thi lần 2.",
-            Schema = new OpenApiSchema { Type = "string", MinLength = 8, MaxLength = 64 }
+            Schema = new OpenApiSchema { Type = JsonSchemaType.String, MinLength = 8, MaxLength = 64 }
         });
     }
 }

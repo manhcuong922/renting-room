@@ -8,7 +8,9 @@ using renting_room.Domain.Renters;
 
 namespace renting_room.Application.Contracts;
 
-public sealed record BillingSettingsInput(int AnchorDay, ChargeMode ChargeMode, ProrationMode ProrationMode, int PaymentDueDays);
+/// <param name="RentCycleMonths">Chu kỳ đóng tiền phòng (BL-BR-26) — bỏ trống = mặc định của khu.</param>
+public sealed record BillingSettingsInput(
+    int AnchorDay, ChargeMode ChargeMode, ProrationMode ProrationMode, int PaymentDueDays, int? RentCycleMonths = null);
 
 /// <summary>
 /// Nội dung hợp đồng (tạo nháp / sửa nháp). Trường null ⇒ lấy mặc định từ khu / phòng / mẫu.

@@ -18,6 +18,9 @@ public enum ChargeBasis
     PerUnit       // × số gói đăng ký (giữ xe: 2 xe = 2 gói)
 }
 
+/// <summary>Một bậc giá: áp cho phần sản lượng tới <see cref="UpTo"/> (lũy kế); bậc cuối <c>UpTo = null</c> (FE-BR-15).</summary>
+public sealed record PriceTier(decimal? UpTo, decimal Price);
+
 public static class FeeSystemCodes
 {
     public const string Electricity = "ELECTRICITY";
@@ -101,16 +104,19 @@ public sealed class FeeType : TenantEntity
     public decimal AttachQuantity => IsPerUnit ? DefaultQuantity ?? 1 : 1;
 
     /// <param name="lockedUntil">Ngày cuối của dòng phiếu đã chốt dùng khoản này (M07) — không thêm giá hồi tố trước ngày đó (FE-BR-07).</param>
-    public Result<FeePrice> AddPrice(DateOnly effectiveFrom, decimal unitPrice, string? note, DateOnly? lockedUntil)
+    /// <param name="tiers">FE-BR-15: có ⇒ giá theo bậc (chỉ khoản theo công tơ); null ⇒ một giá.</param>
+    public Result<FeePrice> AddPrice(DateOnly effectiveFrom, decimal unitPrice, string? note, DateOnly? lockedUntil, IReadOnlyList<PriceTier>? tiers = null)
     {
         if (IsArchived)
             return Result.Failure<FeePrice>(FeeErrors.Archived);
+        if (tiers is { Count: > 0 } && Group != FeeGroup.Metered)
+            return Result.Failure<FeePrice>(FeeErrors.TiersForMeteredOnly);
         if (_prices.Any(p => p.EffectiveFrom == effectiveFrom))
             return Result.Failure<FeePrice>(FeeErrors.PriceDateExists);
         if (lockedUntil is { } locked && effectiveFrom <= locked)
             return Result.Failure<FeePrice>(FeeErrors.PriceLocked);
 
-        var price = new FeePrice(Id, effectiveFrom, unitPrice, note);
+        var price = new FeePrice(Id, effectiveFrom, unitPrice, note, tiers);
         _prices.Add(price);
         return Result.Success(price);
     }
@@ -153,29 +159,53 @@ public sealed class FeePrice : TenantEntity
 {
     private FeePrice() { } // EF Core
 
-    internal FeePrice(Guid feeTypeId, DateOnly effectiveFrom, decimal unitPrice, string? note)
+    internal FeePrice(Guid feeTypeId, DateOnly effectiveFrom, decimal unitPrice, string? note, IReadOnlyList<PriceTier>? tiers = null)
     {
         Id = Guid.NewGuid();
         FeeTypeId = feeTypeId;
         EffectiveFrom = effectiveFrom;
-        UnitPrice = unitPrice;
+        Tiers = tiers is { Count: > 0 } ? tiers.ToList() : null;
+        UnitPrice = Tiers?[0].Price ?? unitPrice; // theo bậc: đơn giá hiển thị = giá bậc 1
         Note = TextNormalizer.TrimToNull(note);
     }
 
     public Guid FeeTypeId { get; private set; }
     public DateOnly EffectiveFrom { get; private set; }
     public decimal UnitPrice { get; private set; }
+
+    /// <summary>FE-BR-15: null = một giá; có = theo bậc (mốc lũy kế tăng dần, bậc cuối không giới hạn).</summary>
+    public List<PriceTier>? Tiers { get; private set; }
     public string? Note { get; private set; }
 
+    public bool IsTiered => Tiers is { Count: > 0 };
+
+    /// <summary>Giá cao nhất (theo bậc ⇒ bậc cao nhất) — dùng cho cảnh báo vượt giá bán lẻ (FE-BR-13).</summary>
+    public decimal HighestPrice => Tiers?.Max(t => t.Price) ?? UnitPrice;
+
     /// <summary>
-    /// Thành tiền = số lượng × đơn giá, làm tròn tới đồng. Một giá cho mọi mức sử dụng — không bậc thang như hộ gia đình (FE-BR-15).
-    /// <paramref name="unitPriceOverride"/> = giá riêng của HĐ (khoản cố định / theo số lượng).
+    /// Thành tiền, làm tròn tới đồng (FE-BR-15). Một giá: số lượng × đơn giá. Theo bậc: mỗi phần sản lượng tính giá bậc của nó
+    /// (VD 0–50 giá bậc 1, 51–100 giá bậc 2…) — bậc theo lượng tiêu thụ của kỳ, không quy đổi theo số ngày.
+    /// <paramref name="unitPriceOverride"/> = giá riêng của HĐ (dịch vụ) — thay toàn bộ biểu giá.
     /// </summary>
     public decimal Amount(decimal quantity, decimal? unitPriceOverride = null)
     {
         if (quantity < 0)
             throw new ArgumentOutOfRangeException(nameof(quantity), "Quantity cannot be negative.");
-        return Round(quantity * (unitPriceOverride ?? UnitPrice));
+        if (unitPriceOverride is { } overridePrice)
+            return Round(quantity * overridePrice);
+        if (Tiers is null)
+            return Round(quantity * UnitPrice);
+
+        decimal total = 0, lower = 0;
+        foreach (var tier in Tiers)
+        {
+            if (quantity <= lower)
+                break;
+            var upper = tier.UpTo ?? decimal.MaxValue;
+            total += (Math.Min(quantity, upper) - lower) * tier.Price;
+            lower = upper;
+        }
+        return Round(total);
     }
 
     private static decimal Round(decimal value) => Math.Round(value, 0, MidpointRounding.AwayFromZero);
@@ -197,6 +227,8 @@ public static class FeeErrors
     public static readonly Error PriceDateExists = Error.Conflict("FEE_PRICE_DATE_EXISTS", "Đã có bản giá hiệu lực từ ngày này.");
     public static readonly Error PriceLocked = Error.BusinessRule("FEE_PRICE_LOCKED",
         "Ngày hiệu lực thuộc kỳ đã chốt phiếu — chỉ đổi giá từ kỳ chưa chốt.");
+    public static readonly Error TiersForMeteredOnly = Error.Validation("FEE_TIERS_METERED_ONLY",
+        "Giá theo bậc chỉ dùng cho điện nước theo công tơ.");
     public static readonly Error MeteredFollowsRoom = Error.Validation("FEE_METERED_FOLLOWS_ROOM",
         "Điện / nước theo công tơ tính theo công tơ của phòng — không gắn vào hợp đồng.");
     public static readonly Error NotInProperty = Error.BusinessRule("FEE_NOT_IN_PROPERTY", "Khoản thu không thuộc khu của hợp đồng.");

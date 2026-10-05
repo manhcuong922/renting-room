@@ -19,4 +19,7 @@ public interface IDocumentNumberGenerator
 public interface IInvoiceLockReader
 {
     Task<DateOnly?> GetFirstOpenPeriodStartAsync(Guid contractId, CancellationToken cancellationToken);
+
+    /// <summary>CT-BR-05 / BL-BR-26: kỳ đầu tiên chưa bị khóa cho đổi giá thuê — sau cả chu kỳ tiền phòng đã chốt (chu kỳ nhiều tháng thu trước).</summary>
+    Task<DateOnly?> GetFirstOpenRentPeriodStartAsync(Guid contractId, CancellationToken cancellationToken);
 }

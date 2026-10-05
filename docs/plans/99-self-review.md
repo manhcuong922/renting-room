@@ -60,7 +60,7 @@
 | R-49 ✅ | Tạm ngưng tổ chức nhưng access token còn hạn | Vẫn thao tác 15 phút | Middleware kiểm trạng thái (cache ≤ 60s) + SecurityStamp | ID-BR-08 |
 | R-50 ✅ | Địa chỉ 3 cấp (có quận/huyện) | Sai từ 01/07/2025 (bỏ cấp huyện) | Mô hình 2 cấp + `address_text` cho địa chỉ cũ | C-12, LEG-07 |
 | R-51 ✅ | Gọi "hóa đơn" | Nhầm với hóa đơn GTGT/HĐĐT | "Phiếu báo tiền phòng" | LEG-08 |
-| R-52 ✅ | .NET 8 hết hỗ trợ 10/11/2026 | Chạy production trên runtime không còn vá bảo mật | Nâng net10.0 ở P0 | README §3, P0-01 |
+| R-52 ✅ | .NET 8 hết hỗ trợ 10/11/2026 | Chạy production trên runtime không còn vá bảo mật | Đã nâng net10.0 (EF Core 10, Npgsql 10, Swashbuckle 10); 305 test xanh, migration không đổi | README §3, P0-01 |
 | R-53 ✅ | Mật khẩu DB trong `appsettings.json` được commit | Lộ secret khi dùng mật khẩu thật | User Secrets / env | C-11, P0-02 |
 | R-54 ✅ | Test bằng InMemory/SQLite | Không kiểm được EXCLUDE, partial index, xmin → test xanh nhưng production lỗi | Testcontainers PostgreSQL | C-13 |
 
@@ -140,7 +140,7 @@
 | R-99 ✅ | Phó quản lý xem / xuất / in được số giấy tờ đầy đủ; plan các module ghi quyền khác nhau | Lộ dữ liệu cá nhân qua tài khoản phụ | Quyền dữ liệu nhạy cảm do chủ trọ cấp, đọc DB mỗi request; reveal / export đầy đủ → 403; in → che số. Thống nhất dòng phân quyền M02–M10 = "P1 như chủ trọ, trừ dữ liệu nhạy cảm" | ID-BR-21/22, LEG-06 |
 | R-100 ✅ | M04 tự gắn Điện/Nước vào mọi HĐ + MT-BR-11 bắt phòng có công tơ | Phòng tính nước theo người bị chặn kích hoạt; HĐ và công tơ lệch nhau | Điện nước theo công tơ **đi theo phòng**, không gắn HĐ (400 `FEE_METERED_FOLLOWS_ROOM`); MT-BR-11 thành cảnh báo | FE-BR-17, CT-BR-02, MT-BR-11, BL-BR-05 |
 | R-101 ✅ | Chỉ số đầu HĐ mới lấy cứng chỉ số cuối HĐ trước | Người mới trả tiền điện dùng khi sửa chữa / phòng trống | Chỉ số nhận phòng chỉnh được tại ngày vào ở; sản lượng khoảng trống không tính cho ai, hiện ở báo cáo | MT-BR-13/14 |
-| R-102 ✅ | Bậc thang điện (M04) chưa được M07 dùng; chủ trọ không dùng bậc thang | Tính sai / phức tạp không cần thiết | Một giá; bỏ `tiers` khỏi code + DB | FE-BR-15, BL-BR-05 |
+| R-102 ✅ → đảo lại ở R-130 | Bậc thang điện (M04) chưa được M07 dùng; chủ trọ không dùng bậc thang | Tính sai / phức tạp không cần thiết | Một giá; bỏ `tiers` khỏi code + DB | FE-BR-15, BL-BR-05 |
 | R-103 ✅ | Thay công tơ giữa kỳ khi công tơ cũ hỏng không có chỉ số tháo | Không lập được phiếu hoặc mất sản lượng | Dòng thủ công gắn khoản thu trong phiếu nháp | BL-BR-23 |
 | R-104 ✅ | M08 chưa tính HĐ không cọc / mức cọc | Ghi cọc mâu thuẫn với HĐ | Cọc trên HĐ chỉ lưu trữ; sổ cọc độc lập | PM-BR-19 |
 | R-105 ✅ | Plan lệch code: 409 trùng giấy tờ không kèm id hồ sơ cũ | UI phải tự tìm lại hồ sơ | `existingRenterId` trong ProblemDetails | RT-BR-02 |
@@ -169,6 +169,20 @@
 | R-123 ✅ | Thu vượt nợ khi chưa có số dư có | Tiền thừa không có chỗ ghi ⇒ lệch sổ | Chặn `PAYMENT_EXCEEDS_DEBT` tới đợt 2 | M08 đợt 1 |
 | R-124 ✅ | EF gộp các index unique trùng cột (chỉ số lắp / nhận phòng) | Migration thiếu ràng buộc ⇒ trùng chỉ số | Đặt tên index + `HasDatabaseName`, kiểm tra trong DB | M06 |
 
+## B9. Hoàn thiện đợt 1 — quyết định 04/10/2026 (✅ đã code 05/10, trừ cư trú để sau)
+
+| # | Vấn đề | Kịch bản lỗi | Xử lý | Nơi sửa |
+|---|--------|--------------|-------|---------|
+| R-125 ✅ | Prepaid: phiếu kỳ cuối lập trước khi báo trả phòng | Điện nước kỳ cuối không ai thu | Phiếu quyết toán thu phần còn thiếu (đợt 1); hoàn tiền phòng chưa ở để sau | BL-UC-11, BL-BR-02/17 |
+| R-126 ✅ | Hoàn tất thanh lý không xét tiền | HĐ kết thúc còn nợ / sót tiền | Bắt phiếu quyết toán đã chốt; còn nợ ⇒ cảnh báo + "Đã thu toàn bộ" / "Bỏ nợ" | CT-BR-12, PM-UC-14, PM-BR-16 |
+| R-127 ✅ | PM-BR-13 (HĐ kết thúc không thu) mâu thuẫn code (cho thu) | Khó hiểu khi nào được thu | Hoàn tất buộc hết nợ ⇒ HĐ kết thúc không cần thu nữa — giữ PM-BR-13, sửa code | PM-BR-13 |
+| R-128 ✅ | Số phiếu thu lấy năm ngày thu | Ghi bù đầu năm ⇒ số PT lộn năm | Năm của ngày lập | PM-BR-15 |
+| R-129 ✅ | Thu theo chu kỳ nhiều tháng chưa có | Phòng đóng 3 tháng / lần phải sửa tay từng phiếu | `rent_cycle_months`; tiền phòng × N chỉ ở phiếu tháng đầu chu kỳ, các tháng khác chỉ điện nước dịch vụ | BL-BR-26, CT-BR-05 |
+| R-130 ✅ | Chỉ một giá điện nước | Khu tính theo bậc (như EVN) không dùng được | Bản giá một giá hoặc theo bậc | FE-BR-15, BL-BR-05 |
+| R-131 | Cư trú thiết kế nặng (bản ghi, tạm vắng, sự kiện domain) chưa code | Khối việc lớn không cần ở P1 | P1 = người ở trong phòng (M05); phần thủ tục ⏸ P2 | M03 |
+| R-132 ✅ | Phòng ngừng dùng có cần tháo công tơ | Bắt tháo thì mất số đo khi sửa chữa | Không tháo; HĐ mới chọn số khi kích hoạt | PR-BR-05, MT-BR-17 |
+| R-133 | Phạm vi đợt 1 quá rộng (cọc, hoàn tiền, bồi thường, cư trú) | Kéo dài đợt 1, nghiệp vụ chưa ổn | Để sau toàn bộ phần cọc / chi tiền ra / cư trú; đợt 1 chỉ thu | M03, M05, M07, M08 |
+
 ## C. Rủi ro còn lại / cần quyết định
 
 | # | Vấn đề | Ảnh hưởng | Đề xuất |
@@ -185,10 +199,23 @@
 | O-10 ✅ | CT-BR-31 (không ở 2 phòng) chỉ kiểm ở Application | 2 request song song thêm cùng người vào 2 phòng có thể lọt | Đã làm: advisory lock theo người thuê trong transaction (05-contract §10) |
 | O-11 ✅ | Trường tùy biến điện / nước trùng khoản thu M04 | Nhập 2 nơi, lệch nhau | M04 đã có: văn bản HĐ in điện nước từ `contract_fees`; khuyến nghị bỏ trường điện nước khỏi mẫu (05-contract Q7) |
 | O-12 ⚠️ | Giá điện tham chiếu & định mức theo TT 60/2025 | Ngưỡng cảnh báo cố định trong cấu hình có thể lỗi thời khi EVN đổi giá | Cập nhật `Fees:ElectricityPriceWarningThreshold`; P2 bảng cấu hình do admin sửa; M07 xử lý định mức theo số người kê khai |
-| O-13 ⚠️ | Điện một giá (FE-BR-15) | TT 60/2025: tổng tiền điện thu không vượt hóa đơn EVN; một giá cao có thể vượt khi phòng dùng ít | Giữ cảnh báo ngưỡng (FE-BR-13) + làm đối chiếu hóa đơn (LEG-05, M10 E7) |
+| O-13 ⚠️ | Điện một giá / theo bậc do chủ trọ đặt (FE-BR-15) | TT 60/2025: tổng tiền điện thu không vượt hóa đơn EVN; một giá cao có thể vượt khi phòng dùng ít | Giữ cảnh báo ngưỡng (FE-BR-13) + làm đối chiếu hóa đơn (LEG-05, M10 E7) |
 | O-14 ⚠️ | Đồ của người bỏ đi không báo (CT-BR-41) | Tự ý xử lý đồ có thể bị khiếu nại | Hệ thống chỉ nhắc lập biên bản có người làm chứng; cách xử lý đồ / cọc cần ghi trong điều khoản HĐ — hỏi luật sư |
 | O-15 ⚠️ | "Ở tiếp chưa ký lại" (CT-BR-45) | BLDS 2015 không tự gia hạn; tranh chấp khó chứng minh điều khoản đang áp | Nhắc ký phụ lục mỗi 30 ngày; bản in ghi rõ HĐ đã hết hạn |
 | O-16 ⚠️ | Sửa tay phiếu (BL-BR-07) | Sửa tay quá nhiều làm số liệu báo cáo lệch nguồn | Báo cáo M10 có cột "đã sửa tay"; audit từng ô sửa |
+
+## C2. Câu hỏi mở sau khi rà chéo — 04/10/2026
+
+| # | Câu hỏi | Đề xuất mặc định |
+|---|---------|------------------|
+| Q-A ✅ | Chu kỳ đóng tiền phòng nhiều tháng mà HĐ có `end_date` rơi giữa chu kỳ | **Chốt**: chu kỳ cuối tính tới `end_date`; gia hạn thì chu kỳ chạy tiếp |
+| Q-B ✅ | Kỳ đầu lẻ / gộp có tính là tháng thứ 1 của chu kỳ? | **Chốt**: có; tiền phòng kỳ lẻ vẫn prorate theo ngày |
+| Q-C ✅ | Giá theo bậc khi kỳ sử dụng ngắn / dài | **Chốt**: bậc chỉ theo lượng tiêu thụ của kỳ, không quy đổi theo số ngày |
+| Q-D ✅ | Người bỏ đi không báo: chỉ số cuối đọc ngày phát hiện | **Chốt**: ghi với ngày = ngày trả phòng; phần dùng tới ngày phát hiện tính cho người thuê |
+| Q-E ⏸ | Trừ cọc khi chưa có sổ cọc | **Để sau** cùng sổ cọc, hoàn tiền, bồi thường (M08 đợt 2) |
+| Q-F ✅ | "Đã thu toàn bộ" mặc định phương thức nào | **Chốt**: tiền mặt, hôm nay, đổi được |
+
+Tài liệu UI (`docs/api/`) mô tả **code đang chạy** (một giá, chưa có phiếu quyết toán / chu kỳ) — cập nhật cùng lúc code các mục B9.
 
 ## D. Ma trận kiểm tra chéo (đã đối chiếu)
 

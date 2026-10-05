@@ -198,7 +198,9 @@ internal static class ContractPrintBuilder
         lines.AddRange(terms.Skip(1).Select(t =>
             $"- Từ ngày {Date(t.EffectiveFrom)}{(t.AddendumNo is null ? "" : $" (phụ lục {t.AddendumNo})")}: {VietnameseMoney.Format(t.MonthlyRent)}/tháng."));
         lines.Add($"- Kỳ thanh toán: hằng tháng, ngày chốt kỳ là ngày {c.BillingAnchorDay}; " +
-            (c.ChargeMode == ChargeMode.Prepaid ? "tiền thuê trả trước vào đầu mỗi kỳ" : "tiền thuê trả vào cuối mỗi kỳ") +
+            (c.RentCycleMonths > 1
+                ? $"tiền thuê đóng {c.RentCycleMonths} tháng một lần vào đầu mỗi chu kỳ {c.RentCycleMonths} tháng, các tháng còn lại chỉ thu tiền điện, nước, dịch vụ"
+                : c.ChargeMode == ChargeMode.Prepaid ? "tiền thuê trả trước vào đầu mỗi kỳ" : "tiền thuê trả vào cuối mỗi kỳ") +
             $"; hạn thanh toán trong {c.PaymentDueDays} ngày kể từ ngày nhận thông báo tiền phòng.");
         lines.Add($"- Hình thức thanh toán: {string.Join(" hoặc ", c.PaymentMethods.Select(PaymentLabel))}.");
         return string.Join('\n', lines);
@@ -214,13 +216,14 @@ internal static class ContractPrintBuilder
         var lines = d.AgreedFees.Select(item =>
         {
             var fallback = item.UnitPrice is null && d.FeeTypes.TryGetValue(item.FeeTypeId, out var type) ? type.ResolvePrice(c.StartDate) : null;
-            return "- " + Describe(item.Name, item.Group, item.ChargeBasis, item.Unit, item.Quantity, item.UnitPrice ?? fallback?.UnitPrice);
+            return "- " + Describe(item.Name, item.Group, item.ChargeBasis, item.Unit, item.Quantity, item.UnitPrice ?? fallback?.UnitPrice,
+                item.UnitPrice is null ? fallback?.Tiers : item.Tiers);
         }).ToList();
 
         var agreed = d.AgreedFees.Select(a => a.FeeTypeId).ToHashSet();
         // Công tơ lắp sau khi ký ⇒ khoản điện nước chưa có trong bản chụp: in theo giá khu tại ngày bắt đầu.
         lines.AddRange(d.FeeTypes.Values.Where(t => t.Group == FeeGroup.Metered && !agreed.Contains(t.Id)).OrderBy(t => t.SortOrder)
-            .Select(t => "- " + Describe(t.Name, t.Group, null, t.Unit, 1, t.ResolvePrice(c.StartDate)?.UnitPrice)));
+            .Select(t => "- " + Describe(t.Name, t.Group, null, t.Unit, 1, t.ResolvePrice(c.StartDate)?.UnitPrice, t.ResolvePrice(c.StartDate)?.Tiers)));
         foreach (var fee in c.Fees.Where(f => (f.EffectiveFrom > c.StartDate || !agreed.Contains(f.FeeTypeId)) && d.FeeTypes.ContainsKey(f.FeeTypeId))
                      .OrderBy(f => f.EffectiveFrom))
         {
@@ -238,16 +241,31 @@ internal static class ContractPrintBuilder
     }
 
     /// <summary>Mô tả cách tính 1 khoản thu bằng lời — đúng cách tính sẽ dùng khi lập phiếu (M07).</summary>
-    private static string Describe(string name, FeeGroup group, ChargeBasis? basis, string unit, decimal quantity, decimal? unitPrice)
+    private static string Describe(
+        string name, FeeGroup group, ChargeBasis? basis, string unit, decimal quantity, decimal? unitPrice, IReadOnlyList<PriceTier>? tiers = null)
     {
         var price = unitPrice is { } p ? VietnameseMoney.Format(p) : "theo bảng giá của bên A";
         return group switch
         {
+            FeeGroup.Metered when tiers is { Count: > 0 } =>
+                $"{name}: theo chỉ số công tơ của phòng (tính từ chỉ số ngày nhận phòng), giá theo bậc ({string.Join("; ", TierTexts(tiers, unit))}).",
             FeeGroup.Metered => $"{name}: theo chỉ số công tơ của phòng (tính từ chỉ số ngày nhận phòng), {price}/{unit}.",
             _ when basis == ChargeBasis.PerOccupant => $"{name}: {price}/người/tháng (tính theo số người ở).",
             _ when basis == ChargeBasis.PerRoom => $"{name}: {price}/phòng/tháng.",
             _ => $"{name}: {price}/{unit}/tháng × {Number(quantity)} {unit}."
         };
+    }
+
+    private static IEnumerable<string> TierTexts(IReadOnlyList<PriceTier> tiers, string unit)
+    {
+        decimal lower = 0;
+        foreach (var t in tiers)
+        {
+            yield return t.UpTo is { } up
+                ? $"{Number(lower)}–{Number(up)} {unit}: {VietnameseMoney.Format(t.Price)}"
+                : $"trên {Number(lower)} {unit}: {VietnameseMoney.Format(t.Price)}";
+            lower = t.UpTo ?? lower;
+        }
     }
 
     private static string DepositText(Contract c) =>

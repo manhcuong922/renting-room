@@ -10,7 +10,7 @@ Quyền: chủ trọ và phó quản lý.
 | Nhóm | `type` của dòng | Nguồn | Ví dụ |
 |------|-----------------|-------|-------|
 | Tiền phòng | `Rent` | Giá thuê HĐ × hệ số kỳ lẻ | 3.000.000 |
-| Điện nước | `Metered` | Công tơ của phòng ([meters.md](meters.md)) × **một giá** (giá mới nhất trong kỳ) | Điện 88 kWh × 3.500 |
+| Điện nước | `Metered` | Công tơ của phòng ([meters.md](meters.md)) × một giá hoặc **giá theo bậc** (giá mới nhất trong kỳ) | Điện 88 kWh × 3.500 · "Điện (giá bậc)" |
 | Dịch vụ | `Service` | Dịch vụ gắn HĐ: theo phòng / theo đầu người / theo số gói | Nước 2 người × 20.000; Giữ xe 2 × 100.000 |
 | Phụ thu | `Surcharge` | **Nhập tay**, bắt buộc lý do | Thay khóa cửa 250.000 |
 | Giảm trừ | `ManualDiscount` | Nhập tay (số dương, lưu âm) | −200.000 |
@@ -56,6 +56,7 @@ Quyền: chủ trọ và phó quản lý.
 | `PREVIOUS_PERIOD_NOT_BILLED` | Chưa lập phiếu kỳ trước — lập lần lượt từng tháng (phiếu **đầu tiên** của HĐ thì lập tháng nào cũng được) |
 | `LATER_PERIOD_BILLED` | Đã có phiếu kỳ sau |
 | `NO_PERIOD_IN_MONTH` | HĐ không có kỳ bắt đầu trong tháng này |
+| `USE_FINAL_INVOICE` | Kỳ chứa ngày trả phòng — lập **phiếu quyết toán** thay phiếu thường |
 
 `withIssues` = số phiếu còn **vấn đề chặn chốt** (`issues` có `severity: "Error"`): `MISSING_READING` (thiếu chỉ số — vào lưới ghi chỉ số),
 `FEE_PRICE_MISSING` (khoản chưa có giá), `RENT_TERM_MISSING`, `NEGATIVE_TOTAL`. Cảnh báo (`Warning`): `EDITED_BASE_CHANGED`.
@@ -67,7 +68,7 @@ Quyền: chủ trọ và phó quản lý.
 ```json
 {
   "summary": {
-    "id": "…", "invoiceNo": null, "status": "Draft", "paymentStatus": null,
+    "id": "…", "invoiceNo": null, "type": "Regular", "status": "Draft", "paymentStatus": null,
     "propertyId": "…", "roomId": "…", "roomCode": "101", "contractId": "…", "contractNo": "HD2026-0012", "representativeName": "Trần Thị Lan",
     "billingMonth": "2026-11", "periodStart": "2026-11-01", "periodEnd": "2026-11-30",
     "totalAmount": 3378000, "paidAmount": 0, "outstanding": 0, "dueDate": null, "errorCount": 0, "version": "…"
@@ -135,5 +136,21 @@ thanh toán của HĐ). Sau khi chốt: chỉ số cuối kỳ bị khóa và th
 
 ## Trạng thái thu tiền (`paymentStatus`, chỉ phiếu đã chốt)
 
-`Unpaid` chưa thu · `PartiallyPaid` thu một phần · `Paid` đủ (phiếu 0đ coi như đã thu) · `Overdue` quá hạn chưa thu đủ.
+`Unpaid` chưa thu · `PartiallyPaid` thu một phần · `Paid` đủ (phiếu 0đ coi như đã thu) · `Overdue` quá hạn chưa thu đủ · `WrittenOff` đã bỏ nợ (không tính doanh thu).
 `outstanding` = số còn nợ. Gửi phiếu qua Zalo kèm mã QR: P2.
+
+## Chu kỳ đóng tiền phòng
+
+HĐ có `billing.rentCycleMonths` = 3: phiếu tháng 1 có dòng **"Tiền phòng 3 tháng (01/08–31/10)"** (`quantity` 3) + điện nước, dịch vụ;
+phiếu tháng 2, 3 **không có dòng Tiền phòng**; tháng 4 lại có tiền phòng 3 tháng. HĐ hết hạn giữa chu kỳ ⇒ chu kỳ cuối chỉ tính tới ngày hết hạn.
+
+## Phiếu quyết toán
+
+Lập từ hợp đồng đang thanh lý: `POST /contracts/{id}/final-invoice` ([contracts.md](contracts.md#lập-phiếu-quyết-toán--post-contractsidfinal-invoice)).
+Là phiếu bình thường (sửa tay, phụ thu, tính lại, chốt, hủy như trên) cho đoạn cuối **[đầu kỳ cuối, ngày trả phòng]**, chỉ **thu phần còn thiếu**:
+
+- **Tiền phòng** những ngày đã ở của kỳ cuối nếu chưa thu (đã thu trọn kỳ / trong chu kỳ nhiều tháng ⇒ không có dòng, **không hoàn** — hoàn tiền chưa làm).
+- **Dịch vụ** kỳ cuối nếu kỳ đó chưa có phiếu thường (tính theo ngày).
+- **Điện nước** tới **chỉ số cuối** (trả trước: gồm cả kỳ trước nếu chưa thu).
+
+Phiếu quyết toán đã chốt là điều kiện hoàn tất thanh lý; còn nợ thì chọn "Đã thu toàn bộ" / "Bỏ nợ" ([contracts.md](contracts.md#hoàn-tất--post-contractsidliquidationcomplete)).

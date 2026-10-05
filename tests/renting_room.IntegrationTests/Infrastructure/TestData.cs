@@ -143,4 +143,16 @@ public static class TestData
         response.StatusCode.Should().Be(HttpStatusCode.Created, await response.Content.ReadAsStringAsync());
         return await response.ReadIdAsync();
     }
+
+    /// <summary>Trả phòng trọn quy trình (CT-UC-08): lập phiếu quyết toán (kèm chỉ số cuối) → chốt → hoàn tất, còn nợ thì "Đã thu toàn bộ".</summary>
+    public static async Task SettleAndCompleteAsync(this HttpClient client, string token, Guid contractId, object? finalReadings = null)
+    {
+        var final = await client.PostJsonAsync($"/api/v1/contracts/{contractId}/final-invoice", new { finalReadings }, token);
+        final.StatusCode.Should().Be(HttpStatusCode.Created, await final.Content.ReadAsStringAsync());
+        var invoiceId = (await final.ReadAsync<System.Text.Json.JsonElement>()).GetProperty("summary").GetProperty("id").GetGuid();
+        var finalized = await client.PostJsonAsync($"/api/v1/invoices/{invoiceId}/finalize", null, token);
+        finalized.StatusCode.Should().Be(HttpStatusCode.OK, await finalized.Content.ReadAsStringAsync());
+        var completed = await client.PostJsonAsync($"/api/v1/contracts/{contractId}/liquidation/complete", new { settlement = "CollectAll" }, token);
+        completed.StatusCode.Should().Be(HttpStatusCode.NoContent, await completed.Content.ReadAsStringAsync());
+    }
 }

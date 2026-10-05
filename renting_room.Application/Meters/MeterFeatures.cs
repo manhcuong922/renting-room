@@ -261,33 +261,70 @@ public sealed record MeterReadingInput(Guid MeterId, decimal? Value);
 
 internal static class ContractMeterReadings
 {
+    private static Task<List<Guid>> ActiveMeterIdsAsync(IAppDbContext db, Guid roomId, DateOnly date, CancellationToken ct) =>
+        db.Meters.Where(m => m.RoomId == roomId && m.InstalledDate <= date && (m.RemovedDate == null || m.RemovedDate > date))
+            .Select(m => m.Id).ToListAsync(ct);
+
     /// <summary>
-    /// Ghi chỉ số <paramref name="kind"/> tại <paramref name="date"/> cho <b>mọi</b> công tơ của phòng đang đo tại ngày đó (MT-BR-13 / CT-BR-12).
-    /// Thiếu công tơ nào ⇒ lỗi kèm danh sách id; công tơ lạ ⇒ lỗi. Nhận phòng: value null = số mới nhất.
+    /// Ghi chỉ số <paramref name="kind"/> tại <paramref name="date"/> cho <b>mọi</b> công tơ của phòng đang đo tại ngày đó.
+    /// Nhận phòng (MT-BR-13): mỗi công tơ phải có dòng, value null = số mới nhất. Chỉ số cuối (MT-UC-05, lập phiếu quyết toán):
+    /// đã có thì value null = giữ, có số = sửa; chưa có thì bắt buộc nhập số. Thiếu ⇒ lỗi kèm danh sách công tơ; công tơ lạ ⇒ lỗi.
     /// </summary>
     public static async Task<Result> RecordAsync(
         IAppDbContext db, Contract contract, ReadingKind kind, DateOnly date, IReadOnlyList<MeterReadingInput>? inputs, CancellationToken ct)
     {
-        var roomMeterIds = await db.Meters.Where(m => m.RoomId == contract.RoomId && m.InstalledDate <= date
-                && (m.RemovedDate == null || m.RemovedDate > date))
-            .Select(m => m.Id).ToListAsync(ct);
+        var roomMeterIds = await ActiveMeterIdsAsync(db, contract.RoomId, date, ct);
         var given = (inputs ?? []).ToDictionary(i => i.MeterId);
         if (given.Keys.Any(id => !roomMeterIds.Contains(id)))
             return Result.Failure(MeterErrors.UnknownMeter);
-
-        var missing = roomMeterIds.Where(id => !given.TryGetValue(id, out var i) || (kind == ReadingKind.Final && i.Value is null)).ToList();
-        if (missing.Count > 0)
-            return Result.Failure(kind == ReadingKind.Final ? MeterErrors.FinalReadingRequired(missing) : MeterErrors.HandoverReadingRequired(missing));
         if (roomMeterIds.Count == 0)
             return Result.Success();
 
-        foreach (var meter in await MeterMapping.LockAndLoadAsync(db, roomMeterIds, ct))
+        var meters = await MeterMapping.LockAndLoadAsync(db, roomMeterIds, ct);
+        var missing = meters.Where(m => kind == ReadingKind.Final
+                ? (!given.TryGetValue(m.Id, out var f) || f.Value is null) && m.FindFinal(contract.Id) is null
+                : !given.ContainsKey(m.Id))
+            .Select(m => m.Id).ToList();
+        if (missing.Count > 0)
+            return Result.Failure(kind == ReadingKind.Final ? MeterErrors.FinalReadingRequired(missing) : MeterErrors.HandoverReadingRequired(missing));
+
+        foreach (var meter in meters)
         {
-            var value = given[meter.Id].Value ?? meter.LatestOnOrBefore(date)?.Value ?? 0;
+            var input = given.GetValueOrDefault(meter.Id);
+            var existingFinal = kind == ReadingKind.Final ? meter.FindFinal(contract.Id) : null;
+            if (existingFinal is not null)
+            {
+                if (input?.Value is { } newValue && newValue != existingFinal.Value)
+                {
+                    var corrected = meter.Correct(existingFinal.Id, newValue, null);
+                    if (corrected.IsFailure)
+                        return Result.Failure(corrected.Error!.WithDetail("meterId", meter.Id));
+                }
+                continue;
+            }
+
+            var value = input?.Value ?? meter.LatestOnOrBefore(date)?.Value ?? 0;
             var recorded = meter.Record(kind, date, value, contract.Id, note: null);
             if (recorded.IsFailure)
                 return Result.Failure(recorded.Error!.WithDetail("meterId", meter.Id));
         }
         return Result.Success();
+    }
+
+    /// <summary>CT-BR-12: công tơ đang đo tại ngày trả phòng mà chưa có chỉ số cuối của HĐ.</summary>
+    public static async Task<IReadOnlyList<Guid>> MissingFinalAsync(IAppDbContext db, Contract contract, DateOnly date, CancellationToken ct)
+    {
+        var ids = await ActiveMeterIdsAsync(db, contract.RoomId, date, ct);
+        var meters = await db.Meters.AsNoTracking().Include(m => m.Readings).Where(m => ids.Contains(m.Id)).ToListAsync(ct);
+        return meters.Where(m => m.FindFinal(contract.Id) is null).Select(m => m.Id).ToList();
+    }
+
+    /// <summary>Hủy thanh lý ⇒ hủy chỉ số cuối đã ghi của HĐ (chưa bị khóa vì phiếu quyết toán chưa chốt).</summary>
+    public static async Task VoidFinalAsync(IAppDbContext db, Contract contract, DateTimeOffset now, CancellationToken ct)
+    {
+        var ids = await db.Meters.Where(m => m.RoomId == contract.RoomId).Select(m => m.Id).ToListAsync(ct);
+        foreach (var meter in await MeterMapping.LockAndLoadAsync(db, ids, ct))
+            if (meter.FindFinal(contract.Id) is { } final)
+                meter.VoidReading(final.Id, "Hủy thanh lý", now);
     }
 }

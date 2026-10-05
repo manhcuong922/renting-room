@@ -6,10 +6,12 @@ using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Common.Models;
 using renting_room.Application.Common.Validation;
 using renting_room.Application.Meters;
+using renting_room.Application.Payments;
 using renting_room.Domain.Billing;
 using renting_room.Domain.Common;
 using renting_room.Domain.Contracts;
 using renting_room.Domain.Meters;
+using renting_room.Domain.Payments;
 using renting_room.Domain.Renters;
 
 namespace renting_room.Application.Contracts;
@@ -121,7 +123,7 @@ public sealed class ChangeRentHandler(IAppDbContext db, IInvoiceLockReader invoi
     public ValueTask<Result> Handle(ChangeRentCommand request, CancellationToken cancellationToken) =>
         new(ContractMutation.RunAsync(db, request.ContractId, async contract =>
         {
-            var firstOpenPeriod = await invoiceLocks.GetFirstOpenPeriodStartAsync(contract.Id, cancellationToken);
+            var firstOpenPeriod = await invoiceLocks.GetFirstOpenRentPeriodStartAsync(contract.Id, cancellationToken);
             return contract.ChangeRent(request.EffectiveFrom, request.MonthlyRent, request.AddendumNo, request.Note, firstOpenPeriod);
         }, cancellationToken));
 }
@@ -256,14 +258,25 @@ internal static class LiquidationGuards
 /// <summary>Quay lại Active ⇒ ngày kết thúc thực tế bỏ trống; nếu phòng đã có HĐ mới sau đó, EXCLUDE trong DB trả 409.</summary>
 public sealed record CancelLiquidationCommand(Guid ContractId) : IRequest<Result>;
 
-public sealed class CancelLiquidationHandler(IAppDbContext db) : IRequestHandler<CancelLiquidationCommand, Result>
+/// <summary>
+/// Hủy thanh lý (CT-UC-09): phiếu quyết toán đã chốt ⇒ phải hủy phiếu đó trước; nháp quyết toán bị xóa, chỉ số cuối bị hủy.
+/// </summary>
+public sealed class CancelLiquidationHandler(IAppDbContext db, TimeProvider clock) : IRequestHandler<CancelLiquidationCommand, Result>
 {
     public ValueTask<Result> Handle(CancelLiquidationCommand request, CancellationToken cancellationToken) =>
         new(ContractMutation.RunAsync(db, request.ContractId, async contract =>
         {
+            var final = await db.Invoices.FirstOrDefaultAsync(i => i.ContractId == contract.Id && i.Type == InvoiceType.Final
+                && i.Status != InvoiceStatus.Void, cancellationToken);
+            if (final?.Status == InvoiceStatus.Finalized)
+                return Result.Failure(BillingErrors.FinalFinalized);
+
             var cancelled = contract.CancelLiquidation();
             if (cancelled.IsFailure)
                 return cancelled;
+            if (final is not null)
+                db.Invoices.Remove(final);
+            await ContractMeterReadings.VoidFinalAsync(db, contract, clock.GetUtcNow(), cancellationToken);
 
             // CT-BR-31: người ở chưa ghi chuyển đi lại thành "đang ở" vô thời hạn — có thể đã chuyển sang phòng khác.
             var staying = contract.Occupants.Where(o => o.MoveOutDate is null).ToList();
@@ -277,19 +290,76 @@ public sealed class CancelLiquidationHandler(IAppDbContext db) : IRequestHandler
         }, cancellationToken));
 }
 
-/// <param name="FinalReadings">CT-BR-12: chỉ số cuối (ngày trả phòng) cho mỗi công tơ của phòng — bắt buộc nhập số.</param>
-public sealed record CompleteLiquidationCommand(Guid ContractId, IReadOnlyList<MeterReadingInput>? FinalReadings = null) : IRequest<Result>;
+/// <summary>CT-BR-12: còn nợ khi hoàn tất — thu nhanh toàn bộ hoặc bỏ nợ.</summary>
+public enum DebtSettlement
+{
+    /// <summary>"Đã thu toàn bộ": ghi 1 phiếu thu đúng tổng còn nợ.</summary>
+    CollectAll,
 
-public sealed class CompleteLiquidationHandler(IAppDbContext db, TimeProvider clock) : IRequestHandler<CompleteLiquidationCommand, Result>
+    /// <summary>"Bỏ nợ": đóng công nợ không thu tiền — không tính doanh thu (PM-BR-16).</summary>
+    WriteOff
+}
+
+/// <param name="Settlement">Bắt buộc khi còn nợ; null mà còn nợ ⇒ 422 CONTRACT_HAS_DEBT (cảnh báo kèm số nợ).</param>
+/// <param name="Method">Phương thức khi "Đã thu toàn bộ" — mặc định tiền mặt.</param>
+/// <param name="Reason">Lý do bỏ nợ (bắt buộc khi WriteOff) / ghi chú phiếu thu.</param>
+public sealed record CompleteLiquidationCommand(
+    Guid ContractId, DebtSettlement? Settlement = null, PaymentMethod? Method = null, DateOnly? PaidAt = null, string? Reason = null)
+    : IRequest<Result>;
+
+public sealed class CompleteLiquidationCommandValidator : AbstractValidator<CompleteLiquidationCommand>
+{
+    public CompleteLiquidationCommandValidator(TimeProvider clock)
+    {
+        RuleFor(x => x.Settlement).IsInEnum().When(x => x.Settlement is not null);
+        RuleFor(x => x.Method).IsInEnum().When(x => x.Method is not null);
+        RuleFor(x => x.Reason).OptionalText(500);
+        RuleFor(x => x.Reason).NotEmpty().When(x => x.Settlement == DebtSettlement.WriteOff)
+            .WithErrorCode("REQUIRED").WithMessage("Nhập lý do bỏ nợ.");
+        RuleFor(x => x.PaidAt).Must(d => d is null || d <= clock.GetUtcNow().ToBusinessDate())
+            .WithErrorCode("INVALID_PAID_AT").WithMessage("Ngày thu không được ở tương lai.");
+    }
+}
+
+/// <summary>
+/// CT-BR-12 (đợt 1 hoàn thiện): có chỉ số cuối mọi công tơ → không còn phiếu nháp → phiếu quyết toán đã chốt → còn nợ thì
+/// "Đã thu toàn bộ" / "Bỏ nợ" theo lựa chọn của chủ trọ → kết thúc HĐ, đóng người ở và xe. Cọc, hoàn tiền: để sau.
+/// </summary>
+public sealed class CompleteLiquidationHandler(IAppDbContext db, IDocumentNumberGenerator numbers, ICurrentUser currentUser, TimeProvider clock)
+    : IRequestHandler<CompleteLiquidationCommand, Result>
 {
     public ValueTask<Result> Handle(CompleteLiquidationCommand request, CancellationToken cancellationToken) =>
         new(ContractMutation.RunAsync(db, request.ContractId, async contract =>
         {
-            var completed = contract.CompleteLiquidation(clock.GetUtcNow());
-            if (completed.IsFailure)
-                return completed;
-            return await ContractMeterReadings.RecordAsync(
-                db, contract, ReadingKind.Final, contract.ActualEndDate!.Value, request.FinalReadings, cancellationToken);
+            var now = clock.GetUtcNow();
+            if (contract.Status != ContractStatus.Liquidating)
+                return Result.Failure(ContractErrors.NotLiquidating);
+            if (now.ToBusinessDate() < contract.ActualEndDate)
+                return Result.Failure(ContractErrors.LiquidationBeforeEndDate);
+
+            var missing = await ContractMeterReadings.MissingFinalAsync(db, contract, contract.ActualEndDate!.Value, cancellationToken);
+            if (missing.Count > 0)
+                return Result.Failure(MeterErrors.FinalReadingRequired(missing));
+            var invoices = db.Invoices.Where(i => i.ContractId == contract.Id && i.Status != InvoiceStatus.Void);
+            if (await invoices.AnyAsync(i => i.Status == InvoiceStatus.Draft, cancellationToken))
+                return Result.Failure(BillingErrors.DraftExists);
+            if (!await invoices.AnyAsync(i => i.Type == InvoiceType.Final && i.Status == InvoiceStatus.Finalized, cancellationToken))
+                return Result.Failure(BillingErrors.FinalRequired);
+
+            var outstanding = await PaymentPosting.OutstandingAsync(db, contract.Id, cancellationToken);
+            if (outstanding > 0)
+            {
+                if (request.Settlement is null)
+                    return Result.Failure(BillingErrors.HasDebt(outstanding));
+                var writeOff = request.Settlement == DebtSettlement.WriteOff;
+                var posted = await PaymentPosting.PostAsync(db, numbers, currentUser, clock, contract, null,
+                    request.Method ?? PaymentMethod.Cash, request.PaidAt ?? now.ToBusinessDate(), null, null, null,
+                    writeOff ? request.Reason : request.Reason ?? "Thu toàn bộ khi trả phòng",
+                    writeOff ? PaymentKind.WriteOff : PaymentKind.Receipt, cancellationToken);
+                if (posted.IsFailure)
+                    return Result.Failure(posted.Error!);
+            }
+            return contract.CompleteLiquidation(now);
         }, cancellationToken));
 }
 

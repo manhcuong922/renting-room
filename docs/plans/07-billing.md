@@ -32,9 +32,14 @@ Cộng giảm trừ (quy tắc điều chỉnh, giảm tay). Phiếu tồn tại
 - Khóa theo phiếu đã chốt: kỳ đầu chưa khóa (CT-BR-05 — đổi giá thuê / dịch vụ), bảng giá (FE-BR-07), chỉ số (MT-BR-06).
 - **Đổi khi code**:
   - BL-BR-21: phiếu **đầu tiên** của HĐ được lập ở bất kỳ kỳ nào ≥ ngày bắt đầu (HĐ nhập từ trước khi dùng phần mềm); từ phiếu thứ 2 mới bắt tuần tự. Chỉ số đầu của phiếu đầu tiên = chỉ số gần nhất ≤ đầu kỳ sử dụng.
-  - Thay phiếu Final ở đợt 1: kỳ chứa ngày trả phòng (HĐ đang / đã thanh lý) là kỳ cuối — Tiền phòng / dịch vụ prorate tới ngày trả phòng; **Prepaid** gộp thêm điện nước của chính kỳ cuối (tới chỉ số cuối `Final`) vào phiếu kỳ cuối.
+  - ~~Thay phiếu Final bằng phiếu Regular kỳ cuối gộp điện nước~~ — **bỏ (04/10/2026)**: lỗ hổng khi phiếu kỳ cuối đã lập trước lúc báo trả phòng (Prepaid đã thu trọn kỳ, điện nước kỳ cuối không ai thu). Thay bằng **phiếu quyết toán** (BL-UC-11, BL-BR-17) ngay trong đợt 1.
   - BL-BR-12: chốt tính lại phần hệ thống và so với nháp (bỏ qua ô sửa tay) — lệch ⇒ 409 `DRAFT_STALE`; không dùng cờ `is_stale` (BL-BR-20 để đợt 2).
-- **Đợt 2**: quy tắc điều chỉnh (BL-UC-10, BL-BR-09/19), phiếu Final + hoàn tiền phòng (BL-BR-17/18), cờ `is_stale`, in / xuất phiếu, gửi Zalo (P2).
+- **Hoàn thiện đợt 1 (chốt 04/10/2026 — ✅ đã code)**:
+  - **Phiếu quyết toán khi trả phòng** (BL-UC-11, BL-BR-17/18): nháp sửa tay / phụ thu được như phiếu thường; thu phần còn thiếu (tiền phòng những ngày đã ở chưa thu, dịch vụ, điện nước tới chỉ số cuối). **Hoàn tiền cho người thuê, bồi thường, trừ cọc: để sau** (BL-BR-27).
+  - **Chu kỳ đóng tiền phòng** 1 / 2 / 3 / 6 / 12 tháng (BL-BR-26): mỗi tháng vẫn có phiếu (điện nước, dịch vụ); tiền phòng × số tháng chỉ ở **phiếu tháng đầu chu kỳ** — VD 3 tháng: tháng 1 đóng tiền phòng 3 tháng + điện nước dịch vụ; tháng 2, 3 chỉ điện nước dịch vụ; tháng 4 đóng tiền phòng 3 tháng tiếp.
+  - **Giá điện nước một giá hoặc theo bậc** (BL-BR-05, FE-BR-15).
+  - Phiếu Regular không lập cho kỳ chứa ngày trả phòng (BL-BR-02) — kỳ đó do phiếu quyết toán.
+- **Đợt 2**: quy tắc điều chỉnh (BL-UC-10, BL-BR-09/19), cờ `is_stale`, in / xuất phiếu, gửi Zalo (P2).
 - **Dữ liệu khi code**: `invoices.issues` jsonb `{code, severity, message, ref}`; `invoice_lines` thêm `is_manually_edited`, `system_quantity/system_unit_price/system_amount`, `note`, `proration_factor numeric(12,8)` (thay `proration_days/base_days`, `original_amount`, `override_reason`); `invoice_meter_segments` thêm `fee_type_id`; số phiếu dùng bảng chung `document_number_sequences (organization_id, prefix, year)` — `PB` phiếu báo, `PT` phiếu thu (thay `invoice_number_sequences` / `receipt_number_sequences`). API: chi tiết phiếu trả `{ summary, lines[], issues[] … }` — xem `docs/api/invoices.md`.
 
 ## 2. Thuật ngữ
@@ -66,7 +71,7 @@ Cộng giảm trừ (quy tắc điều chỉnh, giảm tay). Phiếu tồn tại
 | BL-UC-08 ✅ | Hủy phiếu đã chốt (chưa có thanh toán) với lý do → có thể lập lại |
 | BL-UC-09 ✅ | Xóa phiếu nháp |
 | BL-UC-10 | Tạo/xem/hủy **quy tắc điều chỉnh**: phạm vi (Phòng / Nhóm phòng / Cả khu), Giảm/Tăng, số tiền cố định hoặc % tiền phòng, từ tháng – đến tháng, lý do |
-| BL-UC-11 | Tạo phiếu quyết toán (gọi từ thanh lý M05) |
+| BL-UC-11 ✅ | **Lập phiếu quyết toán** khi trả phòng (HĐ đang thanh lý): nhập chỉ số cuối các công tơ (M06) → hệ thống lập phiếu nháp loại `Final` cho đoạn cuối [đầu kỳ chứa ngày trả phòng, ngày trả phòng] — sửa tay / phụ thu (VD phạt báo trễ theo điều khoản) / giảm trừ như phiếu thường → chốt. Hoàn tiền phòng chưa ở, bồi thường, trừ cọc: **để sau** (chốt 04/10/2026) |
 | BL-UC-12 | In/xuất phiếu (PDF/ảnh — P2; Excel ở M10) |
 | BL-UC-13 | Gửi phiếu đã chốt cho người thuê (P2: tin nhắn Zalo có chi tiết phiếu + mã VietQR); P1: xem / tải phiếu để gửi thủ công |
 | BL-UC-14 ✅ | Xem **phiếu theo phòng**: danh sách phiếu của phòng (mọi HĐ), trạng thái thu, còn nợ (M08) |
@@ -76,22 +81,22 @@ Cộng giảm trừ (quy tắc điều chỉnh, giảm tay). Phiếu tồn tại
 | Mã | Quy tắc | Nơi kiểm tra |
 |----|---------|-------------|
 | BL-BR-01 ✅ | Mỗi `(contract, invoice_type, period_start)` có tối đa **1 phiếu chưa Void** | DB partial unique |
-| BL-BR-02 ✅ | Kỳ phiếu Regular theo C-05: **kỳ của HĐ** có `PeriodStart` ∈ tháng M (C-05 bảo đảm tối đa 1). Không tạo nếu kỳ bắt đầu sau `actual_end_date`; không tạo Regular khi HĐ đã có phiếu Final chưa Void | Domain |
-| BL-BR-03 ✅ | **Dòng Rent** = giá thuê hiệu lực tại `period_start` (M05) × hệ số prorate theo C-05 (`Daily`: Σ overlap/len kỳ chuẩn; `FullPeriod`: 1) | Domain |
+| BL-BR-02 ✅ | Kỳ phiếu Regular theo C-05: **kỳ của HĐ** có `PeriodStart` ∈ tháng M (C-05 bảo đảm tối đa 1). Không tạo nếu kỳ bắt đầu sau `actual_end_date`; không tạo Regular khi HĐ đã có phiếu Final chưa Void. **Thêm (04/10/2026)**: HĐ đang / đã thanh lý — kỳ chứa `actual_end_date` không lập Regular (bỏ qua lý do `USE_FINAL_INVOICE`), do phiếu quyết toán đảm nhận | Domain |
+| BL-BR-03 ✅ | **Dòng Tiền phòng** = Σ (giá thuê hiệu lực tại đầu từng kỳ × hệ số prorate C-05 của kỳ đó) trên các kỳ mà dòng bao phủ. Chu kỳ 1 tháng ⇒ đúng 1 kỳ (đã code); chu kỳ nhiều tháng ⇒ BL-BR-26 | Domain |
 | BL-BR-04 ✅ | **Dòng Dịch vụ** (`Service`): đăng ký hiệu lực tại `period_start`; `PerRoom` qty = 1, `PerOccupant` qty = số người ở tại `period_start` (FE-BR-14), `PerUnit` qty = số gói đăng ký (VD 2 xe = 2 gói); cùng hệ số prorate như Rent. Đơn giá = `unit_price_override` ?? giá danh mục tại `period_start` (dịch vụ thu theo kỳ) | Domain |
-| BL-BR-05 ✅ | **Dòng Điện nước** (`Metered`, đổi 04/10/2026): **không cần HĐ đăng ký** — mỗi công tơ của phòng hoạt động trong kỳ sử dụng U (FE-BR-17) sinh 1 dòng theo khoản thu của công tơ. U = kỳ của phiếu (`Postpaid`) hoặc kỳ liền trước (`Prepaid`; kỳ đầu tiên không có dòng Điện nước), U cắt theo khoảng ở của HĐ (bắt đầu từ chỉ số nhận phòng MT-BR-13). Sản lượng theo thuật toán M06 §3.3 (thay công tơ giữa kỳ: tự cộng phần công tơ cũ — MT-BR-15). Thành tiền = sản lượng × **một đơn giá** — **giá mới**: bản giá có hiệu lực tại **ngày cuối U**; giá đổi giữa kỳ thì cả kỳ tính giá mới, **không** chia nửa kỳ giá cũ / nửa kỳ giá mới. Không bậc thang, không giá riêng theo HĐ. Khoản đã ngừng dùng thì bỏ qua | Domain |
+| BL-BR-05 ✅ | **Dòng Điện nước** (`Metered`): **không cần HĐ đăng ký** — mỗi công tơ của phòng hoạt động trong kỳ sử dụng U (FE-BR-17) sinh 1 dòng theo khoản thu của công tơ. U = kỳ của phiếu (`Postpaid`) hoặc kỳ liền trước (`Prepaid`; kỳ đầu tiên không có dòng Điện nước), U cắt theo khoảng ở của HĐ (bắt đầu từ chỉ số nhận phòng MT-BR-13). Sản lượng theo thuật toán M06 §3.3 (thay công tơ giữa kỳ: tự cộng phần công tơ cũ — MT-BR-15). Thành tiền theo bản giá hiệu lực tại **ngày cuối U** (giá mới — đổi giá giữa kỳ thì cả kỳ tính giá mới): **một giá** ⇒ sản lượng × đơn giá; **theo bậc** (FE-BR-15) ⇒ chia **tổng sản lượng của kỳ** (mọi đoạn đo) theo bậc, không prorate bậc theo số ngày. Không giá riêng theo HĐ. Khoản đã ngừng dùng thì bỏ qua | Domain |
 | BL-BR-06 ✅ | Làm tròn mỗi dòng về đồng (C-03). `amount` dòng giảm trừ là **số âm** | Domain + CHECK theo loại dòng |
 | BL-BR-07 ✅ | **Sửa tay** (thay "sửa tiền phòng tháng"): chỉ phiếu Draft; sửa được số lượng / đơn giá / chỉ số cuối / thành tiền của mọi dòng hệ thống; dòng bị sửa lưu `is_manually_edited`, `system_quantity/system_unit_price/system_amount` (giá trị hệ thống tính) và ghi chú (bắt buộc với dòng Tiền phòng). Không ảnh hưởng HĐ / bảng giá / chỉ số gốc. Tính lại (BL-UC-06) mặc định **giữ** ô sửa tay và cập nhật giá trị hệ thống bên cạnh; nếu giá trị hệ thống mới khác giá trị hệ thống lúc sửa → cờ cảnh báo `EDITED_BASE_CHANGED`. Sửa chỉ số cuối trên phiếu = ghi chỉ số `Periodic` (M06) rồi tính lại dòng đó | Domain |
 | BL-BR-08 | **Thứ tự tính**: Tiền phòng (gốc → sửa tay) → Điện nước / Dịch vụ → quy tắc điều chỉnh (% tính trên **tiền phòng sau sửa tay**, không lũy kế lên nhau) → dòng thủ công | Domain |
 | BL-BR-09 | Quy tắc điều chỉnh áp cho phiếu khi: `billing_month` ∈ [from_month, to_month] ∧ phạm vi khớp phòng của HĐ (Room: đúng phòng; RoomGroup: phòng là thành viên **tại thời điểm tính**; Property: mọi phòng của khu) ∧ quy tắc `Active`. Nhiều quy tắc → cộng dồn | Domain |
-| BL-BR-10 | **Tổng phiếu ≥ 0**. Nếu giảm trừ từ quy tắc vượt tổng khoản thu → giảm phần vượt ở dòng quy tắc cuối cùng (theo created_at) và ghi `issues` dạng cảnh báo `DISCOUNT_CAPPED`. Dòng giảm thủ công làm tổng âm → 422 | Domain |
+| BL-BR-10 | **Tổng phiếu ≥ 0** (kể cả phiếu quyết toán). Nếu giảm trừ từ quy tắc vượt tổng khoản thu → giảm phần vượt ở dòng quy tắc cuối cùng (theo created_at) và ghi `issues` dạng cảnh báo `DISCOUNT_CAPPED`. Dòng giảm thủ công làm tổng âm → 422 | Domain |
 | BL-BR-11 ✅ | Phiếu Draft có `issues` mức lỗi (`MISSING_READING`, `FEE_PRICE_MISSING`, `RENT_TERM_MISSING`) → không chốt được | Domain |
 | BL-BR-12 ✅ | **Chốt**: tính lại dòng hệ thống trong cùng transaction và so với nháp — **bỏ qua ô sửa tay**; lệch ở ô hệ thống → 409 `DRAFT_STALE` (người dùng tính lại / xem lại rồi chốt) ⇒ phần hệ thống của phiếu chốt luôn khớp dữ liệu nguồn tại thời điểm chốt | Application |
 | BL-BR-13 ✅ | Chốt cấp `invoice_no` = `PB{yyyy}-{seq:000000}` theo tổ chức/năm (bảng sequence, `UPDATE … RETURNING`), `issue_date` = hôm nay (C-04), `due_date` = issue_date + `payment_due_days` | Application |
 | BL-BR-14 ✅ | Phiếu `Finalized`/`Void` **bất biến** (không sửa dòng, không sửa tổng). Ngoại lệ duy nhất: lệnh ẩn danh người thuê (RT-BR-06) thay `snapshot_representative_name` | Domain + không có endpoint |
 | BL-BR-15 ✅ | **Void** chỉ khi `paid_amount = 0` (phải hủy phân bổ thanh toán ở M08 trước); lý do bắt buộc; đặt `voided = true` cho các `invoice_meter_segments` | Domain |
 | BL-BR-16 ✅ | Phiếu tổng = 0 khi chốt → coi như đã thanh toán (trạng thái thanh toán `Paid`) | Dẫn xuất |
-| BL-BR-17 | **Phiếu Final**: kỳ = `[Pk.start, actual_end_date]` với Pk là kỳ HĐ chứa `actual_end_date`. Rent mục tiêu cho đoạn đó (prorate theo mode) **trừ** tiền phòng đã có trên phiếu Regular chưa Void của Pk: dương → dòng Rent; âm → dòng `RentRefund` **chỉ khi** `refundUnusedRent = true`. Fixed/Quantity: chỉ tính nếu Pk chưa có phiếu Regular. Metered: từ đoạn đo cuối đã lập phiếu đến chỉ số `Final`. Nếu tổng tính ra **âm** (hoàn nhiều hơn phải thu): phiếu Final tổng = 0 (dòng RentRefund bị cắt bằng tổng dương) và phần còn lại sinh **phiếu thu ghi có** `method = CreditNote` (M08) khi chốt — tiền hoàn đi vào số dư có, được hoàn cùng lúc hoàn cọc | Domain + Application |
+| BL-BR-17 ✅ | **Phiếu quyết toán** (`Final`, đổi 04/10/2026): kỳ = [Pk.start, `actual_end_date`], Pk = kỳ HĐ chứa ngày trả phòng; các kỳ trước Pk phải có phiếu (BL-BR-21). Dòng hệ thống chỉ **thu phần còn thiếu**: (1) **Tiền phòng** cho số ngày đã ở trong Pk (prorate theo HĐ) **trừ** tiền phòng đã có trên phiếu chưa hủy bao phủ khoảng đó (gồm chu kỳ nhiều tháng) — dương ⇒ dòng `Rent`, ≤ 0 ⇒ không có dòng (**không hoàn** — hoàn tiền để sau, BL-BR-27); (2) **Dịch vụ** của Pk nếu Pk chưa có phiếu Regular (prorate tới ngày trả phòng); (3) **Điện nước** từ đoạn đo cuối đã lập phiếu tới **chỉ số cuối** `Final` (Prepaid gồm cả kỳ trước nếu chưa thu + kỳ cuối). Sửa tay / phụ thu / giảm trừ như phiếu thường | Domain + Application |
 | BL-BR-18 | Tạo phiếu Final khi Pk có phiếu Regular đang **Draft** → 409 `REGULAR_DRAFT_EXISTS` (chốt hoặc xóa trước) | Application |
 | BL-BR-19 | Quy tắc điều chỉnh: `to_month` bắt buộc, ≤ from_month + 24 tháng; % ∈ (0,100]; số tiền cố định > 0. Không sửa quy tắc đã từng áp lên phiếu Finalized — chỉ **hủy** (có hiệu lực cho phiếu chưa chốt) và tạo quy tắc mới | Domain |
 | BL-BR-20 | Thay đổi nguồn (giá M04, giá thuê/khoản thu M05, chỉ số M06, quy tắc điều chỉnh, thành viên nhóm, người ở) → đánh dấu `is_stale` các Draft liên quan (gợi ý UI); BL-BR-12 là chốt chặn thật | Event handlers |
@@ -99,6 +104,8 @@ Cộng giảm trừ (quy tắc điều chỉnh, giảm tay). Phiếu tồn tại
 | BL-BR-22 ✅ | **Hủy/xóa theo thứ tự ngược (LIFO)**: chỉ Void phiếu đã chốt / xóa phiếu nháp khi nó là phiếu **mới nhất chưa Void** của HĐ (theo `period_start`, Final là mới nhất). Muốn sửa phiếu kỳ cũ → hủy lần lượt các phiếu sau nó | Domain |
 | BL-BR-23 ✅ | **Phụ thu** (`Surcharge`): dòng nhập tay trên phiếu nháp, số tiền > 0, **lý do bắt buộc**, tùy chọn gắn khoản thu (`fee_type_id`) và số lượng × đơn giá. Dùng cho: sửa chữa do người thuê làm hỏng (VD khóa cửa), lắp đặt thêm có thu phí đã thỏa thuận, đền bù, và **thay công tơ — cách 1**: tính theo công tơ mới + phụ thu = tiền điện công tơ cũ do chủ trọ tự tính (cách 2: công tơ phiên bản, hệ thống tự cộng — MT-BR-15). Giữ nguyên khi tính lại; không tạo đoạn đo | Domain |
 | BL-BR-24 ✅ | **Sau khi chốt**: phiếu bất biến (BL-BR-14); chỉ số cuối kỳ bị khóa và thành chỉ số cũ của phòng cho kỳ sau (MT-BR-16); phiếu sẵn sàng gửi (BL-UC-13). Sai sót sau khi chốt → hủy phiếu (BL-BR-15, chưa có thanh toán) rồi lập lại | Domain |
+| BL-BR-26 ✅ | **Chu kỳ đóng tiền phòng** (`contracts.rent_cycle_months` ∈ {1, 2, 3, 6, 12}, mặc định của khu): kỳ thu vẫn hằng tháng theo `billing_anchor_day` (C-05) — **mỗi tháng có 1 phiếu** tên theo tháng thu ("Phiếu tháng 8/2026") gồm điện nước + dịch vụ. Chu kỳ đếm từ kỳ đầu của HĐ (kỳ lẻ / gộp vẫn là tháng thứ 1 của chu kỳ): kỳ thứ k thuộc chu kỳ ⌊(k−1)/N⌋. Dòng **Tiền phòng** chỉ ở phiếu **tháng đầu chu kỳ** (cả HĐ `Prepaid` lẫn `Postpaid` — `charge_mode` chỉ quyết định điện nước kỳ này hay kỳ trước), = Σ tiền phòng N kỳ (BL-BR-03), `service_from/to` = cả chu kỳ, mô tả "Tiền phòng 3 tháng (01/08–31/10)". HĐ có `end_date` rơi giữa chu kỳ ⇒ chu kỳ cuối chỉ tính tới `end_date` (gia hạn thì chu kỳ chạy tiếp). Trả phòng giữa chu kỳ đã thu ⇒ không hoàn (để sau). Đổi giá thuê giữa chu kỳ đã thu ⇒ khóa tới hết chu kỳ (CT-BR-05) | Domain |
+| BL-BR-27 ⏸ | **Hoàn tiền quyết toán** — **để sau** (chốt 04/10/2026): hoàn tiền phòng chưa ở (`RentRefund`, `refund_unused_rent`), số tiền chủ trọ phải hoàn (`refund_due`), xác nhận đã hoàn; làm cùng số dư có / sổ cọc (M08 đợt 2) | — |
 
 ### 3.3 Vòng đời
 
@@ -143,7 +150,9 @@ HĐ bắt đầu 05/10/2026, giá 3.500.000; dịch vụ: giữ xe 2 gói × 100
 | paid_amount | numeric(18,0) | N | 0; cache do M08 cập nhật trong cùng transaction; CHECK 0 ≤ paid_amount ≤ total_amount |
 | is_stale | bool | N | |
 | issues | jsonb | N | `[]` — `{code, severity: Error|Warning, ref}` |
-| refund_unused_rent | bool | N | chỉ Final |
+| refund_unused_rent | bool | N | chỉ Final — ⏸ để sau (BL-BR-27) |
+| refund_due | numeric(18,0) | N | 0; chỉ Final — số chủ trọ phải hoàn (BL-BR-27) — ⏸ để sau (BL-BR-27) |
+| refunded_at / refund_method / refund_note | | Y | xác nhận đã hoàn — ⏸ để sau (BL-BR-27) |
 | snapshot_room_code / snapshot_contract_no / snapshot_representative_name | varchar | N | C-06 |
 | note | text | Y | in trên phiếu |
 | finalized_at/by, voided_at/by, void_reason | | Y | |
@@ -324,7 +333,7 @@ Audit: tạo/tính lại/sửa tay (từng ô: giá trị hệ thống → giá 
 ## 12. Kế hoạch test
 - **Unit `InvoiceCalculator` (bảng ≥ 40 case)**: Prepaid vs Postpaid; kỳ đầu lẻ (Daily/FullPeriod); anchor 31 vào tháng 2 (năm nhuận/không);
   PerOccupant đổi người giữa kỳ; giữ xe đổi số lượng từ kỳ sau; giá danh mục vs giá riêng; % trên tiền phòng sau sửa tay; sửa tay giữ qua tính lại; giá điện đổi giữa kỳ → giá mới; thay công tơ giữa kỳ (2 cách); nhiều quy tắc cộng dồn; cap giảm giá;
-  phiếu Final: Prepaid đã thu trọn kỳ (refund bật/tắt), Postpaid chưa có Regular, thay công tơ trong kỳ cuối; thiếu chỉ số → issue.
+  phiếu Final: Prepaid đã thu trọn kỳ (không hoàn — đợt 2 mới có hoàn), Postpaid chưa có Regular, chu kỳ 3 tháng trả phòng giữa chu kỳ, thay công tơ trong kỳ cuối; thiếu chỉ số → issue.
 - Integration: generate idempotent (gọi 2 lần → không trùng); chốt khi nguồn đổi → 409 `DRAFT_STALE`; chốt song song 20 phiếu → số liên tục không trùng;
   void khi có thanh toán → 422; sau void lập lại được và chỉ số được tái sử dụng; **C-01**.
 - E2E: F4 trên khu 20 phòng.

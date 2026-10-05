@@ -9,6 +9,13 @@ public enum PaymentStatus
     Reversed
 }
 
+/// <summary><c>Receipt</c> = tiền thật; <c>WriteOff</c> = bỏ nợ (PM-BR-16) — đóng công nợ, không tính doanh thu.</summary>
+public enum PaymentKind
+{
+    Receipt,
+    WriteOff
+}
+
 /// <summary>
 /// Phiếu thu (M08) — tiền thực nhận của 1 HĐ, phân bổ vào phiếu báo đã chốt. Không sửa số tiền: nhập sai thì đảo (PM-BR-01/07).
 /// </summary>
@@ -30,6 +37,7 @@ public sealed class Payment : TenantEntity
     public string? Reference { get; private set; }
     public string? Note { get; private set; }
     public PaymentStatus Status { get; private set; }
+    public PaymentKind Kind { get; private set; }
     public DateTimeOffset? ReversedAt { get; private set; }
     public string? ReverseReason { get; private set; }
 
@@ -38,8 +46,11 @@ public sealed class Payment : TenantEntity
     /// <param name="allocations">(phiếu báo, số tiền) — tổng phải bằng số tiền phiếu thu (đợt 1 chưa có số dư có).</param>
     public static Payment Record(
         Guid propertyId, Guid contractId, string receiptNo, decimal amount, PaymentMethod method, DateOnly paidAt,
-        string? payerName, string? reference, string? note, IReadOnlyList<(Guid InvoiceId, decimal Amount)> allocations)
+        string? payerName, string? reference, string? note, IReadOnlyList<(Guid InvoiceId, decimal Amount)> allocations,
+        PaymentKind kind = PaymentKind.Receipt)
     {
+        if (kind == PaymentKind.WriteOff && string.IsNullOrWhiteSpace(note))
+            throw new ArgumentException("Write-off reason is required.", nameof(note));
         if (amount <= 0 || amount > MaxAmount || decimal.Round(amount, 0) != amount)
             throw new ArgumentOutOfRangeException(nameof(amount));
         if (allocations.Count == 0 || allocations.Any(a => a.Amount <= 0) || allocations.Sum(a => a.Amount) != amount)
@@ -57,7 +68,8 @@ public sealed class Payment : TenantEntity
             PayerName = TextNormalizer.TrimToNull(payerName),
             Reference = TextNormalizer.TrimToNull(reference),
             Note = TextNormalizer.TrimToNull(note),
-            Status = PaymentStatus.Recorded
+            Status = PaymentStatus.Recorded,
+            Kind = kind
         };
         payment._allocations.AddRange(allocations.Select(a => new PaymentAllocation(payment.Id, contractId, a.InvoiceId, a.Amount)));
         return payment;
@@ -107,5 +119,8 @@ public static class PaymentErrors
     public static readonly Error AlreadyReversed = Error.Conflict("PAYMENT_ALREADY_REVERSED", "Phiếu thu đã đảo.");
     public static readonly Error ExceedsDebt = Error.BusinessRule("PAYMENT_EXCEEDS_DEBT",
         "Số tiền lớn hơn số còn nợ — nhập đúng số tiền còn nợ (chưa hỗ trợ trả thừa).");
+    public static readonly Error ContractNotBillable = Error.BusinessRule("CONTRACT_NOT_BILLABLE",
+        "Hợp đồng đã kết thúc — không ghi / đảo phiếu thu (hoàn tất thanh lý đã xử lý hết nợ).");
+    public static readonly Error PaidBeforeContract = Error.Validation("INVALID_PAID_AT", "Ngày thu không được trước ngày bắt đầu hợp đồng quá 60 ngày.");
     public static readonly Error NoDebt = Error.BusinessRule("NO_OUTSTANDING_INVOICE", "Hợp đồng không còn phiếu nào chưa thu đủ.");
 }

@@ -23,6 +23,7 @@ public sealed record PaymentDto(
     string? Reference,
     string? Note,
     PaymentStatus Status,
+    PaymentKind Kind,
     DateTimeOffset? ReversedAt,
     string? ReverseReason,
     IReadOnlyList<PaymentAllocationDto> Allocations);
@@ -35,7 +36,7 @@ internal static class PaymentMapping
         var numbers = await db.Invoices.AsNoTracking().Where(i => invoiceIds.Contains(i.Id))
             .ToDictionaryAsync(i => i.Id, i => i.InvoiceNo, ct);
         return payments.Select(p => new PaymentDto(p.Id, p.ReceiptNo, p.ContractId, p.Amount, p.Method, p.PaidAt, p.PayerName, p.Reference,
-                p.Note, p.Status, p.ReversedAt, p.ReverseReason,
+                p.Note, p.Status, p.Kind, p.ReversedAt, p.ReverseReason,
                 p.Allocations.Select(a => new PaymentAllocationDto(a.InvoiceId, numbers.GetValueOrDefault(a.InvoiceId), a.Amount)).ToList()))
             .ToList();
     }
@@ -63,10 +64,10 @@ public sealed class RecordPaymentCommandValidator : AbstractValidator<RecordPaym
 }
 
 /// <summary>
-/// PM-UC-01 (đợt 1 — thu bằng tay): khóa HĐ → các phiếu còn nợ (theo id) rồi phân bổ; cập nhật <c>paid_amount</c> trong cùng transaction
-/// (PM-BR-05). Chưa có số dư có ⇒ không thu vượt số còn nợ.
+/// PM-UC-01 (đợt 1 — thu bằng tay): HĐ đang hiệu lực / thanh lý (PM-BR-13); phân bổ chỉ định 1 phiếu hoặc tự động phiếu cũ nhất trước.
+/// Chưa có số dư có ⇒ không thu vượt số còn nợ.
 /// </summary>
-public sealed class RecordPaymentHandler(IAppDbContext db, IDocumentNumberGenerator numbers, ICurrentUser currentUser)
+public sealed class RecordPaymentHandler(IAppDbContext db, IDocumentNumberGenerator numbers, ICurrentUser currentUser, TimeProvider clock)
     : IRequestHandler<RecordPaymentCommand, Result<PaymentDto>>
 {
     public async ValueTask<Result<PaymentDto>> Handle(RecordPaymentCommand request, CancellationToken cancellationToken)
@@ -76,55 +77,86 @@ public sealed class RecordPaymentHandler(IAppDbContext db, IDocumentNumberGenera
         var contract = await db.Contracts.AsNoTracking().FirstOrDefaultAsync(c => c.Id == request.ContractId, cancellationToken);
         if (contract is null)
             return ContractErrors.NotFound;
+        if (contract.Status is not (ContractStatus.Active or ContractStatus.Liquidating))
+            return PaymentErrors.ContractNotBillable;
+        if (request.PaidAt < contract.StartDate.AddDays(-PaymentPosting.MaxDaysBeforeStart))
+            return PaymentErrors.PaidBeforeContract;
 
-        var openIds = await db.Invoices.Where(i => i.ContractId == contract.Id && i.Status == InvoiceStatus.Finalized && i.PaidAmount < i.TotalAmount)
-            .Select(i => i.Id).OrderBy(id => id).ToListAsync(cancellationToken);
-        foreach (var id in openIds)
-            await db.LockForUpdateAsync<Invoice>(id, cancellationToken);
-        var open = await db.Invoices.Where(i => openIds.Contains(i.Id)).ToListAsync(cancellationToken);
-
-        var allocations = await AllocateAsync(request, open, cancellationToken);
-        if (allocations.IsFailure)
-            return allocations.Error!;
-
-        var receiptNo = await numbers.NextAsync(currentUser.OrganizationId!.Value, "PT", request.PaidAt.Year, cancellationToken);
-        var payment = Payment.Record(contract.PropertyId, contract.Id, receiptNo, request.Amount, request.Method, request.PaidAt,
-            request.PayerName, request.Reference, request.Note, allocations.Value!);
-        foreach (var (invoiceId, amount) in allocations.Value!)
-            open.Single(i => i.Id == invoiceId).ApplyPayment(amount);
-        db.Payments.Add(payment);
+        var payment = await PaymentPosting.PostAsync(db, numbers, currentUser, clock, contract, request.Amount, request.Method, request.PaidAt,
+            request.InvoiceId, request.PayerName, request.Reference, request.Note, PaymentKind.Receipt, cancellationToken);
+        if (payment.IsFailure)
+            return payment.Error!;
 
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
-        return (await PaymentMapping.ToDtosAsync(db, [payment], cancellationToken))[0];
+        return (await PaymentMapping.ToDtosAsync(db, [payment.Value!], cancellationToken))[0];
+    }
+}
+
+/// <summary>
+/// Ghi phiếu thu và phân bổ trong transaction của người gọi (đã khóa HĐ): khóa các phiếu còn nợ theo id (C-07), cập nhật <c>paid_amount</c>
+/// cùng lúc (PM-BR-05). <c>amount</c> null ⇒ đúng tổng còn nợ ("Đã thu toàn bộ" / bỏ nợ khi hoàn tất thanh lý).
+/// </summary>
+internal static class PaymentPosting
+{
+    public const int MaxDaysBeforeStart = 60;
+
+    public static async Task<decimal> OutstandingAsync(IAppDbContext db, Guid contractId, CancellationToken ct) =>
+        await db.Invoices.Where(i => i.ContractId == contractId && i.Status == InvoiceStatus.Finalized)
+            .SumAsync(i => (decimal?)(i.TotalAmount - i.PaidAmount), ct) ?? 0;
+
+    public static async Task<Result<Payment>> PostAsync(
+        IAppDbContext db, IDocumentNumberGenerator numbers, ICurrentUser currentUser, TimeProvider clock, Contract contract,
+        decimal? amount, PaymentMethod method, DateOnly paidAt, Guid? invoiceId, string? payerName, string? reference, string? note,
+        PaymentKind kind, CancellationToken ct)
+    {
+        var openIds = await db.Invoices.Where(i => i.ContractId == contract.Id && i.Status == InvoiceStatus.Finalized && i.PaidAmount < i.TotalAmount)
+            .Select(i => i.Id).OrderBy(id => id).ToListAsync(ct);
+        foreach (var id in openIds)
+            await db.LockForUpdateAsync<Invoice>(id, ct);
+        var open = await db.Invoices.Where(i => openIds.Contains(i.Id)).ToListAsync(ct);
+
+        var total = amount ?? open.Sum(i => i.Outstanding);
+        var allocations = await AllocateAsync(db, contract.Id, total, invoiceId, open, ct);
+        if (allocations.IsFailure)
+            return allocations.Error!;
+
+        // PM-BR-15: năm của số phiếu thu = năm của ngày lập (không phải ngày thu) — ghi bù đầu năm không làm lộn thứ tự số.
+        var receiptNo = await numbers.NextAsync(currentUser.OrganizationId!.Value, "PT", clock.GetUtcNow().ToBusinessDate().Year, ct);
+        var payment = Payment.Record(contract.PropertyId, contract.Id, receiptNo, total, method, paidAt, payerName, reference, note,
+            allocations.Value!, kind);
+        foreach (var (id, part) in allocations.Value!)
+            open.Single(i => i.Id == id).ApplyPayment(part, kind == PaymentKind.WriteOff);
+        db.Payments.Add(payment);
+        return payment;
     }
 
-    private async Task<Result<IReadOnlyList<(Guid InvoiceId, decimal Amount)>>> AllocateAsync(
-        RecordPaymentCommand request, List<Invoice> open, CancellationToken ct)
+    private static async Task<Result<IReadOnlyList<(Guid InvoiceId, decimal Amount)>>> AllocateAsync(
+        IAppDbContext db, Guid contractId, decimal amount, Guid? invoiceId, List<Invoice> open, CancellationToken ct)
     {
-        if (request.InvoiceId is { } invoiceId)
+        if (invoiceId is { } targetId)
         {
-            var target = open.FirstOrDefault(i => i.Id == invoiceId);
+            var target = open.FirstOrDefault(i => i.Id == targetId);
             if (target is null)
             {
-                var status = await db.Invoices.Where(i => i.Id == invoiceId && i.ContractId == request.ContractId)
+                var status = await db.Invoices.Where(i => i.Id == targetId && i.ContractId == contractId)
                     .Select(i => (InvoiceStatus?)i.Status).FirstOrDefaultAsync(ct);
                 return status is null ? BillingErrors.NotFound
                     : status == InvoiceStatus.Finalized ? PaymentErrors.ExceedsDebt
                     : BillingErrors.NotFinalized;
             }
-            return request.Amount > target.Outstanding
+            return amount > target.Outstanding
                 ? PaymentErrors.ExceedsDebt
-                : Result.Success<IReadOnlyList<(Guid, decimal)>>([(target.Id, request.Amount)]);
+                : Result.Success<IReadOnlyList<(Guid, decimal)>>([(target.Id, amount)]);
         }
 
-        if (open.Count == 0)
+        if (open.Count == 0 || amount <= 0)
             return PaymentErrors.NoDebt;
-        if (request.Amount > open.Sum(i => i.Outstanding))
+        if (amount > open.Sum(i => i.Outstanding))
             return PaymentErrors.ExceedsDebt;
 
         // PM-BR-06: hạn thanh toán sớm nhất trước, rồi kỳ cũ hơn.
-        var remaining = request.Amount;
+        var remaining = amount;
         var result = new List<(Guid, decimal)>();
         foreach (var invoice in open.OrderBy(i => i.DueDate).ThenBy(i => i.PeriodStart))
         {
@@ -158,6 +190,8 @@ public sealed class ReversePaymentHandler(IAppDbContext db, TimeProvider clock) 
 
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         await db.LockForUpdateAsync<Contract>(contractId.Value, cancellationToken);
+        if (await db.Contracts.Where(c => c.Id == contractId).Select(c => c.Status).FirstAsync(cancellationToken) == ContractStatus.Ended)
+            return PaymentErrors.ContractNotBillable;
         var payment = await db.Payments.Include(p => p.Allocations).FirstAsync(p => p.Id == request.PaymentId, cancellationToken);
         var reversed = payment.Reverse(request.Reason, clock.GetUtcNow());
         if (reversed.IsFailure)
@@ -168,7 +202,7 @@ public sealed class ReversePaymentHandler(IAppDbContext db, TimeProvider clock) 
         var ids = reversed.Value!.Select(a => a.InvoiceId).ToList();
         var invoices = await db.Invoices.Where(i => ids.Contains(i.Id)).ToDictionaryAsync(i => i.Id, cancellationToken);
         foreach (var (invoiceId, amount) in reversed.Value!)
-            invoices[invoiceId].ApplyPayment(-amount);
+            invoices[invoiceId].ApplyPayment(-amount, payment.Kind == PaymentKind.WriteOff);
 
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);

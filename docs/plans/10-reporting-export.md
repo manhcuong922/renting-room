@@ -8,7 +8,7 @@
 dashboard tổng quan; nhắc việc (HĐ sắp hết hạn, cư trú chưa đăng ký, công nợ quá hạn).
 
 **Trong phạm vi (P1)**: E1 Danh sách người thuê; E2 Tiền phòng tháng; E3 Thông tin phòng; E4 Công nợ; E5 Sổ cọc.
-**P2**: dashboard, nhắc việc, đối chiếu hóa đơn điện EVN (LEG-05), báo cáo doanh thu năm (L12), export bất đồng bộ.
+**P2**: dashboard, nhắc việc, đối chiếu hóa đơn điện EVN (LEG-05), báo cáo doanh thu năm (L12), export bất đồng bộ. **Để sau (04/10/2026)**: nhóm export doanh thu / tiền phòng / công nợ (E2, E4, E6) làm sau khi nghiệp vụ phiếu + thu tiền ổn định. Doanh thu **không tính** tiền bỏ nợ (`WriteOff`) — PM-BR-16.
 **Ngoài phạm vi**: BI tùy biến, PDF phức tạp.
 
 ## 2. Danh mục export
@@ -19,7 +19,7 @@ dashboard tổng quan; nhắc việc (HĐ sắp hết hạn, cư trú chưa đă
 | E2 | Tiền phòng tháng | propertyIds[], billingMonth, `statuses` (mặc định Finalized), layout | Khu, Phòng, Số phiếu, Người đại diện, Kỳ, Tiền phòng (gốc / thực thu tháng), **một cột cho mỗi khoản thu** (động theo danh mục của các khu được chọn, gộp theo tên), Chỉ số điện cũ/mới/sản lượng, Chỉ số nước cũ/mới/sản lượng, Điều chỉnh, Tổng, Đã thu, Còn nợ, Hạn, Trạng thái | Hàng tổng cuối mỗi sheet bằng **công thức SUM**; số tiền định dạng `#,##0` |
 | E3 | Thông tin phòng | propertyIds[], asOfDate | Khu, Phòng, Tầng, Diện tích, Sức chứa, Giá niêm yết, Trạng thái (dẫn xuất), Nhóm phòng, Số HĐ hiện hành, Người đại diện, Giá thuê HĐ, Ngày bắt đầu/hết hạn, Số người ở, Tiền cọc đang giữ, Khoản thu đăng ký (giữ xe ×2…) | |
 | E4 | Công nợ | propertyIds[], asOfDate | Khu, Phòng, Người đại diện, SĐT, Số phiếu nợ, Tổng nợ, Nợ quá hạn, Ngày quá hạn lâu nhất | |
-| E5 | Sổ cọc | propertyIds[], from, to | Bút toán cọc + số dư cuối kỳ theo HĐ | |
+| E5 ⏸ | Sổ cọc | propertyIds[], from, to | Bút toán cọc + số dư cuối kỳ theo HĐ | |
 | E6 (P2) | Doanh thu năm | year | Tổng thu theo tháng: tiền phòng, dịch vụ, mất cọc; ghi chú ngưỡng 500 triệu (L12). **Định nghĩa**: Σ phân bổ từ phiếu thu tiền thật (`Cash/BankTransfer/EWallet/Other`) + `DepositDeduction` (cọc chuyển thành tiền thuê tại thời điểm cấn trừ) + bút toán `Forfeit`; **loại trừ** `WriteOff`, `CreditNote`, bút toán nhận/hoàn cọc | Không tính thuế; định nghĩa doanh thu cần kế toán/luật sư xác nhận |
 | E7 (P2) | Đối chiếu điện | propertyId, billingMonth, evnBillAmount, evnKwh | Σ kWh & Σ tiền điện thu các phòng vs hóa đơn EVN → cảnh báo nếu thu > hóa đơn (L9) | |
 
