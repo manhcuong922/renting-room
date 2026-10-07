@@ -101,9 +101,15 @@ internal static class PaymentPosting
 {
     public const int MaxDaysBeforeStart = 60;
 
+    /// <summary>Còn nợ của HĐ — chỉ phiếu chưa thu đủ; phiếu tổng âm (phải hoàn) không bù trừ nợ.</summary>
     public static async Task<decimal> OutstandingAsync(IAppDbContext db, Guid contractId, CancellationToken ct) =>
-        await db.Invoices.Where(i => i.ContractId == contractId && i.Status == InvoiceStatus.Finalized)
+        await db.Invoices.Where(i => i.ContractId == contractId && i.Status == InvoiceStatus.Finalized && i.PaidAmount < i.TotalAmount)
             .SumAsync(i => (decimal?)(i.TotalAmount - i.PaidAmount), ct) ?? 0;
+
+    /// <summary>Số chủ trọ còn phải trả lại người thuê (phiếu đã chốt tổng âm, chưa xác nhận đã hoàn — BL-BR-27).</summary>
+    public static async Task<decimal> RefundDueAsync(IAppDbContext db, Guid contractId, CancellationToken ct) =>
+        -(await db.Invoices.Where(i => i.ContractId == contractId && i.Status == InvoiceStatus.Finalized && i.TotalAmount < 0 && i.RefundedOn == null)
+            .SumAsync(i => (decimal?)i.TotalAmount, ct) ?? 0);
 
     public static async Task<Result<Payment>> PostAsync(
         IAppDbContext db, IDocumentNumberGenerator numbers, ICurrentUser currentUser, TimeProvider clock, Contract contract,

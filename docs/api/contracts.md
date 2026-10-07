@@ -135,7 +135,7 @@ Cột: Số HĐ · Khu/Phòng (`propertyCode`-`roomCode`) · Người đại di�
     "monthlyRent": 3500000,
     "depositAmount": 3500000,
     "depositTerms": "Hoàn cọc khi trả phòng đúng hạn, trừ chi phí hư hỏng.",
-    "billing": { "anchorDay": 1, "chargeMode": "Prepaid", "prorationMode": "Daily", "paymentDueDays": 5, "rentCycleMonths": 1 },
+    "billing": { "anchorDay": 1, "chargeMode": "Prepaid", "prorationMode": "Daily", "paymentDueDays": 5 },
     "noticeDays": 30,
     "paymentMethods": ["Cash", "BankTransfer"],
     "copiesCount": 2,
@@ -221,7 +221,7 @@ Nhiều bản **nháp** cho cùng một phòng được phép (đàm phán song 
   "noticeDays": 30,
   "depositAmount": 0,
   "depositTerms": null,
-  "billing": { "anchorDay": 1, "chargeMode": "Prepaid", "prorationMode": "Daily", "paymentDueDays": 5, "rentCycleMonths": 1 },
+  "billing": { "anchorDay": 1, "chargeMode": "Prepaid", "prorationMode": "Daily", "paymentDueDays": 5 },
   "paymentMethods": ["Cash", "BankTransfer"],
   "copiesCount": 2,
   "termsText": null,
@@ -714,7 +714,6 @@ Kết thúc: `POST /contracts/{id}/vehicles/{vehicleId}/end` `{ "endDate": "2026
 ```
 
 - Kỳ chạy từ ngày chốt (`billing.anchorDay`) tới trước ngày chốt kế tiếp. Kỳ đầu lẻ nếu ngày bắt đầu không trùng ngày chốt.
-- **Chu kỳ đóng tiền phòng** `billing.rentCycleMonths` (1 / 2 / 3 / 6 / 12, bỏ trống = mặc định của khu): mỗi tháng vẫn có phiếu (điện nước, dịch vụ);
   tiền phòng × số tháng chỉ ở **phiếu tháng đầu chu kỳ**. VD 3 tháng: tháng 1 đóng tiền phòng 3 tháng + điện nước dịch vụ, tháng 2–3 chỉ điện nước
   dịch vụ, tháng 4 đóng tiền phòng 3 tháng tiếp. Đổi giá thuê giữa chu kỳ đã thu → 422 `PERIOD_ALREADY_BILLED`.
 - `billingMonth` = "tháng thu" (`yyyy-MM`) hiển thị "Tháng 10/2026".

@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using FluentValidation;
 using Mediator;
 using Microsoft.EntityFrameworkCore;
@@ -31,6 +32,7 @@ public sealed record InvoiceSummaryDto(
     decimal TotalAmount,
     decimal PaidAmount,
     decimal Outstanding,
+    decimal RefundDue,
     DateOnly? DueDate,
     int ErrorCount,
     string Version);
@@ -57,10 +59,16 @@ public sealed record InvoiceLineDto(
     string? Note,
     IReadOnlyList<InvoiceSegmentDto> Segments);
 
+/// <param name="RefundTotal">Σ dòng hoàn trả (≤ 0).</param>
+/// <param name="RefundedOn">Ngày chủ trọ xác nhận đã trả lại người thuê phần tổng âm (BL-BR-27).</param>
 public sealed record InvoiceDetailDto(
     InvoiceSummaryDto Summary,
     decimal Subtotal,
     decimal DiscountTotal,
+    decimal RefundTotal,
+    DateOnly? RefundedOn,
+    PaymentMethod? RefundMethod,
+    string? RefundNote,
     DateOnly? IssueDate,
     IReadOnlyList<InvoiceLineDto> Lines,
     IReadOnlyList<InvoiceIssue> Issues,
@@ -74,10 +82,10 @@ internal static class InvoiceMapping
     public static InvoiceSummaryDto ToSummary(this Invoice i, DateOnly today) => new(
         i.Id, i.InvoiceNo, i.Type, i.Status, i.PaymentStatus(today), i.PropertyId, i.RoomId, i.SnapshotRoomCode, i.ContractId,
         i.SnapshotContractNo, i.SnapshotRepresentativeName, $"{i.BillingMonth:yyyy-MM}", i.PeriodStart, i.PeriodEnd,
-        i.TotalAmount, i.PaidAmount, i.Outstanding, i.DueDate, i.Issues.Count(x => x.Severity == InvoiceIssue.Error), i.Version.ToString());
+        i.TotalAmount, i.PaidAmount, i.Outstanding, i.RefundDue, i.DueDate, i.Issues.Count(x => x.Severity == InvoiceIssue.Error), i.Version.ToString());
 
     public static InvoiceDetailDto ToDetail(this Invoice i, DateOnly today) => new(
-        i.ToSummary(today), i.Subtotal, i.DiscountTotal, i.IssueDate,
+        i.ToSummary(today), i.Subtotal, i.DiscountTotal, i.RefundTotal, i.RefundedOn, i.RefundMethod, i.RefundNote, i.IssueDate,
         i.Lines.OrderBy(l => l.SortOrder).Select(l => new InvoiceLineDto(
             l.Id, l.Type, l.IsSystem, l.FeeTypeId, l.Description, l.Unit, l.ServiceFrom, l.ServiceTo, l.Quantity, l.UnitPrice,
             l.ProrationFactor, l.Amount, l.IsManuallyEdited, l.SystemQuantity, l.SystemUnitPrice, l.SystemAmount, l.Note,
@@ -93,8 +101,8 @@ internal static class InvoiceAccess
     public static Task<Invoice?> LoadAsync(IAppDbContext db, Guid id, CancellationToken ct) =>
         db.Invoices.Include(i => i.Lines).Include(i => i.Segments).AsSplitQuery().FirstOrDefaultAsync(i => i.Id == id, ct);
 
-    /// <summary>Sửa nháp: khóa phiếu → nạp → thao tác → lưu, trong 1 transaction; trả chi tiết sau khi sửa.</summary>
-    public static async Task<Result<InvoiceDetailDto>> MutateDraftAsync(
+    /// <summary>Khóa phiếu → nạp → thao tác (domain tự kiểm trạng thái) → lưu, trong 1 transaction; trả chi tiết sau khi sửa.</summary>
+    public static async Task<Result<InvoiceDetailDto>> MutateAsync(
         IAppDbContext db, Guid invoiceId, DateOnly today, Func<Invoice, Result> action, CancellationToken ct)
     {
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
@@ -198,7 +206,7 @@ public sealed class EditInvoiceLineCommandValidator : AbstractValidator<EditInvo
 public sealed class EditInvoiceLineHandler(IAppDbContext db, TimeProvider clock) : IRequestHandler<EditInvoiceLineCommand, Result<InvoiceDetailDto>>
 {
     public async ValueTask<Result<InvoiceDetailDto>> Handle(EditInvoiceLineCommand request, CancellationToken cancellationToken) =>
-        await InvoiceAccess.MutateDraftAsync(db, request.InvoiceId, clock.GetUtcNow().ToBusinessDate(),
+        await InvoiceAccess.MutateAsync(db, request.InvoiceId, clock.GetUtcNow().ToBusinessDate(),
             invoice => invoice.EditLine(request.LineId, request.Quantity, request.UnitPrice, request.Amount, request.Note), cancellationToken);
 }
 
@@ -208,11 +216,11 @@ public sealed record ResetInvoiceLineCommand(Guid InvoiceId, Guid LineId) : IReq
 public sealed class ResetInvoiceLineHandler(IAppDbContext db, TimeProvider clock) : IRequestHandler<ResetInvoiceLineCommand, Result<InvoiceDetailDto>>
 {
     public async ValueTask<Result<InvoiceDetailDto>> Handle(ResetInvoiceLineCommand request, CancellationToken cancellationToken) =>
-        await InvoiceAccess.MutateDraftAsync(db, request.InvoiceId, clock.GetUtcNow().ToBusinessDate(),
+        await InvoiceAccess.MutateAsync(db, request.InvoiceId, clock.GetUtcNow().ToBusinessDate(),
             invoice => invoice.ResetLine(request.LineId), cancellationToken);
 }
 
-/// <param name="Type"><c>Surcharge</c> (phụ thu) hoặc <c>ManualDiscount</c> (giảm tay) — nhập số dương.</param>
+/// <param name="Type"><c>Surcharge</c> (phụ thu), <c>ManualDiscount</c> (giảm tay) hoặc <c>Refund</c> (hoàn trả) — nhập số dương.</param>
 public sealed record AddInvoiceManualLineCommand(
     Guid InvoiceId, InvoiceLineType Type, string Description, decimal? Quantity, decimal? UnitPrice, decimal Amount, string Note, Guid? FeeTypeId)
     : IRequest<Result<InvoiceDetailDto>>;
@@ -221,13 +229,27 @@ public sealed class AddInvoiceManualLineCommandValidator : AbstractValidator<Add
 {
     public AddInvoiceManualLineCommandValidator()
     {
-        RuleFor(x => x.Type).Must(t => t is InvoiceLineType.Surcharge or InvoiceLineType.ManualDiscount)
-            .WithErrorCode("INVALID_LINE_TYPE").WithMessage("Chỉ thêm phụ thu (Surcharge) hoặc giảm trừ (ManualDiscount).");
-        RuleFor(x => x.Description).RequiredText(200, "Nội dung");
-        RuleFor(x => x.Note).RequiredText(300, "Lý do");
-        RuleFor(x => x.Amount).Money(allowZero: false).LessThanOrEqualTo(100_000_000).WithErrorCode("INVALID_AMOUNT");
-        RuleFor(x => x.Quantity).Must(q => q is null || (q > 0 && decimal.Round(q.Value, 2) == q)).WithErrorCode("OUT_OF_RANGE");
-        RuleFor(x => x.UnitPrice).Must(p => p is null || (p >= 0 && decimal.Round(p.Value, 2) == p)).WithErrorCode("INVALID_AMOUNT");
+        ManualLineRules.Apply(this, x => x.Type, x => x.Description, x => x.Note, x => x.Amount, x => x.Quantity, x => x.UnitPrice);
+    }
+}
+
+internal static class ManualLineRules
+{
+    public const decimal MaxAmount = 100_000_000;
+
+    /// <summary>BL-BR-23 / BL-BR-27: phụ thu / giảm tay / hoàn trả — nội dung, lý do bắt buộc, số tiền dương ≤ 100 triệu.</summary>
+    public static void Apply<T>(
+        AbstractValidator<T> v, Expression<Func<T, InvoiceLineType>> type, Expression<Func<T, string>> description,
+        Expression<Func<T, string>> note, Expression<Func<T, decimal>> amount, Expression<Func<T, decimal?>> quantity,
+        Expression<Func<T, decimal?>> unitPrice)
+    {
+        v.RuleFor(type).Must(Invoice.IsManualType)
+            .WithErrorCode("INVALID_LINE_TYPE").WithMessage("Chỉ thêm phụ thu (Surcharge), giảm trừ (ManualDiscount) hoặc hoàn trả (Refund).");
+        v.RuleFor(description).RequiredText(200, "Nội dung");
+        v.RuleFor(note).RequiredText(300, "Lý do");
+        v.RuleFor(amount).Money(allowZero: false).LessThanOrEqualTo(MaxAmount).WithErrorCode("INVALID_AMOUNT");
+        v.RuleFor(quantity).Must(q => q is null || (q > 0 && decimal.Round(q.Value, 2) == q)).WithErrorCode("OUT_OF_RANGE");
+        v.RuleFor(unitPrice).Must(p => p is null || (p >= 0 && decimal.Round(p.Value, 2) == p)).WithErrorCode("INVALID_AMOUNT");
     }
 }
 
@@ -235,7 +257,7 @@ public sealed class AddInvoiceManualLineCommandValidator : AbstractValidator<Add
 public sealed class AddInvoiceManualLineHandler(IAppDbContext db, TimeProvider clock) : IRequestHandler<AddInvoiceManualLineCommand, Result<InvoiceDetailDto>>
 {
     public async ValueTask<Result<InvoiceDetailDto>> Handle(AddInvoiceManualLineCommand request, CancellationToken cancellationToken) =>
-        await InvoiceAccess.MutateDraftAsync(db, request.InvoiceId, clock.GetUtcNow().ToBusinessDate(), invoice =>
+        await InvoiceAccess.MutateAsync(db, request.InvoiceId, clock.GetUtcNow().ToBusinessDate(), invoice =>
         {
             var added = invoice.AddManualLine(request.Type, request.Description, request.Quantity, request.UnitPrice, request.Amount,
                 request.Note, request.FeeTypeId);
@@ -253,7 +275,7 @@ public sealed class UpdateInvoiceNoteCommandValidator : AbstractValidator<Update
 public sealed class UpdateInvoiceNoteHandler(IAppDbContext db, TimeProvider clock) : IRequestHandler<UpdateInvoiceNoteCommand, Result<InvoiceDetailDto>>
 {
     public async ValueTask<Result<InvoiceDetailDto>> Handle(UpdateInvoiceNoteCommand request, CancellationToken cancellationToken) =>
-        await InvoiceAccess.MutateDraftAsync(db, request.InvoiceId, clock.GetUtcNow().ToBusinessDate(), invoice =>
+        await InvoiceAccess.MutateAsync(db, request.InvoiceId, clock.GetUtcNow().ToBusinessDate(), invoice =>
         {
             if (invoice.Status != InvoiceStatus.Draft)
                 return Result.Failure(BillingErrors.NotDraft);

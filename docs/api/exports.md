@@ -1,6 +1,7 @@
 # Xuất Excel
 
 Quyền: chủ trọ và phó quản lý. File `.xlsx` tải về trực tiếp (không lưu trên server).
+Giới hạn **5 lần/phút mỗi tài khoản** (chung với xem số giấy tờ đầy đủ và đổi mật khẩu) → 429 `TOO_MANY_REQUESTS`.
 
 ## Danh sách người thuê
 

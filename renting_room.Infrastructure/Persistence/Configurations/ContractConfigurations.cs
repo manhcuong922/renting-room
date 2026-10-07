@@ -15,7 +15,6 @@ internal sealed class ContractConfiguration : IEntityTypeConfiguration<Contract>
         builder.ToTable("contracts", t =>
         {
             t.HasCheckConstraint("ck_contracts_end_after_start", "end_date IS NULL OR end_date > start_date");
-            t.HasCheckConstraint("ck_contracts_rent_cycle", "rent_cycle_months IN (1, 2, 3, 6, 12)");
             t.HasCheckConstraint("ck_contracts_actual_end", "actual_end_date IS NULL OR actual_end_date >= start_date");
             t.HasCheckConstraint("ck_contracts_liquidation_end",
                 "status NOT IN ('Liquidating','Ended') OR actual_end_date IS NOT NULL");

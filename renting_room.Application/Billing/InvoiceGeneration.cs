@@ -51,10 +51,11 @@ internal static class InvoiceInputs
         FinalSettlement? final = null;
         if (isFinal)
         {
-            var rentCovered = await others.SelectMany(i => i.Lines)
-                .AnyAsync(l => l.Type == InvoiceLineType.Rent && l.ServiceFrom <= period.Start && l.ServiceTo >= period.Start, ct);
+            var rentLines = await others.SelectMany(i => i.Lines)
+                .Where(l => l.Type == InvoiceLineType.Rent && l.ServiceFrom <= period.Start && l.ServiceTo >= period.Start)
+                .Select(l => l.Amount).ToListAsync(ct);
             var hasRegular = await others.AnyAsync(i => i.Type == InvoiceType.Regular && i.PeriodStart == period.Start, ct);
-            final = new FinalSettlement(rentCovered, hasRegular);
+            final = new FinalSettlement(rentLines.Count > 0 ? rentLines.Sum() : null, hasRegular);
         }
         return new InvoiceCalcInput(contract, period, types, meters, lastEnd, final);
     }

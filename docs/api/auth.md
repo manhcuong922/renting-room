@@ -53,7 +53,7 @@ flowchart TD
 | 401 `INVALID_CREDENTIALS` | Sai tài khoản/mật khẩu, **hoặc tài khoản đang bị khóa tạm** (sai 5 lần → khóa 15 phút; cố ý trả cùng mã để không lộ tài khoản tồn tại) | Hiện `detail` (đã nhắc về khóa 15 phút) |
 | 401 `TEMPORARY_PASSWORD_EXPIRED` | Mật khẩu tạm quá 72 giờ | "Mật khẩu tạm đã hết hạn, liên hệ người cấp tài khoản" |
 | 403 `ORGANIZATION_SUSPENDED` | Tổ chức bị admin tạm ngưng | Thông báo, không cho vào |
-| 429 `TOO_MANY_REQUESTS` | > 10 lần/phút từ một IP | Khóa nút trong `Retry-After` giây |
+| 429 `TOO_MANY_REQUESTS` | > 5 lần/phút cùng tài khoản từ một IP, hoặc > 20 lần/phút từ một IP | Khóa nút trong `Retry-After` giây |
 
 ## Đổi mật khẩu
 

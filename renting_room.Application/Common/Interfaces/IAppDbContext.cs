@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using renting_room.Domain.Billing;
 using renting_room.Domain.Common;
@@ -30,6 +31,9 @@ public interface IAppDbContext
 
     /// <summary>Dùng cho transaction tường minh khi một use case cần nhiều lệnh ghi nguyên tử.</summary>
     DatabaseFacade Database { get; }
+
+    /// <summary>Thao tác hàng loạt nhiều transaction (mỗi phần tử 1 transaction) xóa theo dõi giữa các lần để lỗi phần tử trước không dính sang sau.</summary>
+    ChangeTracker ChangeTracker { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
 

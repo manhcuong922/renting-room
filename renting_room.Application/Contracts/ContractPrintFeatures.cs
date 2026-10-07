@@ -1,6 +1,5 @@
 using Mediator;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Common.Security;
 using renting_room.Application.Exports;
@@ -21,7 +20,7 @@ public sealed class GetContractDocumentHandler(
     IWordDocumentWriter writer,
     ICurrentUser currentUser,
     TimeProvider clock,
-    ILogger<GetContractDocumentHandler> logger)
+    IAuditTrail auditTrail)
     : IRequestHandler<GetContractDocumentQuery, Result<ExportFile>>
 {
     public async ValueTask<Result<ExportFile>> Handle(GetContractDocumentQuery request, CancellationToken cancellationToken)
@@ -59,7 +58,7 @@ public sealed class GetContractDocumentHandler(
             occupants, agreedFees, feeTypes);
 
         if (full)
-            logger.LogWarning("AUDIT: user {UserId} printed contract {ContractId} with full id numbers", currentUser.UserId, contract.Id);
+            auditTrail.RecordRead(AuditActions.PrintWithIdNumbers, nameof(Contract), contract.Id);
         var fileName = $"hop-dong_{contract.ContractNo.Replace('/', '-')}.docx";
         return new ExportFile(fileName, writer.Write(ContractPrintBuilder.Build(data)));
     }

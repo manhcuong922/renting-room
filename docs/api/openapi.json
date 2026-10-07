@@ -2254,7 +2254,7 @@
         "tags": [
           "Invoices"
         ],
-        "summary": "Thêm phụ thu (lý do bắt buộc) hoặc giảm trừ vào phiếu nháp",
+        "summary": "Thêm phụ thu, giảm trừ hoặc hoàn trả (lý do bắt buộc) vào phiếu nháp",
         "parameters": [
           {
             "name": "id",
@@ -2271,6 +2271,41 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/AddInvoiceLineRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/invoices/manual-lines": {
+      "post": {
+        "tags": [
+          "Invoices"
+        ],
+        "summary": "Thêm cùng một phụ thu / giảm trừ / hoàn trả cho nhiều phòng: theo danh sách phiếu, hoặc khu + tháng (lọc phòng / tầng) — kết quả từng phiếu",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Khóa duy nhất cho thao tác (VD UUID). Gửi lại cùng khóa ⇒ nhận lại kết quả cũ, không thực thi lần 2.",
+            "schema": {
+              "maxLength": 64,
+              "minLength": 8,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkAddInvoiceLineRequest"
               }
             }
           },
@@ -2413,6 +2448,62 @@
           },
           "required": true
         },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/invoices/{id}/refund": {
+      "post": {
+        "tags": [
+          "Invoices"
+        ],
+        "summary": "Xác nhận đã trả lại người thuê phần tổng âm của phiếu (hoàn trả > phần thu)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmRefundRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Invoices"
+        ],
+        "summary": "Bỏ xác nhận đã hoàn (nhập nhầm)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -4261,11 +4352,6 @@
           "noticeDays": {
             "type": "integer",
             "format": "int32"
-          },
-          "rentCycleMonths": {
-            "type": "integer",
-            "format": "int32",
-            "nullable": true
           }
         },
         "additionalProperties": false
@@ -4286,10 +4372,70 @@
           "paymentDueDays": {
             "type": "integer",
             "format": "int32"
+          }
+        },
+        "additionalProperties": false
+      },
+      "BulkAddInvoiceLineRequest": {
+        "type": "object",
+        "properties": {
+          "invoiceIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "nullable": true
           },
-          "rentCycleMonths": {
-            "type": "integer",
-            "format": "int32",
+          "propertyId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "billingMonth": {
+            "type": "string",
+            "nullable": true
+          },
+          "roomIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "nullable": true
+          },
+          "floor": {
+            "type": "string",
+            "nullable": true
+          },
+          "type": {
+            "$ref": "#/components/schemas/InvoiceLineType"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "quantity": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "unitPrice": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "amount": {
+            "type": "number",
+            "format": "double"
+          },
+          "note": {
+            "type": "string",
+            "nullable": true
+          },
+          "feeTypeId": {
+            "type": "string",
+            "format": "uuid",
             "nullable": true
           }
         },
@@ -4447,6 +4593,23 @@
             "nullable": true
           },
           "reason": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ConfirmRefundRequest": {
+        "type": "object",
+        "properties": {
+          "refundedOn": {
+            "type": "string",
+            "format": "date"
+          },
+          "method": {
+            "$ref": "#/components/schemas/PaymentMethod"
+          },
+          "note": {
             "type": "string",
             "nullable": true
           }
@@ -5208,7 +5371,8 @@
           "Metered",
           "Service",
           "Surcharge",
-          "ManualDiscount"
+          "ManualDiscount",
+          "Refund"
         ],
         "type": "string"
       },
@@ -6375,7 +6539,7 @@
   },
   "security": [
     {
-      "Bearer": [ ]
+      "Bearer": []
     }
   ],
   "tags": [

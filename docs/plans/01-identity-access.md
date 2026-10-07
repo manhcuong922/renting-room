@@ -372,7 +372,7 @@ Mặc định **mọi endpoint** yêu cầu `RequireOrgMember` (fallback policy)
 
 - Audit: tạo/sửa/tạm ngưng tổ chức, reset mật khẩu, khóa/mở, đăng nhập thành công/thất bại (bảng `login_events` riêng: user_id?, username_hash, ip, success, reason, at).
 - Không log mật khẩu, token, mật khẩu tạm. Response chứa mật khẩu tạm có `Cache-Control: no-store`.
-- Rate limit (ASP.NET Core RateLimiter): `/auth/login` 5 req/phút theo IP+username, 20 req/phút theo IP; `/auth/refresh` 30/phút/IP.
+- Rate limit ✅ (ASP.NET Core RateLimiter, cửa sổ trượt): `/auth/login` 5 req/phút theo IP+username (`LoginAttemptLimiter` trong endpoint — username lấy từ body, chuẩn hóa SĐT/email), 20 req/phút theo IP (policy `login`); `/auth/refresh` 30/phút/IP. Cấu hình section `RateLimiting`.
 - Chống timing attack: khi username không tồn tại vẫn chạy hash giả.
 - Seed SystemAdmin: đọc `Bootstrap:AdminPhone`/`AdminPassword` từ secret; chỉ chạy khi chưa có SystemAdmin nào.
 

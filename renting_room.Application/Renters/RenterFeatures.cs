@@ -1,7 +1,6 @@
 using FluentValidation;
 using Mediator;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Common.Security;
 using renting_room.Application.Common.Models;
@@ -253,7 +252,7 @@ public sealed class GetRenterHandler(IAppDbContext db) : IRequestHandler<GetRent
 public sealed record RevealRenterIdNumberQuery(Guid Id) : IRequest<Result<string>>;
 
 public sealed class RevealRenterIdNumberHandler(
-    IAppDbContext db, ICurrentUser currentUser, IPersonalDataProtector protector, ILogger<RevealRenterIdNumberHandler> logger)
+    IAppDbContext db, ICurrentUser currentUser, IPersonalDataProtector protector, IAuditTrail auditTrail)
     : IRequestHandler<RevealRenterIdNumberQuery, Result<string>>
 {
     public async ValueTask<Result<string>> Handle(RevealRenterIdNumberQuery request, CancellationToken cancellationToken)
@@ -266,7 +265,7 @@ public sealed class RevealRenterIdNumberHandler(
         if (encrypted is null)
             return RenterErrors.RenterNotFound;
 
-        logger.LogWarning("AUDIT: user {UserId} revealed id number of renter {RenterId}", currentUser.UserId, request.Id);
+        auditTrail.RecordRead(AuditActions.RevealIdNumber, nameof(Renter), request.Id);
         return protector.Decrypt(encrypted);
     }
 }

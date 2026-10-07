@@ -38,6 +38,14 @@ public static class ProblemResponses
             extensions: extensions);
     }
 
+    /// <summary>Lỗi kỹ thuật không đến từ Result (VD 429 trong endpoint) — cùng định dạng với <see cref="WriteAsync"/>.</summary>
+    public static ProblemHttpResult Problem(int status, string code, string detail) =>
+        TypedResults.Problem(
+            title: TitleFor(status),
+            detail: detail,
+            statusCode: status,
+            extensions: new Dictionary<string, object?> { [CodeKey] = code });
+
     /// <summary>Ghi ProblemDetails trực tiếp vào response — dùng ở middleware (401, 403, 429).</summary>
     public static async Task WriteAsync(HttpContext httpContext, int status, string code, string detail)
     {

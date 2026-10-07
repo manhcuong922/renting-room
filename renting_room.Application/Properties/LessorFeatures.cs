@@ -1,7 +1,6 @@
 using FluentValidation;
 using Mediator;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Common.Security;
 using renting_room.Application.Common.Validation;
@@ -126,7 +125,7 @@ public sealed class UpdateLessorHandler(IAppDbContext db, ICurrentUser currentUs
 public sealed record RevealLessorIdNumberQuery(Guid PropertyId) : IRequest<Result<string>>;
 
 public sealed class RevealLessorIdNumberHandler(
-    IAppDbContext db, ICurrentUser currentUser, IPersonalDataProtector protector, ILogger<RevealLessorIdNumberHandler> logger)
+    IAppDbContext db, ICurrentUser currentUser, IPersonalDataProtector protector, IAuditTrail auditTrail)
     : IRequestHandler<RevealLessorIdNumberQuery, Result<string>>
 {
     public async ValueTask<Result<string>> Handle(RevealLessorIdNumberQuery request, CancellationToken cancellationToken)
@@ -143,8 +142,7 @@ public sealed class RevealLessorIdNumberHandler(
         if (encrypted.LessorIdNumberEncrypted is null)
             return string.Empty;
 
-        logger.LogWarning("AUDIT: user {UserId} revealed lessor id number of property {PropertyId}",
-            currentUser.UserId, request.PropertyId);
+        auditTrail.RecordRead(AuditActions.RevealIdNumber, nameof(Property), request.PropertyId);
         return protector.Decrypt(encrypted.LessorIdNumberEncrypted);
     }
 }

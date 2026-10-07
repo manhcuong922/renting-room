@@ -2,7 +2,6 @@ using System.Data;
 using FluentValidation;
 using Mediator;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Common.Security;
 using renting_room.Application.Common.Validation;
@@ -74,7 +73,7 @@ public sealed class ExportRentersHandler(
     IPersonalDataProtector protector,
     ISpreadsheetWriter writer,
     TimeProvider clock,
-    ILogger<ExportRentersHandler> logger)
+    IAuditTrail auditTrail)
     : IRequestHandler<ExportRentersQuery, Result<ExportFile>>
 {
     public async ValueTask<Result<ExportFile>> Handle(ExportRentersQuery request, CancellationToken cancellationToken)
@@ -108,8 +107,8 @@ public sealed class ExportRentersHandler(
             .ToList();
 
         if (request.IncludeSensitive)
-            logger.LogWarning("AUDIT: user {UserId} exported {RowCount} renters with full id numbers (properties {PropertyIds})",
-                currentUser.UserId, rows.Count, request.PropertyIds is { Count: > 0 } ids ? string.Join(",", ids) : "all");
+            auditTrail.RecordRead(AuditActions.ExportWithIdNumbers, nameof(Renter), null,
+                new { rowCount = rows.Count, propertyIds = request.PropertyIds is { Count: > 0 } ids ? ids : null, from, to });
 
         var subtitle = RenterExportSheets.Subtitle(from, to, today, now, request.IncludeSensitive);
         var idNumber = (RenterExportRow r) => request.IncludeSensitive

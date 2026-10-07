@@ -24,13 +24,13 @@ public sealed class InvoiceTests
         return fee;
     }
 
-    private static Contract Active(ChargeMode mode, DateOnly? start = null, int rentCycleMonths = 1, DateOnly? endDate = null)
+    private static Contract Active(ChargeMode mode, DateOnly? start = null, DateOnly? endDate = null, IReadOnlyCollection<ContractFeeInput>? fees = null)
     {
         var from = start ?? Start;
         var data = new ContractDraftData(RenterA, from, endDate, null, null, null, 3_500_000, 0, null, 5, mode, ProrationMode.Daily, 5, 30,
             [PaymentMethod.Cash], 2, null, null,
             [new OccupantInput(RenterA, from, null, null, null), new OccupantInput(RenterB, from, null, null, null, OccupantRelationship.CoTenant)],
-            Fees: [new ContractFeeInput(WaterPerPerson.Id, 1, null), new ContractFeeInput(Parking.Id, 2, null)], RentCycleMonths: rentCycleMonths);
+            Fees: fees ?? [new ContractFeeInput(WaterPerPerson.Id, 1, null), new ContractFeeInput(Parking.Id, 2, null)]);
         var contract = Contract.CreateDraft(PropertyId, RoomId, "HD2026-0001", data);
         contract.Activate(new ActivationContext(from, DateTimeOffset.UtcNow, true, 4, true, "{}", null, new DateOnly(1990, 1, 1), true))
             .IsSuccess.Should().BeTrue();
@@ -179,13 +179,29 @@ public sealed class InvoiceTests
     }
 
     [Fact]
-    public void RentCycle_CutAtEndDate_WhenContractEndsMidCycle()
+    public void ServicePrice_UsesLatestVersionUpToPeriodEnd_ForWholePeriod()
     {
-        var contract = Active(ChargeMode.Prepaid, rentCycleMonths: 3, endDate: Start.AddMonths(2).AddDays(-1)); // HĐ 2 tháng, chu kỳ 3 tháng
-        var rent = Calculate(contract, contract.BillingPeriods(Start).First()).Lines.Single(l => l.Type == InvoiceLineType.Rent);
+        var wifi = FeeType.Create(PropertyId, "Wifi", FeeGroup.Service, ChargeBasis.PerRoom, "phòng", false, null, 3);
+        wifi.AddPrice(new DateOnly(2026, 1, 1), 100_000, null, null);
+        wifi.AddPrice(Start.AddDays(20), 120_000, null, null); // tăng giá giữa kỳ 05/10–04/11
+        var contract = Active(ChargeMode.Prepaid, fees: [new ContractFeeInput(wifi.Id, 1, null)]);
 
-        rent.Quantity.Should().Be(2, "chu kỳ cuối chỉ tính tới ngày hết hạn");
-        rent.Amount.Should().Be(7_000_000);
+        var result = InvoiceCalculator.Calculate(new InvoiceCalcInput(contract, contract.BillingPeriods(Start).First(),
+            new Dictionary<Guid, FeeType> { [wifi.Id] = wifi }, [], new Dictionary<Guid, Guid>()));
+
+        var line = result.Lines.Single(l => l.Type == InvoiceLineType.Service);
+        line.UnitPrice.Should().Be(120_000, "giá theo phiên bản đang áp dụng tới cuối kỳ, không chia nửa kỳ");
+        line.Amount.Should().Be(120_000);
+    }
+
+    [Fact]
+    public void Rent_IsMonthlyOnly_OneLinePerPeriod()
+    {
+        var contract = Active(ChargeMode.Prepaid);
+        var periods = contract.BillingPeriods(Start.AddMonths(2)).ToList();
+
+        foreach (var period in periods.Take(3))
+            Calculate(contract, period).Lines.Single(l => l.Type == InvoiceLineType.Rent).Amount.Should().Be(3_500_000);
     }
 
     [Fact]
@@ -199,7 +215,7 @@ public sealed class InvoiceTests
 
         var result = InvoiceCalculator.Calculate(new InvoiceCalcInput(contract, period,
             new Dictionary<Guid, FeeType> { [Electricity.Id] = Electricity, [WaterPerPerson.Id] = WaterPerPerson, [Parking.Id] = Parking },
-            [meter], new Dictionary<Guid, Guid>(), new FinalSettlement(RentCovered: false, LastPeriodHasRegular: false)));
+            [meter], new Dictionary<Guid, Guid>(), new FinalSettlement(RentBilled: null, LastPeriodHasRegular: false)));
 
         var factor = 15m / 31; // 05/10–19/10 trong kỳ chuẩn 05/10–04/11
         result.Lines.Single(l => l.Type == InvoiceLineType.Rent).Amount.Should().Be(Invoice.Money(3_500_000 * factor));
@@ -208,7 +224,64 @@ public sealed class InvoiceTests
 
         var covered = InvoiceCalculator.Calculate(new InvoiceCalcInput(contract, period,
             new Dictionary<Guid, FeeType> { [Electricity.Id] = Electricity, [WaterPerPerson.Id] = WaterPerPerson, [Parking.Id] = Parking },
-            [meter], new Dictionary<Guid, Guid>(), new FinalSettlement(RentCovered: true, LastPeriodHasRegular: true)));
-        covered.Lines.Select(l => l.Type).Should().Equal(InvoiceLineType.Metered); // tiền phòng, dịch vụ đã thu — không hoàn (để sau)
+            [meter], new Dictionary<Guid, Guid>(), new FinalSettlement(RentBilled: 3_500_000, LastPeriodHasRegular: true)));
+        covered.Lines.Select(l => l.Type).Should().Equal(InvoiceLineType.Metered); // tiền phòng, dịch vụ đã thu — không tự hoàn
+        var overpaid = 3_500_000 - Invoice.Money(3_500_000 * factor);
+        covered.Issues.Should().ContainSingle(i => i.Code == "RENT_OVERPAID" && i.Severity == InvoiceIssue.Warning)
+            .Which.Message.Should().Contain($"{overpaid:N0}");
+    }
+
+    private static Invoice Draft(decimal rent = 1_000_000) =>
+        Invoice.CreateDraft(PropertyId, RoomId, Guid.NewGuid(), Start, Start.AddMonths(1).AddDays(-1), "101", "HD2026-0001", "A",
+            new InvoiceCalculation([new CalculatedLine(InvoiceLineType.Rent, null, "Tiền phòng", "tháng", Start, Start.AddMonths(1).AddDays(-1),
+                1, rent, 1, rent, 0)], [], []));
+
+    [Fact]
+    public void Refund_CanMakeTotalNegative_DiscountCannotExceedCharges()
+    {
+        var invoice = Draft();
+
+        invoice.AddManualLine(InvoiceLineType.ManualDiscount, "Giảm", null, null, 1_000_001, "Lý do", null).Error
+            .Should().Be(BillingErrors.NegativeTotal, "giảm trừ không vượt phần thu");
+        invoice.AddManualLine(InvoiceLineType.Refund, "Hoàn tiền phòng chưa ở", null, null, 1_500_000, "Trả phòng sớm", null)
+            .IsSuccess.Should().BeTrue();
+
+        invoice.Lines.Single(l => l.Type == InvoiceLineType.Refund).Amount.Should().Be(-1_500_000);
+        invoice.RefundTotal.Should().Be(-1_500_000);
+        invoice.DiscountTotal.Should().Be(0);
+        invoice.TotalAmount.Should().Be(-500_000);
+        invoice.AddManualLine(InvoiceLineType.Refund, "Hoàn", null, null, 1, null, null).Error.Should().Be(BillingErrors.NoteRequired);
+    }
+
+    [Fact]
+    public void NegativeInvoice_Finalized_IsRefundPending_UntilConfirmed_AndNotDebt()
+    {
+        var invoice = Draft();
+        invoice.AddManualLine(InvoiceLineType.Refund, "Hoàn cọc giữ chỗ", null, null, 1_200_000, "Trả phòng", null);
+        var today = Start.AddMonths(1);
+        invoice.Finalize("PB2026-000001", today, 5, DateTimeOffset.UtcNow).IsSuccess.Should().BeTrue();
+
+        invoice.PaymentStatus(today).Should().Be(InvoicePaymentStatus.RefundPending);
+        invoice.Outstanding.Should().Be(0, "phiếu âm không phải nợ");
+        invoice.RefundDue.Should().Be(200_000);
+        invoice.ConfirmRefund(today.AddDays(1), PaymentMethod.Cash, null, today).Error.Should().Be(BillingErrors.InvalidRefundDate);
+
+        invoice.ConfirmRefund(today, PaymentMethod.BankTransfer, "CK Vietcombank", today).IsSuccess.Should().BeTrue();
+        invoice.PaymentStatus(today).Should().Be(InvoicePaymentStatus.Refunded);
+        invoice.RefundDue.Should().Be(0);
+        invoice.Void("Sai", DateTimeOffset.UtcNow).Error.Should().Be(BillingErrors.RefundConfirmed);
+
+        invoice.CancelRefund().IsSuccess.Should().BeTrue();
+        invoice.Void("Sai", DateTimeOffset.UtcNow).IsSuccess.Should().BeTrue();
+    }
+
+    [Fact]
+    public void ConfirmRefund_RejectedWhenNothingToRefund()
+    {
+        var invoice = Draft();
+        invoice.Finalize("PB2026-000002", Start, 5, DateTimeOffset.UtcNow);
+
+        invoice.ConfirmRefund(Start, PaymentMethod.Cash, null, Start).Error.Should().Be(BillingErrors.NothingToRefund);
+        invoice.PaymentStatus(Start).Should().Be(InvoicePaymentStatus.Unpaid);
     }
 }

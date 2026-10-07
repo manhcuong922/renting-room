@@ -31,5 +31,6 @@ public sealed class DesignTimeDbContextFactory : IDesignTimeDbContextFactory<App
         public Guid? UserId => null;
         public Guid? OrganizationId => null;
         public UserRole? Role => null;
+        public string? IpAddress => null;
     }
 }

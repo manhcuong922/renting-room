@@ -7,28 +7,35 @@ Hồ sơ người thuê dùng chung trong tổ chức: một người có thể 
 
 | Màn hình | Endpoint |
 |----------|----------|
-| Danh sách / tìm kiếm người thuê | `GET /renters` |
+| Danh sách / tìm kiếm người thuê | `GET /renters` (tên, SĐT) · `POST /renters/search` (có số giấy tờ) |
 | Form tạo hồ sơ (cũng dùng làm modal "Thêm nhanh" trong wizard hợp đồng) | `POST /renters` |
 | Chi tiết / sửa hồ sơ | `GET /renters/{id}`, `PUT /renters/{id}` |
 | Nút 👁 xem số giấy tờ đầy đủ | `POST /renters/{id}/reveal-id-number` |
 
 ## Tìm kiếm
 
-`GET /renters?q=lan&idNumber=&idType=&page=1&pageSize=20`
+**Theo tên / SĐT:** `GET /renters?q=lan&page=1&pageSize=20`
 
-| Query | Cách khớp |
-|-------|-----------|
+**Theo số giấy tờ:** `POST /renters/search` — số giấy tờ đi trong **body**, không đặt trên URL (URL bị ghi vào log proxy,
+lịch sử trình duyệt, header `Referer`). Không cần `Idempotency-Key` (chỉ đọc).
+
+```json
+{ "idNumber": "036202012345", "idType": "CitizenId", "q": null, "page": 1, "pageSize": 20 }
+```
+
+| Trường | Cách khớp |
+|--------|-----------|
 | `q` | Một phần **họ tên, không cần dấu** (`tran thi` khớp "Trần Thị Lan") **hoặc** đúng SĐT (`0987 654 321`, `+84987654321`) |
-| `idNumber` | **Khớp chính xác** toàn bộ số giấy tờ (không tìm một phần — dữ liệu được mã hóa) |
+| `idNumber` | **Khớp chính xác** toàn bộ số giấy tờ (không tìm một phần — dữ liệu được mã hóa). Chỉ có ở `POST /renters/search` |
 | `idType` | Kèm `idNumber` để thu hẹp; bỏ trống = tìm mọi loại |
 
-Sắp theo tên. Response: trang `RenterDto` (như chi tiết bên dưới).
+Sắp theo tên. Response (cả hai endpoint): trang `RenterDto` (như chi tiết bên dưới).
 
 **Ô chọn người thuê (autocomplete) trong wizard hợp đồng** — gợi ý:
 1. Người dùng gõ ≥ 2 ký tự → debounce 300ms → `GET /renters?q=…&pageSize=10`.
 2. Hiện `fullName` · `dateOfBirth` · `phone` · `idNumberMasked`.
 3. Không thấy → nút "Thêm người thuê mới" mở modal tạo → tạo xong tự chọn.
-4. Gõ đủ 9/12 chữ số → có thể gọi thêm `?idNumber=` để tìm chính xác.
+4. Gõ đủ 9/12 chữ số → có thể gọi thêm `POST /renters/search` với `{ "idNumber": … }` để tìm chính xác.
 
 ## Tạo hồ sơ
 
@@ -131,3 +138,4 @@ Tab "Lịch sử thuê" trong chi tiết: `GET /contracts?renterId={id}` — cá
 
 `POST /renters/{id}/reveal-id-number` → `{ "idNumber": "036202012345" }`. Không có quyền dữ liệu nhạy cảm → 403 `SENSITIVE_DATA_FORBIDDEN` (ẩn nút khi `canViewSensitiveData = false`).
 Mỗi lần gọi được ghi log kiểm toán. Không cache, không tự gọi; ẩn lại sau ~30 giây.
+Giới hạn **5 lần/phút mỗi tài khoản**, dùng chung với xem số giấy tờ bên cho thuê, xuất Excel và đổi mật khẩu → 429 `TOO_MANY_REQUESTS` (khóa nút theo `Retry-After`).

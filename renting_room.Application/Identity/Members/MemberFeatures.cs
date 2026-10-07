@@ -196,11 +196,13 @@ public sealed class ChangeManagerStatusHandler(
     }
 }
 
-/// <summary>ID-BR-22: chủ trọ cấp / thu hồi quyền xem dữ liệu nhạy cảm cho phó quản lý — ghi log kiểm toán.</summary>
+/// <summary>
+/// ID-BR-22: chủ trọ cấp / thu hồi quyền xem dữ liệu nhạy cảm cho phó quản lý — audit tự ghi khi lưu
+/// (Updated User, <c>canViewSensitiveData</c> cũ → mới).
+/// </summary>
 public sealed record SetSensitiveDataAccessCommand(Guid Id, bool Allowed) : IRequest<Result<MemberDto>>;
 
-public sealed class SetSensitiveDataAccessHandler(
-    IAppDbContext db, ICurrentUser currentUser, ILogger<SetSensitiveDataAccessHandler> logger)
+public sealed class SetSensitiveDataAccessHandler(IAppDbContext db, ICurrentUser currentUser)
     : IRequestHandler<SetSensitiveDataAccessCommand, Result<MemberDto>>
 {
     public async ValueTask<Result<MemberDto>> Handle(SetSensitiveDataAccessCommand request, CancellationToken cancellationToken)
@@ -215,8 +217,6 @@ public sealed class SetSensitiveDataAccessHandler(
             return changed.Error!;
 
         await db.SaveChangesAsync(cancellationToken);
-        logger.LogWarning("AUDIT: owner {ActorId} {Action} sensitive data access of manager {UserId}",
-            currentUser.UserId, request.Allowed ? "granted" : "revoked", user.Id);
         return await db.Users.AsNoTracking().Where(u => u.Id == user.Id).ToDto().FirstAsync(cancellationToken);
     }
 }

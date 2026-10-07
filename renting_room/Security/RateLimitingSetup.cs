@@ -2,6 +2,7 @@ using System.ComponentModel.DataAnnotations;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Options;
 using renting_room.Application.Common.Security;
@@ -26,8 +27,14 @@ public sealed class RateLimitingOptions
     /// <summary>Tắt toàn bộ (chỉ dùng khi debug cục bộ).</summary>
     public bool Enabled { get; init; } = true;
 
-    /// <summary>Đăng nhập — theo IP (chống dò mật khẩu; khóa theo tài khoản do ID-BR-06).</summary>
-    [Required] public RateLimitRule Login { get; init; } = new() { PermitLimit = 10 };
+    /// <summary>Đăng nhập — theo IP, mọi tài khoản cộng lại (M01 §11: 20/phút).</summary>
+    [Required] public RateLimitRule Login { get; init; } = new() { PermitLimit = 20 };
+
+    /// <summary>
+    /// Đăng nhập — theo IP + tài khoản (M01 §11: 5/phút): chặn dò mật khẩu một tài khoản và giảm việc cố ý gõ sai
+    /// để khóa tài khoản người khác (ID-BR-06), trong khi người khác cùng IP (cùng wifi nhà trọ) vẫn đăng nhập được.
+    /// </summary>
+    [Required] public RateLimitRule LoginPerAccount { get; init; } = new() { PermitLimit = 5 };
 
     /// <summary>Làm mới token / đăng xuất — theo IP.</summary>
     [Required] public RateLimitRule Refresh { get; init; } = new() { PermitLimit = 30 };
@@ -64,6 +71,7 @@ public static class RateLimitPolicies
 ///   2. Request ghi (POST/PUT/PATCH/DELETE) → Write
 ///   3. Số request song song → MaxConcurrentRequestsPerClient
 /// Policy theo endpoint: login, refresh (theo IP) · sensitive (theo user)
+/// Trong endpoint login: theo IP + tài khoản (<see cref="LoginAttemptLimiter"/> — cần username trong body)
 /// </code>
 /// Dùng cửa sổ TRƯỢT (6 phân đoạn) thay cho cửa sổ cố định: cửa sổ cố định cho phép bắn gấp đôi giới hạn
 /// ở ranh giới (cuối phút trước + đầu phút sau).
@@ -77,10 +85,11 @@ internal static class RateLimitingSetup
         services.AddOptions<RateLimitingOptions>()
             .Bind(configuration.GetSection(RateLimitingOptions.SectionName))
             .ValidateDataAnnotations()
-            .Validate(o => new[] { o.Login, o.Refresh, o.Sensitive, o.Authenticated, o.Anonymous, o.Write }
+            .Validate(o => new[] { o.Login, o.LoginPerAccount, o.Refresh, o.Sensitive, o.Authenticated, o.Anonymous, o.Write }
                     .All(r => r.PermitLimit >= 1 && r.WindowSeconds is >= 1 and <= 3600),
                 "Every RateLimiting rule needs PermitLimit >= 1 and WindowSeconds in [1, 3600].")
             .ValidateOnStart();
+        services.AddSingleton<LoginAttemptLimiter>();
 
         services.AddRateLimiter(options =>
         {
@@ -133,10 +142,26 @@ internal static class RateLimitingSetup
 
     private static async ValueTask OnRejectedAsync(OnRejectedContext context, CancellationToken cancellationToken)
     {
-        var http = context.HttpContext;
+        var retryAfter = PrepareRejection(context.HttpContext, context.Lease);
+        await ProblemResponses.WriteAsync(context.HttpContext, StatusCodes.Status429TooManyRequests, TooManyRequestsCode,
+            TooManyRequestsMessage(retryAfter));
+    }
 
+    /// <summary>429 cho limiter gọi trong endpoint (ngoài middleware) — cùng header, log và nội dung với <see cref="OnRejectedAsync"/>.</summary>
+    internal static ProblemHttpResult TooManyRequests(HttpContext http, RateLimitLease lease) =>
+        ProblemResponses.Problem(StatusCodes.Status429TooManyRequests, TooManyRequestsCode,
+            TooManyRequestsMessage(PrepareRejection(http, lease)));
+
+    private const string TooManyRequestsCode = "TOO_MANY_REQUESTS";
+
+    private static string TooManyRequestsMessage(int retryAfterSeconds) =>
+        $"Bạn thao tác quá nhanh. Vui lòng thử lại sau {retryAfterSeconds} giây.";
+
+    /// <summary>Đặt header Retry-After + ghi log; trả số giây chờ.</summary>
+    private static int PrepareRejection(HttpContext http, RateLimitLease lease)
+    {
         // Limiter đồng thời không có RetryAfter — mặc định 1 giây.
-        var retryAfter = context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var value)
+        var retryAfter = lease.TryGetMetadata(MetadataName.RetryAfter, out var value)
             ? Math.Max(1, (int)Math.Ceiling(value.TotalSeconds))
             : 1;
         http.Response.Headers.RetryAfter = retryAfter.ToString();
@@ -144,9 +169,7 @@ internal static class RateLimitingSetup
         http.RequestServices.GetRequiredService<ILoggerFactory>()
             .CreateLogger(nameof(RateLimitingSetup))
             .LogWarning("Rate limit exceeded for {ClientKey} on {Method} {Path}", ClientKey(http), http.Request.Method, http.Request.Path);
-
-        await ProblemResponses.WriteAsync(http, StatusCodes.Status429TooManyRequests, "TOO_MANY_REQUESTS",
-            $"Bạn thao tác quá nhanh. Vui lòng thử lại sau {retryAfter} giây.");
+        return retryAfter;
     }
 
     private static RateLimitingOptions Settings(HttpContext http) =>
@@ -194,13 +217,15 @@ internal static class RateLimitingSetup
             return RateLimitPartition.GetNoLimiter(key);
 
         var rule = selectRule(settings);
-        return RateLimitPartition.GetSlidingWindowLimiter(key, _ => new SlidingWindowRateLimiterOptions
-        {
-            PermitLimit = rule.PermitLimit,
-            Window = TimeSpan.FromSeconds(rule.WindowSeconds),
-            SegmentsPerWindow = SegmentsPerWindow,
-            QueueLimit = 0,
-            AutoReplenishment = true
-        });
+        return RateLimitPartition.GetSlidingWindowLimiter(key, _ => SlidingOptions(rule));
     }
+
+    internal static SlidingWindowRateLimiterOptions SlidingOptions(RateLimitRule rule) => new()
+    {
+        PermitLimit = rule.PermitLimit,
+        Window = TimeSpan.FromSeconds(rule.WindowSeconds),
+        SegmentsPerWindow = SegmentsPerWindow,
+        QueueLimit = 0,
+        AutoReplenishment = true
+    };
 }

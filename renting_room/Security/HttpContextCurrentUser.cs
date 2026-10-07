@@ -21,6 +21,8 @@ internal sealed class HttpContextCurrentUser(IHttpContextAccessor httpContextAcc
             ? role
             : null;
 
+    public string? IpAddress => httpContextAccessor.HttpContext?.Connection.RemoteIpAddress?.ToString();
+
     private Guid? ReadGuid(string claimType) =>
         IsAuthenticated && Guid.TryParse(Principal!.FindFirstValue(claimType), out var value) ? value : null;
 }

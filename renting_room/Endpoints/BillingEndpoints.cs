@@ -18,6 +18,12 @@ public sealed record EditInvoiceLineRequest(decimal? Quantity, decimal? UnitPric
 
 public sealed record AddInvoiceLineRequest(InvoiceLineType Type, string Description, decimal? Quantity, decimal? UnitPrice, decimal Amount, string Note, Guid? FeeTypeId);
 
+public sealed record BulkAddInvoiceLineRequest(
+    IReadOnlyList<Guid>? InvoiceIds, Guid? PropertyId, string? BillingMonth, IReadOnlyList<Guid>? RoomIds, string? Floor,
+    InvoiceLineType Type, string Description, decimal? Quantity, decimal? UnitPrice, decimal Amount, string Note, Guid? FeeTypeId);
+
+public sealed record ConfirmRefundRequest(DateOnly RefundedOn, PaymentMethod Method, string? Note);
+
 public sealed record InvoiceNoteRequest(string? Note);
 
 public sealed record FinalizeBatchRequest(IReadOnlyList<Guid> InvoiceIds);
@@ -86,7 +92,12 @@ public static class BillingEndpoints
             .WithSummary("Dòng hệ thống: bỏ sửa tay; phụ thu / giảm tay: xóa dòng");
         invoices.MapPost("/{id:guid}/manual-lines", async (Guid id, AddInvoiceLineRequest b, ISender sender, CancellationToken ct) =>
                 (await sender.Send(new AddInvoiceManualLineCommand(id, b.Type, b.Description, b.Quantity, b.UnitPrice, b.Amount, b.Note, b.FeeTypeId), ct)).ToHttp())
-            .WithSummary("Thêm phụ thu (lý do bắt buộc) hoặc giảm trừ vào phiếu nháp");
+            .WithSummary("Thêm phụ thu, giảm trừ hoặc hoàn trả (lý do bắt buộc) vào phiếu nháp");
+        invoices.MapPost("/manual-lines", async (BulkAddInvoiceLineRequest b, ISender sender, CancellationToken ct) =>
+                (await sender.Send(new BulkAddManualLineCommand(b.InvoiceIds, b.PropertyId, b.BillingMonth, b.RoomIds, b.Floor,
+                    b.Type, b.Description, b.Quantity, b.UnitPrice, b.Amount, b.Note, b.FeeTypeId), ct)).ToHttp())
+            .WithIdempotency(required: false)
+            .WithSummary("Thêm cùng một phụ thu / giảm trừ / hoàn trả cho nhiều phòng: theo danh sách phiếu, hoặc khu + tháng (lọc phòng / tầng) — kết quả từng phiếu");
         invoices.MapPut("/{id:guid}/note", async (Guid id, InvoiceNoteRequest b, ISender sender, CancellationToken ct) =>
                 (await sender.Send(new UpdateInvoiceNoteCommand(id, b.Note), ct)).ToHttp())
             .WithSummary("Ghi chú in trên phiếu (nháp)");
@@ -101,6 +112,12 @@ public static class BillingEndpoints
         invoices.MapPost("/{id:guid}/void", async (Guid id, VoidInvoiceRequest b, ISender sender, CancellationToken ct) =>
                 (await sender.Send(new VoidInvoiceCommand(id, b.Reason), ct)).ToHttp())
             .WithSummary("Hủy phiếu đã chốt (chưa thu tiền, phiếu mới nhất của hợp đồng)");
+        invoices.MapPost("/{id:guid}/refund", async (Guid id, ConfirmRefundRequest b, ISender sender, CancellationToken ct) =>
+                (await sender.Send(new ConfirmInvoiceRefundCommand(id, b.RefundedOn, b.Method, b.Note), ct)).ToHttp())
+            .WithSummary("Xác nhận đã trả lại người thuê phần tổng âm của phiếu (hoàn trả > phần thu)");
+        invoices.MapDelete("/{id:guid}/refund", async (Guid id, ISender sender, CancellationToken ct) =>
+                (await sender.Send(new CancelInvoiceRefundCommand(id), ct)).ToHttp())
+            .WithSummary("Bỏ xác nhận đã hoàn (nhập nhầm)");
 
         app.MapGroup($"{EndpointHelpers.ApiPrefix}/rooms/{{roomId:guid}}").WithTags("Invoices")
             .MapGet("/invoices", async (Guid roomId, int? page, int? pageSize, ISender sender, CancellationToken ct) =>

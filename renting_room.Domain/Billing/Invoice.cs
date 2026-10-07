@@ -1,4 +1,5 @@
 using renting_room.Domain.Common;
+using renting_room.Domain.Contracts;
 
 namespace renting_room.Domain.Billing;
 
@@ -15,14 +16,17 @@ public enum InvoiceStatus
     Void
 }
 
-/// <summary>Nhóm dòng trên phiếu (M07): Tiền phòng · Điện nước · Dịch vụ · Phụ thu · Giảm trừ.</summary>
+/// <summary>Nhóm dòng trên phiếu (M07): Tiền phòng · Điện nước · Dịch vụ · Phụ thu · Giảm trừ · Hoàn trả.</summary>
 public enum InvoiceLineType
 {
     Rent,
     Metered,
     Service,
     Surcharge,
-    ManualDiscount
+    ManualDiscount,
+
+    /// <summary>Hoàn trả cho người thuê (BL-BR-27) — nhập tay như phụ thu, lưu số âm, được làm tổng phiếu âm.</summary>
+    Refund
 }
 
 /// <summary>Trạng thái thu tiền (dẫn xuất, chỉ phiếu đã chốt).</summary>
@@ -34,7 +38,13 @@ public enum InvoicePaymentStatus
     Overdue,
 
     /// <summary>Đã đóng bằng "bỏ nợ" (PM-BR-16) — không tính doanh thu.</summary>
-    WrittenOff
+    WrittenOff,
+
+    /// <summary>Tổng âm (hoàn trả lớn hơn phần thu) — chủ trọ phải trả lại người thuê, chưa xác nhận (BL-BR-27).</summary>
+    RefundPending,
+
+    /// <summary>Tổng âm, chủ trọ đã xác nhận trả lại người thuê.</summary>
+    Refunded
 }
 
 /// <summary>Vấn đề của phiếu nháp: <c>Error</c> chặn chốt (thiếu chỉ số, thiếu giá…), <c>Warning</c> chỉ nhắc.</summary>
@@ -93,6 +103,11 @@ public sealed class Invoice : TenantEntity
     public DateOnly? DueDate { get; private set; }
     public decimal Subtotal { get; private set; }
     public decimal DiscountTotal { get; private set; }
+
+    /// <summary>Σ dòng hoàn trả (≤ 0) — tách khỏi giảm trừ vì được làm tổng phiếu âm (BL-BR-27).</summary>
+    public decimal RefundTotal { get; private set; }
+
+    /// <summary>Subtotal + DiscountTotal + RefundTotal; âm ⇒ chủ trọ phải trả lại người thuê.</summary>
     public decimal TotalAmount { get; private set; }
 
     /// <summary>Tổng đã thu — M08 cập nhật trong cùng transaction với phân bổ (PM-BR-05).</summary>
@@ -109,10 +124,22 @@ public sealed class Invoice : TenantEntity
     public DateTimeOffset? VoidedAt { get; private set; }
     public string? VoidReason { get; private set; }
 
+    /// <summary>Xác nhận đã trả lại người thuê phần tổng âm (BL-BR-27).</summary>
+    public DateOnly? RefundedOn { get; private set; }
+    public PaymentMethod? RefundMethod { get; private set; }
+    public string? RefundNote { get; private set; }
+
     public IReadOnlyList<InvoiceLine> Lines => _lines;
     public IReadOnlyList<InvoiceMeterSegment> Segments => _segments;
 
-    public decimal Outstanding => Status == InvoiceStatus.Finalized ? TotalAmount - PaidAmount : 0;
+    /// <summary>Còn nợ (≥ 0) — phiếu tổng âm không bù trừ nợ của phiếu khác.</summary>
+    public decimal Outstanding => Status == InvoiceStatus.Finalized ? Math.Max(TotalAmount - PaidAmount, 0) : 0;
+
+    /// <summary>Số chủ trọ còn phải trả lại người thuê (phiếu đã chốt, tổng âm, chưa xác nhận đã hoàn).</summary>
+    public decimal RefundDue => Status == InvoiceStatus.Finalized && TotalAmount < 0 && RefundedOn is null ? -TotalAmount : 0;
+
+    /// <summary>Phần thu sau giảm trừ (không tính hoàn trả) — luôn phải ≥ 0 (BL-BR-10).</summary>
+    public decimal NetCharges => Subtotal + DiscountTotal;
     public bool HasBlockingIssues => Issues.Any(i => i.Severity == InvoiceIssue.Error);
 
     public static Invoice CreateDraft(
@@ -138,12 +165,18 @@ public sealed class Invoice : TenantEntity
         return invoice;
     }
 
-    public InvoicePaymentStatus? PaymentStatus(DateOnly today) => Status != InvoiceStatus.Finalized ? null
-        : PaidAmount >= TotalAmount && WrittenOffAmount > 0 ? InvoicePaymentStatus.WrittenOff
-        : PaidAmount >= TotalAmount ? InvoicePaymentStatus.Paid
-        : DueDate < today ? InvoicePaymentStatus.Overdue
-        : PaidAmount > 0 ? InvoicePaymentStatus.PartiallyPaid
-        : InvoicePaymentStatus.Unpaid;
+    public InvoicePaymentStatus? PaymentStatus(DateOnly today)
+    {
+        if (Status != InvoiceStatus.Finalized)
+            return null;
+        if (TotalAmount < 0)
+            return RefundedOn is null ? InvoicePaymentStatus.RefundPending : InvoicePaymentStatus.Refunded;
+        if (PaidAmount >= TotalAmount)
+            return WrittenOffAmount > 0 ? InvoicePaymentStatus.WrittenOff : InvoicePaymentStatus.Paid;
+        if (DueDate < today)
+            return InvoicePaymentStatus.Overdue;
+        return PaidAmount > 0 ? InvoicePaymentStatus.PartiallyPaid : InvoicePaymentStatus.Unpaid;
+    }
 
     /// <summary>
     /// BL-BR-07 / BL-UC-06: thay dòng hệ thống bằng kết quả tính mới. Ô sửa tay được giữ (nếu <paramref name="keepManualEdits"/>) và
@@ -187,8 +220,8 @@ public sealed class Invoice : TenantEntity
         _segments.AddRange(calculation.Segments.Select(s => new InvoiceMeterSegment(Id, s)));
         Issues = issues;
         Recompute();
-        if (TotalAmount < 0)
-            Issues = [.. Issues, new InvoiceIssue("NEGATIVE_TOTAL", InvoiceIssue.Error, "Tổng phiếu âm — giảm bớt dòng giảm trừ.")];
+        if (NetCharges < 0)
+            Issues = [.. Issues, new InvoiceIssue("NEGATIVE_TOTAL", InvoiceIssue.Error, "Giảm trừ lớn hơn phần thu — giảm bớt dòng giảm trừ.")];
         return Result.Success();
     }
 
@@ -227,7 +260,7 @@ public sealed class Invoice : TenantEntity
         var q = quantity ?? line.Quantity;
         var p = unitPrice ?? line.UnitPrice;
         var newAmount = amount ?? Money(q * p * (line.ProrationFactor ?? 1));
-        if (TotalAmount - line.Amount + newAmount < 0)
+        if (NetCharges - line.Amount + newAmount < 0)
             return Result.Failure(BillingErrors.NegativeTotal);
 
         line.Edit(q, p, newAmount, note);
@@ -250,19 +283,22 @@ public sealed class Invoice : TenantEntity
         return Result.Success();
     }
 
-    /// <summary>BL-BR-23: phụ thu (lý do bắt buộc) / giảm tay. Nhập số dương; giảm trừ lưu số âm.</summary>
+    /// <summary>
+    /// BL-BR-23 / BL-BR-27: phụ thu, giảm tay, hoàn trả — lý do bắt buộc, nhập số dương; giảm trừ và hoàn trả lưu số âm.
+    /// Giảm trừ không vượt phần thu; hoàn trả được làm tổng phiếu âm (chủ trọ trả lại người thuê).
+    /// </summary>
     public Result<InvoiceLine> AddManualLine(
         InvoiceLineType type, string description, decimal? quantity, decimal? unitPrice, decimal amount, string? note, Guid? feeTypeId)
     {
         if (Status != InvoiceStatus.Draft)
             return Result.Failure<InvoiceLine>(BillingErrors.NotDraft);
-        if (type is not (InvoiceLineType.Surcharge or InvoiceLineType.ManualDiscount))
-            throw new ArgumentException("Manual lines are surcharges or discounts.", nameof(type));
+        if (!IsManualType(type))
+            throw new ArgumentException("Manual lines are surcharges, discounts or refunds.", nameof(type));
         if (string.IsNullOrWhiteSpace(note))
             return Result.Failure<InvoiceLine>(BillingErrors.NoteRequired);
 
-        var signed = type == InvoiceLineType.ManualDiscount ? -amount : amount;
-        if (TotalAmount + signed < 0)
+        var signed = Signed(type, amount);
+        if (type != InvoiceLineType.Refund && NetCharges + signed < 0)
             return Result.Failure<InvoiceLine>(BillingErrors.NegativeTotal);
 
         var line = InvoiceLine.Manual(Id, type, description, quantity, unitPrice, signed, note, feeTypeId,
@@ -282,8 +318,8 @@ public sealed class Invoice : TenantEntity
         if (string.IsNullOrWhiteSpace(note))
             return Result.Failure(BillingErrors.NoteRequired);
 
-        var signed = line.Type == InvoiceLineType.ManualDiscount ? -amount : amount;
-        if (TotalAmount - line.Amount + signed < 0)
+        var signed = Signed(line.Type, amount);
+        if (line.Type != InvoiceLineType.Refund && NetCharges - line.Amount + signed < 0)
             return Result.Failure(BillingErrors.NegativeTotal);
         line.UpdateManual(description, quantity, unitPrice, signed, note);
         Recompute();
@@ -297,7 +333,7 @@ public sealed class Invoice : TenantEntity
         var line = _lines.FirstOrDefault(l => l.Id == lineId && !l.IsSystem);
         if (line is null)
             return Result.Failure(BillingErrors.LineNotFound);
-        if (TotalAmount - line.Amount < 0)
+        if (line.Type != InvoiceLineType.Refund && NetCharges - line.Amount < 0)
             return Result.Failure(BillingErrors.NegativeTotal);
 
         _lines.Remove(line);
@@ -312,7 +348,7 @@ public sealed class Invoice : TenantEntity
             return Result.Failure(BillingErrors.NotDraft);
         if (HasBlockingIssues)
             return Result.Failure(BillingErrors.HasIssues(Issues.Where(i => i.Severity == InvoiceIssue.Error).Select(i => i.Code).Distinct().ToList()));
-        if (TotalAmount < 0)
+        if (NetCharges < 0)
             return Result.Failure(BillingErrors.NegativeTotal);
 
         InvoiceNo = invoiceNo;
@@ -330,6 +366,8 @@ public sealed class Invoice : TenantEntity
             return Result.Failure(BillingErrors.NotFinalized);
         if (PaidAmount > 0)
             return Result.Failure(BillingErrors.HasPayments);
+        if (RefundedOn is not null)
+            return Result.Failure(BillingErrors.RefundConfirmed);
 
         Status = InvoiceStatus.Void;
         VoidReason = reason.Trim();
@@ -352,13 +390,49 @@ public sealed class Invoice : TenantEntity
             WrittenOffAmount += delta;
     }
 
+    /// <summary>BL-BR-27: xác nhận đã trả lại người thuê phần tổng âm của phiếu đã chốt.</summary>
+    public Result ConfirmRefund(DateOnly refundedOn, PaymentMethod method, string? note, DateOnly today)
+    {
+        if (Status != InvoiceStatus.Finalized)
+            return Result.Failure(BillingErrors.NotFinalized);
+        if (TotalAmount >= 0)
+            return Result.Failure(BillingErrors.NothingToRefund);
+        if (RefundedOn is not null)
+            return Result.Failure(BillingErrors.RefundConfirmed);
+        if (refundedOn > today || refundedOn < IssueDate)
+            return Result.Failure(BillingErrors.InvalidRefundDate);
+
+        RefundedOn = refundedOn;
+        RefundMethod = method;
+        RefundNote = TextNormalizer.TrimToNull(note);
+        return Result.Success();
+    }
+
+    /// <summary>Bỏ xác nhận đã hoàn (nhập nhầm) — cần trước khi hủy phiếu.</summary>
+    public Result CancelRefund()
+    {
+        if (RefundedOn is null)
+            return Result.Failure(BillingErrors.RefundNotConfirmed);
+        RefundedOn = null;
+        RefundMethod = null;
+        RefundNote = null;
+        return Result.Success();
+    }
+
     public void UpdateNote(string? note) => Note = TextNormalizer.TrimToNull(note);
+
+    public static bool IsManualType(InvoiceLineType type) =>
+        type is InvoiceLineType.Surcharge or InvoiceLineType.ManualDiscount or InvoiceLineType.Refund;
+
+    private static decimal Signed(InvoiceLineType type, decimal amount) =>
+        type is InvoiceLineType.ManualDiscount or InvoiceLineType.Refund ? -amount : amount;
 
     private void Recompute()
     {
         Subtotal = _lines.Where(l => l.Amount > 0).Sum(l => l.Amount);
-        DiscountTotal = _lines.Where(l => l.Amount < 0).Sum(l => l.Amount);
-        TotalAmount = Subtotal + DiscountTotal;
+        DiscountTotal = _lines.Where(l => l.Amount < 0 && l.Type != InvoiceLineType.Refund).Sum(l => l.Amount);
+        RefundTotal = _lines.Where(l => l.Type == InvoiceLineType.Refund).Sum(l => l.Amount);
+        TotalAmount = Subtotal + DiscountTotal + RefundTotal;
     }
 
     /// <summary>C-03: làm tròn ở cấp dòng, về đồng.</summary>
@@ -524,7 +598,19 @@ public static class BillingErrors
     public static readonly Error NotDraft = Error.BusinessRule("INVOICE_NOT_DRAFT", "Phiếu đã chốt / đã hủy — không sửa được.");
     public static readonly Error NotFinalized = Error.BusinessRule("INVOICE_NOT_FINALIZED", "Phiếu chưa chốt.");
     public static readonly Error NoteRequired = Error.Validation("NOTE_REQUIRED", "Nhập lý do / ghi chú.");
-    public static readonly Error NegativeTotal = Error.BusinessRule("NEGATIVE_TOTAL", "Tổng phiếu không được âm.");
+    public static readonly Error NegativeTotal = Error.BusinessRule("NEGATIVE_TOTAL",
+        "Giảm trừ không được lớn hơn phần thu — muốn trả lại tiền cho người thuê thì dùng dòng Hoàn trả.");
+    public static readonly Error NothingToRefund = Error.BusinessRule("NOTHING_TO_REFUND", "Phiếu không có khoản phải trả lại người thuê.");
+    public static readonly Error RefundConfirmed = Error.BusinessRule("REFUND_CONFIRMED",
+        "Phiếu đã xác nhận trả lại tiền cho người thuê — bỏ xác nhận trước.");
+    public static readonly Error RefundNotConfirmed = Error.BusinessRule("REFUND_NOT_CONFIRMED", "Phiếu chưa xác nhận đã hoàn tiền.");
+    public static readonly Error InvalidRefundDate = Error.Validation("INVALID_REFUND_DATE", "Ngày hoàn từ ngày lập phiếu tới hôm nay.");
+
+    public static Error RefundPending(decimal amount) =>
+        Error.BusinessRule("REFUND_PENDING", $"Còn {amount:N0}đ phải trả lại người thuê — xác nhận đã hoàn trên phiếu trước.")
+            .WithDetail("refundDue", amount);
+    public static readonly Error ConcurrencyConflict = Error.Conflict("CONCURRENCY_CONFLICT", "Phiếu vừa được người khác sửa — tải lại.");
+    public static readonly Error SaveFailed = Error.Conflict("INVOICE_SAVE_FAILED", "Không lưu được phiếu — tải lại rồi thử lại.");
     public static readonly Error HasPayments = Error.BusinessRule("INVOICE_HAS_PAYMENTS", "Phiếu đã thu tiền — đảo phiếu thu trước khi hủy.");
     public static readonly Error NotLatest = Error.BusinessRule("NOT_LATEST_INVOICE",
         "Chỉ hủy / xóa được phiếu mới nhất của hợp đồng — hủy các phiếu kỳ sau trước.");

@@ -44,7 +44,7 @@ cho người chưa thành niên; chặn một người ở 2 phòng cùng lúc.
 
 | ID | Mô tả |
 |----|-------|
-| CT-UC-01 | Tạo HĐ nháp: chọn phòng, người đại diện, người ở, ngày bắt đầu, thời hạn (bỏ trống = không thời hạn), giá thuê, tiền cọc, cài đặt kỳ thu (mặc định từ khu), khoản thu **cố định / theo số lượng** (auto-attach từ M04, chỉnh được — điện nước theo công tơ đi theo phòng, FE-BR-17), điều khoản (text) |
+| CT-UC-01 | Tạo HĐ nháp: chọn phòng, người đại diện, người ở, ngày bắt đầu, thời hạn (bỏ trống = không thời hạn), giá thuê, tiền cọc, cài đặt kỳ thu (theo khu — không chọn riêng), khoản thu **cố định / theo số lượng** (auto-attach từ M04, chỉnh được — điện nước theo công tơ đi theo phòng, FE-BR-17), điều khoản (text) |
 | CT-UC-02 | Sửa HĐ nháp (mọi trường) / hủy nháp |
 | CT-UC-03 | **Kích hoạt** (bàn giao phòng): nhập chỉ số bàn giao cho các công tơ (M06), (tùy chọn) ghi nhận tiền cọc đã nhận (M08) |
 | CT-UC-04 | Thêm người ở (ngày vào, **quan hệ với người đứng tên**, đồng ý của người giám hộ nếu < 18 tuổi) / ghi nhận người ở rời đi (ngày ra) |
@@ -64,7 +64,7 @@ cho người chưa thành niên; chặn một người ở 2 phòng cùng lúc.
 | CT-UC-18 ✅ | Lọc **nhóm hợp đồng không cọc / có cọc** trong danh sách HĐ |
 | CT-UC-20 ✅ | **Dữ liệu cần xem lại** (`GET /contracts/data-review`): quan hệ người ở không còn hợp lý, người đứng tên < 18 tuổi tại ngày ký, một người ở 2 phòng, khoản thu chưa có giá |
 | CT-UC-19 ✅ | Khai **quan hệ người ở với người đứng tên** (vợ, chồng, con, cha mẹ, cùng ở thuê…) — dữ liệu để lập tờ khai tạm trú chung hộ và xuất danh sách (M10 E1) |
-| CT-UC-21 ✅ | **Ký lại cho người còn ở** — `POST /contracts/{id}/re-sign` `{ handoverDate, representativeRenterId, endDate? }`: trong 1 transaction (1) HĐ cũ bắt đầu thanh lý tại `handoverDate` = X (lý do `MutualAgreement`, ghi chú "Ký lại cho người còn ở — HĐ mới …"); (2) tạo **HĐ nháp mới** từ X+1, `previous_contract_id` = HĐ cũ, chép: giá thuê hiện hành, cài đặt kỳ thu (cả chu kỳ đóng tiền phòng), ngày báo trước, phương thức thanh toán, cọc + điều khoản cọc (thông tin — PM-BR-19), mẫu / tiêu đề / điều khoản / trường tùy biến, khoản dịch vụ đang áp tại X+1, **người ở còn ở sau X** (vào ở X+1; giữ quan hệ nếu chủ hộ còn ở, ngược lại xóa quan hệ để khai lại so với người đứng tên mới), xe đang đăng ký của người đứng tên mới / người ở được chép. `endDate` bỏ trống = không thời hạn. Người đứng tên mới phải là một người còn ở (422 `RESIGN_REPRESENTATIVE_NOT_OCCUPANT`); không còn ai ở sau X → 422 `RESIGN_NO_OCCUPANT_LEFT`; lỗi thanh lý như CT-BR-11. → 201 `{ id: <HĐ nháp mới>, warnings }`. Chủ trọ xem lại nháp rồi kích hoạt như bình thường; chuyển cọc (M08 PM-UC-09): để sau |
+| CT-UC-21 ✅ | **Ký lại cho người còn ở** — `POST /contracts/{id}/re-sign` `{ handoverDate, representativeRenterId, endDate? }`: trong 1 transaction (1) HĐ cũ bắt đầu thanh lý tại `handoverDate` = X (lý do `MutualAgreement`, ghi chú "Ký lại cho người còn ở — HĐ mới …"); (2) tạo **HĐ nháp mới** từ X+1, `previous_contract_id` = HĐ cũ, chép: giá thuê hiện hành, cài đặt kỳ thu, ngày báo trước, phương thức thanh toán, cọc + điều khoản cọc (thông tin — PM-BR-19), mẫu / tiêu đề / điều khoản / trường tùy biến, khoản dịch vụ đang áp tại X+1, **người ở còn ở sau X** (vào ở X+1; giữ quan hệ nếu chủ hộ còn ở, ngược lại xóa quan hệ để khai lại so với người đứng tên mới), xe đang đăng ký của người đứng tên mới / người ở được chép. `endDate` bỏ trống = không thời hạn. Người đứng tên mới phải là một người còn ở (422 `RESIGN_REPRESENTATIVE_NOT_OCCUPANT`); không còn ai ở sau X → 422 `RESIGN_NO_OCCUPANT_LEFT`; lỗi thanh lý như CT-BR-11. → 201 `{ id: <HĐ nháp mới>, warnings }`. Chủ trọ xem lại nháp rồi kích hoạt như bình thường; chuyển cọc (M08 PM-UC-09): để sau |
 | CT-UC-22 ✅ | **Quyết định khi HĐ hết hạn mà người thuê vẫn ở** (CT-BR-45): (1) Gia hạn / ký phụ lục — `POST /contracts/{id}/extend` (xóa trạng thái ở tiếp); (2) **Ở tiếp, chưa ký lại** — `POST /contracts/{id}/holdover` `{ note? }` → 204; HĐ chưa quá hạn → 422 `CONTRACT_NOT_EXPIRED`, đã ghi nhận → 409 `HOLDOVER_ALREADY`; (3) **Không cho thuê tiếp** → `POST /contracts/{id}/liquidation/start` |
 
 ### 3.2 Quy tắc nghiệp vụ
@@ -74,8 +74,8 @@ cho người chưa thành niên; chặn một người ở 2 phòng cùng lúc.
 | CT-BR-01 | Một phòng **không thể có 2 HĐ chồng lấn thời gian** trong các trạng thái `Active/Liquidating/Ended`. Khoảng chiếm phòng = `[start_date, COALESCE(actual_end_date, 'infinity')]` | **DB EXCLUDE constraint** (btree_gist) |
 | CT-BR-02 | Kích hoạt yêu cầu: phòng không archive/bảo trì; người đại diện có SĐT; ≥ 1 người ở; giá thuê > 0; `start_date` ≤ hôm nay + 1 (kích hoạt = bàn giao thực tế; cho phép lùi ngày khi nhập HĐ cũ). **Đổi 04/10/2026**: không còn bắt HĐ đăng ký công tơ. Khi M06 có: màn hình kích hoạt **bắt nhập chỉ số nhận phòng** cho từng công tơ đang hoạt động của phòng tại ngày vào ở — nút "Dùng số mới nhất" (chỉ số cuối của HĐ trước / chỉ số tháng trước) hoặc nhập số khác ≥ số đó (MT-BR-13); phòng chưa có công tơ điện → **cảnh báo**, không chặn (phòng tính nước theo người không cần công tơ nước) | Domain + Application |
 | CT-BR-03 | `end_date` (nếu có) > `start_date`. Hết `end_date` mà chưa thanh lý → HĐ **vẫn Active** (cờ dẫn xuất `IsOverdue`), vẫn lập phiếu bình thường — không tự kết thúc | Thiết kế |
-| CT-BR-04 | Cài đặt kỳ thu (`billing_anchor_day`, `charge_mode`, `proration_mode`, `payment_due_days`) **snapshot** từ khu khi tạo; **khóa** sau khi có phiếu đầu tiên chưa Void (đổi anchor làm vỡ chuỗi kỳ) | Domain (cờ `has_invoices` kiểm qua M07) |
-| CT-BR-05 | Giá thuê theo `contract_rent_terms`; bản đầu tiên `effective_from = start_date`. Phụ lục giá chỉ cho hợp đồng **Active** (nháp sửa trực tiếp). Bản mới phải có `effective_from` là **ngày bắt đầu một kỳ** (C-05) và ≥ kỳ đầu tiên chưa khóa: kỳ sau ngày cuối của **dòng Tiền phòng** đã chốt mới nhất (chu kỳ nhiều tháng đã thu trước ⇒ khóa tới hết chu kỳ — BL-BR-26); dịch vụ khóa theo kỳ phiếu đã chốt | Domain — ✅ khóa theo phiếu đã chốt (cả chu kỳ nhiều tháng) |
+| CT-BR-04 | **Cài đặt kỳ thu lấy theo khu** (đổi 08/10/2026 — M02 PR-BR-09): ngày chốt, thu trước / thu sau, tính theo ngày / trọn tháng, số ngày hạn là của khu, HĐ **không chọn riêng** (bỏ snapshot trên HĐ khi code). Kỳ lẻ khi vào / trả phòng giữa kỳ: theo C-05 (kỳ đầu ⏳ K5) | Domain |
+| CT-BR-05 | Giá thuê theo `contract_rent_terms`; bản đầu tiên `effective_from = start_date`. Phụ lục giá chỉ cho hợp đồng **Active** (nháp sửa trực tiếp). Bản mới phải có `effective_from` là **ngày bắt đầu một kỳ** (C-05) và ≥ kỳ đầu tiên chưa khóa: kỳ sau ngày cuối của **dòng Tiền phòng** đã chốt mới nhất; dịch vụ khóa theo kỳ phiếu đã chốt | Domain — ✅ khóa theo phiếu đã chốt |
 | CT-BR-06 | `contract_fees`: mỗi `(contract, fee_type)` các khoảng hiệu lực không chồng lấn; `effective_from` là đầu kỳ, cùng quy tắc khóa như CT-BR-05. Khoản thu phải thuộc **cùng khu** với HĐ | DB EXCLUDE + FK composite `(organization_id, property_id, fee_type_id)` |
 | CT-BR-07 | `quantity`: Quantity > 0; Fixed = 1. Khoản `Metered` không gắn vào HĐ (FE-BR-17). `unit_price_override` ≥ 0 hoặc NULL (dùng giá danh mục) | CHECK + Application |
 | CT-BR-08 | Người ở: `move_in_date` ≥ `start_date` của HĐ; `move_out_date` (nếu có) ≥ `move_in_date` và ≤ `actual_end_date` (nếu có). Cùng 1 renter không có 2 khoảng ở chồng lấn trong cùng HĐ. Đã ghi chuyển đi thì **không ghi lại** (409 `OCCUPANT_ALREADY_MOVED_OUT`) — muốn ở tiếp thì thêm lại như người ở mới | Domain + DB EXCLUDE |
@@ -158,11 +158,7 @@ stateDiagram-v2
 | notice_given_date / planned_move_out_date | date | Y | CT-UC-07 |
 | notice_days | smallint | N | snapshot |
 | deposit_amount | numeric(18,0) | N | thỏa thuận, ≥ 0 |
-| billing_anchor_day | smallint | N | 1–31 |
-| charge_mode | varchar(16) | N | `Prepaid`/`Postpaid` |
-| proration_mode | varchar(16) | N | `Daily`/`FullPeriod` |
-| payment_due_days | smallint | N | |
-| rent_cycle_months | smallint | N | 1 / 2 / 3 / 6 / 12 — chu kỳ đóng tiền phòng (BL-BR-26), mặc định của khu; in trên HĐ "Kỳ thanh toán tiền phòng: 3 tháng/lần" |
+| ~~billing_anchor_day / charge_mode / proration_mode / payment_due_days~~ | | | **bỏ khi code** — đọc từ khu (CT-BR-04, chốt 08/10/2026) |
 | terms_text | text | Y | điều khoản quyền/nghĩa vụ (LEG-01) |
 | note | text | Y | |
 | previous_contract_id | uuid | Y | chuyển phòng / tái ký |
@@ -195,7 +191,7 @@ stateDiagram-v2
 Ràng buộc:
 - CHECK `end_date IS NULL OR end_date > start_date`; CHECK `actual_end_date IS NULL OR actual_end_date >= start_date`.
 - CHECK `status NOT IN ('Liquidating','Ended') OR actual_end_date IS NOT NULL`.
-- CHECK `billing_anchor_day BETWEEN 1 AND 31`, `deposit_amount >= 0`, `copies_count BETWEEN 1 AND 10`.
+- CHECK `deposit_amount >= 0`, `copies_count BETWEEN 1 AND 10`.
 - CHECK `effective_date IS NULL OR signed_date IS NULL OR effective_date >= signed_date`.
 - CHECK `status NOT IN ('Active','Liquidating','Ended') OR (effective_date IS NOT NULL AND signing_snapshot IS NOT NULL)`.
 - CHECK `status <> 'Ended' OR termination_reason IS NOT NULL`.
@@ -404,7 +400,7 @@ P1: chủ trọ và phó quản lý toàn quyền nghiệp vụ (M01 §3.3); in 
 | 2 HĐ cùng phòng kích hoạt đồng thời | EXCLUDE constraint (CT-BR-01) — DB là chốt chặn cuối; map lỗi `23P01` → 409 `ROOM_PERIOD_OVERLAP` |
 | Phòng bị đặt bảo trì đồng thời kích hoạt | Khóa `rooms` row `FOR UPDATE` (thứ tự khóa: room → contract) |
 | Đổi giá thuê cho kỳ đã chốt phiếu | CT-BR-05 với `firstOpenPeriodStart` tính trong cùng transaction; lệnh chốt phiếu (M07) khóa hàng `contracts` `FOR SHARE`/`FOR UPDATE` ⇒ tuần tự hóa |
-| Đổi anchor day sau khi có phiếu | CT-BR-04 |
+| Đổi ngày chốt sau khi có phiếu | M02 PR-BR-09 (⏳ K4) |
 | Kích hoạt bị retry (mạng) | Idempotency-Key + kiểm tra trạng thái (Active → trả kết quả cũ) |
 | Thêm người ở vượt sức chứa đồng thời | Khóa `contracts` row khi thêm occupant |
 | Hoàn tất thanh lý trong khi có thanh toán mới | Khóa contract + đọc số dư trong cùng transaction; M08 khi ghi thanh toán cũng khóa contract ⇒ tuần tự |

@@ -22,6 +22,8 @@ public static class ExportEndpoints
                     : result.ToHttp();
             })
             .Produces(StatusCodes.Status200OK, contentType: XlsxContentType)
+            // Mỗi lần xuất tới 20.000 dòng (có thể kèm số giấy tờ đầy đủ) ⇒ dùng hạn mức chặt "sensitive" theo user.
+            .RequireRateLimiting(RateLimitPolicies.Sensitive)
             .WithSummary("Xuất Excel danh sách người thuê — lọc theo khu, tầng, nhóm phòng, phòng, khoảng ngày");
     }
 }

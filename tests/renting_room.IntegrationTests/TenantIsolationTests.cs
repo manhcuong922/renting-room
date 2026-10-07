@@ -70,7 +70,8 @@ public sealed class TenantIsolationTests(ApiFactory factory)
         await _client.CreateRenterAsync(ownerA.Tokens.AccessToken, idNumber);
         await _client.CreateRenterAsync(ownerB.Tokens.AccessToken, idNumber);
 
-        var search = await _client.GetAsync($"/api/v1/renters?idNumber={idNumber}", ownerB.Tokens.AccessToken);
+        var search = await _client.PostJsonAsync("/api/v1/renters/search", new { idNumber }, ownerB.Tokens.AccessToken);
+        search.StatusCode.Should().Be(HttpStatusCode.OK, await search.Content.ReadAsStringAsync());
         (await search.ReadAsync<Page<object>>()).TotalCount.Should().Be(1);
     }
 }

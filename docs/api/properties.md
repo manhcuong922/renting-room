@@ -69,7 +69,7 @@ Bước 4  Tạo phòng hàng loạt                      POST /properties/{id}/
   "description": null,
   "evnCustomerCode": null,
   "land": { "parcelNo": null, "mapSheetNo": null, "ownershipCertificateNo": null },
-  "billingDefaults": { "anchorDay": 1, "chargeMode": "Prepaid", "paymentDueDays": 5, "prorationMode": "Daily", "noticeDays": 30, "rentCycleMonths": 1 }
+  "billingDefaults": { "anchorDay": 1, "chargeMode": "Prepaid", "paymentDueDays": 5, "prorationMode": "Daily", "noticeDays": 30 }
 }
 ```
 
@@ -95,7 +95,6 @@ Bước 4  Tạo phòng hàng loạt                      POST /properties/{id}/
 | `paymentDueDays` | 0–60 | "Hạn đóng sau ngày chốt (ngày)" |
 | `prorationMode` | `Daily` / `FullPeriod` | "Tháng lẻ tính theo ngày ở / tính tròn tháng" |
 | `noticeDays` | 0–180 | "Số ngày báo trước khi trả phòng" (mặc định 30 — báo trước 1 tháng) |
-| `rentCycleMonths` | 1 / 2 / 3 / 6 / 12 | "Đóng tiền phòng mỗi … tháng" (bỏ trống = 1) — 400 `INVALID_RENT_CYCLE` |
 
 ## Chi tiết
 
@@ -111,7 +110,7 @@ Bước 4  Tạo phòng hàng loạt                      POST /properties/{id}/
   "description": null,
   "evnCustomerCode": null,
   "land": { "parcelNo": null, "mapSheetNo": null, "ownershipCertificateNo": null },
-  "billingDefaults": { "anchorDay": 1, "chargeMode": "Prepaid", "paymentDueDays": 5, "prorationMode": "Daily", "noticeDays": 30, "rentCycleMonths": 1 },
+  "billingDefaults": { "anchorDay": 1, "chargeMode": "Prepaid", "paymentDueDays": 5, "prorationMode": "Daily", "noticeDays": 30 },
   "lessor": {
     "type": "Individual",
     "name": "Nguyễn Văn Chủ",
@@ -151,7 +150,7 @@ Bước 4  Tạo phòng hàng loạt                      POST /properties/{id}/
   "description": "Gần ĐH Quốc gia",
   "evnCustomerCode": "PD0100123456",
   "land": null,
-  "billingDefaults": { "anchorDay": 5, "chargeMode": "Prepaid", "paymentDueDays": 5, "prorationMode": "Daily", "noticeDays": 30, "rentCycleMonths": 1 },
+  "billingDefaults": { "anchorDay": 5, "chargeMode": "Prepaid", "paymentDueDays": 5, "prorationMode": "Daily", "noticeDays": 30 },
   "version": "944"
 }
 ```
@@ -204,7 +203,7 @@ UI:
 
 ### Xem số giấy tờ đầy đủ
 
-`POST /properties/{id}/lessor/reveal-id-number` → `{ "idNumber": "001080012345" }` (mỗi lần gọi được ghi log kiểm toán). Không có quyền dữ liệu nhạy cảm → 403 `SENSITIVE_DATA_FORBIDDEN`.
+`POST /properties/{id}/lessor/reveal-id-number` → `{ "idNumber": "001080012345" }` (mỗi lần gọi được ghi log kiểm toán). Không có quyền dữ liệu nhạy cảm → 403 `SENSITIVE_DATA_FORBIDDEN`. Giới hạn 5 lần/phút mỗi tài khoản (chung với xem số giấy tờ người thuê, xuất Excel) → 429.
 
 ## Ngân hàng
 
