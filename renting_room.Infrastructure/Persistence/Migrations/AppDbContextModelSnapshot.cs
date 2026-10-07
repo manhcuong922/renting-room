@@ -17,7 +17,7 @@ namespace renting_room.Infrastructure.Persistence.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "8.0.11")
+                .HasAnnotation("ProductVersion", "10.0.12")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.HasPostgresExtension(modelBuilder, "btree_gist");
@@ -95,6 +95,24 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("PropertyId")
                         .HasColumnType("uuid")
                         .HasColumnName("property_id");
+
+                    b.Property<string>("RefundMethod")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("refund_method");
+
+                    b.Property<string>("RefundNote")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("refund_note");
+
+                    b.Property<decimal>("RefundTotal")
+                        .HasColumnType("numeric(18,0)")
+                        .HasColumnName("refund_total");
+
+                    b.Property<DateOnly?>("RefundedOn")
+                        .HasColumnType("date")
+                        .HasColumnName("refunded_on");
 
                     b.Property<Guid>("RoomId")
                         .HasColumnType("uuid")
@@ -201,7 +219,11 @@ namespace renting_room.Infrastructure.Persistence.Migrations
 
                             t.HasCheckConstraint("ck_invoices_period", "period_end >= period_start");
 
-                            t.HasCheckConstraint("ck_invoices_total", "total_amount >= 0 OR status = 'Draft'");
+                            t.HasCheckConstraint("ck_invoices_refund", "refund_total <= 0 AND total_amount = subtotal + discount_total + refund_total");
+
+                            t.HasCheckConstraint("ck_invoices_refunded", "refunded_on IS NULL OR (total_amount < 0 AND refund_method IS NOT NULL)");
+
+                            t.HasCheckConstraint("ck_invoices_total", "subtotal + discount_total >= 0 OR status = 'Draft'");
 
                             t.HasCheckConstraint("ck_invoices_void_reason", "status <> 'Void' OR void_reason IS NOT NULL");
 
@@ -340,11 +362,11 @@ namespace renting_room.Infrastructure.Persistence.Migrations
 
                     b.ToTable("invoice_lines", null, t =>
                         {
-                            t.HasCheckConstraint("ck_invoice_lines_discount", "line_type <> 'ManualDiscount' OR amount <= 0");
+                            t.HasCheckConstraint("ck_invoice_lines_discount", "line_type NOT IN ('ManualDiscount','Refund') OR amount <= 0");
 
-                            t.HasCheckConstraint("ck_invoice_lines_note", "line_type NOT IN ('Surcharge','ManualDiscount') OR note IS NOT NULL");
+                            t.HasCheckConstraint("ck_invoice_lines_note", "line_type NOT IN ('Surcharge','ManualDiscount','Refund') OR note IS NOT NULL");
 
-                            t.HasCheckConstraint("ck_invoice_lines_sign", "line_type = 'ManualDiscount' OR amount >= 0");
+                            t.HasCheckConstraint("ck_invoice_lines_sign", "line_type IN ('ManualDiscount','Refund') OR amount >= 0");
                         });
                 });
 
@@ -599,10 +621,6 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(16)")
                         .HasColumnName("proration_mode");
 
-                    b.Property<int>("RentCycleMonths")
-                        .HasColumnType("integer")
-                        .HasColumnName("rent_cycle_months");
-
                     b.Property<Guid>("RepresentativeRenterId")
                         .HasColumnType("uuid")
                         .HasColumnName("representative_renter_id");
@@ -723,8 +741,6 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                             t.HasCheckConstraint("ck_contracts_end_after_start", "end_date IS NULL OR end_date > start_date");
 
                             t.HasCheckConstraint("ck_contracts_liquidation_end", "status NOT IN ('Liquidating','Ended') OR actual_end_date IS NOT NULL");
-
-                            t.HasCheckConstraint("ck_contracts_rent_cycle", "rent_cycle_months IN (1, 2, 3, 6, 12)");
 
                             t.HasCheckConstraint("ck_contracts_settings", "billing_anchor_day BETWEEN 1 AND 31 AND deposit_amount >= 0 AND copies_count BETWEEN 1 AND 10");
 
@@ -2214,10 +2230,6 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(16)")
                         .HasColumnName("default_proration_mode");
 
-                    b.Property<int>("DefaultRentCycleMonths")
-                        .HasColumnType("integer")
-                        .HasColumnName("default_rent_cycle_months");
-
                     b.Property<string>("Description")
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)")
@@ -2371,8 +2383,6 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                             t.HasCheckConstraint("ck_properties_anchor_day", "default_billing_anchor_day BETWEEN 1 AND 31");
 
                             t.HasCheckConstraint("ck_properties_lessor_organization", "lessor_type IS DISTINCT FROM 'Organization' OR (lessor_tax_code IS NOT NULL AND lessor_representative_name IS NOT NULL)");
-
-                            t.HasCheckConstraint("ck_properties_rent_cycle", "default_rent_cycle_months IN (1, 2, 3, 6, 12)");
                         });
                 });
 
@@ -2382,7 +2392,7 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
-                    b.Property<string[]>("Amenities")
+                    b.PrimitiveCollection<string[]>("Amenities")
                         .IsRequired()
                         .HasColumnType("text[]")
                         .HasColumnName("amenities");
@@ -2755,6 +2765,61 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("ix_renters_phone");
 
                     b.ToTable("renters", (string)null);
+                });
+
+            modelBuilder.Entity("renting_room.Infrastructure.Auditing.AuditLog", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("action");
+
+                    b.Property<string>("Changes")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("changes");
+
+                    b.Property<Guid?>("EntityId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("entity_id");
+
+                    b.Property<string>("EntityType")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("entity_type");
+
+                    b.Property<string>("IpAddress")
+                        .HasMaxLength(45)
+                        .HasColumnType("character varying(45)")
+                        .HasColumnName("ip_address");
+
+                    b.Property<DateTimeOffset>("OccurredAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("occurred_at");
+
+                    b.Property<Guid?>("OrganizationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("organization_id");
+
+                    b.Property<Guid?>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_audit_logs");
+
+                    b.HasIndex("OrganizationId", "OccurredAt")
+                        .HasDatabaseName("ix_audit_logs_organization_id_occurred_at");
+
+                    b.HasIndex("OrganizationId", "EntityType", "EntityId")
+                        .HasDatabaseName("ix_audit_logs_organization_id_entity_type_entity_id");
+
+                    b.ToTable("audit_logs", (string)null);
                 });
 
             modelBuilder.Entity("renting_room.Infrastructure.Idempotency.IdempotencyRecord", b =>

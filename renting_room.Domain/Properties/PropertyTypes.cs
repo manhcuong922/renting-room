@@ -23,12 +23,8 @@ public enum LessorType
 }
 
 /// <summary>Cài đặt thu mặc định của khu — chỉ là giá trị gợi ý khi tạo hợp đồng (PR-BR-09).</summary>
-/// <param name="RentCycleMonths">Chu kỳ đóng tiền phòng mặc định (1/2/3/6/12 tháng — BL-BR-26).</param>
-public sealed record BillingDefaults(
-    int AnchorDay, ChargeMode ChargeMode, int PaymentDueDays, ProrationMode ProrationMode, int NoticeDays, int RentCycleMonths = 1)
+public sealed record BillingDefaults(int AnchorDay, ChargeMode ChargeMode, int PaymentDueDays, ProrationMode ProrationMode, int NoticeDays)
 {
-    public static readonly int[] AllowedRentCycles = [1, 2, 3, 6, 12];
-
     public static readonly BillingDefaults Standard = new(1, ChargeMode.Prepaid, 5, ProrationMode.Daily, 30);
 
     public void EnsureValid()
@@ -39,8 +35,6 @@ public sealed record BillingDefaults(
             throw new ArgumentOutOfRangeException(nameof(PaymentDueDays));
         if (NoticeDays is < 0 or > 180)
             throw new ArgumentOutOfRangeException(nameof(NoticeDays));
-        if (!AllowedRentCycles.Contains(RentCycleMonths))
-            throw new ArgumentOutOfRangeException(nameof(RentCycleMonths));
     }
 }
 

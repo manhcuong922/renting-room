@@ -19,7 +19,7 @@ sổ cọc: nhận, nhận thêm, cấn trừ vào phiếu, hoàn, mất cọc, 
 - **Đổi khi code**: chưa có số dư có ⇒ thu **vượt số còn nợ** → 422 `PAYMENT_EXCEEDS_DEBT` (đợt 2 mới cho trả thừa thành số dư có).
 - Đảo phiếu thu (PM-UC-04) — hủy mọi phân bổ, giảm `paid_amount`; nợ theo HĐ / phòng (PM-UC-10, PM-UC-12): phòng có `outstandingAmount` + nhãn "Còn nợ".
 - **Hoàn thiện đợt 1 (chốt 04/10/2026 — ✅ đã code)**: "Đã thu toàn bộ" và "Bỏ nợ" khi hoàn tất thanh lý (PM-UC-14, PM-BR-16); số phiếu thu theo năm của **ngày lập** (PM-BR-15); chặn ngày thu trước ngày bắt đầu HĐ − 60 ngày (PM-BR-14).
-- **Để sau (chốt 04/10/2026)**: mọi khoản **cọc và chi tiền ra** — sổ cọc, hoàn cọc, mất cọc, chuyển cọc, hoàn tiền phòng chưa ở (M07 BL-BR-27), hoàn tiền thừa, bồi thường.
+- **Để sau (chốt 04/10/2026)**: sổ cọc, hoàn cọc, mất cọc, chuyển cọc, hoàn tiền thừa từ số dư có, bồi thường. **Hoàn trả cho người thuê** làm trên phiếu báo (M07 BL-BR-27: dòng Hoàn trả, phiếu tổng âm, xác nhận đã hoàn) — không qua phiếu thu.
 - **Đợt 2**: số dư có / hoàn tiền thừa, phân bổ lại, sổ cọc (PM-UC-06..09), ghi có (PM-BR-17), danh sách công nợ quá hạn theo khu.
 
 ## 2. Thuật ngữ
@@ -63,7 +63,7 @@ sổ cọc: nhận, nhận thêm, cấn trừ vào phiếu, hoàn, mất cọc, 
 | PM-BR-03 ✅ | Σ phân bổ hiệu lực của 1 phiếu thu ≤ số tiền phiếu thu | Domain (aggregate Payment) |
 | PM-BR-04 ✅ | Σ phân bổ hiệu lực vào 1 phiếu báo ≤ `total_amount` (= `paid_amount` cache ≤ total, CHECK ở M07) | Domain + CHECK |
 | PM-BR-05 ✅ | `invoices.paid_amount` được cập nhật **trong cùng transaction** với tạo/hủy phân bổ, sau khi khóa hàng invoice `FOR UPDATE` | Application |
-| PM-BR-06 ✅ | Phân bổ tự động: phiếu báo chưa Paid của HĐ theo `due_date` tăng dần, rồi `period_start`; phần dư → số dư có | Domain service |
+| PM-BR-06 ✅ | Phân bổ tự động: phiếu báo chưa thu đủ của HĐ (tổng > 0) theo `due_date` tăng dần, rồi `period_start`. Đợt 1 chưa có số dư có ⇒ thu vượt tổng còn nợ → 422 `PAYMENT_EXCEEDS_DEBT` (đợt 2: phần dư → số dư có). Phiếu tổng âm (Chờ hoàn) không nhận phân bổ, không bù trừ nợ | Domain service |
 | PM-BR-07 ✅ | Đảo phiếu thu: đảo mọi phân bổ (giảm `paid_amount`), trạng thái `Reversed`, lý do bắt buộc. Không đảo phiếu thu loại `DepositDeduction` trực tiếp — phải đảo bút toán cọc tương ứng (đảo cả 2 cùng lúc) | Domain |
 | PM-BR-08 | `CreditBalance(HĐ)` = Σ(amount − Σ phân bổ hiệu lực) của phiếu thu `Recorded` − Σ hoàn tiền thừa hiệu lực ≥ 0. Hoàn tiền thừa > số dư có → 422 | Application (khóa contract) |
 | PM-BR-09 | `DepositBalance(HĐ)` = Σ(Receive, TopUp, TransferIn) − Σ(DeductToInvoice, Refund, Forfeit, TransferOut) trên bút toán chưa đảo, **luôn ≥ 0** — kiểm tra khi ghi bút toán ra và khi đảo bút toán vào | Application (khóa contract `FOR UPDATE`) |
@@ -71,9 +71,9 @@ sổ cọc: nhận, nhận thêm, cấn trừ vào phiếu, hoàn, mất cọc, 
 | PM-BR-11 | `Forfeit`/`Refund` lý do bắt buộc (Forfeit: tham chiếu điều khoản). Chỉ khi HĐ `Liquidating` hoặc `Ended`… ngoại lệ: HĐ `Draft` bị hủy mà đã nhận cọc (người thuê không đến — Điều 328: mất cọc) | Domain |
 | PM-BR-12 | `TransferOut` (HĐ cũ) và `TransferIn` (HĐ mới) cùng số tiền, tạo cặp trong 1 transaction, liên kết `related_transaction_id`; 2 HĐ cùng tổ chức, HĐ mới có `previous_contract_id` = HĐ cũ | Application |
 | PM-BR-13 ✅ | Ghi phiếu thu cho HĐ `Active` / `Liquidating`. HĐ `Ended`: không ghi thu (hoàn tất thanh lý đã buộc hết nợ — thu đủ hoặc bỏ nợ, CT-BR-12). HĐ `Draft` / `Cancelled`: chỉ bút toán cọc (đợt 2) | Domain |
-| PM-BR-16 ✅ | **Bỏ nợ (xóa nợ)** (đợt 1 hoàn thiện): người thuê trốn / bỏ đi, không đòi được — phiếu thu `method = WriteOff`, lý do bắt buộc, phân bổ vào phiếu như tiền thật để đóng công nợ và cho hoàn tất thanh lý; phiếu hiện trạng thái "Đã bỏ nợ"; **không** tính vào doanh thu / dashboard (M10). Chỉ khi HĐ `Liquidating`; đảo được (PM-BR-07) | Domain |
-| PM-BR-17 (đợt 2) | **Ghi có** (`method = CreditNote`) chỉ do hệ thống sinh khi có số dư có (đợt 2). **Đợt 1**: phiếu quyết toán âm ⇒ `refund_due` + xác nhận đã hoàn (M07 BL-BR-27), không sinh ghi có, không qua API; tạo số dư có để hoàn cho người thuê | Application |
-| PM-BR-18 | Phương thức "phi tiền mặt" (`DepositDeduction`, `WriteOff`, `CreditNote`) không nhập trực tiếp qua `POST /payments` (trừ `WriteOff` qua endpoint riêng) | Validator |
+| PM-BR-16 ✅ | **Bỏ nợ (xóa nợ)**: người thuê trốn / bỏ đi, không đòi được — phiếu thu `kind = WriteOff` (phương thức `method` giữ như phiếu thường; `PaymentMethod` dùng chung với phương thức thanh toán ghi trên HĐ nên không thêm giá trị "bỏ nợ"), lý do bắt buộc (cột `note`), phân bổ vào phiếu như tiền thật để đóng công nợ và cho hoàn tất thanh lý; phiếu hiện trạng thái `WrittenOff`, `invoices.written_off_amount` ghi phần bỏ nợ; **không** tính vào doanh thu / dashboard (M10 lọc `kind = Receipt`). Chỉ khi HĐ `Liquidating` (qua hoàn tất thanh lý); đảo được (PM-BR-07). Vẫn cấp số `PT` (sổ phiếu liên tục), danh sách phiếu thu hiển thị nhãn "Bỏ nợ" | Domain |
+| PM-BR-17 (đợt 2) | **Ghi có** (`CreditNote`) chỉ do hệ thống sinh khi có số dư có (đợt 2). Phiếu quyết toán / phiếu thường cần trả lại người thuê ⇒ dùng dòng **Hoàn trả** trên phiếu báo (M07 BL-BR-27), không sinh phiếu thu | Application |
+| PM-BR-18 ✅ | `POST /contracts/{id}/payments` chỉ ghi tiền thật (`kind = Receipt`, `method` ∈ `Cash`/`BankTransfer`/`EWallet`); bỏ nợ chỉ qua hoàn tất thanh lý (CT-BR-12); `DepositDeduction` / `CreditNote` (đợt 2) do hệ thống sinh | Validator |
 | PM-BR-14 ✅ | `paid_at` ≤ hôm nay ✅; ≥ `start_date` HĐ − 60 ngày (cọc giữ chỗ) | Validator |
 | PM-BR-15 ✅ | Số phiếu thu `PT{yyyy}-{seq:000000}` cấp khi tạo, unique trong tổ chức; `yyyy` = năm của **ngày lập** (không phải ngày thu — ghi bù đầu năm không làm lộn thứ tự số). | DB + sequence |
 | PM-BR-19 | **Thông tin cọc trên HĐ chỉ để lưu trữ** (04/10/2026): `deposit_amount`, `deposit_terms`, nhóm HĐ không cọc (M05 CT-BR-27) là nội dung thỏa thuận để lưu & in — **không** ràng buộc sổ cọc: không tự tạo bút toán `Receive`, không chặn ghi cọc cho HĐ ghi "không cọc" hay vượt `deposit_amount`, không giới hạn mức cọc theo tháng. Sổ cọc (bút toán) là nguồn sự thật về tiền cọc thực nhận / hoàn / mất. Chênh lệch giữa số dư cọc và `deposit_amount` chỉ hiển thị thông tin trên chi tiết HĐ | Application |
@@ -92,12 +92,12 @@ sổ cọc: nhận, nhận thêm, cấn trừ vào phiếu, hoàn, mất cọc, 
 | property_id, contract_id | uuid | N | FK composite |
 | receipt_no | varchar(20) | N | UNIQUE (organization_id, receipt_no) |
 | amount | numeric(18,0) | N | CHECK > 0 |
-| method | varchar(20) | N | Tiền thật: `Cash`,`BankTransfer`,`EWallet`,`Other`; Phi tiền mặt (hệ thống/đặc biệt): `DepositDeduction`,`WriteOff`,`CreditNote` |
-| write_off_reason | varchar(500) | Y | CHECK bắt buộc khi `WriteOff` |
+| method | varchar(20) | N | `Cash`,`BankTransfer`,`EWallet` (dùng chung enum phương thức thanh toán của HĐ) |
+| kind | varchar(16) | N | `Receipt` (tiền thật), `WriteOff` (bỏ nợ — PM-BR-16); đợt 2: `DepositDeduction`, `CreditNote` |
 | paid_at | date | N | |
 | payer_name | varchar(200) | Y | |
 | reference | varchar(100) | Y | mã giao dịch ngân hàng |
-| note | varchar(500) | Y | |
+| note | varchar(500) | Y | bắt buộc khi `kind = WriteOff` (lý do bỏ nợ) |
 | status | varchar(10) | N | `Recorded`,`Reversed` |
 | reversed_at/by, reverse_reason | | Y | CHECK reason khi Reversed |
 | created_at/by, xmin | | | |

@@ -119,7 +119,8 @@ Bậc tính theo **lượng tiêu thụ của kỳ**, không quy đổi theo s�
 Cảnh báo (vẫn lưu): `ELECTRICITY_PRICE_ABOVE_THRESHOLD` — giá điện (theo bậc: bậc cao nhất) cao hơn mức tham chiếu (mặc định 3.460đ/kWh, cấu hình
 `Fees:ElectricityPriceWarningThreshold`). Tiền điện thu của người thuê không được vượt giá bán lẻ (TT 60/2025/TT-BCT).
 
-Giá không sửa — **xóa rồi thêm lại**. Giá áp cho một kỳ = bản giá mới nhất có ngày hiệu lực ≤ ngày bắt đầu kỳ.
+Giá không sửa — **xóa rồi thêm lại**. **Giá theo phiên bản**: giá áp cho một kỳ = bản giá mới nhất có ngày hiệu lực ≤ **ngày cuối kỳ** (điện nước: cuối kỳ sử dụng), áp cả kỳ —
+không chia nửa kỳ giá cũ / nửa kỳ giá mới. Tăng giá thì báo người thuê trước và đặt ngày hiệu lực từ kỳ muốn áp.
 
 ## Ngừng dùng
 

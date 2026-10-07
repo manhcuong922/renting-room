@@ -129,7 +129,7 @@ Lỗi nhập liệu (400) có thêm `errors` theo **đường dẫn field** đ�
 ## Giới hạn tần suất
 
 Vượt giới hạn → **429 `TOO_MANY_REQUESTS`** + header `Retry-After` (giây). UI: hiện thông báo, **không tự retry liên tục**.
-Đăng nhập: 10 lần/phút/IP · đổi mật khẩu: 5 lần/phút · tạo/sửa (POST/PUT/DELETE): 60 lần/phút · tối đa 10 request đồng thời.
+Đăng nhập: 5 lần/phút cho mỗi IP + tài khoản, 20 lần/phút/IP · đổi mật khẩu, xem số giấy tờ đầy đủ, xuất Excel: chung 5 lần/phút mỗi tài khoản · tạo/sửa (POST/PUT/DELETE): 60 lần/phút · tối đa 10 request đồng thời.
 
 ## Enum dùng chung
 

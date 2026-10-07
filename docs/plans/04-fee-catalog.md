@@ -9,7 +9,7 @@ chia **2 nhóm** (chốt 04/10/2026, cho dễ hiểu). Đây là "nguồn sự t
 
 | Nhóm | Code | Cách tính 1 kỳ | Ví dụ | Màn hình đặc thù |
 |------|------|----------------|-------|------------------|
-| **Điện nước** (theo công tơ) | `Metered` | (chỉ số mới − chỉ số cũ) × **một đơn giá** — đi theo **công tơ của phòng**, không gắn vào HĐ | Điện (kWh), Nước (m³), Nước nóng | Màn hình ghi chỉ số (M06) |
+| **Điện nước** (theo công tơ) | `Metered` | (chỉ số mới − chỉ số cũ) × **một giá** hoặc **theo bậc** (FE-BR-15) — đi theo **công tơ của phòng**, không gắn vào HĐ | Điện (kWh), Nước (m³), Nước nóng | Màn hình ghi chỉ số (M06) |
 | **Dịch vụ** (không theo công tơ) | `Service` + cách tính `PerRoom` / `PerOccupant` / `PerUnit` | đơn giá × 1 (theo phòng) · × số người ở (theo đầu người) · × số gói đăng ký (theo số lượng) — gắn vào HĐ | Mạng 120.000/phòng; Nước 20.000/người; Rác; Giữ xe 120.000/xe — 2 xe = 2 gói | Chọn dịch vụ + số gói trên HĐ (M05) |
 | ~~Phụ thu~~ | — | **Không thuộc danh mục**: nhập tay trên phiếu nháp (M07 BL-BR-23) — sửa chữa do người thuê làm hỏng, lắp đặt thêm có thu phí đã thỏa thuận, tiền điện công tơ cũ khi thay công tơ | Khóa cửa hỏng 250.000 | Phiếu nháp |
 
@@ -21,9 +21,8 @@ Phòng tính nước **theo đầu người** dùng khoản Dịch vụ "Nước
 
 **Ngoài phạm vi P1**: phí tối thiểu; khoản thu dùng chung chia theo đầu người từ 1 công tơ tổng.
 
-**Trạng thái (04/10/2026)**: ✅ đã code — danh mục, bảng giá **một giá** (giá theo bậc: đã gỡ, sẽ thêm lại thành lựa chọn — FE-BR-15), seed Điện/Nước, sao chép danh mục,
-gắn khoản **cố định / theo số lượng** vào HĐ (M05 `contract_fees`); điện nước theo công tơ đi theo phòng (FE-BR-17). Chờ M07: khóa giá theo phiếu đã chốt (`IFeePriceLockReader` đang trả null), đánh dấu draft stale.
-Chờ M06: chặn ngừng dùng khoản theo chỉ số còn công tơ.
+**Trạng thái (07/10/2026)**: ✅ đã code — danh mục, bảng giá **theo phiên bản** (một giá hoặc theo bậc — FE-BR-15; giá áp cho kỳ = bản mới nhất tới ngày cuối kỳ — FE-BR-10), seed Điện/Nước, sao chép danh mục,
+gắn khoản **dịch vụ** vào HĐ (M05 `contract_fees`); điện nước theo công tơ đi theo phòng (FE-BR-17); khóa giá theo phiếu đã chốt (FE-BR-07 — `FeePriceLockReader`); chặn ngừng dùng khoản theo chỉ số còn công tơ (FE-BR-12). Chưa làm: cờ draft stale (FE-BR-08/09 — M07 đợt 2).
 
 **Phase**: P1.
 
@@ -62,15 +61,15 @@ Chờ M06: chặn ngừng dùng khoản theo chỉ số còn công tơ.
 | FE-BR-05 | Đơn giá ≥ 0 (cho phép 0 = miễn phí). Metered đơn giá ≤ 100.000đ/đơn vị (chặn nhập nhầm thêm số 0); Dịch vụ ≤ 50.000.000đ | Validator |
 | FE-BR-06 | Unique `(fee_type_id, effective_from)` | DB |
 | FE-BR-07 ✅ | **Không thêm/sửa/xóa bảng giá có `effective_from` ≤ ngày cuối của bất kỳ dòng phiếu đã chốt (Finalized, chưa Void) dùng khoản thu này** — tránh tạo mâu thuẫn giữa giá trong bảng và giá trên phiếu đã chốt | Application (query M07) |
-| FE-BR-08 | Chỉ xóa được bản giá chưa từng được dùng bởi phiếu chưa Void (kể cả Draft → draft được đánh dấu cần tính lại) | Application |
-| FE-BR-09 | Khi thêm bản giá ảnh hưởng phiếu **Draft** → các draft liên quan được đánh dấu `is_stale = true` (M07 yêu cầu tính lại trước khi chốt) | Domain event → M07 |
-| FE-BR-10 ✅ | Giá áp cho 1 dòng phiếu = bản giá có `effective_from` lớn nhất ≤ **ngày bắt đầu khoảng dịch vụ của dòng** (`service_from`). Không chia giá trong một kỳ | Domain (M07 dùng `IFeePriceResolver`) |
-| FE-BR-11 ✅ | Không có bản giá hiệu lực tại `service_from` → dòng phiếu lỗi `FEE_PRICE_MISSING`, draft không chốt được | M07 |
+| FE-BR-08 | Chỉ xóa được bản giá chưa từng được dùng bởi phiếu chưa Void (kể cả Draft → draft được đánh dấu cần tính lại — ⏸ đợt 2; hiện chặn theo phiếu đã chốt FE-BR-07, nháp tự lấy giá mới khi tính lại / chốt — BL-BR-12) | Application |
+| FE-BR-09 ⏸ | Khi thêm bản giá ảnh hưởng phiếu **Draft** → đánh dấu `is_stale` (M07 đợt 2). Hiện tại: chốt luôn tính lại và báo `DRAFT_STALE` nếu lệch (BL-BR-12) | Domain event → M07 |
+| FE-BR-10 ✅ | **Giá theo phiên bản** (đổi 07/10/2026): giá áp cho 1 dòng phiếu = bản giá có `effective_from` lớn nhất ≤ **ngày cuối khoảng tính của dòng** (`service_to`: cuối kỳ của phiếu với dịch vụ, cuối kỳ sử dụng U với điện nước), áp **cả dòng** — không chia nửa kỳ giá cũ / nửa kỳ giá mới (chủ trọ báo trước khi tăng giá). Áp cho mọi khoản (điện nước, dịch vụ); giá riêng của HĐ (dịch vụ) ưu tiên | Domain (`InvoiceCalculator` dùng `FeeType.ResolvePrice`) |
+| FE-BR-11 ✅ | Không có bản giá hiệu lực tới ngày cuối khoảng tính (và không có giá riêng) → dòng phiếu lỗi `FEE_PRICE_MISSING`, draft không chốt được | M07 |
 | FE-BR-12 | **Đã đổi khi code**: ngừng dùng khoản thu chỉ khi **không còn HĐ nháp / hiệu lực / thanh lý đang gắn** (đăng ký chưa kết thúc) → 422 `FEE_IN_USE`; gỡ khỏi HĐ trước (`DELETE /contracts/{id}/fees/{feeTypeId}`). Lý do: tự kết thúc đăng ký ở "kỳ chưa lập phiếu" cần M07 và dễ gây bất ngờ khi tính tiền. Khoản ngừng dùng không gắn được vào HĐ mới. Khoản `Metered` còn công tơ hoạt động → 422 `FEE_HAS_ACTIVE_METERS` ✅ (gỡ / thay công tơ trước) | Application |
 | FE-BR-13 ✅ | **Cảnh báo pháp lý (L9)**: đơn giá điện (theo bậc ⇒ bậc cao nhất) > ngưỡng cấu hình (`Fees:ElectricityPriceWarningThreshold`, mặc định 3.460đ/kWh) → `warnings[]` `ELECTRICITY_PRICE_ABOVE_THRESHOLD`, không chặn | Application |
 | FE-BR-14 ✅ | `PerOccupant`: số người = số occupant **đang ở tại ngày `service_from`** của kỳ (snapshot vào dòng phiếu). Thay đổi người ở giữa kỳ áp dụng từ kỳ sau | M07 |
 | FE-BR-15 ✅ | **Hai kiểu giá cho khoản theo công tơ** (đổi lại 04/10/2026 — linh hoạt nhiều mô hình trọ): mỗi bản giá là **một giá** (`unit_price`) ✅ hoặc **theo bậc** (`tiers = [{upTo, price}]`, `upTo` lũy kế tăng dần, bậc cuối `null`; VD điện bậc EVN, nước bậc theo m³). Thành tiền theo bậc = Σ phần sản lượng × giá bậc, làm tròn tới đồng; bậc chỉ là **mức giá theo lượng tiêu thụ** của kỳ (tổng mọi đoạn đo — BL-BR-05), **không quy đổi theo số ngày** (tháng vào ở / trả phòng giữa kỳ vẫn dùng nguyên mốc bậc). Chủ trọ chọn **một giá hoặc theo bậc cho từng bản giá** ⇒ khu này tính điện 1 giá, khu khác tính bậc; đổi kiểu giá = thêm bản giá mới. Dịch vụ chỉ một giá. Giá riêng theo HĐ chỉ cho dịch vụ | Domain `FeePrice.Amount` |
-| FE-BR-16 ✅ | **Linh hoạt theo phòng**: một khu có thể có nhiều khoản cùng loại khác cách tính (VD "Nước" theo công tơ và "Nước theo người" — `Fixed/PerOccupant`); phòng tính nước theo người thì gắn khoản "Nước theo người" vào HĐ và **không lắp công tơ nước** (M06) | M05 `contract_fees` + M06 |
+| FE-BR-16 ✅ | **Linh hoạt theo phòng**: một khu có thể có nhiều khoản cùng loại khác cách tính (VD "Nước" theo công tơ và "Nước theo người" — `Service/PerOccupant`); phòng tính nước theo người thì gắn khoản "Nước theo người" vào HĐ và **không lắp công tơ nước** (M06) | M05 `contract_fees` + M06 |
 | FE-BR-17 ✅ | **Điện nước theo công tơ đi theo phòng** (04/10/2026): khoản `Metered` **không gắn vào HĐ** (gắn → 400 `FEE_METERED_FOLLOWS_ROOM`), không tự gắn. Mọi HĐ đang hiệu lực của phòng được tính theo công tơ đang hoạt động của phòng, bắt đầu từ chỉ số ngày nhận phòng (M06 MT-BR-13). Bản chụp giá lúc ký (CT-BR-19) và bản in ghi giá điện nước của khu tại ngày bắt đầu | Application `ContractFeeRules` |
 
 ## 4. Dữ liệu
@@ -217,5 +216,5 @@ Audit: tạo/sửa/archive khoản thu, thêm/xóa giá.
 | # | Câu hỏi | Đề xuất |
 |---|---------|---------|
 | Q1 | Có cần giá khác nhau theo phòng cho cùng 1 khoản? | Có — qua `unit_price_override` trên đăng ký HĐ (M05), không nhân bản khoản thu |
-| Q2 ✅ | Tính giá điện bậc thang như EVN? | **Cả hai** (chốt lại 04/10/2026): chủ trọ chọn một giá hoặc theo bậc cho từng bản giá. Định mức theo số người ở (TT 60/2025) — P2 |
-| Q3 | Phí tối thiểu (VD nước tối thiểu 3 m³)? | Chưa hỗ trợ; dùng điều chỉnh thủ công |
+| Q2 ✅ | Tính giá điện bậc thang như EVN? | **Cả hai** là lựa chọn của nhóm theo công tơ: một giá (chính, test chủ yếu) hoặc theo bậc. **Không** chia định mức theo số người ở (TT 60/2025) — mỗi phòng tính 1 hộ (chốt 08/10/2026) |
+| Q3 ✅ | Phí tối thiểu (VD nước tối thiểu 3 m³)? | **Không hỗ trợ** (chốt 08/10/2026): dùng bao nhiêu thu bấy nhiêu, dùng 0 thu 0 — kể cả phòng thuê mà không ở |

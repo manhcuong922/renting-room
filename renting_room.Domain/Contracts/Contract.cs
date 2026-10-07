@@ -41,11 +41,6 @@ public sealed class Contract : TenantEntity
     public ChargeMode ChargeMode { get; private set; }
     public ProrationMode ProrationMode { get; private set; }
     public int PaymentDueDays { get; private set; }
-
-    /// <summary>BL-BR-26: chu kỳ đóng tiền phòng (1/2/3/6/12 tháng) — tiền phòng cả chu kỳ ở phiếu tháng đầu chu kỳ.</summary>
-    public int RentCycleMonths { get; private set; } = 1;
-
-    public static int[] AllowedRentCycles => Properties.BillingDefaults.AllowedRentCycles;
     public PaymentMethod[] PaymentMethods { get; private set; } = [];
     public int CopiesCount { get; private set; }
     public string? TermsText { get; private set; }
@@ -217,9 +212,6 @@ public sealed class Contract : TenantEntity
         BillingAnchorDay = data.BillingAnchorDay;
         ChargeMode = data.ChargeMode;
         ProrationMode = data.ProrationMode;
-        if (!AllowedRentCycles.Contains(data.RentCycleMonths))
-            throw new ArgumentOutOfRangeException(nameof(data), "Rent cycle must be 1, 2, 3, 6 or 12 months.");
-        RentCycleMonths = data.RentCycleMonths;
         PaymentDueDays = data.PaymentDueDays;
         NoticeDays = data.NoticeDays;
         PaymentMethods = data.PaymentMethods.Distinct().ToArray();
@@ -471,7 +463,7 @@ public sealed class Contract : TenantEntity
             representativeRenterId, start, endDate, SignedDate: null, SignedPlace: null, EffectiveDate: null,
             CurrentRent(start) ?? _rentTerms.MaxBy(t => t.EffectiveFrom)!.MonthlyRent, DepositAmount, DepositTerms,
             BillingAnchorDay, ChargeMode, ProrationMode, PaymentDueDays, NoticeDays, PaymentMethods, CopiesCount, TermsText, Note: null,
-            occupants, document, head, fees, RentCycleMonths);
+            occupants, document, head, fees);
     }
 
     /// <summary>CT-UC-21: xe đang đăng ký của những người được chép sang HĐ mới (xe không gắn chủ cũng chép).</summary>

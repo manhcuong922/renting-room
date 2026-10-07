@@ -59,8 +59,12 @@ public static class AuthEndpoints
     }
 
     private static async Task<Results<Ok<AuthTokens>, ProblemHttpResult>> Login(
-        LoginRequest request, HttpContext httpContext, ISender sender, CancellationToken cancellationToken)
+        LoginRequest request, HttpContext httpContext, LoginAttemptLimiter limiter, ISender sender, CancellationToken cancellationToken)
     {
+        using var lease = limiter.Acquire(httpContext, request.Username);
+        if (!lease.IsAcquired)
+            return RateLimitingSetup.TooManyRequests(httpContext, lease);
+
         var result = await sender.Send(
             new LoginCommand(request.Username, request.Password, httpContext.ClientIp()), cancellationToken);
 

@@ -49,6 +49,8 @@ public class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         builder.UseSetting("PersonalData:HashKey", "integration-test-personal-data-hmac-key-32+chars");
         builder.UseSetting("Bootstrap:Admin:Phone", AdminPhone);
         builder.UseSetting("Bootstrap:Admin:Password", AdminPassword);
+        // Audit đọc ghi nền theo lô: rút ngắn cửa sổ gom để test không phải chờ lâu.
+        builder.UseSetting("Audit:FlushInterval", "00:00:00.100");
         ConfigureRateLimits(builder);
 
         builder.ConfigureTestServices(services =>
@@ -62,7 +64,7 @@ public class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
     /// <summary>Mặc định: hạn mức rất cao để test chức năng không bị 429 (limiter vẫn chạy).</summary>
     protected virtual void ConfigureRateLimits(IWebHostBuilder builder)
     {
-        foreach (var rule in new[] { "Login", "Refresh", "Sensitive", "Authenticated", "Anonymous", "Write" })
+        foreach (var rule in new[] { "Login", "LoginPerAccount", "Refresh", "Sensitive", "Authenticated", "Anonymous", "Write" })
             builder.UseSetting($"RateLimiting:{rule}:PermitLimit", "100000");
         builder.UseSetting("RateLimiting:MaxConcurrentRequestsPerClient", "1000");
     }
@@ -91,7 +93,8 @@ public sealed class ApiCollection : ICollectionFixture<ApiFactory>
 /// <summary>Hạn mức thấp để kiểm thử chống spam (container riêng, không ảnh hưởng test khác).</summary>
 public sealed class RateLimitedApiFactory : ApiFactory
 {
-    public const int LoginLimit = 3;
+    public const int LoginLimit = 5;
+    public const int LoginPerAccountLimit = 2;
     public const int SensitiveLimit = 2;
     public const int WriteLimit = 5;
 
@@ -99,6 +102,7 @@ public sealed class RateLimitedApiFactory : ApiFactory
     {
         base.ConfigureRateLimits(builder);
         builder.UseSetting("RateLimiting:Login:PermitLimit", LoginLimit.ToString());
+        builder.UseSetting("RateLimiting:LoginPerAccount:PermitLimit", LoginPerAccountLimit.ToString());
         builder.UseSetting("RateLimiting:Sensitive:PermitLimit", SensitiveLimit.ToString());
         builder.UseSetting("RateLimiting:Write:PermitLimit", WriteLimit.ToString());
     }

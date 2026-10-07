@@ -88,7 +88,8 @@ public static class PropertyEndpoints
                 return result.IsSuccess ? Results.Ok(new RevealedIdNumber(result.Value!)) : result.ToHttp();
             })
             .WithNoStore()
-            .WithSummary("Xem số giấy tờ đầy đủ của bên cho thuê (có ghi log)");
+            .RequireRateLimiting(RateLimitPolicies.Sensitive)
+            .WithSummary("Xem số giấy tờ đầy đủ của bên cho thuê (có ghi audit; giới hạn theo user)");
 
         group.MapPut("/{id:guid}/bank-account", async (Guid id, UpdateBankAccountRequest body, ISender sender, CancellationToken ct) =>
                 (await sender.Send(new UpdateBankAccountCommand(id, body.BankName, body.AccountNo, body.AccountName), ct)).ToHttp())

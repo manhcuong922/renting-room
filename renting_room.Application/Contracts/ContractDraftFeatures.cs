@@ -1,7 +1,6 @@
 using FluentValidation;
 using Mediator;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Common.Models;
 using renting_room.Application.Common.Validation;
@@ -45,9 +44,6 @@ internal sealed class ContractInputValidator : AbstractValidator<ContractInput>
             RuleFor(x => x.Billing!.PaymentDueDays).InclusiveBetween(0, 60).OverridePropertyName("billing.paymentDueDays").WithErrorCode("OUT_OF_RANGE");
             RuleFor(x => x.Billing!.ChargeMode).IsInEnum().OverridePropertyName("billing.chargeMode");
             RuleFor(x => x.Billing!.ProrationMode).IsInEnum().OverridePropertyName("billing.prorationMode");
-            RuleFor(x => x.Billing!.RentCycleMonths).Must(m => m is null || BillingDefaults.AllowedRentCycles.Contains(m.Value))
-                .OverridePropertyName("billing.rentCycleMonths").WithErrorCode("INVALID_RENT_CYCLE")
-                .WithMessage("Chu kỳ đóng tiền phòng: 1, 2, 3, 6 hoặc 12 tháng.");
         });
         RuleFor(x => x.NoticeDays).InclusiveBetween(0, 180).When(x => x.NoticeDays is not null).WithErrorCode("OUT_OF_RANGE");
         RuleFor(x => x.PaymentMethods)
@@ -167,8 +163,7 @@ internal static class ContractDraftBuilder
             occupants,
             document,
             input.HouseholdHeadRenterId,
-            fees.Value!,
-            input.Billing?.RentCycleMonths ?? defaults.RentCycleMonths);
+            fees.Value!);
     }
 
     private static async Task<Result<ContractTemplate?>> LoadTemplateAsync(
@@ -326,7 +321,7 @@ public sealed record ActivateContractCommand(
 /// khóa hàng phòng tuần tự hóa, EXCLUDE constraint trong DB là chốt chặn cuối (→ 409 ROOM_PERIOD_OVERLAP).
 /// </summary>
 public sealed class ActivateContractHandler(
-    IAppDbContext db, ICurrentUser currentUser, TimeProvider clock, ILogger<ActivateContractHandler> logger)
+    IAppDbContext db, TimeProvider clock, IAuditTrail auditTrail)
     : IRequestHandler<ActivateContractCommand, Result>
 {
     public async ValueTask<Result> Handle(ActivateContractCommand request, CancellationToken cancellationToken)
@@ -373,8 +368,8 @@ public sealed class ActivateContractHandler(
         if (handover.IsFailure)
             return handover;
         if (request.OverrideCapacity && contract.ExceedsCapacity(room.MaxOccupants))
-            logger.LogWarning("AUDIT: user {UserId} activated contract {ContractId} over room capacity {MaxOccupants}",
-                currentUser.UserId, contract.Id, room.MaxOccupants);
+            auditTrail.Record(AuditActions.OverrideCapacity, nameof(Contract), contract.Id,
+                new { operation = "Activate", maxOccupants = room.MaxOccupants });
 
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);

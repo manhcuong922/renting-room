@@ -19,8 +19,8 @@ có thể tạo tài khoản nhân viên quản lý.
 - Hợp đồng (lưu trữ thông tin + file scan), phụ lục giá, thanh lý.
 - Danh mục khoản thu 3 nhóm: **Theo chỉ số** (điện, nước, …), **Dịch vụ cố định** (rác, wifi…),
   **Dịch vụ theo số lượng** (giữ xe ×N…).
-- Màn hình ghi chỉ số cuối kỳ; tính tiền phòng; sửa tiền phòng **trong tháng**; giảm/tăng giá
-  theo phòng / nhóm phòng / cả khu; chốt phiếu; thu tiền; sổ cọc.
+- Màn hình ghi chỉ số cuối kỳ; tính tiền phòng; sửa tay trên phiếu nháp; phụ thu / giảm trừ / hoàn trả cho 1 hoặc nhiều phòng;
+  chốt phiếu; thu tiền; sổ cọc.
 - Upload ảnh/file lưu trữ; xuất Excel (người thuê, tiền phòng tháng, thông tin phòng) cho 1 hoặc nhiều khu.
 
 **Ngoài phạm vi** (ghi rõ để không bị "trôi" yêu cầu)
@@ -92,7 +92,7 @@ flowchart LR
 Admin tạo **Tổ chức + tài khoản OrgOwner** (mật khẩu tạm) → chủ trọ đăng nhập, bắt buộc đổi mật khẩu.
 
 ### F2. Thiết lập khu trọ (M02, M04)
-Tạo khu trọ (địa chỉ 2 cấp, cài đặt thu mặc định: ngày chốt kỳ, thu trước/thu sau, hạn thanh toán)
+Tạo khu trọ (địa chỉ 2 cấp, **cài đặt kỳ thu của khu** — áp chung mọi phòng: ngày chốt kỳ 1–28, thu trước/thu sau, tính theo ngày/trọn tháng, số ngày hạn thanh toán)
 → hệ thống seed khoản thu mặc định **Điện, Nước** (Metered) → chủ trọ thêm khoản thu (rác, wifi, giữ xe…)
 → tạo phòng (hàng loạt) → gắn công tơ + chỉ số ban đầu (M06) → tạo nhóm phòng (tùy chọn).
 
@@ -106,14 +106,14 @@ Tạo/tìm người thuê (theo số giấy tờ) → chọn **mẫu hợp đồ
 1. Màn hình **ghi chỉ số**: chọn khu + tháng thu → lưới phòng có chỉ số cũ, nhập chỉ số mới.
 2. **Tạo phiếu nháp** hàng loạt cho khu (idempotent).
 3. Chủ trọ rà soát phiếu nháp: **sửa tay** mọi ô, thêm phụ thu / giảm trừ, tính lại theo phòng / tầng / khu
-   (quy tắc giảm/tăng tự động: đợt 2).
+   (không có quy tắc giảm/tăng tự động — dùng phụ thu / giảm trừ / hoàn trả cho nhiều phòng một lúc).
 4. **Chốt phiếu** (Finalize) → phiếu bất biến, có số phiếu.
 5. **Thu tiền** (toàn phần/một phần). Cấn trừ cọc: để sau.
 6. **Xuất Excel** tiền phòng tháng cho 1/nhiều khu.
 
 ### F5. Trả phòng / thanh lý (M05, M06, M07, M08)
-Báo trả phòng (ngày dự kiến) → bắt đầu thanh lý → ghi chỉ số cuối → phiếu **quyết toán** (thu phần còn thiếu) →
-hoàn tất thanh lý: còn nợ ⇒ "Đã thu toàn bộ" / "Bỏ nợ" (hợp đồng `Ended`). Cọc, hoàn tiền, cư trú: để sau.
+Báo trả phòng (ngày dự kiến) → bắt đầu thanh lý → ghi chỉ số cuối → phiếu **quyết toán** (thu phần còn thiếu; đã thu thừa tiền phòng ⇒ cảnh báo, chủ trọ thêm dòng **Hoàn trả**) →
+hoàn tất thanh lý: còn nợ ⇒ "Đã thu toàn bộ" / "Bỏ nợ"; còn phiếu Chờ hoàn ⇒ xác nhận đã hoàn trước (hợp đồng `Ended`). Cọc, cư trú: để sau.
 
 ## 6. Quy ước dùng chung (cross-cutting) — BẮT BUỘC
 
@@ -145,10 +145,15 @@ hoàn tất thanh lý: còn nợ ⇒ "Đã thu toàn bộ" / "Bỏ nợ" (hợp 
   Không bao giờ dùng `DateTime.Now` / `DateTime.UtcNow.Date` để suy ra ngày nghiệp vụ.
 
 ### C-05 Kỳ thu (BillingPeriod) — định nghĩa chuẩn
-- Mỗi hợp đồng có `billing_anchor_day` ∈ [1, 31] (ngày bắt đầu kỳ hàng tháng).
-- `AnchorDate(y, m) = DateOnly(y, m, min(anchorDay, DaysInMonth(y, m)))` (ngày 29–31 bị kẹp về cuối tháng).
+- **Ngày chốt kỳ thuộc khu** (`billing_anchor_day` ∈ [1, 28], chốt 08/10/2026): **mọi phòng / HĐ của khu dùng chung**, HĐ không chọn riêng.
+  Không cho 29–31 ⇒ tháng nào cũng có ngày chốt. Thu trước / thu sau, tính theo ngày / trọn tháng, số ngày hạn thanh toán cũng là **cài đặt của khu** (M02 PR-BR-09).
+- **Tháng thu M của khu** = kỳ chuẩn `S(M)` (VD khu chốt ngày 5: tháng 11 = 05/11–04/12) — ngày chốt **cố định hằng tháng**, không dùng chu kỳ "30 ngày"
+  (30 ngày làm ngày thu trôi dần, 13 kỳ / năm ⇒ thu 13 tháng tiền phòng, tháng 12 có 2 kỳ không định danh được — R-141).
+  Ngày tạo phiếu không ảnh hưởng kỳ: phiếu tháng 11 luôn là kỳ tháng 11 dù tạo sớm hay muộn.
+- `AnchorDate(y, m) = DateOnly(y, m, min(anchorDay, DaysInMonth(y, m)))` (với ngày chốt 1–28 không bao giờ phải kẹp; giữ công thức cho dữ liệu cũ).
 - **Kỳ chuẩn** của tháng M: `S(M) = [AnchorDate(M), AnchorDate(M+1) − 1]`.
-- **Kỳ của hợp đồng** (dùng để lập phiếu):
+- **Kỳ của hợp đồng** (dùng để lập phiếu) — ⏳ **K5 đang chốt lại** cách tính kỳ đầu khi vào ở giữa kỳ (đề xuất: trường "Tính tiền từ ngày" trên HĐ,
+  phiếu đầu tiên tự gồm mọi ngày lẻ tới hết tháng thu đang tạo — không phiếu lẻ, không sót ngày; xem 99-self-review C3). Tới khi chốt giữ quy tắc dưới:
   - `NextAnchor(d)` = AnchorDate nhỏ nhất **lớn hơn** d.
   - Kỳ đầu: `[start_date, E1]`, trong đó `A = NextAnchor(start_date)`:
     - nếu `A` thuộc tháng **sau** tháng của `start_date` → `E1 = A − 1` (VD bắt đầu 20/10, anchor 5 → 20/10–04/11);
@@ -160,6 +165,7 @@ hoàn tất thanh lý: còn nợ ⇒ "Đã thu toàn bộ" / "Bỏ nợ" (hợp 
 - Prorate `Daily`: `amount = round(rent × Σ_k overlapDays_k / len(S_k))` với `S_k` là các kỳ chuẩn giao với kỳ HĐ
   (làm tròn **một lần** ở cuối). Kỳ đầy đủ ⇒ hệ số = 1; kỳ gộp 03/10–04/11 ⇒ hệ số = 2/30 + 1.
   `FullPeriod`: mỗi kỳ HĐ (kể cả kỳ lẻ/gộp) tính đúng 1 tháng tiền.
+- Tiền phòng **thu hằng tháng**, mỗi kỳ 1 dòng — không có chu kỳ đóng nhiều tháng (đã bỏ 07/10/2026, M07 BL-BR-26).
 - Hiện thực một lần duy nhất ở `Domain/Billing/BillingPeriodCalculator.cs` + unit test bảng (anchor 1/5/28/29/30/31, tháng 2 năm nhuận/không,
   bắt đầu trước/sau/đúng anchor, kết thúc giữa kỳ).
 
@@ -203,11 +209,23 @@ hoàn tất thanh lý: còn nợ ⇒ "Đã thu toàn bộ" / "Bỏ nợ" (hợp 
 - Lọc/sắp xếp: query params whitelisted; không nhận chuỗi sort tự do.
 - Hành động trạng thái dùng endpoint động từ: `POST /contracts/{id}/activate` (không PATCH status tự do).
 
-### C-10 Audit log
-- Bảng `audit_logs(id, organization_id, user_id, action, entity_type, entity_id, changes jsonb, ip, user_agent, occurred_at)`.
-- Ghi bằng `SaveChangesInterceptor` **trong cùng transaction** cho các entity đánh dấu `IAuditable`.
-- Trường nhạy cảm (số giấy tờ, mật khẩu, token) **không** ghi giá trị — chỉ ghi "changed".
-- Ghi thêm audit cho **đọc** dữ liệu nhạy cảm: xem số giấy tờ đầy đủ, tải ảnh giấy tờ, xuất Excel có dữ liệu cá nhân.
+### C-10 Audit log ✅
+- Bảng `audit_logs(id uuid v7, organization_id, user_id, action, entity_type, entity_id, changes jsonb, ip_address, occurred_at)`.
+  Không lưu `user_agent` (dài, ít giá trị tra cứu, làm bảng phình nhanh); lý do của lệnh (void, sửa chỉ số…) nằm trong `changes` / cột của entity.
+- Index chỉ 2: `(organization_id, entity_type, entity_id)` — lịch sử 1 đối tượng; `(organization_id, occurred_at)` — nhật ký theo thời gian.
+- **Hai đường ghi** — mục tiêu: không thêm lượt gọi DB cho mỗi thao tác:
+
+  | Loại thao tác | Cách ghi | Lượt DB thêm | Mất audit khi crash? |
+  |---|---|---|---|
+  | **Ghi** (tạo / sửa / xóa entity) | `AppDbContext.SaveChanges` đọc ChangeTracker → sinh dòng audit → thêm vào **chính lần lưu đó** (cùng batch lệnh, cùng transaction). Rollback ⇒ audit cũng không có; lưu lỗi ⇒ gỡ dòng audit khỏi context | 0 | Không |
+  | Sự kiện nghiệp vụ trong lệnh ghi (vượt sức chứa có chủ ý) | `IAuditTrail.Record(...)` — đi kèm SaveChanges kế tiếp, cùng transaction | 0 | Không |
+  | **Đọc** dữ liệu nhạy cảm (xem số giấy tờ đầy đủ, in HĐ có số đầy đủ, xuất Excel `includeSensitive`, tải ảnh giấy tờ — M09) | `IAuditTrail.RecordRead(...)` → hàng đợi RAM (`Channel`, tối đa `Audit:QueueCapacity` = 10.000) → `AuditLogWriter` (BackgroundService) gom lô: ghi khi **đủ `Audit:MaxBatchSize` = 500 HOẶC hết `Audit:FlushInterval` = 2 giây** tính từ bản ghi đầu của lô | 1 INSERT / lô | Tối đa 1 cửa sổ gom (~2 giây). Tắt app bình thường ⇒ vét hàng đợi trước khi dừng. Hàng đợi đầy / ghi lỗi ⇒ chép tóm tắt ra log ứng dụng |
+
+  Lý do không đưa thao tác ghi sang nền: lượt SaveChanges đằng nào cũng xảy ra, audit đi nhờ không tốn thêm round-trip/commit; tách ra nền chỉ thêm commit và rủi ro mất audit.
+- Audit **tự động** cho mọi entity kế thừa `Entity` trừ `RefreshToken` (sự kiện đăng nhập ở bảng `login_events` — M01 §11). Không áp dụng cho lệnh `ExecuteUpdate` / `ExecuteDelete` / SQL thô (không qua ChangeTracker) ⇒ lệnh nghiệp vụ cần audit không được viết bằng các API này, hoặc phải tự gọi `IAuditTrail.Record`.
+- `changes`: sửa ⇒ chỉ trường đổi `{"field":{"old":…,"new":…}}`; tạo / xóa ⇒ giá trị các trường. Bỏ cột đã có trên dòng audit (id, organization_id, created/updated_*, version).
+- Trường nhạy cảm **không** ghi giá trị — ghi `"[redacted]"`: tên kết thúc `Encrypted` / `Hash`, mọi cột nhị phân, `SecurityStamp`, `SigningSnapshot` (chứa số giấy tờ đã mã hóa).
+- Chưa làm: API xem audit log cho chủ trọ (ID-BR-19), xóa giá trị cá nhân trong `changes` khi ẩn danh (RT-BR-06), chính sách lưu giữ / partition theo tháng khi bảng lớn.
 
 ### C-11 Bảo mật & dữ liệu cá nhân
 - JWT access 15 phút + refresh token xoay vòng (chi tiết M01). Rate limit đăng nhập & API.
@@ -227,7 +245,7 @@ hoàn tất thanh lý: còn nợ ⇒ "Đã thu toàn bộ" / "Bỏ nợ" (hợp 
 
 | Phase | Nội dung | Exit criteria |
 |-------|----------|---------------|
-| **P0 Foundation** | **Nâng net10.0 ✅**; secrets; multi-tenant infra (C-01), audit (C-10 — **để sau**, hiện chỉ ghi log ứng dụng `AUDIT:`), ProblemDetails (C-09), idempotency (C-08), TimeProvider (C-04), BillingPeriodCalculator (C-05), Testcontainers; M01 auth | Đăng nhập được; test cô lập tổ chức chạy xanh trên CI |
+| **P0 Foundation** | **Nâng net10.0 ✅**; secrets; multi-tenant infra (C-01), audit (C-10 ✅ — ghi cùng SaveChanges + ghi nền theo lô cho thao tác đọc), ProblemDetails (C-09), idempotency (C-08), TimeProvider (C-04), BillingPeriodCalculator (C-05), Testcontainers; M01 auth | Đăng nhập được; test cô lập tổ chức chạy xanh trên CI |
 | **P1 MVP** | M01–M09 đầy đủ; M10 các export chính | Chạy trọn F1→F5 trên 1 khu 20 phòng trong integration/E2E test |
 | **P2** | **Gửi phiếu tiền phòng qua Zalo kèm mã VietQR** (BL-UC-13), in hợp đồng / phụ lục / biên bản bàn giao từ mẫu (CT-UC-15), nhắc việc (hợp đồng sắp hết hạn, tạm trú chưa đăng ký, giấy tờ PCCC hết hạn), đối chiếu hóa đơn điện EVN, dashboard, báo cáo doanh thu năm, export bất đồng bộ | — |
 | **P3 B2B** | Thanh toán online / đối soát ngân hàng (sau gửi Zalo), giới hạn `OrgManager` theo khu, gói dịch vụ & giới hạn (số khu/phòng), RLS, admin impersonation có audit | — |
@@ -246,7 +264,7 @@ lưu cứng). Vì chưa có dữ liệu thật → **xóa migration `InitialCrea
 | P0-01 ✅ | Nâng 4 project lên `net10.0`, cập nhật package (EF Core 10, Npgsql 10) | 0.5d |
 | P0-02 | Chuyển connection string sang User Secrets / env; validate secrets khi khởi động | 0.25d |
 | P0-03 | `ICurrentUser`, `TimeProvider` VN, base entity `TenantEntity` (Id, OrganizationId, CreatedAt/By, UpdatedAt/By) | 0.5d |
-| P0-04 | Global query filter + SaveChanges guard + interceptor audit | 1d |
+| P0-04 ✅ | Global query filter + SaveChanges guard + audit (C-10: cùng SaveChanges cho lệnh ghi, `AuditLogWriter` gom lô cho thao tác đọc) | 1d |
 | P0-05 | Xóa migration cũ, cấu hình xmin, composite FK helper, tạo migration mới | 0.5d |
 | P0-06 | ProblemDetails + mapping `Result`/`DomainException` → mã lỗi; idempotency middleware | 1d |
 | P0-07 | `BillingPeriodCalculator` + bộ test bảng | 0.5d |

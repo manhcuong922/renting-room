@@ -13,7 +13,7 @@ public sealed class BillingTests(ApiFactory factory)
     private sealed record Setup(string Token, Guid PropertyId, Guid RoomId, Guid ContractId, Guid MeterId, Guid ElectricityId, DateOnly Start);
 
     /// <summary>Kỳ thu ngày 1, bắt đầu ngày 1 của 2 tháng trước ⇒ các kỳ là tháng tròn, không phụ thuộc ngày chạy test.</summary>
-    private async Task<Setup> ArrangeAsync(string chargeMode, int rentCycleMonths = 1)
+    private async Task<Setup> ArrangeAsync(string chargeMode)
     {
         var owner = await _client.CreateActiveOwnerAsync();
         var token = owner.Tokens.AccessToken;
@@ -37,7 +37,7 @@ public sealed class BillingTests(ApiFactory factory)
             contract = new
             {
                 representativeRenterId = renter, startDate = start, monthlyRent = 3_000_000, depositAmount = 0,
-                billing = new { anchorDay = 1, chargeMode, prorationMode = "Daily", paymentDueDays = 5, rentCycleMonths },
+                billing = new { anchorDay = 1, chargeMode, prorationMode = "Daily", paymentDueDays = 5 },
                 occupants = new[] { new { renterId = renter } },
                 fees = new[] { new { feeTypeId = water } }
             }
@@ -244,29 +244,74 @@ public sealed class BillingTests(ApiFactory factory)
     }
 
     [Fact]
-    public async Task ThreeMonthRentCycle_RentOnlyInFirstMonth_OtherMonthsUtilitiesOnly_RentChangeLockedUntilCycleEnd()
+    public async Task MoveOutEarly_OverpaidRentWarned_RefundLineMakesTotalNegative_RefundConfirmedBeforeCompletion()
     {
-        var s = await ArrangeAsync("Prepaid", rentCycleMonths: 3);
+        var s = await ArrangeAsync("Prepaid");
         var secondMonth = s.Start.AddMonths(1);
-
         await GenerateAsync(s, s.Start);
-        var first = await InvoiceForAsync(s, s.Start);
-        var rent = first.GetProperty("lines").EnumerateArray().Single(l => l.GetProperty("type").GetString() == "Rent");
-        rent.GetProperty("amount").GetDecimal().Should().Be(9_000_000, "tháng đầu đóng 3 tháng tiền phòng");
-        rent.GetProperty("quantity").GetDecimal().Should().Be(3);
-        rent.GetProperty("description").GetString().Should().StartWith("Tiền phòng 3 tháng");
-        await FinalizeAsync(s, Id(first));
-
-        await SaveReadingAsync(s, s.Start, 150);
+        await FinalizeAsync(s, Id(await InvoiceForAsync(s, s.Start)));
+        (await SaveReadingAsync(s, s.Start, 150)).StatusCode.Should().Be(HttpStatusCode.OK);
         await GenerateAsync(s, secondMonth);
-        var second = await InvoiceForAsync(s, secondMonth);
-        second.GetProperty("lines").EnumerateArray().Select(l => l.GetProperty("type").GetString())
-            .Should().BeEquivalentTo(["Metered", "Service"], "tháng 2 chỉ thu điện nước, dịch vụ");
+        await FinalizeAsync(s, Id(await InvoiceForAsync(s, secondMonth)));
 
-        // Giá thuê đổi giữa chu kỳ đã thu ⇒ khóa tới hết chu kỳ.
-        (await (await _client.PostJsonAsync($"/api/v1/contracts/{s.ContractId}/rent-terms",
-                new { effectiveFrom = secondMonth, monthlyRent = 3_500_000 }, s.Token))
-            .ReadProblemCodeAsync()).Should().Be("PERIOD_ALREADY_BILLED");
+        // Đã đóng trọn tiền phòng tháng 2 nhưng ở 15 ngày ⇒ phiếu quyết toán nhắc phần thu thừa, không tự hoàn.
+        var moveOut = secondMonth.AddDays(14);
+        (await _client.PostJsonAsync($"/api/v1/contracts/{s.ContractId}/liquidation/start",
+            new { actualEndDate = moveOut, reason = "MutualAgreement" }, s.Token)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+        var final = await (await _client.PostJsonAsync($"/api/v1/contracts/{s.ContractId}/final-invoice",
+            new { finalReadings = new[] { new { meterId = s.MeterId, value = (decimal?)170 } } }, s.Token)).ReadAsync<JsonElement>();
+        final.GetProperty("issues").EnumerateArray().Select(i => i.GetProperty("code").GetString()).Should().Contain("RENT_OVERPAID");
+
+        // Hoàn trả lớn hơn phần thu ⇒ tổng âm = chủ trọ phải trả lại.
+        var refund = await _client.PostJsonAsync($"/api/v1/invoices/{Id(final)}/manual-lines",
+            new { type = "Refund", description = "Hoàn tiền phòng 15 ngày chưa ở", amount = 1_000_000, note = "Trả phòng sớm theo thỏa thuận" }, s.Token);
+        refund.StatusCode.Should().Be(HttpStatusCode.OK, await refund.Content.ReadAsStringAsync());
+        var finalized = await FinalizeAsync(s, Id(final));
+        Total(finalized).Should().Be(20 * 3500 - 1_000_000);
+        finalized.GetProperty("summary").GetProperty("paymentStatus").GetString().Should().Be("RefundPending");
+        finalized.GetProperty("summary").GetProperty("refundDue").GetDecimal().Should().Be(930_000);
+        finalized.GetProperty("summary").GetProperty("outstanding").GetDecimal().Should().Be(0);
+
+        (await (await _client.PostJsonAsync($"/api/v1/contracts/{s.ContractId}/liquidation/complete", new { settlement = (string?)null }, s.Token))
+            .ReadProblemCodeAsync()).Should().Be("REFUND_PENDING");
+
+        var today = TestData.Today(factory);
+        var confirmed = await _client.PostJsonAsync($"/api/v1/invoices/{Id(final)}/refund",
+            new { refundedOn = today, method = "Cash", note = "Trả tiền mặt khi bàn giao" }, s.Token);
+        confirmed.StatusCode.Should().Be(HttpStatusCode.OK, await confirmed.Content.ReadAsStringAsync());
+        (await confirmed.ReadAsync<JsonElement>()).GetProperty("summary").GetProperty("paymentStatus").GetString().Should().Be("Refunded");
+        (await _client.PostJsonAsync($"/api/v1/contracts/{s.ContractId}/liquidation/complete", new { settlement = (string?)null }, s.Token))
+            .StatusCode.Should().Be(HttpStatusCode.NoContent);
+    }
+
+    [Fact]
+    public async Task BulkManualLine_AddsSameSurchargeToEachDraft_ReportsRoomsWithoutDraft()
+    {
+        var s = await ArrangeAsync("Postpaid");
+        var emptyRoom = await _client.CreateRoomAsync(s.Token, s.PropertyId);
+        await SaveReadingAsync(s, s.Start, 150);
+        await GenerateAsync(s, s.Start);
+        var before = Total(await InvoiceForAsync(s, s.Start));
+
+        var response = await _client.PostJsonAsync("/api/v1/invoices/manual-lines", new
+        {
+            propertyId = s.PropertyId, billingMonth = $"{s.Start:yyyy-MM}", roomIds = new[] { s.RoomId, emptyRoom },
+            type = "Surcharge", description = "Sơn lại hành lang", amount = 50_000, note = "Thu chung cả khu theo thông báo"
+        }, s.Token);
+        response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+        var result = await response.ReadAsync<JsonElement>();
+
+        result.GetProperty("added").GetInt32().Should().Be(1);
+        result.GetProperty("results").EnumerateArray()
+            .Select(r => (r.GetProperty("roomId").GetGuid(), r.GetProperty("success").GetBoolean(), r.GetProperty("errorCode").GetString()))
+            .Should().BeEquivalentTo([(s.RoomId, true, (string?)null), (emptyRoom, false, "NO_DRAFT_INVOICE")]);
+        Total(await InvoiceForAsync(s, s.Start)).Should().Be(before + 50_000);
+
+        (await (await _client.PostJsonAsync("/api/v1/invoices/manual-lines", new
+            {
+                propertyId = s.PropertyId, billingMonth = $"{s.Start:yyyy-MM}", type = "Rent", description = "x", amount = 1, note = "x"
+            }, s.Token))
+            .ReadProblemCodeAsync()).Should().Be("VALIDATION_FAILED");
     }
 
     [Fact]

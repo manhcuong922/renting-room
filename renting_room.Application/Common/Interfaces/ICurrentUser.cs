@@ -10,6 +10,9 @@ public interface ICurrentUser
     Guid? OrganizationId { get; }
     UserRole? Role { get; }
 
+    /// <summary>IP client của request (đã qua forwarded headers); null khi không có request (job nền, design-time).</summary>
+    string? IpAddress { get; }
+
     /// <summary>Lấy UserId; ném lỗi nếu endpoint gọi tới không yêu cầu đăng nhập (lỗi cấu hình).</summary>
     Guid RequireUserId() =>
         UserId ?? throw new InvalidOperationException("No authenticated user in the current context.");

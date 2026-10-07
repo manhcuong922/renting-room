@@ -108,7 +108,7 @@ internal static class RoomStatusQuery
                     c.Occupants.Count(o => o.MoveInDate <= today && (o.MoveOutDate == null || o.MoveOutDate >= today)),
                     null))
                 .FirstOrDefault(),
-            Outstanding = db.Invoices.Where(i => i.RoomId == r.Id && i.Status == InvoiceStatus.Finalized)
+            Outstanding = db.Invoices.Where(i => i.RoomId == r.Id && i.Status == InvoiceStatus.Finalized && i.PaidAmount < i.TotalAmount)
                 .Sum(i => (decimal?)(i.TotalAmount - i.PaidAmount)) ?? 0,
             // Giữ chỗ: có hợp đồng nháp, hoặc đã kích hoạt nhưng ngày bàn giao ở tương lai (kích hoạt trước 1 ngày).
             HasDraft = db.Contracts.Any(c => c.RoomId == r.Id

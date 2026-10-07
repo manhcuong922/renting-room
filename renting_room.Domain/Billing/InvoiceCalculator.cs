@@ -62,10 +62,11 @@ public sealed record InvoiceCalcInput(
     FinalSettlement? Final = null);
 
 /// <summary>
-/// Bối cảnh phiếu quyết toán: <paramref name="RentCovered"/> = tiền phòng của kỳ cuối đã nằm trên phiếu trước (phiếu thường / chu kỳ nhiều tháng)
-/// ⇒ không thu thêm, cũng không hoàn (hoàn tiền: để sau); <paramref name="LastPeriodHasRegular"/> = kỳ cuối đã có phiếu thường ⇒ dịch vụ đã thu.
+/// Bối cảnh phiếu quyết toán: <paramref name="RentBilled"/> = tiền phòng kỳ cuối đã nằm trên phiếu thường (null = chưa thu) ⇒ không thu thêm;
+/// thu nhiều hơn số ngày ở thực tế ⇒ cảnh báo <c>RENT_OVERPAID</c>, chủ trọ tự thêm dòng Hoàn trả (BL-BR-27).
+/// <paramref name="LastPeriodHasRegular"/> = kỳ cuối đã có phiếu thường ⇒ dịch vụ đã thu.
 /// </summary>
-public sealed record FinalSettlement(bool RentCovered, bool LastPeriodHasRegular);
+public sealed record FinalSettlement(decimal? RentBilled, bool LastPeriodHasRegular);
 
 /// <summary>
 /// M07 — tính phần hệ thống của phiếu (thuần, không DB): Tiền phòng (BL-BR-03), Dịch vụ (BL-BR-04), Điện nước (BL-BR-05).
@@ -84,54 +85,42 @@ public static class InvoiceCalculator
             ? BillingPeriodCalculator.ProrationFactor(period.Start, period.End, contract.BillingAnchorDay)
             : 1m;
 
-        if (input.Final is not { RentCovered: true })
-            AddRent(contract, period, input.Final is not null, lines, issues);
+        if (input.Final is { RentBilled: { } billed })
+            WarnRentOverpaid(contract, period, factor, billed, issues);
+        else
+            AddRent(contract, period, factor, lines, issues);
         if (input.Final is not { LastPeriodHasRegular: true })
             AddServices(input, factor, lines, issues);
         AddMetered(input, lines, segments, issues);
         return new InvoiceCalculation(lines.OrderBy(l => l.SortOrder).ToList(), segments, issues);
     }
 
-    /// <summary>
-    /// BL-BR-03 / BL-BR-26: phiếu thường — tiền phòng chỉ ở tháng đầu chu kỳ, = Σ (giá thuê đầu từng kỳ × hệ số kỳ) cho N kỳ của chu kỳ;
-    /// chu kỳ cắt tại <c>end_date</c> nếu ngày hết hạn rơi trong chu kỳ (quá hạn / ở tiếp thì không cắt). Phiếu quyết toán — chỉ kỳ cuối.
-    /// </summary>
-    private static void AddRent(Contract contract, BillingPeriod period, bool isFinal, List<CalculatedLine> lines, List<InvoiceIssue> issues)
+    /// <summary>BL-BR-03: tiền phòng hằng tháng = giá thuê hiệu lực tại đầu kỳ × hệ số prorate C-05 (phiếu quyết toán: tới ngày trả phòng).</summary>
+    private static void AddRent(Contract contract, BillingPeriod period, decimal factor, List<CalculatedLine> lines, List<InvoiceIssue> issues)
     {
-        var cycle = new List<BillingPeriod> { period };
-        if (!isFinal && contract.RentCycleMonths > 1)
-        {
-            var all = BillingPeriodCalculator.Periods(contract.StartDate, contract.ActualEndDate, contract.BillingAnchorDay,
-                period.Start.AddMonths(contract.RentCycleMonths + 1)).ToList();
-            var index = all.FindIndex(p => p.Start == period.Start);
-            if (index % contract.RentCycleMonths != 0)
-                return; // tháng 2, 3… của chu kỳ: chỉ điện nước, dịch vụ
-            DateOnly? cutoff = contract.EndDate is { } end && end >= period.Start ? end : null;
-            cycle = all.Skip(index).Take(contract.RentCycleMonths)
-                .Where(p => cutoff is null || p.Start <= cutoff)
-                .Select(p => cutoff is { } c && p.End > c ? new BillingPeriod(p.Start, c) : p)
-                .ToList();
-        }
-
-        var rents = cycle.Select(p => contract.CurrentRent(p.Start)).ToList();
-        if (rents.Any(r => r is null))
+        if (contract.CurrentRent(period.Start) is not { } rent)
         {
             issues.Add(new InvoiceIssue("RENT_TERM_MISSING", InvoiceIssue.Error, "Không có giá thuê hiệu lực tại đầu kỳ."));
             return;
         }
-
-        var weighted = cycle.Zip(rents, (p, r) => r!.Value * Factor(contract, p)).Sum();
-        var baseRent = rents[0]!.Value;
-        var count = cycle.Count;
-        var description = count == 1 ? "Tiền phòng" : $"Tiền phòng {count} tháng ({cycle[0].Start:dd/MM}–{cycle[^1].End:dd/MM})";
-        lines.Add(new CalculatedLine(InvoiceLineType.Rent, null, description, "tháng", cycle[0].Start, cycle[^1].End, count, baseRent,
-            weighted / (baseRent * count), Invoice.Money(weighted), 0));
+        lines.Add(new CalculatedLine(InvoiceLineType.Rent, null, "Tiền phòng", "tháng", period.Start, period.End, 1, rent,
+            factor, Invoice.Money(rent * factor), 0));
     }
 
-    private static decimal Factor(Contract contract, BillingPeriod period) =>
-        contract.ProrationMode == ProrationMode.Daily
-            ? BillingPeriodCalculator.ProrationFactor(period.Start, period.End, contract.BillingAnchorDay)
-            : 1m;
+    /// <summary>
+    /// BL-BR-17: kỳ cuối đã thu tiền phòng trên phiếu thường mà người thuê trả phòng sớm hơn ⇒ nhắc phần thu thừa để chủ trọ thêm dòng
+    /// Hoàn trả nếu hoàn (không tự hoàn — BL-BR-27).
+    /// </summary>
+    private static void WarnRentOverpaid(Contract contract, BillingPeriod period, decimal factor, decimal billed, List<InvoiceIssue> issues)
+    {
+        if (contract.CurrentRent(period.Start) is not { } rent)
+            return;
+        var overpaid = billed - Invoice.Money(rent * factor);
+        if (overpaid > 0)
+            issues.Add(new InvoiceIssue("RENT_OVERPAID", InvoiceIssue.Warning,
+                $"Tiền phòng kỳ cuối đã thu {billed:N0}đ, ở tới {period.End:dd/MM} tương ứng {billed - overpaid:N0}đ — thừa {overpaid:N0}đ. " +
+                "Thêm dòng Hoàn trả nếu trả lại người thuê."));
+    }
 
     private static void AddServices(InvoiceCalcInput input, decimal factor, List<CalculatedLine> lines, List<InvoiceIssue> issues)
     {
@@ -147,10 +136,11 @@ public static class InvoiceCalculator
                 ChargeBasis.PerUnit => fee.Quantity,
                 _ => 1m
             };
-            var price = fee.UnitPriceOverride ?? type.ResolvePrice(period.Start)?.UnitPrice;
+            // Giá theo phiên bản: bản giá mới nhất hiệu lực tới ngày cuối kỳ, áp cả kỳ (FE-BR-10) — giá riêng của HĐ ưu tiên.
+            var price = fee.UnitPriceOverride ?? type.ResolvePrice(period.End)?.UnitPrice;
             if (price is null)
             {
-                issues.Add(new InvoiceIssue("FEE_PRICE_MISSING", InvoiceIssue.Error, $"\"{type.Name}\" chưa có giá tại đầu kỳ.", type.Id));
+                issues.Add(new InvoiceIssue("FEE_PRICE_MISSING", InvoiceIssue.Error, $"\"{type.Name}\" chưa có giá.", type.Id));
                 continue;
             }
             lines.Add(new CalculatedLine(InvoiceLineType.Service, type.Id, type.Name, type.Unit, period.Start, period.End, quantity,
@@ -196,7 +186,7 @@ public static class InvoiceCalculator
             if (parts.Count != group.Count())
                 continue;
 
-            // Giá mới: bản giá hiệu lực tại ngày cuối kỳ sử dụng — đổi giá giữa kỳ thì cả kỳ tính giá mới (BL-BR-05).
+            // Giá theo phiên bản: bản giá mới nhất hiệu lực tới ngày cuối kỳ sử dụng, áp cả kỳ (FE-BR-10, BL-BR-05).
             var price = type.ResolvePrice(usage.End);
             if (price is null)
             {

@@ -175,9 +175,15 @@ Cảnh báo mềm: `ROOM_WITHOUT_METER` (HĐ hiệu lực, phòng chưa có côn
 | `INVOICE_NOT_FINALIZED` | 422 | Phiếu chưa chốt — chốt trước khi thu / hủy |
 | `INVOICE_HAS_ISSUES` | 422 | Còn thiếu chỉ số / giá (`issues` trong body) — xử lý rồi Tính lại |
 | `DRAFT_STALE` | 409 | Dữ liệu nguồn đã đổi — bấm Tính lại rồi chốt |
-| `NEGATIVE_TOTAL` | 422 | Tổng phiếu âm — bớt giảm trừ |
+| `NEGATIVE_TOTAL` | 422 | Giảm trừ lớn hơn phần thu — bớt giảm trừ; trả lại tiền cho người thuê thì dùng dòng Hoàn trả |
 | `NOTE_REQUIRED` | 400 | Nhập lý do / ghi chú (phụ thu, sửa tiền phòng) |
 | `INVOICE_HAS_PAYMENTS` | 422 | Đảo phiếu thu trước khi hủy phiếu |
+| `REFUND_CONFIRMED` | 422 | Phiếu đã xác nhận hoàn tiền — bỏ xác nhận (`DELETE /invoices/{id}/refund`) trước khi hủy / xác nhận lại |
+| `REFUND_NOT_CONFIRMED` | 422 | Phiếu chưa xác nhận hoàn tiền |
+| `NOTHING_TO_REFUND` | 422 | Phiếu không có khoản phải trả lại người thuê (tổng không âm) |
+| `INVALID_REFUND_DATE` | 400 | Ngày hoàn từ ngày lập phiếu tới hôm nay |
+| `NO_DRAFT_INVOICE` | — | (kết quả từng phòng của `POST /invoices/manual-lines`) Phòng chưa có phiếu nháp tháng này |
+| `INVOICE_SAVE_FAILED` | — | (kết quả từng phòng của `POST /invoices/manual-lines`) Không lưu được phiếu đó — tải lại rồi thử lại; `CONCURRENCY_CONFLICT`: phiếu vừa được sửa |
 | `NOT_LATEST_INVOICE` | 422 | Hủy / xóa phiếu kỳ sau trước |
 | `INVOICE_EXISTS` | 409 | Kỳ đã có phiếu (tạo song song) — tải lại |
 | `INVALID_BILLING_MONTH` | 400 | Tháng thu dạng yyyy-MM |
@@ -192,7 +198,8 @@ Cảnh báo mềm: `ROOM_WITHOUT_METER` (HĐ hiệu lực, phòng chưa có côn
 | `INVOICE_DRAFT_EXISTS` | 409 | Còn phiếu nháp — chốt hoặc xóa |
 | `PREVIOUS_PERIOD_NOT_BILLED` | 422 | Lập phiếu các kỳ trước trước |
 | `CONTRACT_HAS_DEBT` | 422 | Hoàn tất thanh lý: còn nợ `outstanding` — chọn "Đã thu toàn bộ" / "Bỏ nợ" |
-| `CONTRACT_NOT_BILLABLE` | 422 | HĐ đã kết thúc — không ghi / đảo phiếu thu |
+| `REFUND_PENDING` | 422 | Hoàn tất thanh lý: còn `refundDue` phải trả lại người thuê — xác nhận đã hoàn trên phiếu trước |
+| `CONTRACT_NOT_BILLABLE` | 422 | HĐ đã kết thúc — không ghi / đảo phiếu thu, không xác nhận / bỏ xác nhận hoàn tiền |
 | `INVOICE_AFTER_END_DATE` | 422 | Bắt đầu thanh lý / ký lại: còn phiếu kỳ sau ngày trả phòng — hủy / xóa trước |
 
 Cảnh báo trên phiếu (`issues`, `severity: "Warning"`): `EDITED_BASE_CHANGED` (ô sửa tay mà số hệ thống tính lại đã đổi).
@@ -205,7 +212,6 @@ Cảnh báo trên phiếu (`issues`, `severity: "Warning"`): `EDITED_BASE_CHANGE
 | `FEE_NAME_TAKEN` / `FEE_SYSTEM_CODE_TAKEN` / `FEE_PRICE_DATE_EXISTS` | 409 | Ô tên / ngày |
 | `FEE_PRICE_LOCKED` | 422 | Ngày thuộc kỳ đã chốt phiếu |
 | `FEE_TIERS_METERED_ONLY` | 400 | Giá theo bậc chỉ cho điện nước theo công tơ |
-| `INVALID_RENT_CYCLE` | 400 | Chu kỳ đóng tiền phòng: 1, 2, 3, 6 hoặc 12 tháng |
 | `FEE_METERED_FOLLOWS_ROOM` | 400 | Điện / nước theo công tơ đi theo phòng — không gắn vào hợp đồng |
 | `FEE_IN_USE` | 422 | Gỡ khỏi hợp đồng trước khi ngừng dùng |
 | `FEE_HAS_ACTIVE_METERS` | 422 | Còn công tơ đang hoạt động — tháo / thay công tơ trước khi ngừng dùng |

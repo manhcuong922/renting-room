@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using renting_room.Application.Common.Interfaces;
+using renting_room.Infrastructure.Auditing;
 using renting_room.Infrastructure.Exports;
 using renting_room.Infrastructure.Idempotency;
 using renting_room.Infrastructure.Identity;
@@ -59,6 +60,15 @@ public static class DependencyInjection
             .ValidateOnStart();
         services.AddScoped<IIdempotencyStore, IdempotencyStore>();
         services.AddHostedService<IdempotencyCleanupService>();
+
+        services.AddOptions<AuditOptions>()
+            .Bind(configuration.GetSection(AuditOptions.SectionName))
+            .ValidateDataAnnotations()
+            .Validate(o => o.FlushInterval > TimeSpan.Zero, "Audit:FlushInterval must be positive.")
+            .ValidateOnStart();
+        services.AddSingleton<AuditQueue>();
+        services.AddScoped<IAuditTrail, AuditTrail>();
+        services.AddHostedService<AuditLogWriter>();
 
         return services;
     }

@@ -20,7 +20,7 @@ dashboard tổng quan; nhắc việc (HĐ sắp hết hạn, cư trú chưa đă
 | E3 | Thông tin phòng | propertyIds[], asOfDate | Khu, Phòng, Tầng, Diện tích, Sức chứa, Giá niêm yết, Trạng thái (dẫn xuất), Nhóm phòng, Số HĐ hiện hành, Người đại diện, Giá thuê HĐ, Ngày bắt đầu/hết hạn, Số người ở, Tiền cọc đang giữ, Khoản thu đăng ký (giữ xe ×2…) | |
 | E4 | Công nợ | propertyIds[], asOfDate | Khu, Phòng, Người đại diện, SĐT, Số phiếu nợ, Tổng nợ, Nợ quá hạn, Ngày quá hạn lâu nhất | |
 | E5 ⏸ | Sổ cọc | propertyIds[], from, to | Bút toán cọc + số dư cuối kỳ theo HĐ | |
-| E6 (P2) | Doanh thu năm | year | Tổng thu theo tháng: tiền phòng, dịch vụ, mất cọc; ghi chú ngưỡng 500 triệu (L12). **Định nghĩa**: Σ phân bổ từ phiếu thu tiền thật (`Cash/BankTransfer/EWallet/Other`) + `DepositDeduction` (cọc chuyển thành tiền thuê tại thời điểm cấn trừ) + bút toán `Forfeit`; **loại trừ** `WriteOff`, `CreditNote`, bút toán nhận/hoàn cọc | Không tính thuế; định nghĩa doanh thu cần kế toán/luật sư xác nhận |
+| E6 (P2) | Doanh thu năm | year | Tổng thu theo tháng: tiền phòng, dịch vụ, mất cọc; ghi chú ngưỡng 500 triệu (L12). **Định nghĩa**: Σ phân bổ từ phiếu thu tiền thật (`kind = Receipt`) + `DepositDeduction` (đợt 2 — cọc chuyển thành tiền thuê tại thời điểm cấn trừ) + bút toán `Forfeit` − tiền **hoàn trả** đã xác nhận (phiếu tổng âm, theo `refunded_on` — M07 BL-BR-27); **loại trừ** `kind = WriteOff`, `CreditNote`, bút toán nhận/hoàn cọc | Không tính thuế; định nghĩa doanh thu cần kế toán/luật sư xác nhận |
 | E7 (P2) | Đối chiếu điện | propertyId, billingMonth, evnBillAmount, evnKwh | Σ kWh & Σ tiền điện thu các phòng vs hóa đơn EVN → cảnh báo nếu thu > hóa đơn (L9) | |
 
 ## 3. Quy tắc nghiệp vụ

@@ -226,7 +226,7 @@ public sealed class PropertyRoomTests(ApiFactory factory)
             fullName = "Kim Min Ji", dateOfBirth = "1998-03-03", gender = "Female", nationality = "KR", idType = "Passport", idNumber = passport
         }, token)).ReadIdAsync();
 
-        var found = await (await _client.GetAsync($"/api/v1/renters?idNumber={passport}", token)).ReadAsync<Page<object>>();
+        var found = await (await _client.PostJsonAsync("/api/v1/renters/search", new { idNumber = passport }, token)).ReadAsync<Page<object>>();
 
         found.TotalCount.Should().Be(1);
     }

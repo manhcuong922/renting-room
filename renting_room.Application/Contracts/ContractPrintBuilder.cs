@@ -198,9 +198,7 @@ internal static class ContractPrintBuilder
         lines.AddRange(terms.Skip(1).Select(t =>
             $"- Từ ngày {Date(t.EffectiveFrom)}{(t.AddendumNo is null ? "" : $" (phụ lục {t.AddendumNo})")}: {VietnameseMoney.Format(t.MonthlyRent)}/tháng."));
         lines.Add($"- Kỳ thanh toán: hằng tháng, ngày chốt kỳ là ngày {c.BillingAnchorDay}; " +
-            (c.RentCycleMonths > 1
-                ? $"tiền thuê đóng {c.RentCycleMonths} tháng một lần vào đầu mỗi chu kỳ {c.RentCycleMonths} tháng, các tháng còn lại chỉ thu tiền điện, nước, dịch vụ"
-                : c.ChargeMode == ChargeMode.Prepaid ? "tiền thuê trả trước vào đầu mỗi kỳ" : "tiền thuê trả vào cuối mỗi kỳ") +
+            (c.ChargeMode == ChargeMode.Prepaid ? "tiền thuê trả trước vào đầu mỗi kỳ" : "tiền thuê trả vào cuối mỗi kỳ") +
             $"; hạn thanh toán trong {c.PaymentDueDays} ngày kể từ ngày nhận thông báo tiền phòng.");
         lines.Add($"- Hình thức thanh toán: {string.Join(" hoặc ", c.PaymentMethods.Select(PaymentLabel))}.");
         return string.Join('\n', lines);

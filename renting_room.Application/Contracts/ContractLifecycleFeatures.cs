@@ -1,7 +1,6 @@
 using FluentValidation;
 using Mediator;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Common.Models;
 using renting_room.Application.Common.Validation;
@@ -38,7 +37,7 @@ public sealed class AddOccupantCommandValidator : AbstractValidator<AddOccupantC
 /// CT-BR-09: vượt sức chứa ⇒ 422, trừ khi chủ ý vượt (overrideCapacity — ghi log).
 /// CT-BR-28..30: quan hệ với người đứng tên hợp lệ; CT-BR-31: HĐ đang hiệu lực ⇒ người mới không đang ở phòng khác.
 /// </summary>
-public sealed class AddOccupantHandler(IAppDbContext db, ICurrentUser currentUser, ILogger<AddOccupantHandler> logger)
+public sealed class AddOccupantHandler(IAppDbContext db, IAuditTrail auditTrail)
     : IRequestHandler<AddOccupantCommand, Result>
 {
     public ValueTask<Result> Handle(AddOccupantCommand request, CancellationToken cancellationToken) =>
@@ -64,8 +63,8 @@ public sealed class AddOccupantHandler(IAppDbContext db, ICurrentUser currentUse
             var maxOccupants = await db.Rooms.Where(r => r.Id == contract.RoomId).Select(r => r.MaxOccupants).FirstAsync(cancellationToken);
             var added = contract.AddOccupant(input, maxOccupants, request.OverrideCapacity);
             if (added.IsSuccess && request.OverrideCapacity && contract.ExceedsCapacity(maxOccupants))
-                logger.LogWarning("AUDIT: user {UserId} added occupant to contract {ContractId} over room capacity {MaxOccupants}",
-                    currentUser.UserId, contract.Id, maxOccupants);
+                auditTrail.Record(AuditActions.OverrideCapacity, nameof(Contract), contract.Id,
+                    new { operation = "AddOccupant", renterId = request.RenterId, maxOccupants });
             return added;
         }, cancellationToken));
 
@@ -345,6 +344,9 @@ public sealed class CompleteLiquidationHandler(IAppDbContext db, IDocumentNumber
                 return Result.Failure(BillingErrors.DraftExists);
             if (!await invoices.AnyAsync(i => i.Type == InvoiceType.Final && i.Status == InvoiceStatus.Finalized, cancellationToken))
                 return Result.Failure(BillingErrors.FinalRequired);
+            var refundDue = await PaymentPosting.RefundDueAsync(db, contract.Id, cancellationToken);
+            if (refundDue > 0)
+                return Result.Failure(BillingErrors.RefundPending(refundDue));
 
             var outstanding = await PaymentPosting.OutstandingAsync(db, contract.Id, cancellationToken);
             if (outstanding > 0)

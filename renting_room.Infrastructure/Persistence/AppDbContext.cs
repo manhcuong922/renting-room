@@ -11,6 +11,7 @@ using renting_room.Domain.Meters;
 using renting_room.Domain.Payments;
 using renting_room.Domain.Properties;
 using renting_room.Domain.Renters;
+using renting_room.Infrastructure.Auditing;
 using renting_room.Infrastructure.Idempotency;
 
 namespace renting_room.Infrastructure.Persistence;
@@ -37,6 +38,9 @@ public class AppDbContext(
 
     /// <summary>Bảng kỹ thuật — không đưa vào IAppDbContext để tầng Application không thao tác trực tiếp.</summary>
     public DbSet<IdempotencyRecord> IdempotencyRecords => Set<IdempotencyRecord>();
+
+    /// <summary>C-10 — Application ghi qua <see cref="IAuditTrail"/>; thay đổi entity được ghi tự động khi SaveChanges.</summary>
+    public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
 
     /// <summary>
     /// Đọc lại ở mỗi truy vấn (không cache lúc khởi tạo) — EF tham số hóa thuộc tính này trong global query filter.
@@ -98,14 +102,50 @@ public class AppDbContext(
 
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
-        ApplyTenantAndAuditRules();
-        return base.SaveChanges(acceptAllChangesOnSuccess);
+        var auditLogs = PrepareForSave();
+        try
+        {
+            return base.SaveChanges(acceptAllChangesOnSuccess);
+        }
+        catch
+        {
+            DiscardAuditLogs(auditLogs);
+            throw;
+        }
     }
 
-    public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
+    public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
     {
-        ApplyTenantAndAuditRules();
-        return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+        var auditLogs = PrepareForSave();
+        try
+        {
+            return await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+        }
+        catch
+        {
+            DiscardAuditLogs(auditLogs);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// C-01 + C-10: gán tổ chức / người tạo-sửa, rồi sinh dòng audit cho mọi thay đổi và thêm vào CHÍNH lần lưu này
+    /// (cùng batch lệnh, cùng transaction ⇒ không thêm round-trip; rollback thì audit cũng không có).
+    /// </summary>
+    private List<AuditLog> PrepareForSave()
+    {
+        var actor = AuditActor.From(currentUser, clock);
+        ApplyTenantAndAuditRules(actor);
+        var auditLogs = EntityChangeAudit.Collect(ChangeTracker, actor);
+        AuditLogs.AddRange(auditLogs);
+        return auditLogs;
+    }
+
+    /// <summary>Lưu lỗi (xung đột, vi phạm ràng buộc) ⇒ gỡ dòng audit vừa sinh để lần lưu sau trên cùng context không bị nhân đôi.</summary>
+    private void DiscardAuditLogs(List<AuditLog> auditLogs)
+    {
+        foreach (var auditLog in auditLogs)
+            Entry(auditLog).State = EntityState.Detached;
     }
 
     /// <summary>Mọi entity <see cref="ITenantEntity"/>: <c>e =&gt; e.OrganizationId == CurrentOrganizationId</c>.</summary>
@@ -131,24 +171,20 @@ public class AppDbContext(
     /// <summary>
     /// C-01: gán tổ chức cho entity mới, chặn ghi vào dữ liệu của tổ chức khác; C-10: gán thông tin tạo/sửa.
     /// </summary>
-    private void ApplyTenantAndAuditRules()
+    private void ApplyTenantAndAuditRules(AuditActor actor)
     {
-        var now = clock.GetUtcNow();
-        var userId = currentUser.UserId;
-        var organizationId = currentUser.OrganizationId;
-
         foreach (var entry in ChangeTracker.Entries())
         {
             if (entry.Entity is ITenantEntity tenantEntity)
-                EnforceTenant(entry.State, tenantEntity, organizationId);
+                EnforceTenant(entry.State, tenantEntity, actor.OrganizationId);
 
             if (entry.Entity is not AuditableEntity auditable)
                 continue;
 
             if (entry.State == EntityState.Added)
-                auditable.MarkCreated(now, userId);
+                auditable.MarkCreated(actor.OccurredAt, actor.UserId);
             else if (entry.State == EntityState.Modified)
-                auditable.MarkUpdated(now, userId);
+                auditable.MarkUpdated(actor.OccurredAt, actor.UserId);
         }
     }
 

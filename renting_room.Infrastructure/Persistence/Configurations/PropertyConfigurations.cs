@@ -12,7 +12,6 @@ internal sealed class PropertyConfiguration : IEntityTypeConfiguration<Property>
         builder.ToTable("properties", t =>
         {
             t.HasCheckConstraint("ck_properties_anchor_day", "default_billing_anchor_day BETWEEN 1 AND 31");
-            t.HasCheckConstraint("ck_properties_rent_cycle", "default_rent_cycle_months IN (1, 2, 3, 6, 12)");
             t.HasCheckConstraint("ck_properties_lessor_organization",
                 "lessor_type IS DISTINCT FROM 'Organization' OR (lessor_tax_code IS NOT NULL AND lessor_representative_name IS NOT NULL)");
         });

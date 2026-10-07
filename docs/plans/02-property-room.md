@@ -53,15 +53,15 @@ cài đặt thu mặc định của khu; thông tin hợp đồng điện EVN c�
 | PR-BR-05 | Archive phòng / bắt đầu bảo trì chỉ khi không có hợp đồng `Draft`/`Active`/`Liquidating` **và không có HĐ `Ended` có `actual_end_date ≥ hôm nay`** (người thuê còn ở trong ngày trả phòng — CT-BR-33); archive khu chỉ khi mọi phòng đã archive hoặc archivable (archive phòng kèm theo trong cùng transaction) **Công tơ không bị tháo** khi phòng ngừng dùng / bảo trì: công tơ vẫn chạy (sửa chữa, thử phòng dùng điện) — phần dùng khi phòng trống không tính cho ai (MT-BR-14); HĐ mới chọn "dùng số mới nhất" hoặc nhập số khác khi kích hoạt (MT-BR-13) | Application ✅ |
 | PR-BR-06 | `max_occupants` ≥ 1; giảm `max_occupants` xuống dưới số người đang ở → 422 | Application |
 | PR-BR-07 | Nhóm phòng chỉ chứa phòng **cùng khu** với nhóm | DB FK composite `(organization_id, property_id, room_id)` |
-| PR-BR-08 | Xóa nhóm phòng: cho phép nếu không có quy tắc điều chỉnh (M07) đang `Active` tham chiếu; nếu có → 409 | Application |
-| PR-BR-09 | Cài đặt thu mặc định của khu chỉ là **giá trị mặc định khi tạo hợp đồng**; đổi cài đặt **không** thay đổi hợp đồng đã tạo | Thiết kế (snapshot ở M05) |
+| PR-BR-08 | Xóa nhóm phòng: cho phép (quy tắc điều chỉnh M07 đã bỏ 08/10/2026 nên không còn tham chiếu) | Application |
+| PR-BR-09 | **Cài đặt kỳ thu của khu** (chốt 08/10/2026): ngày chốt kỳ (1–28), thu trước / thu sau, tính theo ngày / trọn tháng ở kỳ lẻ, số ngày hạn thanh toán — **áp chung cho mọi phòng / HĐ của khu**, HĐ không chọn riêng; mỗi khu đặt khác nhau được. Tạo phiếu theo khu + tháng thu, lọc bớt phòng khi cần (M07). Đổi cài đặt khi khu đã có phiếu: ⏳ chờ chốt (K4 — đề xuất chỉ cho đổi khi khu chưa có phiếu) | Domain + M05/M07 đọc từ khu |
 | PR-BR-10 | Khu có > 20 phòng → hiển thị cảnh báo thông tin L3 (không chặn) | UI/Query |
 | PR-BR-11 | Giới hạn gói (P3): tổng phòng chưa archive ≤ `organizations.max_rooms` | Application, khóa `organizations` row khi tạo |
 | PR-BR-12 | **Bên cho thuê đầy đủ** = `lessor_type`, `lessor_name`, `lessor_address`, `lessor_phone` và: Cá nhân → loại + số giấy tờ, ngày sinh (≥ 18 tuổi); Tổ chức → mã số thuế, người đại diện, chức vụ. Thiếu → hợp đồng của khu không kích hoạt được (CT-BR-19) | Domain (`LessorInfo.IsComplete`) |
 | PR-BR-13 | Người ký không phải chủ nhà (công ty quản lý, người được ủy quyền) → bắt buộc `authorization_doc_no` + `authorization_doc_date` | Validator |
 | PR-BR-14 | Số giấy tờ bên cho thuê: chuẩn hóa + mã hóa + che khi hiển thị như số giấy tờ người thuê (C-11) | Infrastructure |
 | PR-BR-15 | Sửa thông tin bên cho thuê / ngân hàng **không** làm đổi hợp đồng đã kích hoạt (hợp đồng giữ snapshot — CT-BR-19) | Thiết kế |
-| PR-BR-16 ✅ | **Nhãn trên thẻ phòng / chi tiết phòng** (dẫn xuất): `currentContract.flags` của HĐ đang ở — `RepresentativeMovedOut` "Người ký đã rời đi", `NoOccupantLeft` "Không còn người ở", `ExpiredAwaitingDecision` "Quá hạn HĐ — chờ quyết định", `Holdover` "Ở tiếp chưa ký lại" (CT-BR-44/45); `Còn nợ` (tổng phiếu đã chốt chưa thu đủ > 0) khi có M08. Chi tiết phòng có tab **Phiếu tiền phòng** (M07 BL-UC-14) | Query |
+| PR-BR-16 ✅ | **Nhãn trên thẻ phòng / chi tiết phòng** (dẫn xuất): `currentContract.flags` của HĐ đang ở — `RepresentativeMovedOut` "Người ký đã rời đi", `NoOccupantLeft` "Không còn người ở", `ExpiredAwaitingDecision` "Quá hạn HĐ — chờ quyết định", `Holdover` "Ở tiếp chưa ký lại" (CT-BR-44/45); `Còn nợ` (tổng phiếu đã chốt chưa thu đủ > 0) khi có M08; **`Quá hạn` (đỏ)** khi có phiếu đã chốt chưa thu đủ mà quá hạn thanh toán (ngày chốt phiếu + số ngày hạn của khu) — ⏳ chưa code (chốt 08/10/2026, K3). Chi tiết phòng có tab **Phiếu tiền phòng** (M07 BL-UC-14) | Query |
 
 ### 3.3 Vòng đời
 - Property: `Active` ⇄ `Archived` (`archived_at`).
@@ -83,12 +83,11 @@ cài đặt thu mặc định của khu; thông tin hợp đồng điện EVN c�
 | commune_code | varchar(10) | N | FK communes; CHECK thuộc province (FK composite `(province_code, commune_code)`) |
 | street_address | varchar(300) | N | số nhà, ngõ, đường |
 | description | text | Y | |
-| default_billing_anchor_day | smallint | N | 1–31, mặc định 1 |
-| default_charge_mode | varchar(16) | N | `Prepaid` (thu tiền phòng đầu kỳ, điện nước kỳ trước) / `Postpaid` (cuối kỳ) |
-| default_payment_due_days | smallint | N | 0–60, mặc định 5 |
-| default_proration_mode | varchar(16) | N | `Daily` / `FullPeriod` |
+| default_billing_anchor_day | smallint | N | **1–28**, mặc định 1 — ngày chốt kỳ **chung của khu** (PR-BR-09; đổi tên bỏ `default_` khi code) |
+| default_charge_mode | varchar(16) | N | `Prepaid` (tiền phòng kỳ này + điện nước kỳ trước) / `Postpaid` (tiền phòng + điện nước của chính kỳ, thu cuối kỳ) — chung cả khu |
+| default_payment_due_days | smallint | N | 0–60, mặc định 5 — hạn = ngày chốt phiếu + số ngày; quá hạn ⇒ nhãn đỏ (PR-BR-16) |
+| default_proration_mode | varchar(16) | N | `Daily` / `FullPeriod` — tiền phòng kỳ lẻ, chung cả khu |
 | default_notice_days | smallint | N | 0–180, mặc định 30 (L4) |
-| default_rent_cycle_months | smallint | N | 1 / 2 / 3 / 6 / 12, mặc định 1 — chu kỳ đóng tiền phòng mặc định cho HĐ mới (BL-BR-26) ✅ |
 | evn_customer_code | varchar(20) | Y | mã khách hàng điện, tham chiếu đối chiếu |
 | **Bên cho thuê** (PR-BR-12) | | | |
 | lessor_type | varchar(16) | Y | `Individual`,`Organization` |
@@ -140,7 +139,7 @@ PK `(room_group_id, room_id)`. FK composite `(organization_id, property_id, room
 
 ### 4.2 Ràng buộc & index
 - `UNIQUE (organization_id, lower(code))` trên properties; `UNIQUE (property_id, lower(code))` trên rooms.
-- CHECK `default_billing_anchor_day BETWEEN 1 AND 31`, `max_occupants BETWEEN 1 AND 20`, `area_m2 > 0`, `listed_rent >= 0`.
+- CHECK `default_billing_anchor_day BETWEEN 1 AND 28`, `max_occupants BETWEEN 1 AND 20`, `area_m2 > 0`, `listed_rent >= 0`.
 - CHECK `NOT (is_under_maintenance AND archived_at IS NOT NULL)`.
 - CHECK `lessor_type IS NULL OR lessor_type IN ('Individual','Organization')`;
   CHECK `lessor_type <> 'Organization' OR (lessor_tax_code IS NOT NULL AND lessor_representative_name IS NOT NULL)`.
@@ -232,7 +231,7 @@ POST /api/v1/properties/{propertyId}/rooms/bulk
 | name | 1–200 | |
 | provinceCode/communeCode | tồn tại trong bảng tham chiếu & xã thuộc tỉnh | `INVALID_COMMUNE` |
 | streetAddress | 1–300 | |
-| anchorDay | 1–31 | |
+| anchorDay | 1–28 | ngày chốt chung của khu |
 | chargeMode / prorationMode | enum hợp lệ | |
 | paymentDueDays | 0–60 | |
 | room.code | `^[A-Za-z0-9-_.]{1,20}$` | |
@@ -272,7 +271,7 @@ Audit: tạo/sửa/archive khu & phòng, đổi cài đặt thu, bảo trì, tha
 
 ## 13. Phụ thuộc
 - Dùng: M01 (`ICurrentUser`), bảng ĐVHC.
-- Bị dùng bởi: M04 (khoản thu theo khu), M05 (hợp đồng theo phòng), M06 (công tơ theo phòng), M07 (quy tắc điều chỉnh theo khu/nhóm/phòng), M10.
+- Bị dùng bởi: M04 (khoản thu theo khu), M05 (hợp đồng theo phòng), M06 (công tơ theo phòng), M07 (kỳ thu của khu, lọc phòng / tầng khi tạo phiếu), M10.
 - M02 cần **đọc** hợp đồng (M05) để tính status → dùng query interface `IRoomOccupancyReader` hiện thực ở M05 (tránh vòng phụ thuộc trong Application: interface đặt ở M02, hiện thực khi M05 xong; trước đó trả "Vacant").
 
 ## 14. Task breakdown
