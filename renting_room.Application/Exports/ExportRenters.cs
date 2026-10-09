@@ -111,8 +111,8 @@ public sealed class ExportRentersHandler(
                 new { rowCount = rows.Count, propertyIds = request.PropertyIds is { Count: > 0 } ids ? ids : null, from, to });
 
         var subtitle = RenterExportSheets.Subtitle(from, to, today, now, request.IncludeSensitive);
-        var idNumber = (RenterExportRow r) => request.IncludeSensitive
-            ? protector.Decrypt(r.IdNumberEncrypted)
+        var idNumber = (RenterExportRow r) => r.IdNumberEncrypted is not { Length: > 0 } ? string.Empty
+            : request.IncludeSensitive ? protector.Decrypt(r.IdNumberEncrypted)
             : PersonalDataProtectorExtensions.Mask(r.IdNumberLast4);
         var document = new SpreadsheetDocument(RenterExportSheets.Build(rows, request.Layout, subtitle, idNumber));
 
@@ -161,9 +161,9 @@ internal sealed class RenterExportRow
     public DateOnly DateOfBirth { get; init; }
     public Gender Gender { get; init; }
     public string? Phone { get; init; }
-    public IdDocumentType IdType { get; init; }
-    public string IdNumberLast4 { get; init; } = null!;
-    public byte[] IdNumberEncrypted { get; init; } = null!;
+    public IdDocumentType? IdType { get; init; }
+    public string? IdNumberLast4 { get; init; }
+    public byte[]? IdNumberEncrypted { get; init; }
     public DateOnly? IdIssueDate { get; init; }
     public string? IdIssuePlace { get; init; }
     public string Nationality { get; init; } = null!;

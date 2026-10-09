@@ -55,6 +55,8 @@ public static partial class ContractWarnings
             "Phòng còn người ở nhưng người ký hợp đồng đã rời đi — cần ký hợp đồng mới cho người còn ở."),
         ContractFlag.NoOccupantLeft => new Warning("NO_OCCUPANT_LEFT",
             "Hợp đồng còn hiệu lực nhưng không còn ai ở — thanh lý để trả phòng?"),
+        ContractFlag.MissingSignedDocument => new Warning("SIGNED_DOCUMENT_MISSING",
+            "Chưa có bản hợp đồng đã ký (giấy / ảnh / PDF) — đánh dấu khi đã có. Không ảnh hưởng thu tiền."),
         ContractFlag.ExpiredAwaitingDecision => new Warning("CONTRACT_EXPIRED_DECISION_NEEDED",
             $"Hợp đồng đã hết hạn ngày {contract.EndDate:dd/MM/yyyy} mà người thuê vẫn ở — chọn: gia hạn, cho ở tiếp chưa ký lại, hoặc thu lại phòng."),
         _ => new Warning("HOLDOVER_SIGN_ADDENDUM",

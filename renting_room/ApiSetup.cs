@@ -8,6 +8,7 @@ using renting_room.Application.Common.Interfaces;
 using renting_room.Errors;
 using renting_room.Idempotency;
 using renting_room.Infrastructure.Identity;
+using renting_room.Infrastructure.Jobs;
 using renting_room.Infrastructure.Persistence;
 using renting_room.Middleware;
 using renting_room.Security;
@@ -38,7 +39,10 @@ internal static class ApiSetup
         services.AddExceptionHandler<GlobalExceptionHandler>();
 
         services.AddHttpContextAccessor();
-        services.AddScoped<ICurrentUser, HttpContextCurrentUser>();
+        // Job nền đặt người dùng hệ thống của tổ chức qua CurrentUserOverride; còn lại là người dùng của request.
+        services.AddScoped<HttpContextCurrentUser>();
+        services.AddScoped<ICurrentUser>(sp =>
+            sp.GetRequiredService<CurrentUserOverride>().User ?? sp.GetRequiredService<HttpContextCurrentUser>());
         services.AddJwtAuthentication();
         services.AddAppAuthorization();
         services.AddApiRateLimiting(configuration);

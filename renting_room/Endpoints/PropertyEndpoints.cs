@@ -14,8 +14,11 @@ public sealed record UpdatePropertyRequest(
     string? Description,
     string? EvnCustomerCode,
     LandParcelInput? Land,
-    BillingDefaultsInput BillingDefaults,
     uint Version);
+
+/// <param name="TransitionAdjustDays">K4: số ngày tiền phòng cộng (+) / trừ (−) ở kỳ chuyển tiếp — null = theo gợi ý.</param>
+public sealed record UpdatePropertyBillingRequest(
+    int AnchorDay, ChargeMode ChargeMode, int PaymentDueDays, ProrationMode ProrationMode, int NoticeDays, int? TransitionAdjustDays);
 
 public sealed record UpdateLessorRequest(
     LessorType Type,
@@ -65,8 +68,17 @@ public static class PropertyEndpoints
 
         group.MapPut("/{id:guid}", async (Guid id, UpdatePropertyRequest body, ISender sender, CancellationToken ct) =>
                 (await sender.Send(new UpdatePropertyCommand(
-                    id, body.Name, body.Address, body.Description, body.EvnCustomerCode, body.Land, body.BillingDefaults, body.Version), ct)).ToHttp())
-            .WithSummary("Sửa thông tin chung + cài đặt thu mặc định (không ảnh hưởng hợp đồng đã tạo)");
+                    id, body.Name, body.Address, body.Description, body.EvnCustomerCode, body.Land, body.Version), ct)).ToHttp())
+            .WithSummary("Sửa thông tin chung của khu (cài đặt kỳ thu: PUT /{id}/billing)");
+
+        group.MapGet("/{id:guid}/billing/preview", async (Guid id, int anchorDay, ChargeMode chargeMode, ISender sender, CancellationToken ct) =>
+                (await sender.Send(new PreviewBillingChangeQuery(id, anchorDay, chargeMode), ct)).ToHttp())
+            .WithSummary("K4: xem trước kỳ chuyển tiếp khi đổi ngày chốt / thu trước–thu sau (dư / thiếu bao nhiêu ngày, gợi ý, tiền từng phòng)");
+
+        group.MapPut("/{id:guid}/billing", async (Guid id, UpdatePropertyBillingRequest b, ISender sender, CancellationToken ct) =>
+                (await sender.Send(new UpdatePropertyBillingCommand(id,
+                    new PropertyBillingInput(b.AnchorDay, b.ChargeMode, b.PaymentDueDays, b.ProrationMode, b.NoticeDays), b.TransitionAdjustDays), ct)).ToHttp())
+            .WithSummary("Cài đặt kỳ thu của khu — mọi HĐ dùng chung (PR-BR-09); khu đã có phiếu ⇒ có kỳ chuyển tiếp (K4)");
 
         group.MapPost("/{id:guid}/archive", async (Guid id, ISender sender, CancellationToken ct) =>
                 (await sender.Send(new ArchivePropertyCommand(id), ct)).ToHttp())
@@ -80,7 +92,11 @@ public static class PropertyEndpoints
                 (await sender.Send(new UpdateLessorCommand(
                     id, b.Type, b.Name, b.Address, b.Phone, b.Email, b.IdType, b.IdNumber, b.IdIssueDate, b.IdIssuePlace,
                     b.DateOfBirth, b.TaxCode, b.RepresentativeName, b.RepresentativeTitle, b.AuthorizationDocNo, b.AuthorizationDocDate), ct)).ToHttp())
-            .WithSummary("Khai báo bên cho thuê (bắt buộc trước khi kích hoạt hợp đồng). idNumber = null ⇒ giữ số cũ");
+            .WithSummary("Khai bên cho thuê riêng của khu (khác chủ trọ — PR-BR-17). idNumber = null ⇒ giữ số cũ");
+
+        group.MapDelete("/{id:guid}/lessor", async (Guid id, ISender sender, CancellationToken ct) =>
+                (await sender.Send(new ClearPropertyLessorCommand(id), ct)).ToHttp())
+            .WithSummary("Bỏ bên cho thuê riêng ⇒ khu dùng thông tin chủ trọ (GET /org/lessor)");
 
         group.MapPost("/{id:guid}/lessor/reveal-id-number", async (Guid id, ISender sender, CancellationToken ct) =>
             {
@@ -89,7 +105,7 @@ public static class PropertyEndpoints
             })
             .WithNoStore()
             .RequireRateLimiting(RateLimitPolicies.Sensitive)
-            .WithSummary("Xem số giấy tờ đầy đủ của bên cho thuê (có ghi audit; giới hạn theo user)");
+            .WithSummary("Xem số giấy tờ đầy đủ của bên cho thuê hiệu lực của khu (có ghi audit; giới hạn theo user)");
 
         group.MapPut("/{id:guid}/bank-account", async (Guid id, UpdateBankAccountRequest body, ISender sender, CancellationToken ct) =>
                 (await sender.Send(new UpdateBankAccountCommand(id, body.BankName, body.AccountNo, body.AccountName), ct)).ToHttp())

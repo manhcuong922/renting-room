@@ -59,7 +59,7 @@ public sealed class LogoutAllHandler(
         if (user is null)
             return Result.Failure(IdentityErrors.UserNotFound);
 
-        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        await using var transaction = await db.BeginTransactionAsync(cancellationToken);
 
         await RefreshTokenRevoker.RevokeAllForUserAsync(
             db, userId, RefreshTokenRevokeReason.Logout, clock.GetUtcNow(), cancellationToken);

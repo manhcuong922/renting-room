@@ -96,7 +96,7 @@ cho phiếu tháng đó. Hợp đồng **trả sau** (`Postpaid`): kỳ của th
       "meterId": "…", "serialNo": "E-101", "feeTypeId": "…", "feeTypeName": "Điện", "unit": "kWh",
       "usageStart": "2026-11-01", "usageEnd": "2026-11-30", "closingPeriodStart": "2026-11-01", "endsWithFinal": false,
       "previous": { "id": "…", "kind": "Handover", "readingDate": "2026-11-01", "value": 100 },
-      "current": null, "consumption": null, "locked": false
+      "current": null, "consumption": null, "locked": false, "recentAverage": 140, "usageWarning": null
     }
   ]
 }
@@ -104,6 +104,9 @@ cho phiếu tháng đó. Hợp đồng **trả sau** (`Postpaid`): kỳ của th
 
 - `previous` = chỉ số cũ (số cuối của phiếu trước / nhận phòng / tháng trước); `current` = số đã nhập; `consumption` = mới − cũ (tạm tính).
 - `locked: true` ⇒ chỉ số đã dùng cho phiếu đã chốt — ô chỉ đọc (muốn sửa thì hủy phiếu).
+- **Bất thường** (MT-BR-08, không chặn lưu): `recentAverage` = trung bình 3 kỳ trước của HĐ (null khi chưa đủ 3 kỳ) — UI tô vàng ngay khi
+  nhập nếu sản lượng ≥ 3 × `recentAverage` **và** tăng ≥ 50; hoặc = 0 khi phòng có người ở. Số đã lưu ⇒ server trả câu cảnh báo trong `usageWarning`
+  (phiếu nháp có cảnh báo `UNUSUAL_USAGE`).
 - Công tơ thay giữa kỳ: chỉ hiện công tơ mới — phần công tơ cũ hệ thống tự cộng khi tính phiếu.
 
 `PUT /properties/{propertyId}/meter-readings` (nên gửi `Idempotency-Key`)

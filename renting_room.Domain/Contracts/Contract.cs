@@ -37,10 +37,11 @@ public sealed class Contract : TenantEntity
     public int NoticeDays { get; private set; }
     public decimal DepositAmount { get; private set; }
     public string? DepositTerms { get; private set; }
-    public int BillingAnchorDay { get; private set; }
-    public ChargeMode ChargeMode { get; private set; }
-    public ProrationMode ProrationMode { get; private set; }
-    public int PaymentDueDays { get; private set; }
+    /// <summary>
+    /// K5 — "Tính tiền từ ngày" (C-05): kỳ đầu bắt đầu từ ngày này, những ngày trước không tính tiền (HĐ nhập từ sổ cũ, cho ở miễn phí vài
+    /// ngày đầu). Mặc định = ngày bắt đầu. Ngày chốt / thu trước–thu sau / tính kỳ lẻ là của khu (CT-BR-04).
+    /// </summary>
+    public DateOnly BillingStartDate { get; private set; }
     public PaymentMethod[] PaymentMethods { get; private set; } = [];
     public int CopiesCount { get; private set; }
     public string? TermsText { get; private set; }
@@ -69,6 +70,10 @@ public sealed class Contract : TenantEntity
     /// </summary>
     public string? SigningSnapshot { get; private set; }
     public string? HouseRulesSnapshot { get; private set; }
+
+    /// <summary>Đã có bản HĐ ký (giấy cất ở đâu / ảnh / PDF) — chưa có ⇒ cờ "Thiếu tài liệu". Không ảnh hưởng thu tiền.</summary>
+    public bool HasSignedDocument { get; private set; }
+    public string? SignedDocumentNote { get; private set; }
     public string? UtilityPriceSnapshot { get; private set; }
 
     public TerminationReason? TerminationReason { get; private set; }
@@ -91,6 +96,13 @@ public sealed class Contract : TenantEntity
     public IReadOnlyList<ContractOccupant> Occupants => _occupants;
     public IReadOnlyList<ContractAsset> Assets => _assets;
     public IReadOnlyList<ContractVehicle> Vehicles => _vehicles;
+
+    /// <summary>
+    /// RT-BR-06: ẩn danh người thuê — xóa biển số (hiệu – màu) xe đã kết thúc: mọi xe nếu <paramref name="ownerRenterId"/> null (HĐ người đó
+    /// đứng tên), ngược lại chỉ xe người đó là chủ. Trả id các xe đã xóa.
+    /// </summary>
+    public IReadOnlyList<Guid> EraseEndedVehicleIdentity(Guid? ownerRenterId) =>
+        _vehicles.Where(v => ownerRenterId is null || v.RenterId == ownerRenterId).Where(v => v.EraseIdentity()).Select(v => v.Id).ToList();
     public IReadOnlyList<ContractFee> Fees => _fees;
 
     public bool IsOverdue(DateOnly today) => Status == ContractStatus.Active && EndDate < today;
@@ -114,6 +126,8 @@ public sealed class Contract : TenantEntity
 
         if (EndDate is { } end && end < today)
             flags.Add(HoldoverSince is null ? ContractFlag.ExpiredAwaitingDecision : ContractFlag.Holdover);
+        if (!HasSignedDocument)
+            flags.Add(ContractFlag.MissingSignedDocument);
         return flags;
     }
 
@@ -122,8 +136,11 @@ public sealed class Contract : TenantEntity
 
     public IEnumerable<ContractOccupant> OccupantsOn(DateOnly date) => _occupants.Where(o => o.IsStayingOn(date));
 
-    public IReadOnlyList<BillingPeriod> BillingPeriods(DateOnly until) =>
-        BillingPeriodCalculator.Periods(StartDate, ActualEndDate, BillingAnchorDay, until);
+    /// <summary>Kỳ của HĐ (C-05) theo lịch kỳ thu của khu, từ "Tính tiền từ ngày" tới ngày trả phòng.</summary>
+    public IReadOnlyList<BillingPeriod> BillingPeriods(BillingSchedule schedule, DateOnly until) =>
+        schedule.ContractPeriods(BillingStartDate, ActualEndDate, until);
+
+    public bool IsPeriodStart(BillingSchedule schedule, DateOnly date) => BillingPeriods(schedule, date).Any(p => p.Start == date);
 
     // ------------------------------------------------------------------ Nháp
 
@@ -136,7 +153,7 @@ public sealed class Contract : TenantEntity
 
         var contract = new Contract
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             PropertyId = propertyId,
             RoomId = roomId,
             ContractNo = TextNormalizer.NormalizeCode(contractNo),
@@ -192,6 +209,8 @@ public sealed class Contract : TenantEntity
     {
         if (data.EndDate is { } end && end <= data.StartDate)
             throw new ArgumentException("End date must be after start date.");
+        if (data.BillingStartDate is { } billingStart && (billingStart < data.StartDate || (data.EndDate is { } last && billingStart > last)))
+            throw new ArgumentException("Billing start date must be within the contract.");
         if (data.MonthlyRent <= 0 || data.DepositAmount < 0)
             throw new ArgumentOutOfRangeException(nameof(data), "Rent must be positive and deposit non-negative.");
         if (data.Occupants.Select(o => o.RenterId).Distinct().Count() != data.Occupants.Count)
@@ -209,10 +228,7 @@ public sealed class Contract : TenantEntity
         EffectiveDate = data.EffectiveDate;
         DepositAmount = data.DepositAmount;
         DepositTerms = TextNormalizer.TrimToNull(data.DepositTerms);
-        BillingAnchorDay = data.BillingAnchorDay;
-        ChargeMode = data.ChargeMode;
-        ProrationMode = data.ProrationMode;
-        PaymentDueDays = data.PaymentDueDays;
+        BillingStartDate = data.BillingStartDate ?? data.StartDate;
         NoticeDays = data.NoticeDays;
         PaymentMethods = data.PaymentMethods.Distinct().ToArray();
         CopiesCount = data.CopiesCount;
@@ -259,22 +275,14 @@ public sealed class Contract : TenantEntity
             return Result.Failure(ContractErrors.RoomUnavailable);
         if (StartDate > context.Today.AddDays(MaxStartDaysAhead))
             return Result.Failure(ContractErrors.StartDateTooFarInFuture);
-        if (!context.LessorComplete)
-            return Result.Failure(ContractErrors.LessorInfoIncomplete);
         if (_occupants.Count == 0)
             return Result.Failure(ContractErrors.NoOccupant);
-        if (!context.OverrideCapacity && ExceedsCapacity(context.RoomMaxOccupants))
-            return Result.Failure(ContractErrors.RoomCapacityExceeded);
-        if (!context.RepresentativeHasPhone)
-            return Result.Failure(ContractErrors.RepresentativePhoneRequired);
 
         // Không ghi ngày ký: HĐ nhập lại (bắt đầu trong quá khứ) coi như ký ngày bắt đầu; HĐ mới coi như ký hôm nay.
         // Không được muộn hơn ngày hiệu lực đã thỏa thuận (CT-BR-20: hiệu lực không trước ngày ký).
         var defaultSignedDate = StartDate < context.Today ? StartDate : context.Today;
         var signedDate = SignedDate
             ?? (EffectiveDate is { } agreedEffective && agreedEffective < defaultSignedDate ? agreedEffective : defaultSignedDate);
-        if (context.RepresentativeDateOfBirth.AgeOn(signedDate) < LessorDetails.MinimumAge)
-            return Result.Failure(ContractErrors.RepresentativeUnderage);
 
         SignedDate = signedDate;
         EffectiveDate ??= signedDate;
@@ -288,7 +296,7 @@ public sealed class Contract : TenantEntity
 
     // ------------------------------------------------------------------ Người ở
 
-    public Result AddOccupant(OccupantInput input, int roomMaxOccupants, bool overrideCapacity)
+    public Result AddOccupant(OccupantInput input)
     {
         if (Status is not (ContractStatus.Draft or ContractStatus.Active))
             return Result.Failure(ContractErrors.NotEditable);
@@ -298,8 +306,6 @@ public sealed class Contract : TenantEntity
             return Result.Failure(Status == ContractStatus.Active ? ContractErrors.ExpiredExtendFirst : ContractErrors.DateOutsideContract);
         if (_occupants.Any(o => o.RenterId == input.RenterId && o.OverlapsFrom(input.MoveInDate)))
             return Result.Failure(ContractErrors.OccupantOverlap);
-        if (!overrideCapacity && _occupants.Count(o => o.OverlapsFrom(input.MoveInDate)) + 1 > roomMaxOccupants)
-            return Result.Failure(ContractErrors.RoomCapacityExceeded);
 
         _occupants.Add(new ContractOccupant(Id, input));
         return Result.Success();
@@ -325,20 +331,25 @@ public sealed class Contract : TenantEntity
     // ------------------------------------------------------------------ Phụ lục: giá, gia hạn, báo trả phòng
 
     /// <summary>CT-BR-05: giá mới chỉ áp từ đầu một kỳ và từ kỳ chưa lập phiếu.</summary>
-    public Result ChangeRent(DateOnly effectiveFrom, decimal monthlyRent, string? addendumNo, string? note, DateOnly? firstOpenPeriodStart)
+    public Result ChangeRent(
+        DateOnly effectiveFrom, decimal monthlyRent, string? addendumNo, string? note, DateOnly? firstOpenPeriodStart, BillingSchedule schedule)
     {
         // Nháp sửa giá trực tiếp bằng UpdateDraft; phụ lục chỉ có ý nghĩa với hợp đồng đã ký.
         if (Status != ContractStatus.Active)
             return Result.Failure(ContractErrors.NotActive);
-        if (effectiveFrom <= StartDate || (EndDate is { } end && effectiveFrom > end))
+        if (effectiveFrom < StartDate || (EndDate is { } end && effectiveFrom > end))
             return Result.Failure(ContractErrors.DateOutsideContract);
-        if (!BillingPeriodCalculator.IsPeriodStart(StartDate, BillingAnchorDay, effectiveFrom))
+        if (effectiveFrom != StartDate && !IsPeriodStart(schedule, effectiveFrom))
             return Result.Failure(ContractErrors.NotPeriodStart);
         if (firstOpenPeriodStart is { } open && effectiveFrom < open)
             return Result.Failure(ContractErrors.PeriodAlreadyBilled);
-        if (_rentTerms.Any(t => t.EffectiveFrom == effectiveFrom))
-            return Result.Failure(ContractErrors.RentTermExists);
 
+        // CT-UC-05: sửa trực tiếp — cùng ngày áp dụng (VD kỳ đầu chưa chốt) ⇒ thay giá đó, không tạo thêm bản giá.
+        if (_rentTerms.FirstOrDefault(t => t.EffectiveFrom == effectiveFrom) is { } sameDay)
+        {
+            sameDay.Replace(monthlyRent, addendumNo, note);
+            return Result.Success();
+        }
         _rentTerms.Add(new ContractRentTerm(Id, effectiveFrom, monthlyRent, addendumNo, note));
         return Result.Success();
     }
@@ -348,9 +359,9 @@ public sealed class Contract : TenantEntity
     /// <summary>
     /// Đổi số lượng / giá riêng của một khoản thu (hoặc gắn thêm khoản mới) từ đầu một kỳ thu (CT-BR-06, cùng quy tắc khóa CT-BR-05).
     /// </summary>
-    public Result ChangeFee(ContractFeeInput input, DateOnly effectiveFrom, DateOnly? firstOpenPeriodStart)
+    public Result ChangeFee(ContractFeeInput input, DateOnly effectiveFrom, DateOnly? firstOpenPeriodStart, BillingSchedule schedule)
     {
-        var check = CheckFeeChangeDate(input.FeeTypeId, effectiveFrom, firstOpenPeriodStart);
+        var check = CheckFeeChangeDate(input.FeeTypeId, effectiveFrom, firstOpenPeriodStart, schedule);
         if (check.IsFailure)
             return check;
 
@@ -367,9 +378,9 @@ public sealed class Contract : TenantEntity
     }
 
     /// <summary>Thôi tính khoản thu từ đầu kỳ <paramref name="effectiveFrom"/>.</summary>
-    public Result RemoveFee(Guid feeTypeId, DateOnly effectiveFrom, DateOnly? firstOpenPeriodStart)
+    public Result RemoveFee(Guid feeTypeId, DateOnly effectiveFrom, DateOnly? firstOpenPeriodStart, BillingSchedule schedule)
     {
-        var check = CheckFeeChangeDate(feeTypeId, effectiveFrom, firstOpenPeriodStart);
+        var check = CheckFeeChangeDate(feeTypeId, effectiveFrom, firstOpenPeriodStart, schedule);
         if (check.IsFailure)
             return check;
 
@@ -383,13 +394,13 @@ public sealed class Contract : TenantEntity
         return Result.Success();
     }
 
-    private Result CheckFeeChangeDate(Guid feeTypeId, DateOnly effectiveFrom, DateOnly? firstOpenPeriodStart)
+    private Result CheckFeeChangeDate(Guid feeTypeId, DateOnly effectiveFrom, DateOnly? firstOpenPeriodStart, BillingSchedule schedule)
     {
         if (Status != ContractStatus.Active)
             return Result.Failure(ContractErrors.NotActive);
         if (effectiveFrom < StartDate || (EndDate is { } end && effectiveFrom > end))
             return Result.Failure(ContractErrors.DateOutsideContract);
-        if (!BillingPeriodCalculator.IsPeriodStart(StartDate, BillingAnchorDay, effectiveFrom))
+        if (effectiveFrom != StartDate && !IsPeriodStart(schedule, effectiveFrom))
             return Result.Failure(ContractErrors.NotPeriodStart);
         if (firstOpenPeriodStart is { } open && effectiveFrom < open)
             return Result.Failure(ContractErrors.PeriodAlreadyBilled);
@@ -462,7 +473,7 @@ public sealed class Contract : TenantEntity
         return new ContractDraftData(
             representativeRenterId, start, endDate, SignedDate: null, SignedPlace: null, EffectiveDate: null,
             CurrentRent(start) ?? _rentTerms.MaxBy(t => t.EffectiveFrom)!.MonthlyRent, DepositAmount, DepositTerms,
-            BillingAnchorDay, ChargeMode, ProrationMode, PaymentDueDays, NoticeDays, PaymentMethods, CopiesCount, TermsText, Note: null,
+            NoticeDays, PaymentMethods, CopiesCount, TermsText, Note: null,
             occupants, document, head, fees);
     }
 
@@ -500,8 +511,6 @@ public sealed class Contract : TenantEntity
             || _occupants.Any(o => o.MoveInDate > actualEndDate)
             || actualEndDate > today.AddDays(maxDaysAhead))
             return Result.Failure(ContractErrors.InvalidEndDate);
-        if (reason == Contracts.TerminationReason.LessorUnilateral && ground is null)
-            return Result.Failure(ContractErrors.TerminationGroundRequired);
         if (reason == Contracts.TerminationReason.Expired && (EndDate is not { } end || actualEndDate < end))
             return Result.Failure(ContractErrors.ExpiredReasonInvalid);
         if (reason == Contracts.TerminationReason.LessorUnilateral && ground == Contracts.TerminationGround.IndefiniteTermNotice && EndDate is not null)
@@ -536,6 +545,19 @@ public sealed class Contract : TenantEntity
     /// CT-BR-12 (phần đã có): đóng mọi người ở và xe còn mở tại ngày kết thúc thực tế.
     /// Điều kiện phiếu quyết toán / số dư cọc sẽ bổ sung khi có M07, M08.
     /// </summary>
+    /// <summary>RT-BR-06: thay bản chụp lúc ký bằng bản đã xóa dữ liệu cá nhân bên thuê — ngoại lệ duy nhất cho bản chụp bất biến.</summary>
+    public void ReplaceSigningSnapshot(string? signingSnapshot) => SigningSnapshot = signingSnapshot;
+
+    /// <summary>Đánh dấu đã có / chưa có bản HĐ ký (giấy, ảnh, PDF) và ghi chú nơi cất — mọi trạng thái trừ đã hủy.</summary>
+    public Result SetSignedDocument(bool hasSignedDocument, string? note)
+    {
+        if (Status == ContractStatus.Cancelled)
+            return Result.Failure(ContractErrors.NotEditable);
+        HasSignedDocument = hasSignedDocument;
+        SignedDocumentNote = TextNormalizer.TrimToNull(note);
+        return Result.Success();
+    }
+
     public Result CompleteLiquidation(DateTimeOffset now)
     {
         if (Status != ContractStatus.Liquidating)
@@ -629,11 +651,4 @@ public sealed class Contract : TenantEntity
         vehicle.End(endDate);
         return Result.Success();
     }
-
-    /// <summary>Số người ở đồng thời lớn nhất (quét theo ngày vào của từng người).</summary>
-    /// <summary>Số người ở cùng lúc vượt sức chứa (CT-BR-09) — Application dùng để ghi audit khi chủ ý vượt.</summary>
-    public bool ExceedsCapacity(int roomMaxOccupants) => MaxConcurrentOccupants() > roomMaxOccupants;
-
-    private int MaxConcurrentOccupants() =>
-        _occupants.Count == 0 ? 0 : _occupants.Max(o => _occupants.Count(other => other.IsStayingOn(o.MoveInDate)));
 }

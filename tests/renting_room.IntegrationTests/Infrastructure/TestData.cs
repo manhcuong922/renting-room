@@ -42,14 +42,15 @@ public static class TestData
 
     public static object Address() => new { streetAddress = "Số 5 ngõ 10 Trần Duy Hưng", communeName = "Phường Cầu Giấy", provinceName = "Hà Nội" };
 
-    public static async Task<Guid> CreatePropertyAsync(this HttpClient client, string token, bool withLessor = true, int anchorDay = 5)
+    public static async Task<Guid> CreatePropertyAsync(
+        this HttpClient client, string token, bool withLessor = true, int anchorDay = 5, string chargeMode = "Prepaid")
     {
         var id = await (await client.PostJsonAsync("/api/v1/properties", new
         {
             code = $"K{Random.Shared.Next(100_000, 999_999)}",
             name = "Khu trọ test",
             address = Address(),
-            billingDefaults = new { anchorDay, chargeMode = "Prepaid", paymentDueDays = 5, prorationMode = "Daily", noticeDays = 30 }
+            billing = new { anchorDay, chargeMode, paymentDueDays = 5, prorationMode = "Daily", noticeDays = 30 }
         }, token)).ReadIdAsync();
 
         if (withLessor)
@@ -115,9 +116,9 @@ public static class TestData
 
     /// <summary>Khu + phòng + người thuê + hợp đồng đã kích hoạt.</summary>
     public static async Task<(Guid PropertyId, Guid RoomId, Guid RenterId, Guid ContractId)> CreateActiveContractAsync(
-        this HttpClient client, string token, DateOnly startDate)
+        this HttpClient client, string token, DateOnly startDate, int anchorDay = 5)
     {
-        var propertyId = await client.CreatePropertyAsync(token);
+        var propertyId = await client.CreatePropertyAsync(token, anchorDay: anchorDay);
         var roomId = await client.CreateRoomAsync(token, propertyId);
         var renterId = await client.CreateRenterAsync(token);
         var contractId = await client.CreateContractAsync(token, roomId, renterId, startDate);
@@ -125,6 +126,18 @@ public static class TestData
         var activated = await client.PostJsonAsync($"/api/v1/contracts/{contractId}/activate", null, token);
         activated.StatusCode.Should().Be(HttpStatusCode.NoContent, await activated.Content.ReadAsStringAsync());
         return (propertyId, roomId, renterId, contractId);
+    }
+
+    /// <summary>
+    /// Ngày bắt đầu gần <paramref name="daysAgo"/> ngày trước mà khu chốt đúng ngày đó (≤ 28) ⇒ cả thời gian ở nằm trong 1 kỳ — test không
+    /// phải lập phiếu các kỳ trước (BL-BR-21).
+    /// </summary>
+    public static DateOnly StartWithinOnePeriod(DateOnly today, int daysAgo)
+    {
+        var start = today.AddDays(-daysAgo);
+        while (start.Day > 28)
+            start = start.AddDays(1);
+        return start;
     }
 
     /// <summary>Id khoản thu theo tên trong khu (VD "Điện", "Nước" có sẵn khi tạo khu).</summary>

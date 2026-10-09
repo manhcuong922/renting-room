@@ -42,7 +42,7 @@ public sealed class ExportRentersTests(ApiFactory factory)
         var detail = await (await _client.GetAsync($"/api/v1/properties/{id}", token)).ReadAsync<System.Text.Json.JsonElement>();
         await _client.PutJsonAsync($"/api/v1/properties/{id}", new
         {
-            name, address = TestData.Address(), billingDefaults = detail.GetProperty("billingDefaults"),
+            name, address = TestData.Address(),
             version = detail.GetProperty("version").GetString()
         }, token);
         return id;

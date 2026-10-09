@@ -23,7 +23,8 @@ public sealed class Room : TenantEntity
     public string Code { get; private set; } = null!;
     public string? Floor { get; private set; }
     public decimal? AreaM2 { get; private set; }
-    public int MaxOccupants { get; private set; }
+    /// <summary>PR-BR-06: số người theo loại phòng — chỉ mô tả, không giới hạn số người ở (chủ trọ quyết định).</summary>
+    public int? MaxOccupants { get; private set; }
     public decimal? ListedRent { get; private set; }
     public decimal? DefaultDeposit { get; private set; }
     public string[] Amenities { get; private set; } = [];
@@ -39,7 +40,7 @@ public sealed class Room : TenantEntity
         if (propertyId == Guid.Empty)
             throw new ArgumentException("Property id is required.", nameof(propertyId));
 
-        var room = new Room { Id = Guid.NewGuid(), PropertyId = propertyId };
+        var room = new Room { Id = Guid.CreateVersion7(), PropertyId = propertyId };
         room.Update(code, spec);
         return room;
     }
@@ -108,7 +109,7 @@ public sealed class Room : TenantEntity
 public sealed record RoomSpec(
     string? Floor,
     decimal? AreaM2,
-    int MaxOccupants,
+    int? MaxOccupants,
     decimal? ListedRent,
     decimal? DefaultDeposit,
     IReadOnlyCollection<string> Amenities,

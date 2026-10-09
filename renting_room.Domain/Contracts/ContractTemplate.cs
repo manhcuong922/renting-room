@@ -67,7 +67,7 @@ public sealed class ContractTemplate : TenantEntity
     public static ContractTemplate Create(
         string name, ContractType type, string title, string clausesJson, string fieldDefinitionsJson, bool noDeposit)
     {
-        var template = new ContractTemplate { Id = Guid.NewGuid() };
+        var template = new ContractTemplate { Id = Guid.CreateVersion7() };
         template.Update(name, type, title, clausesJson, fieldDefinitionsJson, noDeposit);
         return template;
     }

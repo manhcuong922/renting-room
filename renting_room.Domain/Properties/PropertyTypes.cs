@@ -22,14 +22,15 @@ public enum LessorType
     Organization
 }
 
-/// <summary>Cài đặt thu mặc định của khu — chỉ là giá trị gợi ý khi tạo hợp đồng (PR-BR-09).</summary>
-public sealed record BillingDefaults(int AnchorDay, ChargeMode ChargeMode, int PaymentDueDays, ProrationMode ProrationMode, int NoticeDays)
+/// <summary>Cài đặt kỳ thu của khu — mọi HĐ của khu dùng chung (PR-BR-09); <c>NoticeDays</c> chỉ là gợi ý khi tạo HĐ.</summary>
+public sealed record BillingSettings(int AnchorDay, ChargeMode ChargeMode, int PaymentDueDays, ProrationMode ProrationMode, int NoticeDays)
 {
-    public static readonly BillingDefaults Standard = new(1, ChargeMode.Prepaid, 5, ProrationMode.Daily, 30);
+    /// <summary>Mặc định khu mới (chốt 09/10/2026): chốt ngày 1, <b>thu sau</b>, tính theo ngày ở kỳ lẻ, hạn 5 ngày, báo trước 30 ngày.</summary>
+    public static readonly BillingSettings Standard = new(1, ChargeMode.Postpaid, 5, ProrationMode.Daily, 30);
 
     public void EnsureValid()
     {
-        if (AnchorDay is < 1 or > 31)
+        if (AnchorDay is < Billing.BillingSchedule.MinAnchorDay or > Billing.BillingSchedule.MaxAnchorDay)
             throw new ArgumentOutOfRangeException(nameof(AnchorDay));
         if (PaymentDueDays is < 0 or > 60)
             throw new ArgumentOutOfRangeException(nameof(PaymentDueDays));
@@ -65,6 +66,19 @@ public sealed record LessorDetails(
     DateOnly? AuthorizationDocDate)
 {
     public const int MinimumAge = 18;
+
+    public LessorDetails Normalized() => this with
+    {
+        Name = Name.Trim(),
+        Address = Address.Trim(),
+        Phone = Phone.Trim(),
+        Email = TextNormalizer.TrimToNull(Email),
+        IdIssuePlace = TextNormalizer.TrimToNull(IdIssuePlace),
+        TaxCode = TextNormalizer.TrimToNull(TaxCode),
+        RepresentativeName = TextNormalizer.TrimToNull(RepresentativeName),
+        RepresentativeTitle = TextNormalizer.TrimToNull(RepresentativeTitle),
+        AuthorizationDocNo = TextNormalizer.TrimToNull(AuthorizationDocNo)
+    };
 
     /// <summary>PR-BR-12: đủ thông tin bắt buộc để làm bên cho thuê trong hợp đồng.</summary>
     public bool IsComplete(DateOnly today)

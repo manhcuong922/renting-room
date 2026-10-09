@@ -65,7 +65,7 @@ Quy tắc đợt 1 đã code: MT-BR-01, 02, 03, 09, 10, 11, 13 (✅ ở đầu d
 | MT-BR-05 | `reading_date` của `Periodic` nằm trong `[usage_end − 7 ngày, usage_end + 15 ngày]` → ngoài khoảng: **cảnh báo** (không chặn). `reading_date` ≤ hôm nay + 1 | Application |
 | MT-BR-06 ✅ | Chỉ số đã được dùng trong dòng phiếu **Finalized** chưa Void → **khóa**: không sửa/hủy (422 `READING_LOCKED`). Nếu chỉ dùng trong phiếu Draft → cho sửa, phiếu Draft bị đánh dấu `is_stale` | Application (query M07) |
 | MT-BR-07 ✅ | Ghi chỉ số hàng loạt là **all-or-nothing**: lỗi bất kỳ dòng → không lưu dòng nào, trả lỗi theo từng dòng | Transaction |
-| MT-BR-08 | Cảnh báo bất thường (không chặn — **chốt làm 08/10/2026**, hiện trên lưới chỉ số và phiếu nháp; chưa code): sản lượng âm (đã bị chặn bởi BR-03), = 0 khi phòng có người ở, > 3× trung bình 3 kỳ gần nhất, > ngưỡng tuyệt đối (mặc định điện 1.500 kWh, nước 100 m³ / kỳ) | Application |
+| MT-BR-08 ✅ | Cảnh báo bất thường (không chặn — chốt làm 08/10, ngưỡng (chốt 09/10/2026); code 09/10/2026 — `UsageAnomaly`; lưới trả `recentAverage` (TB 3 kỳ) + `usageWarning`), hiện trên lưới chỉ số và phiếu nháp `UNUSUAL_USAGE`: (1) sản lượng **gấp ≥ 3 lần trung bình 3 kỳ trước VÀ tăng ≥ 50 đơn vị** (tránh báo nhầm phòng dùng ít: 10 → 35 kWh); (2) **= 0 khi phòng có người ở** (có thể hợp lệ — đi vắng — chỉ để kiểm lại số). HĐ chưa đủ 3 kỳ lịch sử ⇒ không cảnh báo (1). Sản lượng âm đã bị chặn (MT-BR-03) | Application |
 | MT-BR-09 ✅ | **Công tơ có phiên bản**: 1 phòng có thể có nhiều công tơ cho cùng khoản thu theo thời gian, **chỉ 1 đang hoạt động** (MT-BR-01). Thay công tơ = ngừng công tơ cũ (**bắt buộc nhập số cuối** `Removal`) + thêm công tơ mới (số ban đầu `Initial`) cùng ngày, trong 1 lệnh. Không được thay nếu ngày thay < chỉ số cuối cùng đã ghi của công tơ cũ | Domain |
 | MT-BR-10 ✅ | Gỡ công tơ (không thay) bắt buộc chỉ số tháo (`Removal`); phòng đang có HĐ hiệu lực → **cảnh báo** `ROOM_HAS_OPEN_CONTRACT` (từ kỳ sau phiếu không còn dòng của khoản đó) | Application |
 | MT-BR-11 ✅ | ~~HĐ đăng ký khoản Metered thì phòng phải có công tơ~~ — **đổi 04/10/2026**: HĐ không đăng ký Metered. Kích hoạt HĐ không bị chặn vì công tơ; phòng chưa có công tơ của khoản Metered đang dùng ở khu → cảnh báo `ROOM_WITHOUT_METER` (phòng tính nước theo người thì bỏ qua). Phòng có công tơ → bắt buộc có chỉ số `Handover` tại `start_date` (MT-BR-13) | M05 Application |
@@ -198,7 +198,7 @@ MeterUsageCalculator (domain service): Calculate(contract, feeType, usagePeriod,
 | POST | `/meters/{id}/remove` `{ date, finalValue, note? }` | → 200 `{ warnings }` (`ROOM_HAS_OPEN_CONTRACT`) |
 | GET | `/meters/{id}/readings` | lịch sử (mới nhất trước) |
 | PUT | `/meter-readings/{id}` `{ value, note? }` | sửa giá trị; 422 `READING_NOT_MONOTONIC` (kèm `previousValue` / `nextValue`) |
-| POST | `/contracts/{id}/activate` `{ overrideCapacity?, handoverReadings: [{ meterId, value? }] }` | 422 `HANDOVER_READING_REQUIRED` (kèm `meterIds`) — `value` null = số mới nhất |
+| POST | `/contracts/{id}/activate` `{ handoverReadings: [{ meterId, value? }] }` | 422 `HANDOVER_READING_REQUIRED` (kèm `meterIds`) — `value` null = số mới nhất |
 | POST | `/contracts/{id}/final-invoice` `{ finalReadings: [{ meterId, value }] }` (lập phiếu quyết toán) | 422 `FINAL_READING_REQUIRED` (kèm `meterIds`) |
 
 **Đợt 2 (thiết kế)**

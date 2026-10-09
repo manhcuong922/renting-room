@@ -12,7 +12,7 @@ public sealed class ContractRentTerm : TenantEntity
         if (monthlyRent <= 0)
             throw new ArgumentOutOfRangeException(nameof(monthlyRent));
 
-        Id = Guid.NewGuid();
+        Id = Guid.CreateVersion7();
         ContractId = contractId;
         EffectiveFrom = effectiveFrom;
         MonthlyRent = monthlyRent;
@@ -25,6 +25,15 @@ public sealed class ContractRentTerm : TenantEntity
     public decimal MonthlyRent { get; private set; }
     public string? AddendumNo { get; private set; }
     public string? Note { get; private set; }
+
+    internal void Replace(decimal monthlyRent, string? addendumNo, string? note)
+    {
+        if (monthlyRent <= 0)
+            throw new ArgumentOutOfRangeException(nameof(monthlyRent));
+        MonthlyRent = monthlyRent;
+        AddendumNo = TextNormalizer.TrimToNull(addendumNo);
+        Note = TextNormalizer.TrimToNull(note);
+    }
 }
 
 /// <summary>Người ở thực tế (có thể khác người đại diện ký) — ngày vào/ra riêng (CT-BR-08).</summary>
@@ -34,7 +43,7 @@ public sealed class ContractOccupant : TenantEntity
 
     internal ContractOccupant(Guid contractId, OccupantInput input)
     {
-        Id = Guid.NewGuid();
+        Id = Guid.CreateVersion7();
         ContractId = contractId;
         RenterId = input.RenterId;
         MoveInDate = input.MoveInDate;
@@ -78,7 +87,7 @@ public sealed class ContractAsset : TenantEntity
 
     internal ContractAsset(Guid contractId, AssetInput input)
     {
-        Id = Guid.NewGuid();
+        Id = Guid.CreateVersion7();
         ContractId = contractId;
         Update(input);
     }
@@ -125,7 +134,7 @@ public sealed class ContractVehicle : TenantEntity
 
     internal ContractVehicle(Guid contractId, VehicleInput input)
     {
-        Id = Guid.NewGuid();
+        Id = Guid.CreateVersion7();
         ContractId = contractId;
         RenterId = input.RenterId;
         VehicleType = input.VehicleType;
@@ -159,6 +168,16 @@ public sealed class ContractVehicle : TenantEntity
 
         RegisteredTo = date;
     }
+
+    /// <summary>RT-BR-06: ẩn danh — biển số, hiệu – màu nhận diện được người; chỉ xe đã kết thúc.</summary>
+    internal bool EraseIdentity()
+    {
+        if (IsActive || (PlateNumber is null && BrandColor is null))
+            return false;
+        PlateNumber = null;
+        BrandColor = null;
+        return true;
+    }
 }
 
 public sealed record VehicleInput(Guid? RenterId, VehicleType VehicleType, string? PlateNumber, string? BrandColor, DateOnly RegisteredFrom, string? Note);
@@ -173,7 +192,7 @@ public sealed class ContractFee : TenantEntity
 
     internal ContractFee(Guid contractId, Guid propertyId, ContractFeeInput input, DateOnly effectiveFrom)
     {
-        Id = Guid.NewGuid();
+        Id = Guid.CreateVersion7();
         ContractId = contractId;
         PropertyId = propertyId;
         FeeTypeId = input.FeeTypeId;

@@ -1,5 +1,6 @@
 using System.Linq.Expressions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using renting_room.Application.Common.Interfaces;
 using Npgsql;
 using renting_room.Domain.Billing;
@@ -66,6 +67,21 @@ public class AppDbContext(
     {
         foreach (var entityType in modelBuilder.Model.GetEntityTypes().Where(t => typeof(Entity).IsAssignableFrom(t.ClrType)))
             modelBuilder.Entity(entityType.ClrType).Property(nameof(Entity.Id)).ValueGeneratedNever();
+    }
+
+    public async Task<IDbContextTransaction> BeginTransactionAsync(CancellationToken cancellationToken) =>
+        Database.CurrentTransaction is { } current ? new JoinedTransaction(current) : await Database.BeginTransactionAsync(cancellationToken);
+
+    /// <summary>Lệnh con chạy trong transaction có sẵn: commit / rollback / dispose để transaction ngoài quyết định.</summary>
+    private sealed class JoinedTransaction(IDbContextTransaction outer) : IDbContextTransaction
+    {
+        public Guid TransactionId => outer.TransactionId;
+        public void Commit() { }
+        public Task CommitAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public void Rollback() { }
+        public Task RollbackAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public void Dispose() { }
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 
     public void SetExpectedVersion(AuditableEntity entity, uint version) =>

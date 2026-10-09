@@ -17,22 +17,24 @@ public sealed record CancelContractRequest(string Reason);
 
 public sealed record UpdateContractNoteRequest(string? Note);
 
-public sealed record ChangeContractFeeRequest(decimal? Quantity, decimal? UnitPriceOverride, DateOnly EffectiveFrom);
+public sealed record SignedDocumentRequest(bool HasSignedDocument, string? Note);
+
+public sealed record ChangeContractFeeRequest(decimal? Quantity, decimal? UnitPriceOverride, DateOnly? EffectiveFrom);
 
 public sealed record AddOccupantRequest(
-    Guid RenterId, DateOnly MoveInDate, DateOnly? ExpectedEndDate, string? Relationship, string? Note, bool? OverrideCapacity,
+    Guid RenterId, DateOnly MoveInDate, DateOnly? ExpectedEndDate, string? Relationship, string? Note,
     OccupantRelationship? RelationshipType = null, bool? GuardianConsent = null);
 
 public sealed record EndOccupancyRequest(DateOnly MoveOutDate);
 
-/// <param name="OverrideCapacity">Chủ ý vượt sức chứa phòng — có ghi log kiểm toán.</param>
-public sealed record ActivateContractRequest(bool? OverrideCapacity, IReadOnlyList<MeterReadingInput>? HandoverReadings);
+/// <summary>Số người ở không bị giới hạn (PR-BR-06) — client cũ gửi <c>overrideCapacity</c> thì bị bỏ qua.</summary>
+public sealed record ActivateContractRequest(IReadOnlyList<MeterReadingInput>? HandoverReadings);
 
 public sealed record CompleteLiquidationRequest(DebtSettlement? Settlement, PaymentMethod? Method, DateOnly? PaidAt, string? Reason);
 
 public sealed record FinalInvoiceRequest(IReadOnlyList<MeterReadingInput>? FinalReadings);
 
-public sealed record ChangeRentRequest(DateOnly EffectiveFrom, decimal MonthlyRent, string? AddendumNo, string? Note);
+public sealed record ChangeRentRequest(DateOnly? EffectiveFrom, decimal MonthlyRent, string? AddendumNo, string? Note);
 
 public sealed record ExtendContractRequest(DateOnly NewEndDate);
 
@@ -62,11 +64,11 @@ public static class ContractEndpoints
 
         group.MapGet("/", async (
                 Guid? propertyId, Guid? roomId, Guid? renterId, ContractStatus? status, int? expiringWithinDays, bool? overdue,
-                string? search, bool? hasDeposit, int? page, int? pageSize, ISender sender, CancellationToken ct) =>
+                string? search, bool? hasDeposit, bool? missingSignedDocument, int? page, int? pageSize, ISender sender, CancellationToken ct) =>
                 Results.Ok(await sender.Send(new ListContractsQuery(
                     propertyId, roomId, renterId, status, expiringWithinDays, overdue, search, page ?? 1, pageSize ?? Paging.DefaultPageSize,
-                    hasDeposit), ct)))
-            .WithSummary("Danh sách hợp đồng — lọc khu, phòng, người thuê, trạng thái, sắp hết hạn, quá hạn, có/không cọc");
+                    hasDeposit, missingSignedDocument), ct)))
+            .WithSummary("Danh sách hợp đồng — lọc khu, phòng, người thuê, trạng thái, sắp hết hạn, quá hạn, có/không cọc, thiếu bản HĐ ký");
 
         group.MapPost("/", async (CreateContractRequest body, ISender sender, CancellationToken ct) =>
                 (await sender.Send(new CreateContractCommand(body.RoomId, body.ContractNo, body.Contract), ct)).ToCreated(Route))
@@ -84,11 +86,14 @@ public static class ContractEndpoints
         group.MapPut("/{id:guid}/note", async (Guid id, UpdateContractNoteRequest body, ISender sender, CancellationToken ct) =>
                 (await sender.Send(new UpdateContractNoteCommand(id, body.Note), ct)).ToHttp())
             .WithSummary("Sửa ghi chú nội bộ (mọi trạng thái trừ đã hủy) — nội dung đã ký đổi qua phụ lục");
+        group.MapPut("/{id:guid}/signed-document", async (Guid id, SignedDocumentRequest body, ISender sender, CancellationToken ct) =>
+                (await sender.Send(new SetSignedDocumentCommand(id, body.HasSignedDocument, body.Note), ct)).ToHttp())
+            .WithSummary("Đánh dấu đã có / chưa có bản HĐ ký (giấy, ảnh, PDF) + nơi cất — hết cờ \"Thiếu tài liệu\"");
 
         group.MapPut("/{id:guid}/fees/{feeTypeId:guid}", async (Guid id, Guid feeTypeId, ChangeContractFeeRequest b, ISender sender, CancellationToken ct) =>
                 (await sender.Send(new ChangeContractFeeCommand(id, feeTypeId, b.Quantity, b.UnitPriceOverride, b.EffectiveFrom), ct)).ToHttp())
-            .WithSummary("HĐ đang hiệu lực: gắn thêm / đổi số lượng, giá riêng của khoản thu từ đầu một kỳ");
-        group.MapDelete("/{id:guid}/fees/{feeTypeId:guid}", async (Guid id, Guid feeTypeId, DateOnly effectiveFrom, ISender sender, CancellationToken ct) =>
+            .WithSummary("HĐ đang hiệu lực: gắn thêm / đổi số lượng, giá riêng — effectiveFrom bỏ trống ⇒ từ kỳ chưa chốt đầu tiên");
+        group.MapDelete("/{id:guid}/fees/{feeTypeId:guid}", async (Guid id, Guid feeTypeId, DateOnly? effectiveFrom, ISender sender, CancellationToken ct) =>
                 (await sender.Send(new RemoveContractFeeCommand(id, feeTypeId, effectiveFrom), ct)).ToHttp())
             .WithSummary("HĐ đang hiệu lực: thôi tính khoản thu từ đầu kỳ ?effectiveFrom=");
 
@@ -112,7 +117,7 @@ public static class ContractEndpoints
             .WithSummary("Hủy hợp đồng nháp");
 
         group.MapPost("/{id:guid}/activate", async (Guid id, ActivateContractRequest? body, ISender sender, CancellationToken ct) =>
-                (await sender.Send(new ActivateContractCommand(id, body?.OverrideCapacity ?? false, body?.HandoverReadings), ct)).ToHttp())
+                (await sender.Send(new ActivateContractCommand(id, body?.HandoverReadings), ct)).ToHttp())
             .WithIdempotency(required: false)
             .WithSummary("Kích hoạt (bàn giao phòng): kiểm tra bên cho thuê, người ký ≥ 18 tuổi, sức chứa; chụp snapshot");
 
@@ -123,7 +128,6 @@ public static class ContractEndpoints
         // ---- Người ở
         group.MapPost("/{id:guid}/occupants", async (Guid id, AddOccupantRequest b, ISender sender, CancellationToken ct) =>
                 (await sender.Send(new AddOccupantCommand(id, b.RenterId, b.MoveInDate, b.ExpectedEndDate, b.Relationship, b.Note,
-                    b.OverrideCapacity ?? false,
                     b.RelationshipType, b.GuardianConsent ?? false), ct)).ToHttp())
             .WithSummary("Thêm người ở");
         group.MapPost("/{id:guid}/occupants/{occupantId:guid}/end", async (Guid id, Guid occupantId, EndOccupancyRequest b, ISender sender, CancellationToken ct) =>
@@ -133,7 +137,7 @@ public static class ContractEndpoints
         // ---- Phụ lục
         group.MapPost("/{id:guid}/rent-terms", async (Guid id, ChangeRentRequest b, ISender sender, CancellationToken ct) =>
                 (await sender.Send(new ChangeRentCommand(id, b.EffectiveFrom, b.MonthlyRent, b.AddendumNo, b.Note), ct)).ToHttp())
-            .WithSummary("Phụ lục đổi giá thuê — áp dụng từ ngày bắt đầu một kỳ");
+            .WithSummary("Sửa giá thuê — effectiveFrom bỏ trống ⇒ từ kỳ chưa chốt đầu tiên (lịch sử giữ nguyên)");
         group.MapPost("/{id:guid}/extend", async (Guid id, ExtendContractRequest b, ISender sender, CancellationToken ct) =>
                 (await sender.Send(new ExtendContractCommand(id, b.NewEndDate), ct)).ToHttp())
             .WithSummary("Gia hạn hợp đồng");

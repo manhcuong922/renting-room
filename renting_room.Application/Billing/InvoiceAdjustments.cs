@@ -103,7 +103,7 @@ public sealed class BulkAddManualLineHandler(IAppDbContext db) : IRequestHandler
 
     private async Task<Result> AddOneAsync(Guid invoiceId, BulkAddManualLineCommand request, CancellationToken ct)
     {
-        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        await using var transaction = await db.BeginTransactionAsync(ct);
         await db.LockForUpdateAsync<Invoice>(invoiceId, ct);
         var invoice = await InvoiceAccess.LoadAsync(db, invoiceId, ct);
         if (invoice is null)
@@ -165,7 +165,7 @@ internal static class RefundMutation
         if (contractId is null)
             return BillingErrors.NotFound;
 
-        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        await using var transaction = await db.BeginTransactionAsync(ct);
         await db.LockForUpdateAsync<Contract>(contractId.Value, ct);
         if (await db.Contracts.AnyAsync(c => c.Id == contractId && c.Status == ContractStatus.Ended, ct))
             return PaymentErrors.ContractNotBillable;

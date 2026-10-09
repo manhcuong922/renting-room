@@ -1,4 +1,5 @@
 using Mediator;
+using renting_room.Application.Contracts;
 using renting_room.Application.Fees;
 using renting_room.Domain.Contracts;
 using renting_room.Domain.Fees;
@@ -15,6 +16,8 @@ public sealed record UpdateFeeTypeRequest(
     string Name, string Unit, bool AutoAttach, decimal? DefaultQuantity, int SortOrder, uint Version, VehicleType? VehicleType = null);
 
 public sealed record CopyFeeCatalogRequest(bool? IncludePrices, DateOnly? EffectiveFrom);
+
+public sealed record BulkFeeUsageRequest(FeeUsageAction Action, IReadOnlyList<Guid> ContractIds, decimal? Quantity, decimal? UnitPriceOverride);
 
 /// <summary>Khoản thu & bảng giá của khu (M04): điện nước theo công tơ; dịch vụ theo phòng / đầu người / số gói (giữ xe…).</summary>
 public static class FeeEndpoints
@@ -51,6 +54,14 @@ public static class FeeEndpoints
         fees.MapPut("/{id:guid}", async (Guid id, UpdateFeeTypeRequest b, ISender sender, CancellationToken ct) =>
                 (await sender.Send(new UpdateFeeTypeCommand(id, b.Name, b.Unit, b.AutoAttach, b.DefaultQuantity, b.SortOrder, b.Version, b.VehicleType), ct)).ToHttp())
             .WithSummary("Sửa tên / đơn vị / tự gắn / thứ tự (không đổi được cách tính)");
+
+        fees.MapGet("/{id:guid}/usage", async (Guid id, ISender sender, CancellationToken ct) =>
+                (await sender.Send(new GetFeeUsageQuery(id), ct)).ToHttp())
+            .WithSummary("FE-UC-08: phòng của khu đang dùng / chưa dùng khoản thu này (số gói, giá riêng, từ kỳ nào)");
+
+        fees.MapPost("/{id:guid}/usage", async (Guid id, BulkFeeUsageRequest b, ISender sender, CancellationToken ct) =>
+                (await sender.Send(new BulkContractFeeCommand(id, b.Action, b.ContractIds, b.Quantity, b.UnitPriceOverride), ct)).ToHttp())
+            .WithSummary("FE-UC-08: thêm / bớt khoản thu cho nhiều HĐ một lúc — từ kỳ chưa chốt đầu tiên của từng HĐ, trả kết quả từng HĐ");
 
         fees.MapPost("/{id:guid}/archive", async (Guid id, ISender sender, CancellationToken ct) =>
                 (await sender.Send(new ChangeFeeTypeStateCommand(id, Archive: true), ct)).ToHttp())

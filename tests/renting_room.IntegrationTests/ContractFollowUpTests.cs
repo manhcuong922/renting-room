@@ -137,12 +137,14 @@ public sealed class ContractFollowUpTests(ApiFactory factory)
             new { renterId = younger, relationshipType = "Sibling", guardianConsent = true }
         };
 
-        // Không chọn chủ hộ ⇒ quan hệ so với người đứng tên (không ở cùng) ⇒ anh cả thiếu quan hệ.
+        // Không chọn chủ hộ ⇒ quan hệ so với người đứng tên (không ở cùng) ⇒ anh cả thiếu quan hệ — chỉ cảnh báo, vẫn tạo được.
         var withoutHead = await _client.PostJsonAsync("/api/v1/contracts", new
         {
             roomId, contract = new { representativeRenterId = parent, startDate = today, monthlyRent = 3_000_000, occupants = Occupants() }
         }, token);
-        withoutHead.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        withoutHead.StatusCode.Should().Be(HttpStatusCode.Created, await withoutHead.Content.ReadAsStringAsync());
+        (await withoutHead.ReadAsync<JsonElement>()).GetProperty("warnings").EnumerateArray()
+            .Select(w => w.GetProperty("code").GetString()).Should().Contain("RELATIONSHIP_REQUIRED");
 
         var notOccupant = await _client.PostJsonAsync("/api/v1/contracts", new
         {

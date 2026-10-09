@@ -42,6 +42,9 @@ public sealed class RateLimitingOptions
     /// <summary>Thao tác nhạy cảm (đổi mật khẩu, tạo tổ chức…) — theo user.</summary>
     [Required] public RateLimitRule Sensitive { get; init; } = new() { PermitLimit = 5 };
 
+    /// <summary>Xem trước import Excel (PR-UC-11, RT-UC-10) — theo user: mỗi lần đọc cả file, chặn bấm liên tục.</summary>
+    [Required] public RateLimitRule Import { get; init; } = new() { PermitLimit = 10 };
+
     /// <summary>Mọi request của user đã đăng nhập.</summary>
     [Required] public RateLimitRule Authenticated { get; init; } = new() { PermitLimit = 300 };
 
@@ -61,6 +64,7 @@ public static class RateLimitPolicies
     public const string Login = "login";
     public const string Refresh = "refresh";
     public const string Sensitive = "sensitive";
+    public const string Import = "import";
 }
 
 /// <summary>
@@ -70,7 +74,7 @@ public static class RateLimitPolicies
 ///   1. Theo client: user đã đăng nhập → Authenticated; chưa đăng nhập → Anonymous (theo IP)
 ///   2. Request ghi (POST/PUT/PATCH/DELETE) → Write
 ///   3. Số request song song → MaxConcurrentRequestsPerClient
-/// Policy theo endpoint: login, refresh (theo IP) · sensitive (theo user)
+/// Policy theo endpoint: login, refresh (theo IP) · sensitive, import (theo user)
 /// Trong endpoint login: theo IP + tài khoản (<see cref="LoginAttemptLimiter"/> — cần username trong body)
 /// </code>
 /// Dùng cửa sổ TRƯỢT (6 phân đoạn) thay cho cửa sổ cố định: cửa sổ cố định cho phép bắn gấp đôi giới hạn
@@ -85,7 +89,7 @@ internal static class RateLimitingSetup
         services.AddOptions<RateLimitingOptions>()
             .Bind(configuration.GetSection(RateLimitingOptions.SectionName))
             .ValidateDataAnnotations()
-            .Validate(o => new[] { o.Login, o.LoginPerAccount, o.Refresh, o.Sensitive, o.Authenticated, o.Anonymous, o.Write }
+            .Validate(o => new[] { o.Login, o.LoginPerAccount, o.Refresh, o.Sensitive, o.Import, o.Authenticated, o.Anonymous, o.Write }
                     .All(r => r.PermitLimit >= 1 && r.WindowSeconds is >= 1 and <= 3600),
                 "Every RateLimiting rule needs PermitLimit >= 1 and WindowSeconds in [1, 3600].")
             .ValidateOnStart();
@@ -102,6 +106,8 @@ internal static class RateLimitingSetup
                 Sliding($"refresh:{ClientIp(http)}", Settings(http), s => s.Refresh));
             options.AddPolicy(RateLimitPolicies.Sensitive, http =>
                 Sliding($"sensitive:{ClientKey(http)}", Settings(http), s => s.Sensitive));
+            options.AddPolicy(RateLimitPolicies.Import, http =>
+                Sliding($"import:{ClientKey(http)}", Settings(http), s => s.Import));
 
             options.GlobalLimiter = PartitionedRateLimiter.CreateChained(
                 PartitionedRateLimiter.Create<HttpContext, string>(http =>

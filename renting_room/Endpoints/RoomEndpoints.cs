@@ -1,5 +1,6 @@
 using Mediator;
 using renting_room.Application.Common.Models;
+using renting_room.Application.Contracts;
 using renting_room.Application.Rooms;
 using renting_room.Domain.Properties;
 using renting_room.Idempotency;
@@ -11,7 +12,7 @@ public sealed record CreateRoomRequest(string Code, RoomSpecInput Spec);
 
 public sealed record BulkCreateRoomsRequest(
     IReadOnlyList<BulkRoomFloor> Floors,
-    int MaxOccupants,
+    int? MaxOccupants,
     decimal? AreaM2,
     decimal? ListedRent,
     decimal? DefaultDeposit,
@@ -38,11 +39,11 @@ public static class RoomEndpoints
         var byProperty = app.MapGroup($"{PropertiesRoute}/{{propertyId:guid}}").WithTags("Rooms").RequireAuthorization(AuthPolicies.OrgMember);
 
         rooms.MapGet("/", async (
-                Guid? propertyId, RoomDisplayStatus? status, string? floor, Guid? groupId, string? search, int? page, int? pageSize,
+                Guid? propertyId, RoomDisplayStatus? status, string? floor, Guid? groupId, string? search, int? page, int? pageSize, bool? overdue,
                 ISender sender, CancellationToken ct) =>
                 Results.Ok(await sender.Send(new ListRoomsQuery(
-                    propertyId, status, floor, groupId, search, page ?? 1, pageSize ?? Paging.DefaultPageSize), ct)))
-            .WithSummary("Danh sách phòng — lọc theo khu, trạng thái (Vacant/Reserved/Occupied/Maintenance/Archived), tầng, nhóm");
+                    propertyId, status, floor, groupId, search, page ?? 1, pageSize ?? Paging.DefaultPageSize, overdue), ct)))
+            .WithSummary("Danh sách phòng — lọc theo khu, trạng thái (Vacant/Reserved/Occupied/Maintenance/Archived), tầng, nhóm, quá hạn thanh toán");
 
         rooms.MapGet("/{id:guid}", async (Guid id, ISender sender, CancellationToken ct) =>
                 (await sender.Send(new GetRoomQuery(id), ct)).ToHttp())
@@ -72,6 +73,9 @@ public static class RoomEndpoints
         rooms.MapPost("/{id:guid}/maintenance/end", async (Guid id, ISender sender, CancellationToken ct) =>
                 (await sender.Send(new ChangeRoomStateCommand(id, RoomAction.EndMaintenance), ct)).ToHttp())
             .WithSummary("Kết thúc bảo trì");
+        rooms.MapPost("/{id:guid}/apply-listed-rent", async (Guid id, ISender sender, CancellationToken ct) =>
+                (await sender.Send(new ApplyListedRentCommand(id), ct)).ToHttp())
+            .WithSummary("Áp giá niêm yết của phòng cho người đang thuê — từ kỳ chưa chốt đầu tiên (hỏi sau khi sửa giá phòng)");
         rooms.MapPost("/{id:guid}/archive", async (Guid id, ISender sender, CancellationToken ct) =>
                 (await sender.Send(new ChangeRoomStateCommand(id, RoomAction.Archive), ct)).ToHttp())
             .WithSummary("Ngừng sử dụng phòng");

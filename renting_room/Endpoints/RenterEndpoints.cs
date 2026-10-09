@@ -9,6 +9,8 @@ namespace renting_room.Endpoints;
 
 public sealed record UpdateRenterRequest(RenterInput Renter, uint Version);
 
+public sealed record AnonymizeRenterRequest(string Reason);
+
 /// <summary>Tìm kiếm có số giấy tờ — đi trong body để số CCCD không nằm trên URL (log proxy, lịch sử trình duyệt, Referer).</summary>
 public sealed record SearchRentersRequest(string? Q, string? IdNumber, IdDocumentType? IdType, int? Page, int? PageSize);
 
@@ -53,5 +55,10 @@ public static class RenterEndpoints
             .WithNoStore()
             .RequireRateLimiting(RateLimitPolicies.Sensitive)
             .WithSummary("Xem số giấy tờ đầy đủ (có ghi audit; giới hạn theo user)");
+
+        group.MapPost("/{id:guid}/anonymize", async (Guid id, AnonymizeRenterRequest body, ISender sender, CancellationToken ct) =>
+                (await sender.Send(new AnonymizeRenterCommand(id, body.Reason), ct)).ToHttp())
+            .RequireAuthorization(AuthPolicies.OrgOwner)
+            .WithSummary("Ẩn danh ngay (người thuê yêu cầu xóa dữ liệu / xóa sớm) — chỉ chủ trọ, lý do bắt buộc, KHÔNG đảo ngược");
     }
 }

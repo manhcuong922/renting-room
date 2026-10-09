@@ -19,8 +19,8 @@ public sealed record RenterDto(
     string? Phone,
     string? Email,
     string Nationality,
-    IdDocumentType IdType,
-    string IdNumberMasked,
+    IdDocumentType? IdType,
+    string? IdNumberMasked,
     DateOnly? IdIssueDate,
     string? IdIssuePlace,
     string? PermanentAddress,
@@ -30,16 +30,17 @@ public sealed record RenterDto(
     string? EmergencyContactPhone,
     string? Note,
     DateTimeOffset CreatedAt,
-    string Version);
+    string Version,
+    DateTimeOffset? AnonymizedAt = null);
 
 internal static class RenterProjection
 {
     public static IQueryable<RenterDto> ToDto(this IQueryable<Renter> renters) =>
         renters.Select(r => new RenterDto(
             r.Id, r.FullName, r.DateOfBirth, r.Gender, r.Phone, r.Email, r.Nationality, r.IdType,
-            "********" + r.IdNumberLast4,
+            r.IdNumberLast4 == null ? null : "********" + r.IdNumberLast4,
             r.IdIssueDate, r.IdIssuePlace, r.PermanentAddress, r.Occupation, r.Workplace,
-            r.EmergencyContactName, r.EmergencyContactPhone, r.Note, r.CreatedAt, r.Version.ToString()));
+            r.EmergencyContactName, r.EmergencyContactPhone, r.Note, r.CreatedAt, r.Version.ToString(), r.AnonymizedAt));
 
     /// <summary>SĐT người thuê: di động VN chuẩn hóa, hoặc số quốc tế dạng +[mã nước][số] cho người nước ngoài.</summary>
     public static string? NormalizePhone(string? phone)
@@ -64,7 +65,7 @@ public sealed record RenterInput(
     string? Phone,
     string? Email,
     string? Nationality,
-    IdDocumentType IdType,
+    IdDocumentType? IdType,
     string? IdNumber,
     DateOnly? IdIssueDate,
     string? IdIssuePlace,
@@ -90,7 +91,8 @@ internal sealed class RenterInputValidator : AbstractValidator<RenterInput>
             .Must(d => d >= new DateOnly(1900, 1, 1) && d <= clock.GetUtcNow().ToBusinessDate())
             .WithErrorCode("INVALID_DATE_OF_BIRTH").WithMessage("Ngày sinh không hợp lệ.");
         RuleFor(x => x.Gender).IsInEnum();
-        RuleFor(x => x.IdType).IsInEnum();
+        RuleFor(x => x.IdType).IsInEnum().When(x => x.IdType is not null);
+        RuleFor(x => x.IdType).NotNull().When(x => x.IdNumber is not null).WithErrorCode("REQUIRED").WithMessage("Chọn loại giấy tờ.");
         RuleFor(x => x.Phone)
             .Must(p => p is null || RenterProjection.NormalizePhone(p) is not null)
             .WithErrorCode("INVALID_PHONE").WithMessage("Số điện thoại không hợp lệ (di động VN hoặc dạng +mã nước).");
@@ -98,10 +100,12 @@ internal sealed class RenterInputValidator : AbstractValidator<RenterInput>
         RuleFor(x => x.Nationality)
             .Matches("^[A-Za-z]{2}$").When(x => x.Nationality is not null)
             .WithErrorCode("INVALID_NATIONALITY").WithMessage("Quốc tịch theo mã ISO 2 chữ cái (VD: VN, KR).");
+        When(x => x.IdNumber is not null && x.IdType is not null, () => RuleFor(x => x.IdNumber!).IdNumber(x => x.IdType!.Value));
+        // RT-BR-01: từ 14 tuổi bắt buộc giấy tờ (tạo mới; khi sửa kiểm ở handler vì null = giữ số cũ).
         if (idNumberRequired)
-            RuleFor(x => x.IdNumber!).IdNumber(x => x.IdType);
-        else
-            When(x => x.IdNumber is not null, () => RuleFor(x => x.IdNumber!).IdNumber(x => x.IdType));
+            RuleFor(x => x.IdNumber)
+                .NotEmpty().When(x => x.DateOfBirth.AgeOn(clock.GetUtcNow().ToBusinessDate()) >= Renter.IdRequiredAge)
+                .WithErrorCode("REQUIRED").WithMessage($"Từ {Renter.IdRequiredAge} tuổi phải có số giấy tờ.");
         RuleFor(x => x.IdIssueDate)
             .Must((x, d) => d is null || (d >= x.DateOfBirth && d <= clock.GetUtcNow().ToBusinessDate()))
             .WithErrorCode("INVALID_DATE").WithMessage("Ngày cấp phải sau ngày sinh và không ở tương lai.");
@@ -135,9 +139,11 @@ public sealed class CreateRenterHandler(IAppDbContext db, ICurrentUser currentUs
 {
     public async ValueTask<Result<Guid>> Handle(CreateRenterCommand request, CancellationToken cancellationToken)
     {
-        var idNumber = protector.ProtectIdNumber(currentUser.OrganizationId!.Value, request.Renter.IdType, request.Renter.IdNumber!);
-        var existingId = await db.Renters.Where(r => r.IdNumberHash == idNumber.Hash).Select(r => (Guid?)r.Id).FirstOrDefaultAsync(cancellationToken);
-        if (existingId is { } existing)
+        var idNumber = request.Renter.IdNumber is { } number
+            ? protector.ProtectIdNumber(currentUser.OrganizationId!.Value, request.Renter.IdType!.Value, number)
+            : null;
+        if (idNumber is not null
+            && await db.Renters.Where(r => r.IdNumberHash == idNumber.Hash).Select(r => (Guid?)r.Id).FirstOrDefaultAsync(cancellationToken) is { } existing)
             return RenterErrors.IdNumberExistsFor(existing);
 
         var renter = Renter.Create(request.Renter.ToProfile(), idNumber);
@@ -155,7 +161,7 @@ public sealed class UpdateRenterCommandValidator : AbstractValidator<UpdateRente
         RuleFor(x => x.Renter).NotNull().SetValidator(new RenterInputValidator(clock, idNumberRequired: false));
 }
 
-public sealed class UpdateRenterHandler(IAppDbContext db, ICurrentUser currentUser, IPersonalDataProtector protector)
+public sealed class UpdateRenterHandler(IAppDbContext db, ICurrentUser currentUser, IPersonalDataProtector protector, TimeProvider clock)
     : IRequestHandler<UpdateRenterCommand, Result<RenterDto>>
 {
     public async ValueTask<Result<RenterDto>> Handle(UpdateRenterCommand request, CancellationToken cancellationToken)
@@ -163,15 +169,25 @@ public sealed class UpdateRenterHandler(IAppDbContext db, ICurrentUser currentUs
         var renter = await db.Renters.FirstOrDefaultAsync(r => r.Id == request.Id, cancellationToken);
         if (renter is null)
             return RenterErrors.RenterNotFound;
+        if (renter.IsAnonymized)
+            return RenterErrors.Anonymized;
 
-        if (request.Renter.IdNumber is null && request.Renter.IdType != renter.IdType)
+        // idType null + idNumber null = không có giấy tờ (chỉ khi dưới 14 tuổi); idNumber null + cùng loại = giữ số cũ.
+        ProtectedIdNumber? idNumber;
+        if (request.Renter.IdNumber is { } number)
+            idNumber = protector.ProtectIdNumber(currentUser.OrganizationId!.Value, request.Renter.IdType!.Value, number);
+        else if (request.Renter.IdType is null)
+        {
+            if (renter.HasIdNumber && request.Renter.DateOfBirth.AgeOn(clock.GetUtcNow().ToBusinessDate()) >= Renter.IdRequiredAge)
+                return RenterErrors.IdNumberRequired;
+            idNumber = null;
+        }
+        else if (request.Renter.IdType == renter.IdType && renter.HasIdNumber)
+            idNumber = new ProtectedIdNumber(renter.IdType.Value, renter.IdNumberEncrypted!, renter.IdNumberHash!, renter.IdNumberLast4!);
+        else
             return Error.Validation("ID_NUMBER_REQUIRED", "Đổi loại giấy tờ thì phải nhập lại số giấy tờ.");
 
-        var idNumber = request.Renter.IdNumber is null
-            ? new ProtectedIdNumber(renter.IdType, renter.IdNumberEncrypted, renter.IdNumberHash, renter.IdNumberLast4)
-            : protector.ProtectIdNumber(currentUser.OrganizationId!.Value, request.Renter.IdType, request.Renter.IdNumber);
-
-        if (idNumber.Hash != renter.IdNumberHash
+        if (idNumber is not null && idNumber.Hash != renter.IdNumberHash
             && await db.Renters.Where(r => r.IdNumberHash == idNumber.Hash && r.Id != renter.Id)
                 .Select(r => (Guid?)r.Id).FirstOrDefaultAsync(cancellationToken) is { } existing)
             return RenterErrors.IdNumberExistsFor(existing);
@@ -213,7 +229,7 @@ public sealed class SearchRentersHandler(IAppDbContext db, ICurrentUser currentU
             // Hash gồm cả loại giấy tờ ⇒ không chọn loại thì thử mọi loại (hộ chiếu người nước ngoài vẫn tìm được).
             var types = request.IdType is { } type ? [type] : Enum.GetValues<IdDocumentType>();
             var hashes = types
-                .Select(t => protector.ProtectIdNumber(currentUser.OrganizationId!.Value, t, request.IdNumber).Hash)
+                .Select(t => (string?)protector.ProtectIdNumber(currentUser.OrganizationId!.Value, t, request.IdNumber).Hash)
                 .ToList();
             query = query.Where(r => hashes.Contains(r.IdNumberHash));
         }
@@ -260,10 +276,14 @@ public sealed class RevealRenterIdNumberHandler(
         if (!await SensitiveDataAccess.CanViewAsync(db, currentUser, cancellationToken))
             return IdentityErrors.SensitiveDataForbidden;
 
-        var encrypted = await db.Renters.AsNoTracking()
-            .Where(r => r.Id == request.Id).Select(r => r.IdNumberEncrypted).FirstOrDefaultAsync(cancellationToken);
-        if (encrypted is null)
+        var renter = await db.Renters.AsNoTracking()
+            .Where(r => r.Id == request.Id).Select(r => new { r.IdNumberEncrypted, r.AnonymizedAt }).FirstOrDefaultAsync(cancellationToken);
+        if (renter is null)
             return RenterErrors.RenterNotFound;
+        if (renter.AnonymizedAt is not null)
+            return RenterErrors.Anonymized;
+        if (renter.IdNumberEncrypted is not { Length: > 0 } encrypted)
+            return string.Empty;
 
         auditTrail.RecordRead(AuditActions.RevealIdNumber, nameof(Renter), request.Id);
         return protector.Decrypt(encrypted);

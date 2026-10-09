@@ -19,6 +19,7 @@ public static class DependencyInjection
 
         services.TryAddSingleton(TimeProvider.System);
         services.AddScoped<AuthTokenIssuer>();
+        services.AddScoped<Renters.RenterAnonymizer>();
 
         return services;
     }

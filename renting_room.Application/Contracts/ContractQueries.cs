@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Common.Models;
 using renting_room.Application.Common.Validation;
+using renting_room.Application.Properties;
 using renting_room.Domain.Billing;
 using renting_room.Domain.Common;
 using renting_room.Domain.Contracts;
@@ -21,7 +22,8 @@ public sealed record ListContractsQuery(
     string? Search,
     int Page = 1,
     int PageSize = Paging.DefaultPageSize,
-    bool? HasDeposit = null) : IRequest<PagedResult<ContractSummaryDto>>;
+    bool? HasDeposit = null,
+    bool? MissingSignedDocument = null) : IRequest<PagedResult<ContractSummaryDto>>;
 
 public sealed class ListContractsQueryValidator : AbstractValidator<ListContractsQuery>
 {
@@ -58,6 +60,10 @@ public sealed class ListContractsHandler(IAppDbContext db, TimeProvider clock)
         if (request.Overdue == true)
             query = query.Where(c => c.Status == ContractStatus.Active && c.EndDate < today);
         // CT-BR-27: nhóm hợp đồng không cọc / có cọc.
+        // Thiếu tài liệu: HĐ nháp / đang ở / đang thanh lý chưa có bản ký (giấy / ảnh / PDF).
+        if (request.MissingSignedDocument is { } missing)
+            query = query.Where(c => (c.Status == ContractStatus.Draft || c.Status == ContractStatus.Active || c.Status == ContractStatus.Liquidating)
+                && c.HasSignedDocument != missing);
         if (request.HasDeposit is { } hasDeposit)
             query = hasDeposit ? query.Where(c => c.DepositAmount > 0) : query.Where(c => c.DepositAmount == 0);
         if (!string.IsNullOrWhiteSpace(request.Search))
@@ -134,7 +140,9 @@ public sealed class GetContractHandler(IAppDbContext db, TimeProvider clock) : I
         var renterIds = contract.Occupants.Select(o => o.RenterId).Append(contract.RepresentativeRenterId).Distinct().ToList();
         var names = await db.Renters.AsNoTracking().Where(r => renterIds.Contains(r.Id))
             .ToDictionaryAsync(r => r.Id, r => r.FullName, cancellationToken);
-        var propertyCode = await db.Properties.Where(p => p.Id == contract.PropertyId).Select(p => p.Code).FirstAsync(cancellationToken);
+        var property = await db.Properties.AsNoTracking().Where(p => p.Id == contract.PropertyId)
+            .Select(p => new { p.Code, p.BillingAnchorDay, p.ChargeMode, p.ProrationMode, p.PaymentDueDays }).FirstAsync(cancellationToken);
+        var propertyCode = property.Code;
         var roomCode = await db.Rooms.Where(r => r.Id == contract.RoomId).Select(r => r.Code).FirstAsync(cancellationToken);
         var today = clock.GetUtcNow().ToBusinessDate();
         var snapshot = SigningSnapshot.FromJson(contract.SigningSnapshot);
@@ -144,7 +152,7 @@ public sealed class GetContractHandler(IAppDbContext db, TimeProvider clock) : I
             contract.RepresentativeRenterId, names.GetValueOrDefault(contract.RepresentativeRenterId, string.Empty),
             contract.SignedDate, contract.SignedPlace, contract.EffectiveDate, contract.StartDate, contract.EndDate, contract.ActualEndDate,
             contract.NoticeGivenDate, contract.PlannedMoveOutDate, contract.NoticeDays, contract.DepositAmount, contract.DepositTerms,
-            new BillingSettingsInput(contract.BillingAnchorDay, contract.ChargeMode, contract.ProrationMode, contract.PaymentDueDays),
+            new BillingSettingsInput(property.BillingAnchorDay, property.ChargeMode, property.ProrationMode, property.PaymentDueDays),
             contract.PaymentMethods, contract.CopiesCount, contract.TermsText, contract.Note,
             contract.CurrentRent(today), contract.IsOverdue(today),
             snapshot?.ToLessorDto(), snapshot?.ToRoomDto(), snapshot?.ToRepresentativeDto(), contract.HouseRulesSnapshot,
@@ -164,7 +172,8 @@ public sealed class GetContractHandler(IAppDbContext db, TimeProvider clock) : I
                     v.Note)).ToList(),
             ContractDocumentDto.From(contract),
             ContractWarnings.For(contract, await ContractFeeRules.LoadParkingFeesAsync(db, contract.PropertyId, cancellationToken), today)
-                .Concat(await MeterWarningsAsync(contract, today, cancellationToken)).ToList(),
+                .Concat(await MeterWarningsAsync(contract, today, cancellationToken))
+                .Concat(await ContractPaperWarnings.ForAsync(db, contract, today, cancellationToken)).ToList(),
             contract.HouseholdHeadRenterId,
             await ContractFeeRules.ToDtosAsync(db, contract, today, cancellationToken),
             UtilityPriceSnapshotJson.FromJson(contract.UtilityPriceSnapshot)
@@ -173,7 +182,10 @@ public sealed class GetContractHandler(IAppDbContext db, TimeProvider clock) : I
             contract.HoldoverSince,
             contract.HoldoverNote,
             contract.PreviousContractId,
-            contract.Version.ToString());
+            contract.Version.ToString(),
+            contract.HasSignedDocument,
+            contract.SignedDocumentNote,
+            contract.BillingStartDate);
     }
 }
 
@@ -189,7 +201,7 @@ public sealed class GetBillingPeriodsHandler(IAppDbContext db, TimeProvider cloc
     {
         var contract = await db.Contracts.AsNoTracking()
             .Where(c => c.Id == request.ContractId)
-            .Select(c => new { c.StartDate, c.EndDate, c.ActualEndDate, c.BillingAnchorDay })
+            .Select(c => new { c.PropertyId, c.StartDate, c.BillingStartDate, c.EndDate, c.ActualEndDate })
             .FirstOrDefaultAsync(cancellationToken);
         if (contract is null)
             return ContractErrors.NotFound;
@@ -203,7 +215,8 @@ public sealed class GetBillingPeriodsHandler(IAppDbContext db, TimeProvider cloc
             until = maxUntil;
 
         // Chỉ ngày trả phòng thực tế mới cắt kỳ: hết hạn mà chưa thanh lý thì vẫn tiếp tục thu (CT-BR-03).
-        var periods = BillingPeriodCalculator.Periods(contract.StartDate, contract.ActualEndDate, contract.BillingAnchorDay, until);
+        var schedule = (await PropertyBilling.LoadAsync(db, contract.PropertyId, cancellationToken)).Schedule;
+        var periods = schedule.ContractPeriods(contract.BillingStartDate, contract.ActualEndDate, until);
         return Result.Success(periods);
     }
 }

@@ -51,7 +51,7 @@ public sealed class Meter : TenantEntity
 
         var meter = new Meter
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             PropertyId = propertyId,
             RoomId = roomId,
             FeeTypeId = feeTypeId,
@@ -197,7 +197,7 @@ public sealed class MeterReading : TenantEntity
 
     internal MeterReading(Guid meterId, ReadingKind kind, DateOnly readingDate, decimal value, Guid? contractId, string? note)
     {
-        Id = Guid.NewGuid();
+        Id = Guid.CreateVersion7();
         MeterId = meterId;
         Kind = kind;
         ReadingDate = readingDate;

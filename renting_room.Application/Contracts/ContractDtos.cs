@@ -8,10 +8,12 @@ using renting_room.Domain.Renters;
 
 namespace renting_room.Application.Contracts;
 
+/// <summary>Cài đặt kỳ thu của khu (chỉ đọc trên HĐ — PR-BR-09, CT-BR-04).</summary>
 public sealed record BillingSettingsInput(int AnchorDay, ChargeMode ChargeMode, ProrationMode ProrationMode, int PaymentDueDays);
 
 /// <summary>
 /// Nội dung hợp đồng (tạo nháp / sửa nháp). Trường null ⇒ lấy mặc định từ khu / phòng / mẫu.
+/// <c>BillingStartDate</c> = "Tính tiền từ ngày" (K5, null = ngày bắt đầu); ngày chốt / thu trước–thu sau là của khu (CT-BR-04).
 /// Có <c>TemplateId</c> ⇒ loại, tiêu đề, điều khoản lấy từ mẫu (ghi đè được tiêu đề / điều khoản), <c>CustomFields</c> theo trường của mẫu.
 /// </summary>
 public sealed record ContractInput(
@@ -24,7 +26,7 @@ public sealed record ContractInput(
     decimal? MonthlyRent,
     decimal? DepositAmount,
     string? DepositTerms,
-    BillingSettingsInput? Billing,
+    DateOnly? BillingStartDate,
     int? NoticeDays,
     IReadOnlyCollection<PaymentMethod>? PaymentMethods,
     int? CopiesCount,
@@ -132,7 +134,10 @@ public sealed record ContractDetailDto(
     DateOnly? HoldoverSince,
     string? HoldoverNote,
     Guid? PreviousContractId,
-    string Version);
+    string Version,
+    bool HasSignedDocument = false,
+    string? SignedDocumentNote = null,
+    DateOnly? BillingStartDate = null);
 
 /// <summary>Văn bản hợp đồng (CT-BR-25): loại, tiêu đề, điều khoản, định nghĩa trường (chụp từ mẫu) và giá trị đã nhập.</summary>
 public sealed record ContractDocumentDto(
@@ -179,7 +184,7 @@ public sealed record SigningSnapshot(
             lessor.RepresentativeName, lessor.RepresentativeTitle, lessor.AuthorizationDocNo, lessor.AuthorizationDocDate),
         new PartyPart(
             representative.FullName, representative.DateOfBirth, representative.IdType,
-            Convert.ToBase64String(representative.IdNumberEncrypted), representative.IdNumberLast4,
+            representative.IdNumberEncrypted is null ? null : Convert.ToBase64String(representative.IdNumberEncrypted), representative.IdNumberLast4,
             representative.IdIssueDate, representative.IdIssuePlace, representative.PermanentAddress, representative.Phone),
         new RoomPart(room.Code, room.Floor, room.AreaM2, room.MaxOccupants),
         property.BankAccount,
@@ -188,6 +193,13 @@ public sealed record SigningSnapshot(
         now);
 
     public string ToJson() => JsonSerializer.Serialize(this, Json);
+
+    /// <summary>RT-BR-06: bên thuê chỉ còn tên ẩn danh — xóa ngày sinh, giấy tờ, nơi cấp, địa chỉ, SĐT.</summary>
+    public SigningSnapshot WithAnonymizedRepresentative(string anonymizedName) => this with
+    {
+        Representative = Representative is null ? null
+            : new PartyPart(anonymizedName, DateOnly.MinValue, null, null, null, null, null, null, null)
+    };
 
     public static SigningSnapshot? FromJson(string? json) => json is null ? null : JsonSerializer.Deserialize<SigningSnapshot>(json, Json);
 
@@ -198,7 +210,7 @@ public sealed record SigningSnapshot(
         PropertyAddress, CapturedAt);
 
     public PartySnapshotDto? ToRepresentativeDto() => Representative is null ? null : new(
-        Representative.FullName, Representative.DateOfBirth, Representative.IdType, Mask(Representative.IdNumberLast4)!,
+        Representative.FullName, Representative.DateOfBirth, Representative.IdType, Mask(Representative.IdNumberLast4),
         Representative.IdIssueDate, Representative.IdIssuePlace, Representative.PermanentAddress, Representative.Phone);
 
     public RoomSnapshotDto? ToRoomDto() => Room is null ? null : new(Room.Code, Room.Floor, Room.AreaM2, Room.MaxOccupants);
@@ -212,10 +224,10 @@ public sealed record LessorPart(
     string? RepresentativeName, string? RepresentativeTitle, string? AuthorizationDocNo, DateOnly? AuthorizationDocDate);
 
 public sealed record PartyPart(
-    string FullName, DateOnly DateOfBirth, IdDocumentType IdType, string IdNumberEncrypted, string IdNumberLast4,
+    string FullName, DateOnly DateOfBirth, IdDocumentType? IdType, string? IdNumberEncrypted, string? IdNumberLast4,
     DateOnly? IdIssueDate, string? IdIssuePlace, string? PermanentAddress, string? Phone);
 
-public sealed record RoomPart(string Code, string? Floor, decimal? AreaM2, int MaxOccupants);
+public sealed record RoomPart(string Code, string? Floor, decimal? AreaM2, int? MaxOccupants);
 
 public sealed record LessorSnapshotDto(
     LessorType Type,
@@ -239,7 +251,7 @@ public sealed record LessorSnapshotDto(
     DateTimeOffset CapturedAt);
 
 public sealed record PartySnapshotDto(
-    string FullName, DateOnly DateOfBirth, IdDocumentType IdType, string IdNumberMasked, DateOnly? IdIssueDate,
+    string FullName, DateOnly DateOfBirth, IdDocumentType? IdType, string? IdNumberMasked, DateOnly? IdIssueDate,
     string? IdIssuePlace, string? PermanentAddress, string? Phone);
 
-public sealed record RoomSnapshotDto(string Code, string? Floor, decimal? AreaM2, int MaxOccupants);
+public sealed record RoomSnapshotDto(string Code, string? Floor, decimal? AreaM2, int? MaxOccupants);

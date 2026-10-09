@@ -9,7 +9,8 @@ internal sealed class RenterConfiguration : IEntityTypeConfiguration<Renter>
 {
     public void Configure(EntityTypeBuilder<Renter> builder)
     {
-        builder.ToTable("renters");
+        // RT-BR-01: có loại giấy tờ thì có số (và ngược lại); bắt buộc theo tuổi kiểm ở Application.
+        builder.ToTable("renters", t => t.HasCheckConstraint("ck_renters_id_document", "(id_type IS NULL) = (id_number_hash IS NULL)"));
         builder.HasKey(r => r.Id);
         builder.HasAlternateKey(r => new { r.OrganizationId, r.Id }).HasName("ak_renters_organization_id_id");
         builder.ConfigureAuditable();
@@ -23,9 +24,8 @@ internal sealed class RenterConfiguration : IEntityTypeConfiguration<Renter>
         builder.Property(r => r.Email).HasMaxLength(254);
         builder.Property(r => r.Nationality).HasMaxLength(2).IsFixedLength();
         builder.Property(r => r.IdType).HasConversion<string>().HasMaxLength(16);
-        builder.Property(r => r.IdNumberEncrypted).IsRequired();
-        builder.Property(r => r.IdNumberHash).HasMaxLength(64).IsFixedLength().IsRequired();
-        builder.Property(r => r.IdNumberLast4).HasMaxLength(4).IsRequired();
+        builder.Property(r => r.IdNumberHash).HasMaxLength(64).IsFixedLength();
+        builder.Property(r => r.IdNumberLast4).HasMaxLength(4);
         builder.Property(r => r.IdIssuePlace).HasMaxLength(200);
         builder.Property(r => r.PermanentAddress).HasMaxLength(500);
         builder.Property(r => r.Occupation).HasMaxLength(200);

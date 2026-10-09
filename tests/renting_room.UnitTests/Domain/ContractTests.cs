@@ -1,3 +1,4 @@
+using renting_room.Domain.Billing;
 using renting_room.Domain.Contracts;
 using renting_room.Domain.Properties;
 
@@ -10,18 +11,16 @@ public sealed class ContractTests
     private static readonly Guid Representative = Guid.NewGuid();
     private static readonly Guid OccupantA = Guid.NewGuid();
     private static readonly Guid OccupantB = Guid.NewGuid();
+    private static readonly BillingSchedule Schedule = BillingSchedule.Single(5, ChargeMode.Prepaid);
 
     private static ContractDraftData Draft(params Guid[] occupants) => new(
         Representative, Start, Start.AddYears(1).AddDays(-1), SignedDate: null, SignedPlace: null, EffectiveDate: null,
-        MonthlyRent: 3_500_000, DepositAmount: 3_500_000, DepositTerms: null, BillingAnchorDay: 5, ChargeMode.Prepaid,
-        ProrationMode.Daily, PaymentDueDays: 5, NoticeDays: 30, [PaymentMethod.Cash], CopiesCount: 2, TermsText: null, Note: null,
+        MonthlyRent: 3_500_000, DepositAmount: 3_500_000, DepositTerms: null, NoticeDays: 30, [PaymentMethod.Cash], CopiesCount: 2, TermsText: null, Note: null,
         occupants.Select(id => new OccupantInput(id, Start, null, null, null)).ToList());
 
     private static ActivationContext Context(
-        bool roomAvailable = true, int maxOccupants = 2, bool lessorComplete = true, DateOnly? representativeDob = null,
-        bool hasPhone = true, DateOnly? today = null) =>
-        new(today ?? Start, Now, roomAvailable, maxOccupants, lessorComplete, "{}", "Nội quy",
-            representativeDob ?? new DateOnly(2000, 1, 1), hasPhone);
+        bool roomAvailable = true, DateOnly? today = null) =>
+        new(today ?? Start, Now, roomAvailable, "{}", "Nội quy");
 
     private static Contract NewDraft(params Guid[] occupants) =>
         Contract.CreateDraft(Guid.NewGuid(), Guid.NewGuid(), "hd2026-0001", Draft(occupants.Length == 0 ? [OccupantA] : occupants));
@@ -30,6 +29,7 @@ public sealed class ContractTests
     {
         var contract = NewDraft();
         contract.Activate(Context()).IsSuccess.Should().BeTrue();
+        contract.SetSignedDocument(true, null).IsSuccess.Should().BeTrue(); // cờ "thiếu bản HĐ ký" có test riêng
         return contract;
     }
 
@@ -68,18 +68,15 @@ public sealed class ContractTests
     public static TheoryData<ActivationContext, string> ActivationFailures => new()
     {
         { Context(roomAvailable: false), "ROOM_UNAVAILABLE" },
-        { Context(lessorComplete: false), "LESSOR_INFO_INCOMPLETE" },
-        { Context(hasPhone: false), "REPRESENTATIVE_PHONE_REQUIRED" },
-        { Context(representativeDob: new DateOnly(2010, 1, 1)), "REPRESENTATIVE_UNDERAGE" },   // BLDS Điều 117
         { Context(today: Start.AddDays(-5)), "START_DATE_IN_FUTURE" }
     };
 
     [Fact]
-    public void Activate_Fails_WhenOccupantsExceedRoomCapacity()
+    public void Activate_DoesNotLimitNumberOfOccupants()
     {
         var contract = NewDraft(OccupantA, OccupantB);
 
-        contract.Activate(Context(maxOccupants: 1)).Error.Should().Be(ContractErrors.RoomCapacityExceeded);
+        contract.Activate(Context()).IsSuccess.Should().BeTrue("số người ở do chủ trọ quyết định (PR-BR-06)");
     }
 
     [Fact]
@@ -91,22 +88,26 @@ public sealed class ContractTests
     }
 
     [Fact]
-    public void Representative_JustTurned18_OnSignedDate_IsAllowed()
+    public void Activate_IsNotBlockedByPaperwork_MissingSignedDocumentIsFlagged()
     {
         var contract = NewDraft();
 
-        contract.Activate(Context(representativeDob: Start.AddYears(-18))).IsSuccess.Should().BeTrue();
+        contract.Activate(Context()).IsSuccess.Should().BeTrue("thông tin bên cho thuê / SĐT / tuổi chỉ còn là cảnh báo");
+        contract.Flags(Start).Should().Contain(ContractFlag.MissingSignedDocument);
+
+        contract.SetSignedDocument(true, "Bản giấy cất tủ hồ sơ khu A").IsSuccess.Should().BeTrue();
+        contract.Flags(Start).Should().NotContain(ContractFlag.MissingSignedDocument);
+        contract.SignedDocumentNote.Should().Be("Bản giấy cất tủ hồ sơ khu A");
     }
 
     [Fact]
-    public void AddOccupant_RespectsCapacity_UnlessOverridden()
+    public void AddOccupant_HasNoCapacityLimit_ButRejectsSamePersonTwice()
     {
         var contract = NewActive();
         var input = new OccupantInput(OccupantB, Start.AddDays(10), null, "Bạn", null);
 
-        contract.AddOccupant(input, roomMaxOccupants: 1, overrideCapacity: false).Error.Should().Be(ContractErrors.RoomCapacityExceeded);
-        contract.AddOccupant(input, roomMaxOccupants: 1, overrideCapacity: true).IsSuccess.Should().BeTrue();
-        contract.AddOccupant(input, roomMaxOccupants: 5, overrideCapacity: false).Error.Should().Be(ContractErrors.OccupantOverlap);
+        contract.AddOccupant(input).IsSuccess.Should().BeTrue();
+        contract.AddOccupant(input).Error.Should().Be(ContractErrors.OccupantOverlap);
     }
 
     [Fact]
@@ -114,10 +115,10 @@ public sealed class ContractTests
     {
         var contract = NewActive();
 
-        contract.ChangeRent(new DateOnly(2026, 11, 10), 4_000_000, "PL01", null, null).Error.Should().Be(ContractErrors.NotPeriodStart);
-        contract.ChangeRent(new DateOnly(2026, 11, 5), 4_000_000, "PL01", null, new DateOnly(2026, 12, 5))
+        contract.ChangeRent(new DateOnly(2026, 11, 10), 4_000_000, "PL01", null, null, Schedule).Error.Should().Be(ContractErrors.NotPeriodStart);
+        contract.ChangeRent(new DateOnly(2026, 11, 5), 4_000_000, "PL01", null, new DateOnly(2026, 12, 5), Schedule)
             .Error.Should().Be(ContractErrors.PeriodAlreadyBilled);
-        contract.ChangeRent(new DateOnly(2026, 12, 5), 4_000_000, "PL01", null, null).IsSuccess.Should().BeTrue();
+        contract.ChangeRent(new DateOnly(2026, 12, 5), 4_000_000, "PL01", null, null, Schedule).IsSuccess.Should().BeTrue();
 
         contract.CurrentRent(new DateOnly(2026, 12, 4)).Should().Be(3_500_000);
         contract.CurrentRent(new DateOnly(2026, 12, 5)).Should().Be(4_000_000);
@@ -135,15 +136,12 @@ public sealed class ContractTests
     }
 
     [Fact]
-    public void LessorUnilateralTermination_RequiresArticle172Ground()
+    public void LessorUnilateralTermination_Article172GroundIsOptional()
     {
         var contract = NewActive();
         var today = Start.AddMonths(3);
 
-        contract.StartLiquidation(today, TerminationReason.LessorUnilateral, null, null, today)
-            .Error.Should().Be(ContractErrors.TerminationGroundRequired);
-        contract.StartLiquidation(today, TerminationReason.LessorUnilateral, TerminationGround.RentArrears3Months, null, today)
-            .IsSuccess.Should().BeTrue();
+        contract.StartLiquidation(today, TerminationReason.LessorUnilateral, null, null, today).IsSuccess.Should().BeTrue();
     }
 
     [Fact]
@@ -219,7 +217,7 @@ public sealed class ContractTests
     [Fact]
     public void ChangeRent_IsNotAllowedOnDraft()
     {
-        NewDraft().ChangeRent(new DateOnly(2026, 11, 5), 4_000_000, null, null, null).Error.Should().Be(ContractErrors.NotActive);
+        NewDraft().ChangeRent(new DateOnly(2026, 11, 5), 4_000_000, null, null, null, Schedule).Error.Should().Be(ContractErrors.NotActive);
     }
 
     private static Contract NewActiveIndefinite()
@@ -295,7 +293,8 @@ public sealed class ContractTests
     private static Contract NewActiveWith(params Guid[] occupants)
     {
         var contract = NewDraft(occupants);
-        contract.Activate(Context(maxOccupants: 4)).IsSuccess.Should().BeTrue();
+        contract.Activate(Context()).IsSuccess.Should().BeTrue();
+        contract.SetSignedDocument(true, null);
         return contract;
     }
 
@@ -359,7 +358,7 @@ public sealed class ContractTests
             "chủ hộ cũ (người ký) đã đi ⇒ khai lại quan hệ với người đứng tên mới");
         data.MonthlyRent.Should().Be(3_500_000);
         data.DepositAmount.Should().Be(3_500_000);
-        data.BillingAnchorDay.Should().Be(contract.BillingAnchorDay);
+        data.BillingStartDate.Should().BeNull("HĐ ký lại tính tiền từ ngày bắt đầu");
 
         MoveOut(contract, OccupantA, handover);
         MoveOut(contract, OccupantB, handover);

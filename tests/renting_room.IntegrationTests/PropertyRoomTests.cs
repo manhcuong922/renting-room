@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text.Json;
 using renting_room.IntegrationTests.Infrastructure;
 
 namespace renting_room.IntegrationTests;
@@ -38,6 +39,47 @@ public sealed class PropertyRoomTests(ApiFactory factory)
 
         var reveal = await _client.PostJsonAsync($"/api/v1/properties/{propertyId}/lessor/reveal-id-number", null, token);
         (await reveal.Content.ReadAsStringAsync()).Should().Contain(idNumber);
+    }
+
+    [Fact]
+    public async Task OwnerLessor_IsInheritedByProperty_UntilPropertyDeclaresItsOwn()
+    {
+        var owner = await _client.CreateActiveOwnerAsync();
+        var token = owner.Tokens.AccessToken;
+        var idNumber = TestData.NewCitizenId();
+        var prefill = await (await _client.GetAsync("/api/v1/org/lessor", token)).ReadAsync<JsonElement>();
+        prefill.GetProperty("lessor").ValueKind.Should().Be(JsonValueKind.Null);
+
+        (await _client.PutJsonAsync("/api/v1/org/lessor", new
+        {
+            type = "Individual", name = "Chủ Trọ Một Lần", address = "Hà Nội", phone = "0911222333",
+            idType = "CitizenId", idNumber, dateOfBirth = "1975-01-01"
+        }, token)).StatusCode.Should().Be(HttpStatusCode.OK);
+        var propertyId = await _client.CreatePropertyAsync(token, withLessor: false);
+
+        var inherited = await (await _client.GetAsync($"/api/v1/properties/{propertyId}", token)).ReadAsync<JsonElement>();
+        inherited.GetProperty("lessorInherited").GetBoolean().Should().BeTrue();
+        inherited.GetProperty("lessor").GetProperty("name").GetString().Should().Be("Chủ Trọ Một Lần");
+        (await (await _client.PostJsonAsync($"/api/v1/properties/{propertyId}/lessor/reveal-id-number", null, token))
+            .Content.ReadAsStringAsync()).Should().Contain(idNumber);
+
+        var contractId = await _client.CreateContractAsync(token, await _client.CreateRoomAsync(token, propertyId),
+            await _client.CreateRenterAsync(token), TestData.Today(factory));
+        (await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/activate", null, token)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+        var contract = await (await _client.GetAsync($"/api/v1/contracts/{contractId}", token)).ReadAsync<JsonElement>();
+        contract.GetProperty("lessor").GetProperty("name").GetString().Should().Be("Chủ Trọ Một Lần", "HĐ chụp thông tin chủ trọ khi kích hoạt");
+        contract.GetProperty("warnings").EnumerateArray().Select(w => w.GetProperty("code").GetString()).Should().NotContain("LESSOR_INFO_INCOMPLETE");
+
+        var own = await (await _client.PutJsonAsync($"/api/v1/properties/{propertyId}/lessor", new
+        {
+            type = "Organization", name = "Công ty Quản Lý", address = "Hà Nội", phone = "0911222444",
+            taxCode = "0101234567", representativeName = "Giám Đốc", representativeTitle = "Giám đốc"
+        }, token)).ReadAsync<JsonElement>();
+        own.GetProperty("lessorInherited").GetBoolean().Should().BeFalse();
+        own.GetProperty("lessor").GetProperty("name").GetString().Should().Be("Công ty Quản Lý");
+
+        var cleared = await (await _client.DeleteAsync($"/api/v1/properties/{propertyId}/lessor", token)).ReadAsync<JsonElement>();
+        cleared.GetProperty("lessor").GetProperty("name").GetString().Should().Be("Chủ Trọ Một Lần");
     }
 
     [Fact]

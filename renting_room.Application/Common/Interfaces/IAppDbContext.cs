@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Storage;
 using renting_room.Domain.Billing;
 using renting_room.Domain.Common;
 using renting_room.Domain.Contracts;
@@ -31,6 +32,12 @@ public interface IAppDbContext
 
     /// <summary>Dùng cho transaction tường minh khi một use case cần nhiều lệnh ghi nguyên tử.</summary>
     DatabaseFacade Database { get; }
+
+    /// <summary>
+    /// Mở transaction cho một lệnh. Đang có transaction (VD import gói nhiều lệnh — PR-UC-11, RT-UC-10) ⇒ <b>tham gia</b> transaction đó:
+    /// commit / rollback của lệnh con không làm gì, bên ngoài quyết định lưu tất cả hoặc không gì.
+    /// </summary>
+    Task<IDbContextTransaction> BeginTransactionAsync(CancellationToken cancellationToken);
 
     /// <summary>Thao tác hàng loạt nhiều transaction (mỗi phần tử 1 transaction) xóa theo dõi giữa các lần để lỗi phần tử trước không dính sang sau.</summary>
     ChangeTracker ChangeTracker { get; }

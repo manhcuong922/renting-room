@@ -61,7 +61,7 @@ Gọi sai trạng thái → 422 `CONTRACT_NOT_DRAFT` / `CONTRACT_NOT_ACTIVE` / `
 
 ## Danh sách
 
-`GET /contracts?propertyId=&roomId=&renterId=&status=&expiringWithinDays=&overdue=&search=&page=1&pageSize=20`
+`GET /contracts?propertyId=&roomId=&renterId=&status=&expiringWithinDays=&overdue=&hasDeposit=&missingSignedDocument=&search=&page=1&pageSize=20`
 
 | Query | Ý nghĩa | Gợi ý UI |
 |-------|---------|----------|
@@ -72,6 +72,7 @@ Gọi sai trạng thái → 422 `CONTRACT_NOT_DRAFT` / `CONTRACT_NOT_ACTIVE` / `
 | `overdue=true` | Active đã quá `endDate` | Bộ lọc nhanh **"Quá hạn"** |
 | `search` | Một phần số hợp đồng | Ô tìm kiếm |
 | `hasDeposit` | `false` = nhóm **không cọc** (cọc = 0), `true` = có cọc | Bộ lọc nhanh **"Không cọc"** |
+| `missingSignedDocument` | `true` = HĐ nháp / hiệu lực / thanh lý **chưa có bản ký**, `false` = đã có | Bộ lọc nhanh **"Thiếu tài liệu"** |
 
 Sắp xếp: ngày bắt đầu mới nhất trước.
 
@@ -135,7 +136,7 @@ Cột: Số HĐ · Khu/Phòng (`propertyCode`-`roomCode`) · Người đại di�
     "monthlyRent": 3500000,
     "depositAmount": 3500000,
     "depositTerms": "Hoàn cọc khi trả phòng đúng hạn, trừ chi phí hư hỏng.",
-    "billing": { "anchorDay": 1, "chargeMode": "Prepaid", "prorationMode": "Daily", "paymentDueDays": 5 },
+    "billingStartDate": null,
     "noticeDays": 30,
     "paymentMethods": ["Cash", "BankTransfer"],
     "copiesCount": 2,
@@ -168,19 +169,34 @@ Cột: Số HĐ · Khu/Phòng (`propertyCode`-`roomCode`) · Người đại di�
 
 `warnings` là **cảnh báo mềm** (đã lưu thành công) — UI hiện toast vàng. Danh sách cảnh báo hiện tại của HĐ có ở `warnings` trong chi tiết.
 
+### Giấy tờ / pháp lý chỉ cảnh báo (09/10/2026)
+
+HĐ trong app là **hồ sơ thuê để tính tiền** — chỉ bắt buộc phần thu tiền (phòng, người đứng tên, ngày bắt đầu, giá, khoản thu,
+chỉ số bàn giao). Phần giấy tờ **không chặn** tạo / kích hoạt / thu tiền, chỉ trả trong `warnings` (khi tạo nháp và trong chi tiết
+HĐ nháp / hiệu lực / thanh lý):
+
+| `code` | Khi nào | Gợi ý UI |
+|--------|---------|----------|
+| `LESSOR_INFO_INCOMPLETE` | Chưa đủ thông tin bên cho thuê (thông tin chủ trọ, hoặc bên cho thuê riêng của khu) — chưa in được HĐ đầy đủ | Link **Thông tin chủ trọ** (`/org/lessor`) |
+| `REPRESENTATIVE_PHONE_MISSING` | Người đứng tên chưa có SĐT | Link sửa hồ sơ |
+| `REPRESENTATIVE_UNDERAGE` | Người đứng tên < 18 tuổi tại ngày ký (bản giấy cần người giám hộ ký thay) | |
+| `OCCUPANT_ID_MISSING` | Người ở từ 14 tuổi chưa có số giấy tờ (VD vừa qua 14 tuổi) — `message` có tên | Link sửa hồ sơ |
+| `RELATIONSHIP_*`, `SPOUSE_UNDER_MARRIAGE_AGE`, `MULTIPLE_SPOUSES`, `GUARDIAN_CONSENT_REQUIRED` | Quan hệ người ở chưa khai / chưa hợp lý — `message` bắt đầu bằng tên người | Xem [Quan hệ](#quan-hệ-với-người-đứng-tên-relationshiptype) |
+| `SIGNED_DOCUMENT_MISSING` | Chưa đánh dấu có bản HĐ ký (cờ `MissingSignedDocument`) | Nút **"Đã có bản ký"** → [Bản HĐ đã ký](#bản-hđ-đã-ký) |
+
 | Trường | Bắt buộc | Mặc định khi `null` | Quy tắc |
 |--------|:-------:|---------------------|---------|
 | `roomId` | ✅ | | Phòng chưa ngừng dùng |
 | `contractNo` | | Tự sinh `HD{năm}-{0001}` | ≤ 30; duy nhất (`CONTRACT_NO_TAKEN`) |
-| `contract.representativeRenterId` | ✅ | | |
-| `contract.startDate` | ✅ | | Không trước hôm nay quá 1 năm (cho phép nhập lại HĐ cũ) |
+| `contract.representativeRenterId` | ✅ | | Hồ sơ phải **có số giấy tờ** — người chưa có giấy tờ (trẻ < 14 tuổi) không đứng tên được → 422 `REPRESENTATIVE_ID_REQUIRED` |
+| `contract.startDate` | ✅ | | Không trước hôm nay quá 1 năm; có `billingStartDate` thì được tới 10 năm (HĐ nhập từ sổ cũ) |
+| `contract.billingStartDate` | | = `startDate` | **"Tính tiền từ ngày"** (K5): kỳ đầu bắt đầu từ ngày này, những ngày trước không tính (cả điện nước — chỉ số nhận phòng ghi tại ngày này). Trong thời gian HĐ, không trước hôm nay quá 1 năm (`INVALID_BILLING_START_DATE`) |
 | `contract.endDate` | | `null` = **không thời hạn** | > `startDate`, tối đa 10 năm |
 | `contract.signedDate` | | Lúc kích hoạt: = `startDate` nếu ở quá khứ, ngược lại = hôm nay | Không ở tương lai |
 | `contract.effectiveDate` | | = ngày ký | ≥ ngày ký, ≤ `endDate` |
 | `contract.monthlyRent` | ✅* | `listedRent` của phòng | > 0, số nguyên ≤ 1 tỷ. *Phòng chưa có giá niêm yết thì bắt buộc (`MONTHLY_RENT_REQUIRED`) |
 | `contract.depositAmount` | | `defaultDeposit` của phòng, hoặc 0 | 0 = không cọc; tối đa 12 tháng tiền thuê (400 `DEPOSIT_TOO_HIGH`). Mẫu `noDeposit` ⇒ luôn 0, gửi > 0 → 400 `DEPOSIT_NOT_ALLOWED` |
 | `contract.depositTerms` | | | ≤ 5000 |
-| `contract.billing` | | Cài đặt thu của khu | Gửi **cả object** hoặc `null` |
 | `contract.noticeDays` | | Của khu | 0–180 |
 | `contract.paymentMethods` | | `["Cash","BankTransfer"]` | ≥ 1 giá trị |
 | `contract.copiesCount` | | 2 | 1–10 (số bản hợp đồng giấy) |
@@ -222,6 +238,7 @@ Nhiều bản **nháp** cho cùng một phòng được phép (đàm phán song 
   "depositAmount": 0,
   "depositTerms": null,
   "billing": { "anchorDay": 1, "chargeMode": "Prepaid", "prorationMode": "Daily", "paymentDueDays": 5 },
+  "billingStartDate": "2026-10-02",
   "paymentMethods": ["Cash", "BankTransfer"],
   "copiesCount": 2,
   "termsText": null,
@@ -311,7 +328,7 @@ Nhiều bản **nháp** cho cùng một phòng được phép (đàm phán song 
 - **Tab Các bên**: `lessor` + `representativeAtSigning` + `roomAtSigning` (**bản chụp lúc ký**; ở Draft các trường này `null` →
   hiển thị dữ liệu hiện tại của khu/phòng/người thuê kèm ghi chú "sẽ chốt khi kích hoạt").
 - **Tab Người ở**: `occupants` (đang ở = `moveOutDate` null hoặc ≥ hôm nay), nút Thêm / Chuyển đi.
-- **Tab Giá thuê**: `rentTerms` theo thời gian (dòng cuối có `effectiveFrom` ≤ hôm nay là giá hiện hành) + nút Phụ lục đổi giá.
+- **Tab Giá thuê**: `rentTerms` theo thời gian (dòng cuối có `effectiveFrom` ≤ hôm nay là giá hiện hành) + nút Sửa giá thuê.
 - **Tab Tài sản bàn giao**: `assets`, cột tình trạng khi trả / bồi thường hiện ở giai đoạn thanh lý.
 - **Tab Xe**: `vehicles` (đang gửi = `registeredTo` null).
 - **Tab Kỳ thu**: `GET /contracts/{id}/billing-periods`.
@@ -347,9 +364,10 @@ dịch vụ `PerUnit` có ô số gói; nút "Giá riêng". Hiện thêm dòng c
 
 **Đang hiệu lực** — đổi từ **đầu một kỳ thu** (chọn từ `GET /billing-periods`), giữ lịch sử để tính lại kỳ cũ:
 
-- `PUT /contracts/{id}/fees/{feeTypeId}` `{ "quantity": 2, "unitPriceOverride": null, "effectiveFrom": "2026-11-01" }` → 204.
+- `PUT /contracts/{id}/fees/{feeTypeId}` `{ "quantity": 2, "unitPriceOverride": null, "effectiveFrom": null }` → 204.
+  `effectiveFrom` bỏ trống ⇒ từ kỳ chưa lập phiếu đầu tiên (sửa trực tiếp); gửi ngày khi muốn hẹn trước.
   Gắn thêm khoản mới hoặc đổi số lượng / giá riêng: bản cũ kết thúc ngày trước `effectiveFrom`.
-- `DELETE /contracts/{id}/fees/{feeTypeId}?effectiveFrom=2026-11-01` → 204: thôi tính từ kỳ đó.
+- `DELETE /contracts/{id}/fees/{feeTypeId}` (tùy chọn `?effectiveFrom=2026-11-01`) → 204: thôi tính từ kỳ đó / kỳ chưa lập phiếu đầu tiên.
 
 Lỗi: 422 `NOT_PERIOD_START`, `PERIOD_ALREADY_BILLED`, `DATE_OUTSIDE_CONTRACT`, `CONTRACT_NOT_ACTIVE`; 409 `CONTRACT_FEE_LATER_CHANGE_EXISTS`
 (đã có thay đổi từ kỳ sau); 404 `CONTRACT_FEE_NOT_FOUND`. Trong chi tiết, `fees` gồm cả bản đã kết thúc (`effectiveTo`) — bản đang áp dụng có
@@ -404,7 +422,6 @@ UI: trang "Cần xem lại" hoặc badge số lượng trên dashboard; mỗi d�
 
 ```json
 {
-  "overrideCapacity": false,
   "handoverReadings": [
     { "meterId": "…điện", "value": 108 },
     { "meterId": "…nước", "value": null }
@@ -412,7 +429,7 @@ UI: trang "Cần xem lại" hoặc badge số lượng trên dashboard; mỗi d�
 }
 ```
 
-**Chỉ số nhận phòng** (bắt buộc khi phòng có công tơ): mỗi công tơ đang hoạt động của phòng tại `startDate` một dòng — lấy danh sách từ
+**Chỉ số nhận phòng** (bắt buộc khi phòng có công tơ): mỗi công tơ đang hoạt động của phòng tại `billingStartDate` (= `startDate` trừ HĐ nhập từ sổ cũ) một dòng — lấy danh sách từ
 `GET /rooms/{roomId}/meters`. Mỗi dòng 2 lựa chọn: **"Dùng số mới nhất"** (`value: null` = `latestReading`, thường là số cuối của người
 thuê trước) hoặc **nhập số khác** ≥ số đó (VD sửa chữa phòng đã dùng thêm điện). Phòng không có công tơ thì bỏ trống mảng.
 
@@ -424,8 +441,8 @@ thuê trước) hoặc **nhập số khác** ≥ số đó (VD sửa chữa phò
 
 Chi tiết hợp đồng đang hiệu lực mà phòng chưa có công tơ điện → cảnh báo `ROOM_WITHOUT_METER`.
 
-`overrideCapacity` chỉ gửi khi người dùng **xác nhận** vượt sức chứa (VD gia đình có con nhỏ ở phòng 2 người) sau khi nhận
-422 `ROOM_CAPACITY_EXCEEDED` — thao tác được ghi log kiểm toán.
+**Không giới hạn số người ở** (PR-BR-06): số người của phòng chỉ mô tả loại phòng — phòng 2 người vẫn cho gia đình 2 người lớn + 2 trẻ em.
+Client cũ gửi `overrideCapacity` thì bị bỏ qua.
 
 Điều kiện — nên hiện **checklist** trước khi bấm, lỗi trả theo thứ tự:
 
@@ -433,16 +450,15 @@ Chi tiết hợp đồng đang hiệu lực mà phòng chưa có công tơ đi�
 |----------|----------|
 | Phòng không bảo trì / ngừng dùng, khu không ngừng dùng | 422 `ROOM_UNAVAILABLE` |
 | `startDate` ≤ ngày mai (chỉ kích hoạt khi bàn giao thật) | 422 `START_DATE_IN_FUTURE` |
-| Khu đã khai báo đủ **bên cho thuê** | 422 `LESSOR_INFO_INCOMPLETE` → link tab Bên cho thuê |
 | Có ≥ 1 người ở | 422 `NO_OCCUPANT` |
-| Số người ở đồng thời ≤ sức chứa phòng (hoặc gửi `overrideCapacity: true`) | 422 `ROOM_CAPACITY_EXCEEDED` |
 | Không ai đang ở phòng khác cùng thời gian | 409 `OCCUPANT_LIVES_ELSEWHERE` |
-| Quan hệ người ở vẫn hợp lệ với hồ sơ hiện tại | 422 `RELATIONSHIP_*`, `GUARDIAN_CONSENT_REQUIRED`… (`detail` có tên người) |
-| Người đại diện có SĐT | 422 `REPRESENTATIVE_PHONE_REQUIRED` → link sửa hồ sơ |
-| Người đại diện đủ 18 tuổi tại ngày ký | 422 `REPRESENTATIVE_UNDERAGE` |
 | Phòng chưa có hợp đồng hiệu lực khác trùng thời gian | 409 `ROOM_PERIOD_OVERLAP` |
 
-Khi kích hoạt, server **chụp lại** bên cho thuê, ngân hàng, phòng, người đại diện, nội quy vào hợp đồng.
+Bên cho thuê, SĐT / tuổi người đứng tên, quan hệ người ở **không chặn** kích hoạt — chỉ cảnh báo (xem
+[Giấy tờ / pháp lý chỉ cảnh báo](#giấy-tờ--pháp-lý-chỉ-cảnh-báo-09102026)).
+
+Khi kích hoạt, server **chụp lại** bên cho thuê, ngân hàng, phòng, người đại diện, nội quy vào hợp đồng (khu chưa khai bên cho
+thuê ⇒ không có bản chụp, `signingSnapshot` = null).
 
 ## Người ở
 
@@ -466,7 +482,7 @@ Danh mục theo Thông tư 55/2021/TT-BCA Điều 6 (sửa bởi TT 66/2023/TT-B
 
 `relationship` (≤ 50) là ghi chú thêm (VD "em gái", "bạn học"). Người đứng tên luôn có `relationshipType = null` (server bỏ qua nếu gửi).
 
-### Kiểm tra của server (400, key theo từng người ở)
+### Kiểm tra của server (cảnh báo, không chặn — 09/10/2026)
 
 | Code | Khi nào | Gợi ý UI |
 |------|---------|----------|
@@ -478,8 +494,8 @@ Danh mục theo Thông tư 55/2021/TT-BCA Điều 6 (sửa bởi TT 66/2023/TT-B
 | `MULTIPLE_SPOUSES` | Hơn 1 người là vợ/chồng ở cùng thời gian | |
 | `GUARDIAN_CONSENT_REQUIRED` | Người **chưa đủ 18 tuổi** (tại ngày vào ở) mà người đứng tên không phải cha/mẹ/người giám hộ (quan hệ khác `Child`, `AdoptedChild`, `Ward`) và chưa tích `guardianConsent` | Hiện checkbox "Đã có ý kiến đồng ý của cha, mẹ hoặc người giám hộ" khi người được chọn < 18 tuổi (Luật Cư trú 2020 Điều 28) |
 
-Key lỗi: tạo/sửa nháp `contract.occupants[2].relationshipType`; thêm người ở `relationshipType` / `guardianConsent`.
-Khi **kích hoạt**, server kiểm tra lại với hồ sơ hiện tại (người thuê có thể đã sửa ngày sinh/giới tính) → 422 cùng mã, `detail` có tên người.
+Các mã trên nằm trong `warnings` (khi tạo nháp và trong chi tiết HĐ), `message` có tên người — **không** còn trả 400/422.
+Chi tiết HĐ tính lại theo hồ sơ hiện tại (người thuê có thể đã sửa ngày sinh/giới tính).
 
 ### Một người không ở 2 phòng cùng lúc
 
@@ -502,18 +518,34 @@ UI: radio "Chủ hộ" trên danh sách người ở ở bước 2 wizard; đổ
 
 `occupantId` là `occupants[].id` (không phải `renterId`). Ở Draft, nên sửa người ở qua `PUT`.
 
-## Phụ lục đổi giá
+## Sửa giá thuê
 
 `POST /contracts/{id}/rent-terms`
 
 ```json
-{ "effectiveFrom": "2027-01-01", "monthlyRent": 3800000, "addendumNo": "PL01", "note": "Tăng giá theo thỏa thuận" }
+{ "monthlyRent": 3800000, "addendumNo": null, "note": "Tăng giá theo thỏa thuận" }
 ```
 
 - Chỉ khi `Active`. Giá **không** sửa giá niêm yết của phòng.
-- `effectiveFrom` phải là **ngày bắt đầu một kỳ thu** sau ngày bắt đầu HĐ (`NOT_PERIOD_START`) → UI nên cho **chọn từ dropdown**
-  lấy `start` của `GET /billing-periods`, không cho gõ ngày tự do.
-- Trùng ngày với phụ lục có sẵn → 409 `RENT_TERM_EXISTS`. Kỳ đã lập phiếu → 422 `PERIOD_ALREADY_BILLED` (khi có module thu tiền).
+- **Bỏ trống `effectiveFrom`** (cách dùng chính — sửa trực tiếp): áp từ **kỳ chưa lập phiếu đầu tiên**; giá các kỳ đã lập giữ nguyên
+  (hủy / lập lại phiếu cũ vẫn ra giá cũ). Gửi `effectiveFrom` khi muốn hẹn trước (VD phụ lục từ tháng sau): phải là **ngày bắt đầu
+  một kỳ thu** (`NOT_PERIOD_START`), không trước kỳ đã lập phiếu (`PERIOD_ALREADY_BILLED`).
+- Cùng ngày với bản giá có sẵn (VD kỳ đầu chưa lập phiếu) ⇒ **thay** giá đó, không tạo thêm dòng.
+
+### Áp giá niêm yết mới cho người đang thuê
+
+Sau khi sửa `listedRent` của phòng đang có người ở, UI hỏi "Áp giá mới cho người đang thuê?" → `POST /rooms/{id}/apply-listed-rent`
+(không body) → 204. Tương đương sửa giá thuê của HĐ đang hiệu lực từ kỳ chưa lập phiếu đầu tiên. Lỗi: 400 `LISTED_RENT_REQUIRED`
+(phòng chưa có giá niêm yết), 422 `CONTRACT_NOT_ACTIVE` (phòng không có HĐ đang hiệu lực).
+
+## Bản HĐ đã ký
+
+`PUT /contracts/{id}/signed-document` `{ "hasSignedDocument": true, "note": "Bản giấy ký 2 bên, cất tủ hồ sơ khu A" }` → 204.
+
+- Mọi trạng thái trừ `Cancelled` (`CONTRACT_NOT_EDITABLE`). `note` ≤ 300 (nơi cất bản giấy / ghi chú).
+- Chưa có bản ký ⇒ cờ `MissingSignedDocument` (nhãn xám **"Thiếu tài liệu"**) + cảnh báo `SIGNED_DOCUMENT_MISSING`. HĐ mới / import
+  mặc định **chưa có**. Không ảnh hưởng thu tiền.
+- Chi tiết HĐ trả `hasSignedDocument`, `signedDocumentNote`. Lọc danh sách: `missingSignedDocument=true`.
 
 ## Cần xử lý (`flags`)
 
@@ -526,6 +558,7 @@ cảnh báo tương ứng trong `warnings`. **Phòng vẫn "Đang thuê"** trong
 | `NoOccupantLeft` | Không còn ai ở mà HĐ vẫn hiệu lực | `NO_OCCUPANT_LEFT` | **Thanh lý** |
 | `ExpiredAwaitingDecision` | Đã quá `endDate`, chủ trọ chưa quyết định | `CONTRACT_EXPIRED_DECISION_NEEDED` | **Gia hạn** · **Cho ở tiếp, chưa ký** · **Thu lại phòng** (thanh lý) |
 | `Holdover` | Đã chọn "ở tiếp, chưa ký lại" (`holdoverSince`) | `HOLDOVER_SIGN_ADDENDUM` | **Gia hạn** (ký phụ lục) · **Thu lại phòng** |
+| `MissingSignedDocument` | Chưa có bản HĐ ký (nhãn xám "Thiếu tài liệu" — không gấp) | `SIGNED_DOCUMENT_MISSING` | **Đã có bản ký** |
 
 Người ký không phải người ở (VD bố ký cho con) thì không có cờ `RepresentativeMovedOut`.
 "Trả phòng 1 người" = `POST …/occupants/{id}/end`; "trả cả phòng" = thanh lý.
@@ -605,7 +638,7 @@ sequenceDiagram
 |--------|---------|
 | `actualEndDate` | ≥ `startDate`, ≥ ngày vào ở của mọi người ở, ≤ hôm nay + 60 ngày (căn cứ `IndefiniteTermNotice`: + 90 ngày). Được chọn ngày **quá khứ** (người thuê đã đi) |
 | `reason` | `Expired` · `MutualAgreement` · `LesseeUnilateral` · `LessorUnilateral` · `RoomTransfer` · `Abandoned` (bỏ đi không báo) |
-| `ground` | **Bắt buộc khi `LessorUnilateral`** (`TERMINATION_GROUND_REQUIRED`): `RentArrears3Months` · `WrongPurpose` · `UnauthorizedRenovation` · `IndefiniteTermNotice` (chỉ HĐ không thời hạn) · `Other` |
+| `ground` | Tùy chọn (nên chọn khi `LessorUnilateral`): `RentArrears3Months` · `WrongPurpose` · `UnauthorizedRenovation` · `IndefiniteTermNotice` (chỉ HĐ không thời hạn) · `Other` |
 | `note` | ≤ 1000; bắt buộc khi `ground = Other` hoặc `reason = Abandoned` |
 
 Còn phiếu tiền phòng (chưa hủy) của kỳ bắt đầu **sau** `actualEndDate` → 422 `INVOICE_AFTER_END_DATE` (hủy / xóa phiếu đó trước).
@@ -708,14 +741,14 @@ Kết thúc: `POST /contracts/{id}/vehicles/{vehicleId}/end` `{ "endDate": "2026
 
 ```json
 [
-  { "start": "2026-10-02", "end": "2026-10-31", "billingMonth": "2026-10" },
-  { "start": "2026-11-01", "end": "2026-11-30", "billingMonth": "2026-11" }
+  { "start": "2026-10-02", "end": "2026-10-31", "month": "2026-10-01", "billingMonth": "2026-10", "days": 30 },
+  { "start": "2026-11-01", "end": "2026-11-30", "month": "2026-11-01", "billingMonth": "2026-11", "days": 30 }
 ]
 ```
 
-- Kỳ chạy từ ngày chốt (`billing.anchorDay`) tới trước ngày chốt kế tiếp. Kỳ đầu lẻ nếu ngày bắt đầu không trùng ngày chốt.
-  tiền phòng × số tháng chỉ ở **phiếu tháng đầu chu kỳ**. VD 3 tháng: tháng 1 đóng tiền phòng 3 tháng + điện nước dịch vụ, tháng 2–3 chỉ điện nước
-  dịch vụ, tháng 4 đóng tiền phòng 3 tháng tiếp. Đổi giá thuê giữa chu kỳ đã thu → 422 `PERIOD_ALREADY_BILLED`.
+- Kỳ = kỳ chuẩn **của khu** (ngày chốt chung, `billing` trong chi tiết HĐ chỉ đọc) cắt theo [`billingStartDate`, ngày trả phòng]. Kỳ đầu lẻ
+  **không gộp** vào kỳ sau và thuộc tháng thu của khu (khu chốt ngày 5, vào 03/11 ⇒ kỳ 03/11–04/11 là **tháng 10**).
+- Khu đổi ngày chốt sau khi đã có phiếu ⇒ một **kỳ chuyển tiếp** dài / ngắn hơn 1 tháng ([properties.md](properties.md#cài-đặt-kỳ-thu--đổi-ngày-chốt)).
 - `billingMonth` = "tháng thu" (`yyyy-MM`) hiển thị "Tháng 10/2026".
 - `until` mặc định: ngày trả phòng → ngày kết thúc → hôm nay + 12 tháng (tối đa 10 năm từ ngày bắt đầu).
 - Kỳ cuối chỉ bị cắt ở **ngày trả phòng thực tế**, không cắt ở `endDate`.

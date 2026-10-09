@@ -15,7 +15,7 @@ internal static class ContractMutation
     public static async Task<Result<T>> RunAsync<T>(
         IAppDbContext db, Guid contractId, Func<Contract, Task<Result<T>>> action, CancellationToken ct)
     {
-        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        await using var transaction = await db.BeginTransactionAsync(ct);
         await db.LockForUpdateAsync<Contract>(contractId, ct);
 
         var contract = await LoadAsync(db, contractId, ct);

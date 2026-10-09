@@ -26,7 +26,7 @@ public static class AuditPolicy
     ];
 
     /// <summary>Không bắt được theo hậu tố: snapshot ký hợp đồng chứa số giấy tờ (đã mã hóa) của các bên.</summary>
-    private static readonly HashSet<string> SensitiveProperties = [nameof(User.SecurityStamp), nameof(Contract.SigningSnapshot)];
+    private static readonly HashSet<string> SensitiveProperties = [nameof(User.SecurityStamp), nameof(Contract.SigningSnapshot), nameof(Organization.DefaultLessor)];
 
     public static bool IsAudited(Type entityType) =>
         typeof(Entity).IsAssignableFrom(entityType) && !IgnoredEntityTypes.Contains(entityType);

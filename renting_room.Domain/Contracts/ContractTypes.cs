@@ -36,7 +36,10 @@ public enum ContractFlag
     ExpiredAwaitingDecision,
 
     /// <summary>Quá hạn, chủ trọ cho ở tiếp chưa ký lại.</summary>
-    Holdover
+    Holdover,
+
+    /// <summary>Chưa có bản hợp đồng đã ký (giấy / ảnh / PDF) — chỉ để nhắc, không ảnh hưởng thu tiền.</summary>
+    MissingSignedDocument
 }
 
 /// <summary>Căn cứ bên cho thuê chấm dứt — Luật Nhà ở 2023 Điều 172 khoản 2; HĐ không thời hạn: báo trước 90 ngày (CT-BR-42).</summary>
@@ -88,10 +91,6 @@ public sealed record ContractDraftData(
     decimal MonthlyRent,
     decimal DepositAmount,
     string? DepositTerms,
-    int BillingAnchorDay,
-    Properties.ChargeMode ChargeMode,
-    Properties.ProrationMode ProrationMode,
-    int PaymentDueDays,
     int NoticeDays,
     IReadOnlyCollection<PaymentMethod> PaymentMethods,
     int CopiesCount,
@@ -100,7 +99,8 @@ public sealed record ContractDraftData(
     IReadOnlyCollection<OccupantInput> Occupants,
     ContractDocument? Document = null,
     Guid? HouseholdHeadRenterId = null,
-    IReadOnlyCollection<ContractFeeInput>? Fees = null);
+    IReadOnlyCollection<ContractFeeInput>? Fees = null,
+    DateOnly? BillingStartDate = null);
 
 /// <summary>Khoản thu gắn vào HĐ (CT-UC-06): số lượng (nhóm Quantity), giá riêng của HĐ (null = theo bảng giá của khu).</summary>
 public sealed record ContractFeeInput(Guid FeeTypeId, decimal Quantity, decimal? UnitPriceOverride);
@@ -126,13 +126,8 @@ public sealed record ActivationContext(
     DateOnly Today,
     DateTimeOffset Now,
     bool RoomAvailable,
-    int RoomMaxOccupants,
-    bool LessorComplete,
-    string SigningSnapshotJson,
+    string? SigningSnapshotJson,
     string? HouseRulesSnapshot,
-    DateOnly RepresentativeDateOfBirth,
-    bool RepresentativeHasPhone,
-    bool OverrideCapacity = false,
     string? UtilityPriceSnapshotJson = null);
 
 public sealed record NoticeResult(bool ShorterThanNoticePeriod, int NoticeDays, int ActualDays);

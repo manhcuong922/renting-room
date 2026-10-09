@@ -18,7 +18,8 @@ internal sealed record ContractPrintData(
     string? RepresentativeIdNumber,
     IReadOnlyList<(Renter Renter, string IdNumber, ContractOccupant Occupant)> Occupants,
     IReadOnlyList<UtilityPriceItem> AgreedFees,
-    IReadOnlyDictionary<Guid, FeeType> FeeTypes);
+    IReadOnlyDictionary<Guid, FeeType> FeeTypes,
+    BillingSettings Billing);
 
 /// <summary>
 /// Dựng văn bản theo bố cục hợp đồng thuê thường dùng (Luật Nhà ở 2023 Điều 163): các bên, đối tượng thuê, thời hạn, giá & thanh toán,
@@ -55,7 +56,7 @@ internal static class ContractPrintBuilder
         blocks.Add(Text(TermText(c)));
 
         blocks.Add(Heading(Article("Giá thuê và phương thức thanh toán")));
-        blocks.Add(Text(RentText(c)));
+        blocks.Add(Text(RentText(c, d.Billing)));
 
         blocks.Add(Heading(Article("Tiền điện, nước và dịch vụ")));
         blocks.Add(Text(FeesText(d)));
@@ -175,7 +176,7 @@ internal static class ContractPrintBuilder
         var address = d.Snapshot?.PropertyAddress ?? Blank;
         var details = room is null ? "" :
             $"phòng {room.Code}{(room.Floor is null ? "" : $", tầng {room.Floor}")}{(room.AreaM2 is { } a ? $", diện tích {Number(a)} m²" : "")}, " +
-            $"số người ở tối đa {room.MaxOccupants} người, ";
+            (room.MaxOccupants is { } people ? $"loại phòng {people} người, " : "");
         return d.Contract.ContractType == ContractType.WholeHouseRental
             ? $"Bên A cho bên B thuê nhà tại địa chỉ: {address} ({d.Snapshot?.PropertyName}). Mục đích: theo thỏa thuận tại hợp đồng này."
             : $"Bên A đồng ý cho bên B thuê {details}tại {d.Snapshot?.PropertyName}, địa chỉ: {address}. Mục đích thuê: để ở.";
@@ -187,7 +188,7 @@ internal static class ContractPrintBuilder
             : $"Thời hạn thuê từ ngày {Date(c.StartDate)}, không xác định thời hạn.") +
         $"\nBên muốn chấm dứt hợp đồng trước thời hạn phải báo trước cho bên kia ít nhất {c.NoticeDays} ngày.";
 
-    private static string RentText(Contract c)
+    private static string RentText(Contract c, BillingSettings billing)
     {
         var terms = c.RentTerms.OrderBy(t => t.EffectiveFrom).ToList();
         var first = terms[0].MonthlyRent;
@@ -197,9 +198,9 @@ internal static class ContractPrintBuilder
         };
         lines.AddRange(terms.Skip(1).Select(t =>
             $"- Từ ngày {Date(t.EffectiveFrom)}{(t.AddendumNo is null ? "" : $" (phụ lục {t.AddendumNo})")}: {VietnameseMoney.Format(t.MonthlyRent)}/tháng."));
-        lines.Add($"- Kỳ thanh toán: hằng tháng, ngày chốt kỳ là ngày {c.BillingAnchorDay}; " +
-            (c.ChargeMode == ChargeMode.Prepaid ? "tiền thuê trả trước vào đầu mỗi kỳ" : "tiền thuê trả vào cuối mỗi kỳ") +
-            $"; hạn thanh toán trong {c.PaymentDueDays} ngày kể từ ngày nhận thông báo tiền phòng.");
+        lines.Add($"- Kỳ thanh toán: hằng tháng, ngày chốt kỳ là ngày {billing.AnchorDay}; " +
+            (billing.ChargeMode == ChargeMode.Prepaid ? "tiền thuê trả trước vào đầu mỗi kỳ" : "tiền thuê trả vào cuối mỗi kỳ") +
+            $"; hạn thanh toán trong {billing.PaymentDueDays} ngày kể từ ngày nhận thông báo tiền phòng.");
         lines.Add($"- Hình thức thanh toán: {string.Join(" hoặc ", c.PaymentMethods.Select(PaymentLabel))}.");
         return string.Join('\n', lines);
     }

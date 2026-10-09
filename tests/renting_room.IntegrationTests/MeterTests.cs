@@ -92,12 +92,14 @@ public sealed class MeterTests(ApiFactory factory)
         var owner = await _client.CreateActiveOwnerAsync();
         var token = owner.Tokens.AccessToken;
         var today = TestData.Today(factory);
-        var propertyId = await _client.CreatePropertyAsync(token);
+        // Khu chốt đúng ngày bắt đầu ⇒ cả thời gian ở nằm trong 1 kỳ (không phải lập phiếu kỳ trước — BL-BR-21).
+        var start = TestData.StartWithinOnePeriod(today, 20);
+        var propertyId = await _client.CreatePropertyAsync(token, anchorDay: start.Day);
         var roomId = await _client.CreateRoomAsync(token, propertyId);
         var electricity = await _client.FeeIdAsync(token, propertyId, "Điện");
         await _client.PostJsonAsync($"/api/v1/fee-types/{electricity}/prices", new { effectiveFrom = today.AddDays(-60), unitPrice = 3500 }, token);
         var oldMeter = await _client.InstallMeterAsync(token, roomId, electricity, today.AddDays(-30), 1250);
-        var contractId = await _client.CreateContractAsync(token, roomId, await _client.CreateRenterAsync(token), today.AddDays(-20));
+        var contractId = await _client.CreateContractAsync(token, roomId, await _client.CreateRenterAsync(token), start);
         (await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/activate",
             new { handoverReadings = new[] { new { meterId = oldMeter, value = (decimal?)null } } }, token)).StatusCode.Should().Be(HttpStatusCode.NoContent);
 

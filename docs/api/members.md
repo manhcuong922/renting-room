@@ -118,3 +118,11 @@ Hệ thống không tự gửi — chủ trọ tự chuyển cho phó quản lý
 
 Lỗi chung: 404 `MEMBER_NOT_FOUND`, 422 `CANNOT_MODIFY_OWNER` (thao tác trên chủ trọ),
 409 `USER_REMOVED` / `USER_ALREADY_LOCKED` / `USER_NOT_LOCKED` → tải lại danh sách.
+
+## Thời gian giữ dữ liệu người thuê
+
+`GET /org/data-retention` (chủ trọ, phó quản lý) → `{ "retentionMonths": 36, "autoAnonymize": true, "warnings": [] }`
+
+`PUT /org/data-retention` `{ "retentionMonths": 60, "autoAnonymize": true }` — **chỉ chủ trọ**. `retentionMonths` 36–120 (400 nếu ngoài khoảng).
+Người thuê rời đi quá số tháng này (không còn HĐ đang chạy, không nợ) được ẩn danh tự động mỗi đêm ([renters.md](renters.md)).
+`autoAnonymize: false` ⇒ tắt hẳn; response có cảnh báo `AUTO_ANONYMIZE_DISABLED` — UI hiện hộp xác nhận "bạn tự chịu trách nhiệm lưu giữ dữ liệu cá nhân". Mọi thay đổi ghi nhật ký (ai, lúc nào).

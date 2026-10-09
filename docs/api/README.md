@@ -14,6 +14,7 @@
 | [auth.md](auth.md) | Đăng nhập, đổi mật khẩu lần đầu, làm mới token, đăng xuất, hồ sơ | Mọi người |
 | [admin.md](admin.md) | Quản trị nền tảng: tổ chức chủ trọ, cấp lại mật khẩu, khóa tài khoản | SystemAdmin |
 | [members.md](members.md) | Chủ trọ quản lý phó quản lý | Chủ trọ |
+| [audit.md](audit.md) | Nhật ký thao tác: ai đã làm gì, với đối tượng nào, lúc nào | Chủ trọ |
 | [properties.md](properties.md) | Khu trọ, bên cho thuê, tài khoản ngân hàng, nội quy | Chủ trọ, phó quản lý |
 | [rooms.md](rooms.md) | Phòng, trạng thái phòng, bảo trì, nhóm phòng | Chủ trọ, phó quản lý |
 | [renters.md](renters.md) | Hồ sơ người thuê / người ở | Chủ trọ, phó quản lý |
@@ -23,6 +24,7 @@
 | [payments.md](payments.md) | Thu tiền ("Đã thu"), phiếu thu, đảo phiếu thu, còn nợ | Chủ trọ, phó quản lý |
 | [contract-templates.md](contract-templates.md) | Mẫu hợp đồng theo loại (thuê phòng trọ / thuê nhà): tiêu đề, điều khoản, trường tùy biến | Chủ trọ, phó quản lý |
 | [contracts.md](contracts.md) | Hợp đồng: tạo, kích hoạt, người ở, phụ lục, báo trả phòng, thanh lý, tài sản, xe | Chủ trọ, phó quản lý |
+| [imports.md](imports.md) | Nhập từ Excel: phòng; người thuê + lượt thuê đang ở (xem trước → xác nhận) | Chủ trọ |
 | [exports.md](exports.md) | Xuất Excel danh sách người thuê theo khu / tầng / nhóm phòng / phòng / khoảng ngày | Chủ trọ, phó quản lý |
 | [errors.md](errors.md) | Bảng mã lỗi → câu thông báo / hành động UI | Mọi người |
 | [openapi.json](openapi.json) | Đặc tả OpenAPI 3 | Sinh code |

@@ -2,6 +2,7 @@ using FluentValidation;
 using Mediator;
 using Microsoft.EntityFrameworkCore;
 using renting_room.Application.Common.Interfaces;
+using renting_room.Application.Properties;
 using renting_room.Domain.Common;
 using renting_room.Domain.Contracts;
 using renting_room.Domain.Fees;
@@ -120,7 +121,8 @@ internal static class ContractFeeRules
 
 // ============================================================ HĐ đang hiệu lực: đổi / gỡ khoản thu từ đầu kỳ
 
-public sealed record ChangeContractFeeCommand(Guid ContractId, Guid FeeTypeId, decimal? Quantity, decimal? UnitPriceOverride, DateOnly EffectiveFrom)
+/// <param name="EffectiveFrom">Bỏ trống ⇒ kỳ chưa chốt đầu tiên (CT-UC-05).</param>
+public sealed record ChangeContractFeeCommand(Guid ContractId, Guid FeeTypeId, decimal? Quantity, decimal? UnitPriceOverride, DateOnly? EffectiveFrom)
     : IRequest<Result>;
 
 public sealed class ChangeContractFeeCommandValidator : AbstractValidator<ChangeContractFeeCommand>
@@ -146,11 +148,12 @@ public sealed class ChangeContractFeeHandler(IAppDbContext db, IInvoiceLockReade
                 return Result.Failure(input.Error!);
 
             var firstOpen = await invoiceLocks.GetFirstOpenPeriodStartAsync(contract.Id, cancellationToken);
-            return contract.ChangeFee(input.Value!, request.EffectiveFrom, firstOpen);
+            var schedule = (await PropertyBilling.LoadAsync(db, contract.PropertyId, cancellationToken)).Schedule;
+            return contract.ChangeFee(input.Value!, request.EffectiveFrom ?? firstOpen ?? contract.StartDate, firstOpen, schedule);
         }, cancellationToken));
 }
 
-public sealed record RemoveContractFeeCommand(Guid ContractId, Guid FeeTypeId, DateOnly EffectiveFrom) : IRequest<Result>;
+public sealed record RemoveContractFeeCommand(Guid ContractId, Guid FeeTypeId, DateOnly? EffectiveFrom) : IRequest<Result>;
 
 public sealed class RemoveContractFeeHandler(IAppDbContext db, IInvoiceLockReader invoiceLocks) : IRequestHandler<RemoveContractFeeCommand, Result>
 {
@@ -158,6 +161,7 @@ public sealed class RemoveContractFeeHandler(IAppDbContext db, IInvoiceLockReade
         new(ContractMutation.RunAsync(db, request.ContractId, async contract =>
         {
             var firstOpen = await invoiceLocks.GetFirstOpenPeriodStartAsync(contract.Id, cancellationToken);
-            return contract.RemoveFee(request.FeeTypeId, request.EffectiveFrom, firstOpen);
+            var schedule = (await PropertyBilling.LoadAsync(db, contract.PropertyId, cancellationToken)).Schedule;
+            return contract.RemoveFee(request.FeeTypeId, request.EffectiveFrom ?? firstOpen ?? contract.StartDate, firstOpen, schedule);
         }, cancellationToken));
 }

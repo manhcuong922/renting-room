@@ -16,14 +16,11 @@ public static class ContractErrors
         "Phòng đã có hợp đồng khác trong khoảng thời gian này.");
     public static readonly Error StartDateTooFarInFuture = Error.BusinessRule("START_DATE_IN_FUTURE",
         "Chỉ kích hoạt khi bàn giao phòng thực tế (ngày bắt đầu không quá ngày mai).");
-    public static readonly Error LessorInfoIncomplete = Error.BusinessRule("LESSOR_INFO_INCOMPLETE",
-        "Khu trọ chưa khai báo đủ thông tin bên cho thuê (bắt buộc theo Luật Nhà ở 2023 Điều 163).");
+    public static readonly Error RepresentativeIdRequired = Error.BusinessRule("REPRESENTATIVE_ID_REQUIRED",
+        "Người đứng tên hợp đồng phải có số giấy tờ (CCCD / CMND / hộ chiếu) — bổ sung ở hồ sơ người thuê.");
     public static readonly Error RepresentativeUnderage = Error.BusinessRule("REPRESENTATIVE_UNDERAGE",
         "Người đứng tên ký hợp đồng phải đủ 18 tuổi (BLDS 2015 Điều 117).");
-    public static readonly Error RepresentativePhoneRequired = Error.BusinessRule("REPRESENTATIVE_PHONE_REQUIRED",
-        "Người đứng tên ký hợp đồng phải có số điện thoại.");
     public static readonly Error NoOccupant = Error.BusinessRule("NO_OCCUPANT", "Hợp đồng phải có ít nhất 1 người ở.");
-    public static readonly Error RoomCapacityExceeded = Error.BusinessRule("ROOM_CAPACITY_EXCEEDED", "Vượt quá số người ở tối đa của phòng.");
     public static readonly Error OccupantOverlap = Error.Conflict("OCCUPANCY_OVERLAP", "Người này đã đang ở trong hợp đồng.");
     // CT-BR-28..31: quan hệ người ở với người đứng tên, người chưa thành niên, ở 2 nơi cùng lúc.
     public static readonly Error RelationshipRequired = Error.Validation("RELATIONSHIP_REQUIRED",
@@ -68,8 +65,6 @@ public static class ContractErrors
     public static readonly Error InvalidEndDate = Error.BusinessRule("INVALID_END_DATE", "Ngày kết thúc không hợp lệ.");
     public static readonly Error LiquidationBeforeEndDate = Error.BusinessRule("LIQUIDATION_BEFORE_END_DATE",
         "Chỉ hoàn tất thanh lý từ ngày trả phòng thực tế trở đi.");
-    public static readonly Error TerminationGroundRequired = Error.BusinessRule("TERMINATION_GROUND_REQUIRED",
-        "Bên cho thuê đơn phương chấm dứt phải nêu căn cứ theo Luật Nhà ở 2023 Điều 172.");
     public static readonly Error ExpiredReasonInvalid = Error.BusinessRule("EXPIRED_REASON_INVALID",
         "Chỉ chọn \"Hết hạn\" khi hợp đồng có thời hạn và ngày trả phòng từ ngày hết hạn trở đi — trả sớm hãy chọn lý do khác.");
     public static readonly Error IndefiniteGroundOnly = Error.BusinessRule("INDEFINITE_GROUND_ONLY",

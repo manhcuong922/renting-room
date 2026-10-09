@@ -129,7 +129,7 @@ hoàn tất thanh lý: còn nợ ⇒ "Đã thu toàn bộ" / "Bỏ nợ"; còn p
 - Phase 3: cân nhắc PostgreSQL Row-Level Security làm lớp bảo vệ thứ hai.
 
 ### C-02 Định danh
-- Khóa chính `uuid`, sinh **UUIDv7** (`Guid.CreateVersion7()` có sẵn trên .NET 10) — sắp xếp theo thời gian, index tốt.
+- ✅ Khóa chính `uuid`, sinh **UUIDv7** (`Guid.CreateVersion7()`) cho mọi entity — sắp xếp theo thời gian, index tốt (08/10/2026). Giá trị cần ngẫu nhiên khó đoán (security stamp, JTI, họ refresh token) vẫn dùng `Guid.NewGuid()`.
 - Mã nghiệp vụ dễ đọc (`code`, `invoice_no`) unique **trong tổ chức**.
 
 ### C-03 Tiền & số lượng
@@ -152,21 +152,25 @@ hoàn tất thanh lý: còn nợ ⇒ "Đã thu toàn bộ" / "Bỏ nợ"; còn p
   Ngày tạo phiếu không ảnh hưởng kỳ: phiếu tháng 11 luôn là kỳ tháng 11 dù tạo sớm hay muộn.
 - `AnchorDate(y, m) = DateOnly(y, m, min(anchorDay, DaysInMonth(y, m)))` (với ngày chốt 1–28 không bao giờ phải kẹp; giữ công thức cho dữ liệu cũ).
 - **Kỳ chuẩn** của tháng M: `S(M) = [AnchorDate(M), AnchorDate(M+1) − 1]`.
-- **Kỳ của hợp đồng** (dùng để lập phiếu) — ⏳ **K5 đang chốt lại** cách tính kỳ đầu khi vào ở giữa kỳ (đề xuất: trường "Tính tiền từ ngày" trên HĐ,
-  phiếu đầu tiên tự gồm mọi ngày lẻ tới hết tháng thu đang tạo — không phiếu lẻ, không sót ngày; xem 99-self-review C3). Tới khi chốt giữ quy tắc dưới:
-  - `NextAnchor(d)` = AnchorDate nhỏ nhất **lớn hơn** d.
-  - Kỳ đầu: `[start_date, E1]`, trong đó `A = NextAnchor(start_date)`:
-    - nếu `A` thuộc tháng **sau** tháng của `start_date` → `E1 = A − 1` (VD bắt đầu 20/10, anchor 5 → 20/10–04/11);
-    - nếu `A` **cùng tháng** với `start_date` (VD bắt đầu 03/10, anchor 5) → **gộp** kỳ lẻ vào kỳ kế tiếp: `E1 = NextAnchor(A) − 1` → 03/10–04/11.
-    - Mục đích: **mỗi tháng có tối đa 1 kỳ bắt đầu** cho mỗi hợp đồng ⇒ "tháng thu" định danh duy nhất một kỳ.
+- **Kỳ của hợp đồng** (dùng để lập phiếu) (chốt 09/10/2026):
+  - **Tính tiền từ ngày** (`billing_start_date`, mặc định = `start_date`): ngày bắt đầu tính tiền trong phần mềm — **không cộng thêm tiền**,
+    chỉ dùng cho vài phòng: HĐ nhập từ sổ cũ (bắt đầu từ năm trước, tính tiền từ kỳ đầu dùng phần mềm), chủ trọ cho ở miễn phí vài ngày đầu.
+    Những ngày trước mốc này không tính tiền.
+  - Kỳ đầu: `[billing_start_date, ngày cuối kỳ chuẩn của khu chứa ngày đó]`, tính theo ngày / trọn tháng theo cài đặt của khu —
+    **không gộp** vào kỳ sau (VD khu chốt ngày 5, vào 03/11 ⇒ kỳ đầu 03/11–04/11 = 2 ngày; vào 20/10 ⇒ 20/10–04/11).
+  - **Tháng thu** của một kỳ = tháng của **kỳ chuẩn của khu chứa kỳ đó** (kỳ 03/11–04/11 nằm trong kỳ tháng 10 = 05/10–04/11 ⇒ phiếu tháng 10)
+    ⇒ mỗi HĐ mỗi tháng thu đúng 1 kỳ, và trùng tên tháng với cả khu.
+  - Không bỏ sót: phiếu phải lập **lần lượt từ kỳ đầu** (BL-BR-21) — quên lập kỳ đầu thì tạo phiếu tháng sau báo `PREVIOUS_PERIOD_NOT_BILLED`
+    (UI gợi ý tạo tháng còn thiếu), không tự cộng dồn tiền.
   - Các kỳ sau: kỳ chuẩn.
   - Kỳ cuối: cắt tại `actual_end_date` (ngày cuối tính tiền, **bao gồm**).
-- Kỳ được định danh bằng `PeriodStart`. **Tháng thu** (`billing_month`) = tháng của `PeriodStart`.
+- Kỳ được định danh bằng `PeriodStart`. **Tháng thu** (`billing_month`) = tháng của kỳ chuẩn của khu chứa `PeriodStart` (xem trên).
 - Prorate `Daily`: `amount = round(rent × Σ_k overlapDays_k / len(S_k))` với `S_k` là các kỳ chuẩn giao với kỳ HĐ
-  (làm tròn **một lần** ở cuối). Kỳ đầy đủ ⇒ hệ số = 1; kỳ gộp 03/10–04/11 ⇒ hệ số = 2/30 + 1.
+  (làm tròn **một lần** ở cuối). Kỳ đầy đủ ⇒ hệ số = 1; kỳ đầu lẻ 03/11–04/11 (khu chốt ngày 5) ⇒ 2/31. Kỳ chuyển tiếp khi đổi ngày chốt (K4):
+  [mốc đổi, ngày chốt mới tháng sau − 1], vẫn là tháng thu của mốc đổi; tiền phòng = 1 tháng ± số ngày chủ trọ chọn / độ dài kỳ cũ (M07 BL-BR-28).
   `FullPeriod`: mỗi kỳ HĐ (kể cả kỳ lẻ/gộp) tính đúng 1 tháng tiền.
 - Tiền phòng **thu hằng tháng**, mỗi kỳ 1 dòng — không có chu kỳ đóng nhiều tháng (đã bỏ 07/10/2026, M07 BL-BR-26).
-- Hiện thực một lần duy nhất ở `Domain/Billing/BillingPeriodCalculator.cs` + unit test bảng (anchor 1/5/28/29/30/31, tháng 2 năm nhuận/không,
+- Hiện thực một lần duy nhất ở `Domain/Billing/BillingPeriodCalculator.cs` (`BillingSchedule` — lịch kỳ thu của khu) + unit test bảng (anchor 1/5/28/29/30/31, tháng 2 năm nhuận/không,
   bắt đầu trước/sau/đúng anchor, kết thúc giữa kỳ).
 
 ### C-06 Xóa & lưu trữ
@@ -218,20 +222,23 @@ hoàn tất thanh lý: còn nợ ⇒ "Đã thu toàn bộ" / "Bỏ nợ"; còn p
   | Loại thao tác | Cách ghi | Lượt DB thêm | Mất audit khi crash? |
   |---|---|---|---|
   | **Ghi** (tạo / sửa / xóa entity) | `AppDbContext.SaveChanges` đọc ChangeTracker → sinh dòng audit → thêm vào **chính lần lưu đó** (cùng batch lệnh, cùng transaction). Rollback ⇒ audit cũng không có; lưu lỗi ⇒ gỡ dòng audit khỏi context | 0 | Không |
-  | Sự kiện nghiệp vụ trong lệnh ghi (vượt sức chứa có chủ ý) | `IAuditTrail.Record(...)` — đi kèm SaveChanges kế tiếp, cùng transaction | 0 | Không |
+  | Sự kiện nghiệp vụ trong lệnh ghi (ẩn danh, import) | `IAuditTrail.Record(...)` — đi kèm SaveChanges kế tiếp, cùng transaction | 0 | Không |
   | **Đọc** dữ liệu nhạy cảm (xem số giấy tờ đầy đủ, in HĐ có số đầy đủ, xuất Excel `includeSensitive`, tải ảnh giấy tờ — M09) | `IAuditTrail.RecordRead(...)` → hàng đợi RAM (`Channel`, tối đa `Audit:QueueCapacity` = 10.000) → `AuditLogWriter` (BackgroundService) gom lô: ghi khi **đủ `Audit:MaxBatchSize` = 500 HOẶC hết `Audit:FlushInterval` = 2 giây** tính từ bản ghi đầu của lô | 1 INSERT / lô | Tối đa 1 cửa sổ gom (~2 giây). Tắt app bình thường ⇒ vét hàng đợi trước khi dừng. Hàng đợi đầy / ghi lỗi ⇒ chép tóm tắt ra log ứng dụng |
 
   Lý do không đưa thao tác ghi sang nền: lượt SaveChanges đằng nào cũng xảy ra, audit đi nhờ không tốn thêm round-trip/commit; tách ra nền chỉ thêm commit và rủi ro mất audit.
 - Audit **tự động** cho mọi entity kế thừa `Entity` trừ `RefreshToken` (sự kiện đăng nhập ở bảng `login_events` — M01 §11). Không áp dụng cho lệnh `ExecuteUpdate` / `ExecuteDelete` / SQL thô (không qua ChangeTracker) ⇒ lệnh nghiệp vụ cần audit không được viết bằng các API này, hoặc phải tự gọi `IAuditTrail.Record`.
 - `changes`: sửa ⇒ chỉ trường đổi `{"field":{"old":…,"new":…}}`; tạo / xóa ⇒ giá trị các trường. Bỏ cột đã có trên dòng audit (id, organization_id, created/updated_*, version).
 - Trường nhạy cảm **không** ghi giá trị — ghi `"[redacted]"`: tên kết thúc `Encrypted` / `Hash`, mọi cột nhị phân, `SecurityStamp`, `SigningSnapshot` (chứa số giấy tờ đã mã hóa).
-- Chưa làm: API xem audit log cho chủ trọ (ID-BR-19), xóa giá trị cá nhân trong `changes` khi ẩn danh (RT-BR-06), chính sách lưu giữ / partition theo tháng khi bảng lớn.
+- ✅ Xem nhật ký (ID-BR-19, 08/10/2026): `GET /audit-logs?entityType=&entityId=&userId=&action=&from=&to=&page=` — **chỉ chủ trọ**, luôn lọc theo tổ chức của người gọi (bảng không có global filter), mới nhất trước, kèm tên người làm; `no-store` vì có dữ liệu cá nhân.
+- ✅ Ẩn danh (RT-BR-06): xóa giá trị cá nhân trong `changes` của người được ẩn danh, cùng transaction với lệnh ẩn danh.
+- Job nền chạy trên dữ liệu tổ chức qua `CurrentUserOverride` (người dùng hệ thống của tổ chức, `user_id` rỗng trên audit) — vẫn bị lọc và kiểm tổ chức như request.
+- Chưa làm: chính sách lưu giữ / partition theo tháng khi bảng lớn.
 
 ### C-11 Bảo mật & dữ liệu cá nhân
 - JWT access 15 phút + refresh token xoay vòng (chi tiết M01). Rate limit đăng nhập & API.
 - Số giấy tờ: mã hóa cột (AES-GCM, khóa từ secret manager) + cột `id_number_hash` (HMAC-SHA256) để tìm kiếm/unique.
-- Không log PII; Serilog destructuring policy che các field nhạy cảm.
-- Secrets qua biến môi trường / User Secrets (dev). **Chuỗi kết nối hiện có mật khẩu trong `appsettings.json` → chuyển ra User Secrets** (task P0-02).
+- Không ghi dữ liệu cá nhân vào log ứng dụng (chỉ ghi id). **Không dùng Serilog** (chốt 08/10/2026): log mặc định của ASP.NET Core; che dữ liệu hiển thị ở FE. Số giấy tờ mã hóa ở DB, API luôn trả dạng che trừ endpoint xem đầy đủ (có audit).
+- ✅ Secrets qua biến môi trường / User Secrets; app dừng ngay khi thiếu chuỗi kết nối (`ConnectionStrings__DefaultConnection`). `appsettings.Development.json` chỉ có mật khẩu mặc định `postgres/postgres` của container Postgres dev (`docker-compose.yml`, đổi qua `.env`) — không phải bí mật thật; môi trường thật bắt buộc lấy từ env / secret manager (P0-02).
 
 ### C-12 Địa chỉ
 - Bảng tham chiếu `provinces(code, name)`, `communes(code, province_code, name, type)` seed từ QĐ 19/2025/QĐ-TTg.
@@ -262,7 +269,7 @@ lưu cứng). Vì chưa có dữ liệu thật → **xóa migration `InitialCrea
 | ID | Task | Ước lượng |
 |----|------|-----------|
 | P0-01 ✅ | Nâng 4 project lên `net10.0`, cập nhật package (EF Core 10, Npgsql 10) | 0.5d |
-| P0-02 | Chuyển connection string sang User Secrets / env; validate secrets khi khởi động | 0.25d |
+| P0-02 ✅ | Chuyển connection string sang User Secrets / env; validate secrets khi khởi động (dev: mật khẩu mặc định container, xem C-11) | 0.25d |
 | P0-03 | `ICurrentUser`, `TimeProvider` VN, base entity `TenantEntity` (Id, OrganizationId, CreatedAt/By, UpdatedAt/By) | 0.5d |
 | P0-04 ✅ | Global query filter + SaveChanges guard + audit (C-10: cùng SaveChanges cho lệnh ghi, `AuditLogWriter` gom lô cho thao tác đọc) | 1d |
 | P0-05 | Xóa migration cũ, cấu hình xmin, composite FK helper, tạo migration mới | 0.5d |

@@ -52,7 +52,7 @@ public sealed class AdminSetUserLockHandler(
             return result;
 
         var now = clock.GetUtcNow();
-        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        await using var transaction = await db.BeginTransactionAsync(cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         if (request.Locked)
             await AccountSessions.RevokeAllAsync(db, user.Id, now, cancellationToken);

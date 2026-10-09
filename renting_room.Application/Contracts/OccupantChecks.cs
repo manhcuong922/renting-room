@@ -10,13 +10,18 @@ namespace renting_room.Application.Contracts;
 /// <summary>Kiểm tra người ở dùng chung cho tạo/sửa nháp, thêm người ở và kích hoạt (CT-BR-28..31).</summary>
 internal static class OccupantChecks
 {
+    /// <summary>RT-BR-01: hồ sơ có số giấy tờ (người đứng tên HĐ bắt buộc có).</summary>
+    public static Task<bool> HasIdNumberAsync(IAppDbContext db, Guid renterId, CancellationToken ct) =>
+        db.Renters.AnyAsync(r => r.Id == renterId && r.IdNumberHash != null, ct);
+
     private static readonly ContractStatus[] LivedStatuses = [ContractStatus.Active, ContractStatus.Liquidating, ContractStatus.Ended];
 
     public static async Task<Dictionary<Guid, (PersonFacts Facts, string Name)>> LoadPeopleAsync(
         IAppDbContext db, IEnumerable<Guid> renterIds, CancellationToken ct)
     {
         var ids = renterIds.Distinct().ToList();
-        var people = await db.Renters.AsNoTracking().Where(r => ids.Contains(r.Id))
+        // Hồ sơ đã ẩn danh (RT-BR-06) coi như không còn — không đứng tên / ở trong HĐ mới được.
+        var people = await db.Renters.AsNoTracking().Where(r => ids.Contains(r.Id) && r.AnonymizedAt == null)
             .Select(r => new { r.Id, r.DateOfBirth, r.Gender, r.FullName })
             .ToListAsync(ct);
         return people.ToDictionary(p => p.Id, p => (new PersonFacts(p.Id, p.DateOfBirth, p.Gender), p.FullName));

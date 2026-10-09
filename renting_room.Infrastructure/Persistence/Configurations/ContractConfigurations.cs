@@ -16,16 +16,19 @@ internal sealed class ContractConfiguration : IEntityTypeConfiguration<Contract>
         {
             t.HasCheckConstraint("ck_contracts_end_after_start", "end_date IS NULL OR end_date > start_date");
             t.HasCheckConstraint("ck_contracts_actual_end", "actual_end_date IS NULL OR actual_end_date >= start_date");
+            // K5: "Tính tiền từ ngày" nằm trong thời gian HĐ.
+            t.HasCheckConstraint("ck_contracts_billing_start", "billing_start_date >= start_date AND (end_date IS NULL OR billing_start_date <= end_date)");
             t.HasCheckConstraint("ck_contracts_liquidation_end",
                 "status NOT IN ('Liquidating','Ended') OR actual_end_date IS NOT NULL");
             t.HasCheckConstraint("ck_contracts_settings",
-                "billing_anchor_day BETWEEN 1 AND 31 AND deposit_amount >= 0 AND copies_count BETWEEN 1 AND 10");
+                "deposit_amount >= 0 AND copies_count BETWEEN 1 AND 10");
             // CT-BR-20 (Điều 164): hiệu lực không trước ngày ký. Có thể sau ngày bàn giao (dọn vào trước, ký sau).
             t.HasCheckConstraint("ck_contracts_effective_date",
                 "effective_date IS NULL OR signed_date IS NULL OR effective_date >= signed_date");
             // CT-BR-19/20: hợp đồng đã kích hoạt luôn có ngày hiệu lực và snapshot bên cho thuê.
+            // Bản chụp lúc ký không bắt buộc (khu chưa khai bên cho thuê vẫn kích hoạt được — chỉ cảnh báo, chốt 09/10/2026).
             t.HasCheckConstraint("ck_contracts_activated_snapshot",
-                "status NOT IN ('Active','Liquidating','Ended') OR (effective_date IS NOT NULL AND signing_snapshot IS NOT NULL)");
+                "status NOT IN ('Active','Liquidating','Ended') OR effective_date IS NOT NULL");
             t.HasCheckConstraint("ck_contracts_termination_reason", "status <> 'Ended' OR termination_reason IS NOT NULL");
         });
 
@@ -50,8 +53,6 @@ internal sealed class ContractConfiguration : IEntityTypeConfiguration<Contract>
         builder.Property(c => c.SignedPlace).HasMaxLength(200);
         builder.Property(c => c.DepositAmount).HasColumnType("numeric(18,0)");
         builder.Property(c => c.DepositTerms).HasMaxLength(5000);
-        builder.Property(c => c.ChargeMode).HasConversion<string>().HasMaxLength(16);
-        builder.Property(c => c.ProrationMode).HasConversion<string>().HasMaxLength(16);
         builder.Property(c => c.PaymentMethods)
             .HasColumnType("text[]")
             .HasConversion(
@@ -65,6 +66,7 @@ internal sealed class ContractConfiguration : IEntityTypeConfiguration<Contract>
         builder.Property(c => c.Note).HasMaxLength(2000);
         builder.Property(c => c.SigningSnapshot).HasColumnType("jsonb");
         builder.Property(c => c.HouseRulesSnapshot).HasMaxLength(20_000);
+        builder.Property(c => c.SignedDocumentNote).HasMaxLength(300);
         builder.Property(c => c.UtilityPriceSnapshot).HasColumnType("jsonb");
         builder.Property(c => c.TerminationReason).HasConversion<string>().HasMaxLength(24);
         builder.Property(c => c.TerminationGround).HasConversion<string>().HasMaxLength(32);

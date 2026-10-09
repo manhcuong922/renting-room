@@ -81,7 +81,7 @@ public sealed class CreateManagerHandler(
         if (email is not null && await db.Users.AnyAsync(u => u.EmailNormalized == email, cancellationToken))
             return IdentityErrors.EmailTaken;
 
-        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        await using var transaction = await db.BeginTransactionAsync(cancellationToken);
 
         // ID-BR-15: khóa hàng tổ chức ⇒ 2 request thêm song song không vượt giới hạn.
         await db.LockForUpdateAsync<Organization>(organizationId, cancellationToken);
@@ -184,7 +184,7 @@ public sealed class ChangeManagerStatusHandler(
         if (result.IsFailure)
             return result;
 
-        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        await using var transaction = await db.BeginTransactionAsync(cancellationToken);
         await db.SaveChangesAsync(cancellationToken);
         if (request.Action != ManagerAction.Unlock)
             await AccountSessions.RevokeAllAsync(db, user.Id, now, cancellationToken);
@@ -264,7 +264,7 @@ internal static class PasswordReset
         if (reset.IsFailure)
             return reset.Error!;
 
-        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        await using var transaction = await db.BeginTransactionAsync(ct);
         await db.SaveChangesAsync(ct);
         await AccountSessions.RevokeAllAsync(db, user.Id, now, ct);
         await transaction.CommitAsync(ct);

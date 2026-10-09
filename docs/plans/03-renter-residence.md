@@ -36,6 +36,7 @@ Người ở / chuyển đi: M05. ⏸ P2: bản ghi cư trú + trạng thái + f
 |----|-------|
 | RT-UC-01 | Tạo hồ sơ người thuê (có thể kèm ảnh CCCD mặt trước/sau, ảnh chân dung — M09) |
 | RT-UC-02 | Tìm người thuê theo tên, SĐT, **số giấy tờ (khớp chính xác)**; gợi ý hồ sơ cũ khi nhập trùng số giấy tờ |
+| RT-UC-10 ✅ | **Import người thuê đang ở từ Excel** (chốt 09/10/2026, thiết kế lại 09/10) — chỉ để **tạo mới hàng loạt khi chuyển từ sổ sang phần mềm**. Mẫu `GET /properties/{id}/tenancies/import-template`: **1 sheet, mỗi dòng 1 người**: mã phòng*, **vai trò*** (`Đứng tên` · `Đứng tên (không ở)` · `Ở cùng`), họ tên*, ngày sinh*, giới tính*, SĐT, loại + số giấy tờ (bắt buộc nếu ≥ 14 tuổi hoặc đứng tên — RT-BR-01), quốc tịch, quê quán, nghề nghiệp, quan hệ với người đứng tên, ngày vào ở* (≤ hôm nay), giá thuê* + tiền cọc (chỉ đọc ở dòng đứng tên). Các dòng cùng mã phòng = 1 HĐ; **đơn vị lưu = phòng** (1 người lỗi ⇒ cả phòng bỏ qua, không tạo hồ sơ cho người chỉ thuộc phòng lỗi). Lưu mỗi phòng: dùng lại / tạo người thuê → HĐ (ngày bắt đầu = ngày vào ở sớm nhất; **tính tiền từ** đầu kỳ hiện tại của khu, vào ở giữa kỳ ⇒ từ ngày vào ở; thiếu bản ký) → kích hoạt (chỉ số nhận phòng = số mới nhất của công tơ). **Không** có chỉ số công tơ, dịch vụ, xe — dịch vụ thêm sau qua FE-UC-08 (khoản "tự gắn" vẫn tự gắn), xe qua màn phương tiện. **Hỗ trợ**: gia đình / ở ghép vào phòng trống; người đứng tên không ở; **1 người đứng tên nhiều phòng** (ở thật tối đa 1 phòng); trẻ < 14 tuổi không giấy tờ (chỉ `Ở cùng`); người đã có hồ sơ mà không đang ở HĐ mở ⇒ dùng lại, **không sửa** (khác thông tin ⇒ cảnh báo chênh lệch); người nước ngoài (hộ chiếu); quan hệ chưa khai / chưa hợp lý, người đứng tên < 18 ⇒ cảnh báo (CT-BR-46); import lại cùng file không nhân đôi. **Chặn**: phòng đã có HĐ nháp / đang ở / đang thanh lý (kể cả để thêm người — dùng màn HĐ); phòng không có / ngừng dùng; ngày vào ở sau hôm nay; một người **ở** 2 phòng (trong file hoặc đang ở phòng khác); ≥ 14 tuổi hoặc đứng tên mà thiếu giấy tờ; phòng không có / có 2 người đứng tên, không có ai ở; cùng số giấy tờ khác họ tên / ngày sinh; quan hệ sai danh mục. Không nhập: người đã rời đi (lịch sử), nợ cũ, cọc đã thu (để sau). Chỉ số công tơ ghi lần cuối trước kỳ tính tiền > 31 ngày ⇒ cảnh báo cập nhật chỉ số. Luồng chung (chốt lại 09/10/2026): **xem trước** `POST …/import/preview` (multipart `file`) đọc file, trả từng dòng + lỗi theo ô — **server không giữ gì** (đóng màn là mất); người dùng sửa thẳng ô sai trên màn hình hoặc sửa file tải lại; **lưu** `POST …/import` (JSON các dòng, bắt buộc `Idempotency-Key`) ⇒ server **kiểm lại toàn bộ** theo dữ liệu lúc đó, **lưu phần hợp lệ** (mỗi đơn vị 1 transaction), trả kết quả từng đơn vị (đã lưu / bỏ qua + lý do). Import **chỉ tạo mới** — không sửa / ghi đè / kết thúc dữ liệu đang có; server bỏ qua mọi id do client gửi (tra theo mã phòng, số giấy tờ). Giới hạn: `.xlsx` ≤ 2 MB (chặn ở web server), giải nén ≤ 20 MB (chống zip bomb), ≤ 500 dòng, chỉ đọc sheet / cột của mẫu, ô công thức ⇒ lỗi (RP-BR-02), ≤ 10 lần xem trước / phút / người, chỉ chủ trọ; audit 1 dòng `Import`. |
 | RT-UC-03 | Sửa hồ sơ |
 | RT-UC-04 | Xem lịch sử thuê của người (các hợp đồng, phòng, thời gian) |
 | RT-UC-05 | Ghi nhận đồng ý xử lý dữ liệu (phương thức: ký giấy / điều khoản trong HĐ / xác nhận miệng có chứng cứ) |
@@ -50,12 +51,12 @@ Người ở / chuyển đi: M05. ⏸ P2: bản ghi cư trú + trạng thái + f
 
 | Mã | Quy tắc | Nơi kiểm tra |
 |----|---------|-------------|
-| RT-BR-01 | Bắt buộc: họ tên, ngày sinh, giới tính, loại + số giấy tờ, quốc tịch. SĐT không bắt buộc (trẻ em, người già) nhưng **người đại diện ký HĐ phải có SĐT** (kiểm ở M05) | Validator / M05 |
+| RT-BR-01 ✅ | Bắt buộc: họ tên, ngày sinh, giới tính, quốc tịch. **Loại + số giấy tờ bắt buộc khi ≥ 14 tuổi** (tuổi được cấp CCCD — đổi 09/10/2026); trẻ < 14 tuổi được để trống. **Người đứng tên HĐ phải có giấy tờ** (422 `REPRESENTATIVE_ID_REQUIRED` — M05); người ở ≥ 14 tuổi chưa có giấy tờ (VD vừa qua 14 tuổi) ⇒ cảnh báo `OCCUPANT_ID_MISSING` trên HĐ. Người không giấy tờ không tự nhận ra trùng hồ sơ. SĐT không bắt buộc (người đứng tên thiếu SĐT ⇒ cảnh báo — CT-BR-46) | Validator / M05 |
 | RT-BR-02 ✅ | Số giấy tờ unique **trong tổ chức** theo `(id_type, id_number_hash)`. Trùng → 409 `RENTER_ID_NUMBER_EXISTS` kèm `existingRenterId` để dùng lại hồ sơ (không tạo bản sao). Một hồ sơ được **đứng tên nhiều phòng** (CT-BR-10); là **người ở** thì chỉ ở 1 phòng tại một thời điểm (CT-BR-31) | DB unique + Application |
 | RT-BR-03 | Số giấy tờ có thể **sửa** (nhập sai) nhưng mọi thay đổi được audit; không cho sửa khi hồ sơ đã ẩn danh | Domain |
 | RT-BR-04 | ~~Quốc tịch ≠ VN ⇒ bắt buộc hộ chiếu~~ — **bỏ (04/10/2026)**: hệ thống phục vụ người thuê Việt Nam. Giữ `nationality` (mặc định `VN`) và loại giấy tờ `Passport` cho người Việt dùng hộ chiếu; không kiểm tra theo quốc tịch | — |
 | RT-BR-05 | Không xóa vật lý hồ sơ đã gắn hợp đồng. Archive = ẩn khỏi tìm kiếm mặc định | Application |
-| RT-BR-06 | Ẩn danh hóa: chỉ khi không có HĐ `Draft/Active/Liquidating`; thay họ tên = "Đã ẩn danh #xxxx", xóa SĐT/email/địa chỉ/ngày sinh/số giấy tờ/liên hệ khẩn cấp; hard delete file nhạy cảm (M09, FS-BR-09); **thay cả bản snapshot tên** trên phiếu báo (`invoices.snapshot_representative_name`) và phiếu thu (`payer_name`) — ngoại lệ duy nhất cho quy tắc bất biến C-06, chỉ chạy qua lệnh ẩn danh, có audit; **xóa giá trị cá nhân trong `audit_logs.changes`** của renter đó. Giữ liên kết & số liệu tài chính. Không đảo ngược | Domain + Application |
+| RT-BR-06 ✅ | **Ẩn danh** (chốt + code 08/10/2026), không đảo ngược. **Tự động**: job nền mỗi ngày ẩn danh hồ sơ đủ điều kiện theo **cài đặt của tổ chức** — thời gian giữ `personal_data_retention_months` (mặc định **36**, chọn 36–120; tối thiểu 36 = thời hiệu khởi kiện tranh chấp hợp đồng 3 năm, BLDS Điều 429) và `auto_anonymize_enabled` (chủ trọ **tắt được** ⇒ cảnh báo `AUTO_ANONYMIZE_DISABLED`, tự chịu trách nhiệm lưu giữ; audit ghi ai tắt). Điều kiện tự động: (1) không còn HĐ `Draft/Active/Liquidating` có người này (đứng tên / ở cùng); (2) lần cuối gắn với HĐ — ngày trả phòng HĐ đã kết thúc, ngày hủy HĐ nháp, hoặc ngày tạo hồ sơ nếu chưa từng có HĐ — đã quá thời gian giữ; (3) HĐ người này đứng tên không còn phiếu nợ / chờ hoàn. **Bằng tay**: `POST /renters/{id}/anonymize { reason }` — **chỉ chủ trọ**, lý do bắt buộc (ghi audit), dùng khi người thuê yêu cầu xóa dữ liệu hoặc muốn xóa sớm; không cần đủ thời gian giữ nhưng vẫn chặn (1) → 422 `RENTER_HAS_ACTIVE_CONTRACT`, (3) → 422 `RENTER_HAS_UNSETTLED_INVOICES`. Làm gì: họ tên = "Đã ẩn danh #xxxx" (4 ký tự cuối id); xóa ngày sinh, SĐT, email, giấy tờ (bản mã hóa; hash thay bằng giá trị riêng ⇒ cùng CCCD thuê lại là hồ sơ mới; 4 số cuối `****`), nơi cấp, địa chỉ, nghề nghiệp, nơi làm việc, liên hệ khẩn cấp, ghi chú; giữ id, giới tính, quốc tịch. Thay tên trên phiếu báo (`snapshot_representative_name`), xóa `payer_name` phiếu thu, xóa bên thuê trong bản chụp lúc ký — ngoại lệ duy nhất cho bất biến C-06; **xóa biển số (và hiệu – màu) các xe đã kết thúc** của HĐ người đó đứng tên hoặc xe người đó là chủ (chốt + code 09/10/2026 — biển số nhận diện được người; cả giá trị trong `audit_logs`); xóa giá trị cá nhân trong `audit_logs` (dòng của hồ sơ; tên trên dòng của phiếu / phiếu thu) cùng transaction; ghi audit `Anonymized` (tự động / bằng tay + lý do). Hồ sơ đã ẩn danh: không sửa, không xem số giấy tờ (422 `RENTER_ANONYMIZED`), không đứng tên / ở trong HĐ mới, ẩn khỏi tìm kiếm. Tối đa 200 hồ sơ / tổ chức / lượt job. File giấy tờ (M09): xóa hẳn khi M09 có code | Domain `Renter.Anonymize` + `RenterAnonymizer` + `RenterAnonymizationService` |
 | RT-BR-07 ⏸ P2 | **Bản ghi cư trú tự sinh** khi occupant được thêm vào HĐ và HĐ ở trạng thái Active (hoặc khi kích hoạt HĐ): loại theo LEG-03 (dự kiến ở ≥ 30 ngày → `TemporaryResidence`; < 30 → `StayNotice`), trạng thái `Pending` | Domain event từ M05, xử lý trong cùng transaction |
 | RT-BR-08 ⏸ P2 | Mỗi (occupant stay của HĐ, loại) có tối đa 1 bản ghi cư trú chưa đóng (`Pending/Submitted/Registered`) | DB partial unique |
 | RT-BR-09 ⏸ P2 | `Registered` yêu cầu `registered_at`; `valid_until` (nếu có) > `registered_at` | Domain + CHECK |
@@ -92,12 +93,13 @@ stateDiagram-v2
 | id, organization_id | uuid | N | UNIQUE (organization_id, id) |
 | full_name | varchar(200) | N | |
 | full_name_search | varchar(200) | N | bỏ dấu + lowercase (tìm kiếm không dấu); index trigram (`pg_trgm`) |
-| date_of_birth | date | Y | NULL chỉ khi đã ẩn danh |
+| date_of_birth | date | N | đã ẩn danh ⇒ `0001-01-01` (giá trị rỗng quy ước; xem `anonymized_at`) |
+| anonymized_at | timestamptz | Y | thời điểm ẩn danh (RT-BR-06) — khác NULL ⇒ hồ sơ không còn dữ liệu cá nhân |
 | gender | varchar(8) | Y | `Male`,`Female`,`Other` |
 | phone_normalized | varchar(15) | Y | |
 | email | varchar(254) | Y | |
 | nationality | char(2) | N | ISO 3166-1 alpha-2, mặc định `VN` |
-| id_type | varchar(16) | Y | `CitizenId`,`LegacyId`,`Passport` |
+| id_type | varchar(16) | Y | `CitizenId`,`LegacyId`,`Passport`; NULL = chưa có giấy tờ (< 14 tuổi) |
 | id_number_encrypted | bytea | Y | AES-GCM (C-11) |
 | id_number_hash | char(64) | Y | HMAC-SHA256(org_id + normalized number) — unique, tìm chính xác |
 | id_number_last4 | varchar(4) | Y | hiển thị dạng `********1234` |
@@ -113,7 +115,7 @@ stateDiagram-v2
 | anonymized_at | timestamptz | Y | |
 | audit cols, xmin | | | |
 
-CHECK: `anonymized_at IS NOT NULL OR (id_type IS NOT NULL AND id_number_hash IS NOT NULL AND date_of_birth IS NOT NULL)`.
+CHECK: `(id_type IS NULL) = (id_number_hash IS NULL)` — có loại thì có số; bắt buộc theo tuổi kiểm ở Application (tuổi thay đổi theo thời gian).
 
 **`renter_consents`**: id, organization_id, renter_id, purpose varchar(100) (VD `contract_management`, `residence_registration`),
 method varchar(20) (`PaperSigned`,`ContractClause`,`Verbal`), given_at date, withdrawn_at date null, attachment_id null (M09), note, audit.
@@ -182,7 +184,7 @@ Mã hóa/giải mã số giấy tờ qua `IPersonalDataProtector` (Application i
 | `GetRenterQuery` | Qry | số giấy tờ đã che |
 | `RevealRenterIdNumberQuery` | Qry | ghi audit "read sensitive" |
 | `GetRenterRentalHistoryQuery` | Qry | |
-| `ArchiveRenterCommand` / `AnonymizeRenterCommand` | Cmd | `RENTER_HAS_ACTIVE_CONTRACT` |
+| `ArchiveRenterCommand` / `AnonymizeExpiredRentersCommand` (job) / `AnonymizeRenterCommand` (bằng tay) / `Get/UpdateDataRetention` | Cmd | `RENTER_ANONYMIZED`, `RENTER_HAS_ACTIVE_CONTRACT`, `RENTER_HAS_UNSETTLED_INVOICES` |
 | `AddConsentCommand` / `WithdrawConsentCommand` | Cmd | |
 | `ListResidenceRecordsQuery` | Qry | filter propertyIds, status, type, needsAction |
 | `SubmitResidenceCommand` / `RegisterResidenceCommand` / `RejectResidenceCommand` / `MarkResidenceNotRequiredCommand` / `ExtendResidenceCommand` / `CloseResidenceCommand` | Cmd | `INVALID_RESIDENCE_TRANSITION` |
@@ -273,13 +275,13 @@ P1: chủ trọ và phó quản lý toàn quyền nghiệp vụ (M01 §3.3); rev
 | RT-04 | Consent | 0.5d |
 | RT-05 | ResidenceRecord + transitions + handler domain event | 1.5d |
 | RT-06 | Absence + exclusion constraint | 0.5d |
-| RT-07 | Anonymize | 0.5d |
+| RT-07 ✅ | Ẩn danh tự động (job hằng ngày) + xóa dữ liệu cá nhân trong audit | 0.5d |
 | RT-08 | Tests | 1.5d |
 
 ## 15. Câu hỏi mở
 
 | # | Câu hỏi | Đề xuất |
 |---|---------|---------|
-| Q1 | Thời hạn lưu giữ dữ liệu sau khi người thuê rời đi? | Mặc định 24 tháng sau khi HĐ kết thúc → gợi ý ẩn danh (không tự động); cần tư vấn luật |
+| Q1 ✅ | Thời hạn lưu giữ dữ liệu sau khi người thuê rời đi? | Mặc định **36 tháng**, chủ trọ chọn 36–120 hoặc tắt (có cảnh báo); ẩn danh tự động hằng ngày + bằng tay (chốt 08/10/2026 — RT-BR-06) |
 | Q2 | Có lưu ảnh chân dung? | Cho phép (category `Portrait`) nhưng không bắt buộc — giảm dữ liệu nhạy cảm |
 | Q3 | Ngày dự kiến ở dùng để chọn tạm trú/lưu trú lấy từ đâu? | `occupancy.expected_end_date` hoặc HĐ `end_date`; HĐ không thời hạn → coi như ≥ 30 ngày |

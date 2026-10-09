@@ -162,7 +162,7 @@ public sealed class ReplaceMeterHandler(IAppDbContext db) : IRequestHandler<Repl
 {
     public async ValueTask<Result<Guid>> Handle(ReplaceMeterCommand request, CancellationToken cancellationToken)
     {
-        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        await using var transaction = await db.BeginTransactionAsync(cancellationToken);
         var old = (await MeterMapping.LockAndLoadAsync(db, [request.MeterId], cancellationToken)).FirstOrDefault();
         if (old is null)
             return MeterErrors.NotFound;
@@ -197,7 +197,7 @@ public sealed class RemoveMeterHandler(IAppDbContext db) : IRequestHandler<Remov
 {
     public async ValueTask<Result<MeterRemovedDto>> Handle(RemoveMeterCommand request, CancellationToken cancellationToken)
     {
-        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        await using var transaction = await db.BeginTransactionAsync(cancellationToken);
         var meter = (await MeterMapping.LockAndLoadAsync(db, [request.MeterId], cancellationToken)).FirstOrDefault();
         if (meter is null)
             return MeterErrors.NotFound;
@@ -240,7 +240,7 @@ public sealed class CorrectMeterReadingHandler(IAppDbContext db) : IRequestHandl
         if (meterId is null)
             return MeterErrors.ReadingNotFound;
 
-        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        await using var transaction = await db.BeginTransactionAsync(cancellationToken);
         var meter = (await MeterMapping.LockAndLoadAsync(db, [meterId.Value], cancellationToken)).Single();
         if ((await ReadingLocks.LockedReadingIdsAsync(db, [meter.Id], cancellationToken)).Contains(request.ReadingId))
             return MeterErrors.ReadingLocked;

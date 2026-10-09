@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Contracts;
 using renting_room.Application.Meters;
+using renting_room.Application.Properties;
 using renting_room.Domain.Billing;
 using renting_room.Domain.Common;
 using renting_room.Domain.Contracts;
@@ -21,7 +22,7 @@ public sealed class CreateFinalInvoiceHandler(IAppDbContext db, TimeProvider clo
 {
     public async ValueTask<Result<InvoiceDetailDto>> Handle(CreateFinalInvoiceCommand request, CancellationToken cancellationToken)
     {
-        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        await using var transaction = await db.BeginTransactionAsync(cancellationToken);
         await db.LockForUpdateAsync<Contract>(request.ContractId, cancellationToken);
         var contract = await ContractMutation.LoadAsync(db, request.ContractId, cancellationToken);
         if (contract is null)
@@ -36,10 +37,11 @@ public sealed class CreateFinalInvoiceHandler(IAppDbContext db, TimeProvider clo
         if (invoices.Any(i => i.Status == InvoiceStatus.Draft))
             return BillingErrors.DraftExists;
 
-        var period = contract.BillingPeriods(contract.ActualEndDate!.Value).Last();
-        var previousBilled = invoices.Count == 0
-            || invoices.Any(i => i.PeriodStart == period.Start || i.PeriodEnd == period.Start.AddDays(-1));
-        if (!previousBilled && period.Start != contract.StartDate)
+        var schedule = (await PropertyBilling.LoadAsync(db, contract.PropertyId, cancellationToken)).Schedule;
+        var period = contract.BillingPeriods(schedule, contract.ActualEndDate!.Value).Last();
+        // BL-BR-21: các kỳ trước kỳ cuối phải có phiếu (kỳ cuối cũng là kỳ đầu ⇒ không cần).
+        var previousBilled = invoices.Any(i => i.PeriodStart == period.Start || i.PeriodEnd == period.Start.AddDays(-1));
+        if (!previousBilled && period.Start != contract.BillingStartDate)
             return BillingErrors.PreviousNotBilled;
 
         var readings = await ContractMeterReadings.RecordAsync(
@@ -52,7 +54,7 @@ public sealed class CreateFinalInvoiceHandler(IAppDbContext db, TimeProvider clo
             await InvoiceInputs.LoadAsync(db, contract, period, null, cancellationToken, InvoiceType.Final));
         var room = await db.Rooms.Where(r => r.Id == contract.RoomId).Select(r => r.Code).FirstAsync(cancellationToken);
         var representative = await db.Renters.Where(r => r.Id == contract.RepresentativeRenterId).Select(r => r.FullName).FirstAsync(cancellationToken);
-        var invoice = Invoice.CreateDraft(contract.PropertyId, contract.RoomId, contract.Id, period.Start, period.End, room, contract.ContractNo,
+        var invoice = Invoice.CreateDraft(contract.PropertyId, contract.RoomId, contract.Id, period, room, contract.ContractNo,
             representative, calculation, InvoiceType.Final);
         db.Invoices.Add(invoice);
 

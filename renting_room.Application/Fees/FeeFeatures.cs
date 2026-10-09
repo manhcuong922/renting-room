@@ -295,7 +295,7 @@ public sealed class AddFeePriceHandler(IAppDbContext db, IFeePriceLockReader loc
 {
     public async ValueTask<Result<CreatedWithWarnings>> Handle(AddFeePriceCommand request, CancellationToken cancellationToken)
     {
-        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        await using var transaction = await db.BeginTransactionAsync(cancellationToken);
         await db.LockForUpdateAsync<FeeType>(request.FeeTypeId, cancellationToken);
 
         var fee = await db.FeeTypes.Include(f => f.Prices).FirstOrDefaultAsync(f => f.Id == request.FeeTypeId, cancellationToken);
@@ -322,7 +322,7 @@ public sealed class DeleteFeePriceHandler(IAppDbContext db, IFeePriceLockReader 
 {
     public async ValueTask<Result> Handle(DeleteFeePriceCommand request, CancellationToken cancellationToken)
     {
-        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        await using var transaction = await db.BeginTransactionAsync(cancellationToken);
         await db.LockForUpdateAsync<FeeType>(request.FeeTypeId, cancellationToken);
 
         var fee = await db.FeeTypes.Include(f => f.Prices).FirstOrDefaultAsync(f => f.Id == request.FeeTypeId, cancellationToken);

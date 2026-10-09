@@ -85,7 +85,6 @@ Mọi lỗi có dạng ProblemDetails (xem [conventions.md](conventions.md#lỗi
 | `ROOM_ARCHIVED` | 422 | Phòng ngừng dùng |
 | `ROOM_OCCUPIED` | 422 | Phòng đang có HĐ — không bảo trì được |
 | `ROOM_ALREADY_UNDER_MAINTENANCE` / `ROOM_NOT_UNDER_MAINTENANCE` | 409 | Tải lại |
-| `MAX_OCCUPANTS_BELOW_CURRENT` | 422 | Sức chứa < số người đang ở |
 | `ROOM_NOT_IN_PROPERTY` | 422 | Chọn phòng cùng khu |
 | `ID_NUMBER_REQUIRED` | 400 | Đổi loại giấy tờ thì nhập lại số |
 
@@ -93,7 +92,10 @@ Mọi lỗi có dạng ProblemDetails (xem [conventions.md](conventions.md#lỗi
 
 | Code | HTTP | UI |
 |------|------|----|
-| `RENTER_NOT_FOUND` | 404 | |
+| `RENTER_NOT_FOUND` | 404 | (cả khi chọn hồ sơ đã ẩn danh cho HĐ mới) |
+| `RENTER_ANONYMIZED` | 422 | Hồ sơ đã ẩn danh — không sửa / xem số giấy tờ / ẩn danh lại; thuê lại thì tạo hồ sơ mới |
+| `RENTER_HAS_ACTIVE_CONTRACT` | 422 | Ẩn danh: người này còn HĐ nháp / hiệu lực / thanh lý |
+| `RENTER_HAS_UNSETTLED_INVOICES` | 422 | Ẩn danh: HĐ người này đứng tên còn phiếu chưa thu đủ / chờ hoàn |
 | `RENTER_ID_NUMBER_EXISTS` | 409 | Body có `existingRenterId` → đề xuất dùng hồ sơ cũ |
 | `ID_NUMBER_REQUIRED` | 400 | Ô số giấy tờ |
 
@@ -108,11 +110,7 @@ Mọi lỗi có dạng ProblemDetails (xem [conventions.md](conventions.md#lỗi
 | `ROOM_UNAVAILABLE` | 422 | Phòng bảo trì / ngừng dùng |
 | `ROOM_PERIOD_OVERLAP` | 409 | Phòng đã có HĐ trùng thời gian |
 | `START_DATE_IN_FUTURE` | 422 | Chỉ kích hoạt khi bàn giao (≤ ngày mai) |
-| `LESSOR_INFO_INCOMPLETE` | 422 | Link sang tab Bên cho thuê của khu |
 | `NO_OCCUPANT` | 422 | Thêm ít nhất 1 người ở |
-| `ROOM_CAPACITY_EXCEEDED` | 422 | Vượt sức chứa (thêm người ở: hỏi xác nhận → `overrideCapacity`) |
-| `REPRESENTATIVE_PHONE_REQUIRED` | 422 | Link sửa hồ sơ người đại diện |
-| `REPRESENTATIVE_UNDERAGE` | 422 | Chọn người đại diện khác |
 | `OCCUPANCY_OVERLAP` | 409 | Người này đang ở trong hợp đồng |
 | `OCCUPANT_LIVES_ELSEWHERE` | 409 | Người này đang ở phòng khác — ghi chuyển đi ở HĐ cũ trước |
 | `OCCUPANT_ALREADY_MOVED_OUT` | 409 | Đã ghi chuyển đi — thêm lại như người ở mới nếu quay lại |
@@ -121,17 +119,12 @@ Mọi lỗi có dạng ProblemDetails (xem [conventions.md](conventions.md#lỗi
 | `VEHICLE_OWNER_NOT_IN_CONTRACT` | 422 | Kết thúc đăng ký xe của người không còn thuộc HĐ trước |
 | `HOUSEHOLD_HEAD_NOT_OCCUPANT` | 400 | Chủ hộ phải là một người ở |
 
-Cảnh báo mềm (không phải lỗi, nằm trong `warnings` của response 2xx): `DEPOSIT_ABOVE_THREE_MONTHS`, `PLATE_FORMAT_UNUSUAL`.
-| `RELATIONSHIP_REQUIRED` / `RELATIONSHIP_NOTE_REQUIRED` | 400 | Chọn / ghi rõ quan hệ với người đứng tên |
-| `RELATIONSHIP_GENDER_MISMATCH` / `RELATIONSHIP_AGE_MISMATCH` | 400 (422 khi kích hoạt) | Quan hệ không khớp giới tính / tuổi |
-| `SPOUSE_UNDER_MARRIAGE_AGE` / `MULTIPLE_SPOUSES` | 400 (422 khi kích hoạt) | Vợ chồng chưa đủ tuổi kết hôn / hơn 1 vợ chồng |
-| `GUARDIAN_CONSENT_REQUIRED` | 400 (422 khi kích hoạt) | Người < 18 tuổi cần đồng ý của cha mẹ / giám hộ |
+| `LISTED_RENT_REQUIRED` | 400 | Áp giá niêm yết: phòng chưa có giá niêm yết |
 | `DATE_OUTSIDE_CONTRACT` / `INVALID_END_DATE` | 422 | Ô ngày |
 | `NOT_PERIOD_START` | 422 | Chọn ngày bắt đầu kỳ thu |
 | `PERIOD_ALREADY_BILLED` | 422 | Kỳ đã lập phiếu |
 | `RENT_TERM_EXISTS` | 409 | Đã có phụ lục từ ngày này |
 | `CANNOT_EXTEND_INDEFINITE` | 422 | HĐ không thời hạn |
-| `TERMINATION_GROUND_REQUIRED` | 422 | Chọn căn cứ chấm dứt |
 | `EXPIRED_REASON_INVALID` | 422 | "Hết hạn" chỉ cho HĐ có thời hạn, trả phòng từ ngày hết hạn — chọn lý do khác |
 | `INDEFINITE_GROUND_ONLY` | 422 | Căn cứ "HĐ không thời hạn" dùng sai cho HĐ có thời hạn |
 | `ABANDONED_NOTE_REQUIRED` | 422 | Bỏ đi không báo: nhập ghi chú |
@@ -142,6 +135,11 @@ Cảnh báo mềm (không phải lỗi, nằm trong `warnings` của response 2x
 | `LIQUIDATION_BEFORE_END_DATE` | 422 | Chưa tới ngày trả phòng |
 | `PLATE_ALREADY_REGISTERED` | 409 | Biển số đang gửi ở HĐ khác |
 | `VEHICLE_ALREADY_ENDED` | 409 | Tải lại |
+
+Cảnh báo mềm của HĐ (không phải lỗi, nằm trong `warnings` của response 2xx / chi tiết HĐ): `DEPOSIT_ABOVE_THREE_MONTHS`, `PLATE_FORMAT_UNUSUAL`;
+giấy tờ / pháp lý (09/10/2026 — trước là lỗi chặn): `LESSOR_INFO_INCOMPLETE`, `REPRESENTATIVE_PHONE_MISSING`, `REPRESENTATIVE_UNDERAGE`,
+`RELATIONSHIP_REQUIRED` / `RELATIONSHIP_NOTE_REQUIRED` / `RELATIONSHIP_GENDER_MISMATCH` / `RELATIONSHIP_AGE_MISMATCH`,
+`SPOUSE_UNDER_MARRIAGE_AGE` / `MULTIPLE_SPOUSES`, `GUARDIAN_CONSENT_REQUIRED`, `SIGNED_DOCUMENT_MISSING`.
 
 ## Xuất Excel
 
@@ -232,3 +230,17 @@ Cảnh báo mềm: `ELECTRICITY_PRICE_ABOVE_THRESHOLD`, `PARKING_QUANTITY_MISMAT
 | `DEPOSIT_NOT_ALLOWED` | 400 | Mẫu không cọc — khóa ô tiền cọc |
 | `CONTRACT_TEMPLATE_ALREADY_ARCHIVED` / `CONTRACT_TEMPLATE_NOT_ARCHIVED` | 409 | Tải lại |
 | `VALIDATION_FAILED` với key `contract.customFields.<key>` | 400 | Lỗi dưới ô trường tùy biến tương ứng (`REQUIRED`, sai kiểu, key không có trong mẫu) |
+
+## Kỳ thu, nhập Excel (09/10/2026)
+
+| Code | HTTP | UI |
+|------|------|----|
+| `REPRESENTATIVE_ID_REQUIRED` | 422 | Người đứng tên chưa có số giấy tờ — bổ sung ở hồ sơ |
+| `ID_NUMBER_REQUIRED` | 400 | Từ 14 tuổi phải có số giấy tờ / đổi loại giấy tờ phải nhập số mới |
+| `INVALID_BILLING_START_DATE` | 400 | "Tính tiền từ ngày" ngoài thời gian HĐ / trước hôm nay quá 1 năm |
+| `BILLING_SETTINGS_DRAFT_INVOICES` | 422 | Chốt / xóa phiếu nháp của khu trước khi đổi ngày chốt |
+| `TRANSITION_ADJUST_OUT_OF_RANGE` | 400 | Số ngày điều chỉnh kỳ chuyển tiếp ngoài 0..dư (thiếu..0) |
+| `IMPORT_FILE_INVALID` / `IMPORT_FILE_TOO_LARGE` / `IMPORT_TEMPLATE_MISMATCH` / `IMPORT_TOO_MANY_ROWS` | 400 | Lỗi cả file — tải mẫu mới, sửa file |
+
+Cảnh báo phiếu (`issues`, `Warning`): `UNUSUAL_USAGE`, `TWO_RENT_PERIODS`. Cảnh báo HĐ: `OCCUPANT_ID_MISSING`.
+Lỗi / cảnh báo từng dòng import nằm trong kết quả xem trước / lưu — xem [imports.md](imports.md).

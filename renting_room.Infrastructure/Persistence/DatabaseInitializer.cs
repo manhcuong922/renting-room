@@ -6,6 +6,8 @@ using Npgsql;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Domain.Identity;
 
+using renting_room.Infrastructure.Seeding;
+
 namespace renting_room.Infrastructure.Persistence;
 
 public sealed class DatabaseOptions
@@ -49,6 +51,9 @@ public static class DatabaseInitializer
             provider.GetRequiredService<IOptions<BootstrapAdminOptions>>().Value,
             logger,
             cancellationToken);
+
+        if (provider.GetRequiredService<IOptions<DemoDataOptions>>().Value.Enabled)
+            await provider.GetRequiredService<DemoDataSeeder>().SeedAsync(cancellationToken);
     }
 
     private static async Task SeedSystemAdminAsync(

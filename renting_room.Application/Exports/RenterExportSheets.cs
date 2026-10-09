@@ -132,8 +132,9 @@ internal static class RenterExportSheets
         _ => "Khác"
     };
 
-    private static string IdTypeLabel(IdDocumentType type) => type switch
+    private static string IdTypeLabel(IdDocumentType? type) => type switch
     {
+        null => "",
         IdDocumentType.CitizenId => "CCCD",
         IdDocumentType.LegacyId => "CMND",
         _ => "Hộ chiếu"

@@ -24,14 +24,18 @@ app.MapAuthEndpoints();
 app.MapAdminOrganizationEndpoints();
 app.MapMemberEndpoints();
 app.MapPropertyEndpoints();
+app.MapOrganizationLessorEndpoints();
 app.MapRoomEndpoints();
 app.MapRenterEndpoints();
 app.MapContractEndpoints();
 app.MapContractTemplateEndpoints();
 app.MapExportEndpoints();
+app.MapImportEndpoints();
 app.MapFeeEndpoints();
 app.MapMeterEndpoints();
 app.MapBillingEndpoints();
+app.MapAuditEndpoints();
+app.MapDataRetentionEndpoints();
 
 await app.Services.InitializeDatabaseAsync();
 await app.RunAsync();

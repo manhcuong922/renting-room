@@ -69,7 +69,7 @@ public sealed class FeeType : TenantEntity
         if (systemCode is not null && group != FeeGroup.Metered)
             throw new ArgumentException("System code is for metered fees only.");
 
-        var fee = new FeeType { Id = Guid.NewGuid(), PropertyId = propertyId, Group = group, ChargeBasis = chargeBasis, SystemCode = systemCode };
+        var fee = new FeeType { Id = Guid.CreateVersion7(), PropertyId = propertyId, Group = group, ChargeBasis = chargeBasis, SystemCode = systemCode };
         fee.Update(name, unit, autoAttach, defaultQuantity, sortOrder, vehicleType);
         return fee;
     }
@@ -161,7 +161,7 @@ public sealed class FeePrice : TenantEntity
 
     internal FeePrice(Guid feeTypeId, DateOnly effectiveFrom, decimal unitPrice, string? note, IReadOnlyList<PriceTier>? tiers = null)
     {
-        Id = Guid.NewGuid();
+        Id = Guid.CreateVersion7();
         FeeTypeId = feeTypeId;
         EffectiveFrom = effectiveFrom;
         Tiers = tiers is { Count: > 0 } ? tiers.ToList() : null;

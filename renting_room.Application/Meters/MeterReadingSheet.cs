@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using renting_room.Application.Billing;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Contracts;
+using renting_room.Application.Properties;
 using renting_room.Domain.Billing;
 using renting_room.Domain.Common;
 using renting_room.Domain.Contracts;
@@ -18,6 +19,8 @@ public sealed record SheetReadingDto(Guid Id, ReadingKind Kind, DateOnly Reading
 /// <param name="Previous">Chỉ số cũ (số cuối phiếu trước / nhận phòng / tháng trước).</param>
 /// <param name="Current">Chỉ số cuối kỳ đã nhập (null = chưa nhập).</param>
 /// <param name="Locked">Chỉ số đã dùng cho phiếu đã chốt — muốn sửa phải hủy phiếu (MT-BR-06).</param>
+/// <param name="RecentAverage">MT-BR-08: trung bình 3 kỳ trước của HĐ (null = chưa đủ 3 kỳ) — UI cảnh báo ngay khi nhập ≥ 3 lần và tăng ≥ 50.</param>
+/// <param name="UsageWarning">MT-BR-08: cảnh báo bất thường với số đã nhập (không chặn lưu).</param>
 public sealed record MeterReadingSheetRow(
     Guid RoomId,
     string RoomCode,
@@ -37,7 +40,9 @@ public sealed record MeterReadingSheetRow(
     SheetReadingDto? Previous,
     SheetReadingDto? Current,
     decimal? Consumption,
-    bool Locked);
+    bool Locked,
+    decimal? RecentAverage = null,
+    string? UsageWarning = null);
 
 public sealed record MeterReadingSheetDto(string BillingMonth, IReadOnlyList<MeterReadingSheetRow> Rows);
 
@@ -84,7 +89,7 @@ public sealed class GetMeterReadingSheetHandler(IAppDbContext db) : IRequestHand
         var contracts = await db.Contracts.AsNoTracking().Include(c => c.RentTerms).Include(c => c.Occupants).AsSplitQuery()
             .Where(c => roomIds.Contains(c.RoomId)
                 && (c.Status == ContractStatus.Active || c.Status == ContractStatus.Liquidating || c.Status == ContractStatus.Ended)
-                && c.StartDate <= monthEnd)
+                && c.BillingStartDate <= monthEnd.AddMonths(1))
             .ToListAsync(cancellationToken);
         var meters = await db.Meters.AsNoTracking().Include(m => m.Readings).Where(m => roomIds.Contains(m.RoomId)).ToListAsync(cancellationToken);
         var feeIds = meters.Select(m => m.FeeTypeId).Distinct().ToList();
@@ -97,11 +102,18 @@ public sealed class GetMeterReadingSheetHandler(IAppDbContext db) : IRequestHand
             .SelectMany(i => i.Segments.Select(s => new { i.ContractId, i.PeriodStart, s.MeterId, s.EndReadingId }))
             .ToListAsync(cancellationToken);
 
+        var schedule = (await PropertyBilling.LoadAsync(db, request.PropertyId, cancellationToken)).Schedule;
+        var history = (await db.Invoices.AsNoTracking()
+                .Where(i => contractIds.Contains(i.ContractId) && i.Status != InvoiceStatus.Void && i.Type == InvoiceType.Regular)
+                .SelectMany(i => i.Lines.Where(l => l.Type == InvoiceLineType.Metered && l.FeeTypeId != null)
+                    .Select(l => new { i.ContractId, FeeTypeId = l.FeeTypeId!.Value, i.PeriodStart, l.Quantity }))
+                .ToListAsync(cancellationToken))
+            .ToLookup(x => (x.ContractId, x.FeeTypeId));
         var rows = new List<MeterReadingSheetRow>();
         foreach (var contract in contracts)
         {
-            var period = BillingMonths.PeriodIn(contract, month);
-            var usage = period is null ? null : UsagePeriod.For(contract, period);
+            var period = BillingMonths.PeriodIn(contract, month, schedule);
+            var usage = period is null ? null : UsagePeriod.For(contract, period, schedule);
             // HĐ trả phòng trong kỳ sử dụng ⇒ chỉ số cuối nhập khi lập phiếu quyết toán, không qua lưới.
             if (usage is null || contract.ActualEndDate <= usage.End)
                 continue;
@@ -116,11 +128,16 @@ public sealed class GetMeterReadingSheetHandler(IAppDbContext db) : IRequestHand
                 var previous = usage.StartReading(meter, lastEnd.TryGetValue(meter.Id, out var id) ? id : null);
                 var current = usage.EndReading(meter, contract.Id);
                 var fee = fees[meter.FeeTypeId];
+                var recent = history[(contract.Id, fee.Id)].Where(x => x.PeriodStart < period!.Start)
+                    .OrderByDescending(x => x.PeriodStart).Select(x => x.Quantity).ToList();
+                decimal? consumption = previous is not null && current is not null ? current.Value - previous.Value : null;
                 rows.Add(new MeterReadingSheetRow(room.Id, room.Code, room.Floor, contract.Id, contract.ContractNo,
                     names.GetValueOrDefault(contract.RepresentativeRenterId, string.Empty), meter.Id, meter.SerialNo, fee.Id, fee.Name, fee.Unit,
                     usage.Start, usage.End, usage.ClosingPeriodStart, usage.EndsWithFinal, ToDto(previous), ToDto(current),
-                    previous is not null && current is not null ? current.Value - previous.Value : null,
-                    current is not null && locked.Contains(current.Id)));
+                    consumption,
+                    current is not null && locked.Contains(current.Id),
+                    UsageAnomaly.RecentAverage(recent),
+                    consumption is { } used ? UsageAnomaly.Check(fee.Name, fee.Unit, used, recent, contract.OccupantsOn(usage.End).Any()) : null));
             }
         }
         return new MeterReadingSheetDto(request.BillingMonth, rows.OrderBy(r => r.Floor).ThenBy(r => r.RoomCode).ThenBy(r => r.FeeTypeName).ToList());
@@ -168,19 +185,22 @@ public sealed class SaveMeterReadingsHandler(IAppDbContext db) : IRequestHandler
 {
     public async ValueTask<Result<SaveMeterReadingsResult>> Handle(SaveMeterReadingsCommand request, CancellationToken cancellationToken)
     {
-        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        await using var transaction = await db.BeginTransactionAsync(cancellationToken);
         var meters = (await MeterMapping.LockAndLoadAsync(db, request.Readings.Select(r => r.MeterId), cancellationToken))
             .ToDictionary(m => m.Id);
         var contractIds = request.Readings.Select(r => r.ContractId).Distinct().ToList();
         var contracts = await db.Contracts.AsNoTracking().Include(c => c.RentTerms).Where(c => contractIds.Contains(c.Id))
             .ToDictionaryAsync(c => c.Id, cancellationToken);
         var locked = await ReadingLocks.LockedReadingIdsAsync(db, meters.Keys.ToList(), cancellationToken);
+        var billing = await PropertyBilling.LoadManyAsync(db, contracts.Values.Select(c => c.PropertyId), cancellationToken);
 
         var errors = new List<ReadingRowError>();
         for (var index = 0; index < request.Readings.Count; index++)
         {
             var row = request.Readings[index];
-            var error = Apply(row, meters.GetValueOrDefault(row.MeterId), contracts.GetValueOrDefault(row.ContractId), locked);
+            var contract = contracts.GetValueOrDefault(row.ContractId);
+            var error = Apply(row, meters.GetValueOrDefault(row.MeterId), contract,
+                contract is null ? null : billing[contract.PropertyId].Schedule, locked);
             if (error is not null)
                 errors.Add(new ReadingRowError(index, error.Code, error.Message));
         }
@@ -192,13 +212,13 @@ public sealed class SaveMeterReadingsHandler(IAppDbContext db) : IRequestHandler
         return new SaveMeterReadingsResult(request.Readings.Count);
     }
 
-    private static Error? Apply(PeriodicReadingInput row, Meter? meter, Contract? contract, HashSet<Guid> locked)
+    private static Error? Apply(PeriodicReadingInput row, Meter? meter, Contract? contract, BillingSchedule? schedule, HashSet<Guid> locked)
     {
         if (meter is null || contract is null || meter.PropertyId != contract.PropertyId || meter.RoomId != contract.RoomId)
             return MeterErrors.UnknownMeter;
         if (contract.Status is not (ContractStatus.Active or ContractStatus.Liquidating or ContractStatus.Ended))
             return ContractErrors.NotActive;
-        if (!contract.BillingPeriods(row.ClosingPeriodStart).Any(p => p.Start == row.ClosingPeriodStart))
+        if (!contract.IsPeriodStart(schedule!, row.ClosingPeriodStart))
             return Error.Validation("NOT_PERIOD_START", "Kỳ không hợp lệ với hợp đồng — tải lại lưới.");
 
         var existing = meter.FindPeriodic(contract.Id, row.ClosingPeriodStart);
