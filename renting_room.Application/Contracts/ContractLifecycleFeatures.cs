@@ -6,11 +6,13 @@ using renting_room.Application.Common.Models;
 using renting_room.Application.Common.Validation;
 using renting_room.Application.Meters;
 using renting_room.Application.Payments;
+using renting_room.Application.Properties;
 using renting_room.Domain.Billing;
 using renting_room.Domain.Common;
 using renting_room.Domain.Contracts;
 using renting_room.Domain.Meters;
 using renting_room.Domain.Payments;
+using renting_room.Domain.Properties;
 using renting_room.Domain.Renters;
 
 namespace renting_room.Application.Contracts;
@@ -19,7 +21,7 @@ namespace renting_room.Application.Contracts;
 
 public sealed record AddOccupantCommand(
     Guid ContractId, Guid RenterId, DateOnly MoveInDate, DateOnly? ExpectedEndDate, string? Relationship, string? Note,
-    bool OverrideCapacity, OccupantRelationship? RelationshipType = null, bool GuardianConsent = false) : IRequest<Result>;
+    OccupantRelationship? RelationshipType = null, bool GuardianConsent = false) : IRequest<Result>;
 
 public sealed class AddOccupantCommandValidator : AbstractValidator<AddOccupantCommand>
 {
@@ -34,23 +36,21 @@ public sealed class AddOccupantCommandValidator : AbstractValidator<AddOccupantC
 }
 
 /// <summary>
-/// CT-BR-09: vượt sức chứa ⇒ 422, trừ khi chủ ý vượt (overrideCapacity — ghi log).
 /// CT-BR-28..30: quan hệ với người đứng tên hợp lệ; CT-BR-31: HĐ đang hiệu lực ⇒ người mới không đang ở phòng khác.
 /// </summary>
-public sealed class AddOccupantHandler(IAppDbContext db, IAuditTrail auditTrail)
+public sealed class AddOccupantHandler(IAppDbContext db)
     : IRequestHandler<AddOccupantCommand, Result>
 {
     public ValueTask<Result> Handle(AddOccupantCommand request, CancellationToken cancellationToken) =>
         new(ContractMutation.RunAsync(db, request.ContractId, async contract =>
         {
             var people = await OccupantChecks.LoadPeopleAsync(db, [request.RenterId, contract.ReferenceRenterId], cancellationToken);
-            if (!people.TryGetValue(request.RenterId, out var person))
+            if (!people.ContainsKey(request.RenterId))
                 return Result.Failure(RenterErrors.RenterNotFound);
 
             var isReference = request.RenterId == contract.ReferenceRenterId;
             var input = new OccupantInput(request.RenterId, request.MoveInDate, request.ExpectedEndDate, request.Relationship, request.Note,
                 isReference ? null : request.RelationshipType, request.GuardianConsent);
-            CheckRelationship(contract, input, person.Facts, people[contract.ReferenceRenterId].Facts);
 
             if (contract.Status == ContractStatus.Active)
             {
@@ -60,23 +60,9 @@ public sealed class AddOccupantHandler(IAppDbContext db, IAuditTrail auditTrail)
                     return Result.Failure(elsewhere);
             }
 
-            var maxOccupants = await db.Rooms.Where(r => r.Id == contract.RoomId).Select(r => r.MaxOccupants).FirstAsync(cancellationToken);
-            var added = contract.AddOccupant(input, maxOccupants, request.OverrideCapacity);
-            if (added.IsSuccess && request.OverrideCapacity && contract.ExceedsCapacity(maxOccupants))
-                auditTrail.Record(AuditActions.OverrideCapacity, nameof(Contract), contract.Id,
-                    new { operation = "AddOccupant", renterId = request.RenterId, maxOccupants });
+            var added = contract.AddOccupant(input);
             return added;
         }, cancellationToken));
-
-    /// <summary>Kiểm tra người mới cùng những người đang ở trùng thời gian (để bắt trùng vợ/chồng); chỉ báo lỗi của người mới.</summary>
-    private static void CheckRelationship(Contract contract, OccupantInput input, PersonFacts person, PersonFacts reference)
-    {
-        var existing = contract.Occupants.Where(o => o.OverlapsFrom(input.MoveInDate) && o.RenterId != input.RenterId)
-            .Select(o => (o.ToInput(), new PersonFacts(o.RenterId, DateOnly.MinValue, Gender.Other)));
-        var list = existing.Append((input, person)).ToList();
-        var violations = OccupantRelationshipRules.Check(reference, list).Where(v => v.Index == list.Count - 1);
-        OccupantChecks.ThrowIfInvalid(violations, v => v.Field);
-    }
 }
 
 public sealed record UpdateContractNoteCommand(Guid ContractId, string? Note) : IRequest<Result>;
@@ -104,7 +90,8 @@ public sealed class EndOccupancyHandler(IAppDbContext db) : IRequestHandler<EndO
 
 // ============================================================ Phụ lục: đổi giá, gia hạn, báo trả phòng
 
-public sealed record ChangeRentCommand(Guid ContractId, DateOnly EffectiveFrom, decimal MonthlyRent, string? AddendumNo, string? Note)
+/// <param name="EffectiveFrom">Bỏ trống ⇒ kỳ chưa chốt đầu tiên (CT-UC-05: sửa trực tiếp trên HĐ, lịch sử giá giữ nguyên).</param>
+public sealed record ChangeRentCommand(Guid ContractId, DateOnly? EffectiveFrom, decimal MonthlyRent, string? AddendumNo, string? Note)
     : IRequest<Result>;
 
 public sealed class ChangeRentCommandValidator : AbstractValidator<ChangeRentCommand>
@@ -122,8 +109,10 @@ public sealed class ChangeRentHandler(IAppDbContext db, IInvoiceLockReader invoi
     public ValueTask<Result> Handle(ChangeRentCommand request, CancellationToken cancellationToken) =>
         new(ContractMutation.RunAsync(db, request.ContractId, async contract =>
         {
-            var firstOpenPeriod = await invoiceLocks.GetFirstOpenRentPeriodStartAsync(contract.Id, cancellationToken);
-            return contract.ChangeRent(request.EffectiveFrom, request.MonthlyRent, request.AddendumNo, request.Note, firstOpenPeriod);
+            var firstOpenPeriod = await invoiceLocks.GetFirstOpenPeriodStartAsync(contract.Id, cancellationToken);
+            var schedule = (await PropertyBilling.LoadAsync(db, contract.PropertyId, cancellationToken)).Schedule;
+            return contract.ChangeRent(request.EffectiveFrom ?? firstOpenPeriod ?? contract.StartDate, request.MonthlyRent, request.AddendumNo,
+                request.Note, firstOpenPeriod, schedule);
         }, cancellationToken));
 }
 
@@ -187,6 +176,8 @@ public sealed class ResignContractHandler(
             var data = old.ResignDraft(request.HandoverDate, request.RepresentativeRenterId, request.EndDate);
             if (data.IsFailure)
                 return data.Error!;
+            if (!await OccupantChecks.HasIdNumberAsync(db, request.RepresentativeRenterId, cancellationToken))
+                return ContractErrors.RepresentativeIdRequired;
 
             if (await LiquidationGuards.HasInvoiceAfterAsync(db, old.Id, request.HandoverDate, cancellationToken))
                 return ContractErrors.InvoiceAfterEndDate;
@@ -511,4 +502,48 @@ public sealed class EndVehicleHandler(IAppDbContext db) : IRequestHandler<EndVeh
     public ValueTask<Result> Handle(EndVehicleCommand request, CancellationToken cancellationToken) =>
         new(ContractMutation.RunAsync(db, request.ContractId,
             contract => Task.FromResult(contract.EndVehicle(request.VehicleId, request.EndDate)), cancellationToken));
+}
+
+// ============================================================ Bản hợp đồng đã ký
+
+/// <summary>Đánh dấu đã có / chưa có bản HĐ ký (giấy, ảnh, PDF) + ghi chú nơi cất — hết cờ "Thiếu tài liệu". Không ảnh hưởng thu tiền.</summary>
+public sealed record SetSignedDocumentCommand(Guid ContractId, bool HasSignedDocument, string? Note) : IRequest<Result>;
+
+public sealed class SetSignedDocumentCommandValidator : AbstractValidator<SetSignedDocumentCommand>
+{
+    public SetSignedDocumentCommandValidator() => RuleFor(x => x.Note).OptionalText(300);
+}
+
+public sealed class SetSignedDocumentHandler(IAppDbContext db) : IRequestHandler<SetSignedDocumentCommand, Result>
+{
+    public ValueTask<Result> Handle(SetSignedDocumentCommand request, CancellationToken cancellationToken) =>
+        new(ContractMutation.RunAsync(db, request.ContractId,
+            contract => Task.FromResult(contract.SetSignedDocument(request.HasSignedDocument, request.Note)), cancellationToken));
+}
+
+// ============================================================ Áp giá niêm yết của phòng cho người đang thuê
+
+/// <summary>
+/// Chủ trọ sửa giá niêm yết của phòng rồi chọn "áp cho người đang thuê": HĐ đang hiệu lực của phòng đổi giá từ kỳ chưa chốt đầu tiên
+/// (lịch sử giữ nguyên). Không tự đổi khi sửa giá phòng — giá thỏa thuận có thể khác giá niêm yết.
+/// </summary>
+public sealed record ApplyListedRentCommand(Guid RoomId) : IRequest<Result>;
+
+public sealed class ApplyListedRentHandler(IAppDbContext db, ISender sender, TimeProvider clock) : IRequestHandler<ApplyListedRentCommand, Result>
+{
+    public async ValueTask<Result> Handle(ApplyListedRentCommand request, CancellationToken cancellationToken)
+    {
+        var room = await db.Rooms.AsNoTracking().Where(r => r.Id == request.RoomId).Select(r => new { r.ListedRent }).FirstOrDefaultAsync(cancellationToken);
+        if (room is null)
+            return Result.Failure(PropertyErrors.RoomNotFound);
+        if (room.ListedRent is not { } rent || rent <= 0)
+            return Result.Failure(Error.Validation("LISTED_RENT_REQUIRED", "Phòng chưa có giá niêm yết."));
+
+        var today = clock.GetUtcNow().ToBusinessDate();
+        var contractId = await db.Contracts.Where(c => c.RoomId == request.RoomId && c.Status == ContractStatus.Active && c.StartDate <= today)
+            .Select(c => (Guid?)c.Id).FirstOrDefaultAsync(cancellationToken);
+        if (contractId is null)
+            return Result.Failure(ContractErrors.NotActive);
+        return await sender.Send(new ChangeRentCommand(contractId.Value, null, rent, null, "Áp giá niêm yết mới của phòng"), cancellationToken);
+    }
 }

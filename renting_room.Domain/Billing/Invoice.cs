@@ -143,19 +143,20 @@ public sealed class Invoice : TenantEntity
     public bool HasBlockingIssues => Issues.Any(i => i.Severity == InvoiceIssue.Error);
 
     public static Invoice CreateDraft(
-        Guid propertyId, Guid roomId, Guid contractId, DateOnly periodStart, DateOnly periodEnd,
+        Guid propertyId, Guid roomId, Guid contractId, BillingPeriod period,
         string roomCode, string contractNo, string representativeName, InvoiceCalculation calculation, InvoiceType type = InvoiceType.Regular)
     {
         var invoice = new Invoice
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             PropertyId = propertyId,
             RoomId = roomId,
             ContractId = contractId,
             Type = type,
-            PeriodStart = periodStart,
-            PeriodEnd = periodEnd,
-            BillingMonth = new DateOnly(periodStart.Year, periodStart.Month, 1),
+            PeriodStart = period.Start,
+            PeriodEnd = period.End,
+            // C-05: tháng thu = tháng của kỳ chuẩn của khu chứa kỳ (kỳ đầu lẻ 03/11–04/11 của khu chốt ngày 5 ⇒ tháng 10).
+            BillingMonth = period.Month,
             Status = InvoiceStatus.Draft,
             SnapshotRoomCode = roomCode,
             SnapshotContractNo = contractNo,
@@ -421,6 +422,9 @@ public sealed class Invoice : TenantEntity
 
     public void UpdateNote(string? note) => Note = TextNormalizer.TrimToNull(note);
 
+    /// <summary>BL-BR-14 / RT-BR-06: ngoại lệ duy nhất cho phiếu bất biến — lệnh ẩn danh thay tên người đứng tên đã chụp trên phiếu.</summary>
+    public void AnonymizeRepresentative(string anonymizedName) => SnapshotRepresentativeName = anonymizedName;
+
     public static bool IsManualType(InvoiceLineType type) =>
         type is InvoiceLineType.Surcharge or InvoiceLineType.ManualDiscount or InvoiceLineType.Refund;
 
@@ -468,7 +472,7 @@ public sealed class InvoiceLine : TenantEntity
 
     internal static InvoiceLine FromCalculation(Guid invoiceId, CalculatedLine line)
     {
-        var result = new InvoiceLine { Id = Guid.NewGuid(), InvoiceId = invoiceId, IsSystem = true };
+        var result = new InvoiceLine { Id = Guid.CreateVersion7(), InvoiceId = invoiceId, IsSystem = true };
         result.Reset(line);
         return result;
     }
@@ -477,7 +481,7 @@ public sealed class InvoiceLine : TenantEntity
         Guid invoiceId, InvoiceLineType type, string description, decimal? quantity, decimal? unitPrice, decimal amount,
         string note, Guid? feeTypeId, DateOnly from, DateOnly to, int sortOrder) => new()
     {
-        Id = Guid.NewGuid(),
+        Id = Guid.CreateVersion7(),
         InvoiceId = invoiceId,
         Type = type,
         IsSystem = false,
@@ -567,7 +571,7 @@ public sealed class InvoiceMeterSegment : TenantEntity
 
     internal InvoiceMeterSegment(Guid invoiceId, CalculatedSegment segment)
     {
-        Id = Guid.NewGuid();
+        Id = Guid.CreateVersion7();
         InvoiceId = invoiceId;
         FeeTypeId = segment.FeeTypeId;
         MeterId = segment.MeterId;

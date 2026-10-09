@@ -43,6 +43,9 @@ public sealed class Payment : TenantEntity
 
     public IReadOnlyList<PaymentAllocation> Allocations => _allocations;
 
+    /// <summary>RT-BR-06: xóa tên người nộp khi ẩn danh người thuê — số tiền, ngày, phân bổ giữ nguyên.</summary>
+    public void ClearPayerName() => PayerName = null;
+
     /// <param name="allocations">(phiếu báo, số tiền) — tổng phải bằng số tiền phiếu thu (đợt 1 chưa có số dư có).</param>
     public static Payment Record(
         Guid propertyId, Guid contractId, string receiptNo, decimal amount, PaymentMethod method, DateOnly paidAt,
@@ -58,7 +61,7 @@ public sealed class Payment : TenantEntity
 
         var payment = new Payment
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             PropertyId = propertyId,
             ContractId = contractId,
             ReceiptNo = receiptNo,
@@ -97,7 +100,7 @@ public sealed class PaymentAllocation : TenantEntity
 
     internal PaymentAllocation(Guid paymentId, Guid contractId, Guid invoiceId, decimal amount)
     {
-        Id = Guid.NewGuid();
+        Id = Guid.CreateVersion7();
         PaymentId = paymentId;
         ContractId = contractId;
         InvoiceId = invoiceId;

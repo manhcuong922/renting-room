@@ -28,5 +28,19 @@ public static class AuditActions
     public const string RevealIdNumber = "RevealIdNumber";
     public const string PrintWithIdNumbers = "PrintWithIdNumbers";
     public const string ExportWithIdNumbers = "ExportWithIdNumbers";
-    public const string OverrideCapacity = "OverrideCapacity";
+    public const string Anonymized = "Anonymized";
+    /// <summary>PR-UC-11 / RT-UC-10: một dòng cho cả lần import (số dòng) — từng bản ghi tạo ra vẫn có dòng "Created" riêng.</summary>
+    public const string Import = "Import";
+}
+
+/// <summary>RT-BR-06: xóa dữ liệu cá nhân của người được ẩn danh khỏi nhật ký — gọi sau SaveChanges, trong cùng transaction.</summary>
+public interface IAuditLogEraser
+{
+    /// <summary>
+    /// Dòng audit của hồ sơ (trừ dòng "Anonymized"): bỏ toàn bộ <c>changes</c>; dòng của phiếu / phiếu thu thuộc HĐ người đó đứng tên:
+    /// bỏ tên đã chụp (<c>snapshotRepresentativeName</c>, <c>payerName</c>). Bản chụp lúc ký trên HĐ vốn đã bị che trong audit.
+    /// </summary>
+    Task EraseRenterAsync(
+        Guid renterId, IReadOnlyCollection<Guid> invoiceIds, IReadOnlyCollection<Guid> paymentIds, IReadOnlyCollection<Guid> vehicleIds,
+        CancellationToken cancellationToken);
 }

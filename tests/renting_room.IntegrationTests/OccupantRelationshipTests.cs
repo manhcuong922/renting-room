@@ -27,13 +27,6 @@ public sealed class OccupantRelationshipTests(ApiFactory factory)
             contract = new { representativeRenterId = representativeId, startDate = TestData.Today(factory), monthlyRent = 3_000_000, occupants }
         }, token);
 
-    private static async Task<IReadOnlyList<string>> ErrorKeysAsync(HttpResponseMessage response)
-    {
-        response.StatusCode.Should().Be(HttpStatusCode.BadRequest, await response.Content.ReadAsStringAsync());
-        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        return doc.RootElement.GetProperty("errors").EnumerateObject().Select(p => p.Name).ToList();
-    }
-
     [Fact]
     public async Task Family_FatherSignsForWifeAndChild_IsActivated_AndExportedWithRelationships()
     {
@@ -65,7 +58,7 @@ public sealed class OccupantRelationshipTests(ApiFactory factory)
     }
 
     [Fact]
-    public async Task ImplausibleRelationships_AreRejectedPerOccupant()
+    public async Task ImplausibleRelationships_AreWarnedPerOccupant_NotBlocked()
     {
         var owner = await _client.CreateActiveOwnerAsync();
         var token = owner.Tokens.AccessToken;
@@ -74,20 +67,23 @@ public sealed class OccupantRelationshipTests(ApiFactory factory)
         var olderMan = await RenterAsync(token, "Lê Văn Già", "1970-01-01", "Male");
         var friend = await RenterAsync(token, "Phạm Văn Bạn", "1990-01-01", "Male");
 
-        var keys = await ErrorKeysAsync(await PostDraftAsync(token, roomId, father,
+        var created = await PostDraftAsync(token, roomId, father,
             new { renterId = father },
             new { renterId = olderMan, relationshipType = "Child" },   // con lớn tuổi hơn cha
             new { renterId = friend, relationshipType = "Wife" },      // "vợ" là nam
-            new { renterId = await RenterAsync(token, "Ai Đó", "1992-01-01", "Female") }));  // thiếu quan hệ
+            new { renterId = await RenterAsync(token, "Ai Đó", "1992-01-01", "Female") });  // thiếu quan hệ
 
-        keys.Should().BeEquivalentTo(
-            "contract.occupants[1].relationshipType",
-            "contract.occupants[2].relationshipType",
-            "contract.occupants[3].relationshipType");
+        // HĐ trong phần mềm là hồ sơ thuê ⇒ quan hệ chưa hợp lý chỉ cảnh báo (kèm tên người), vẫn tạo được.
+        created.StatusCode.Should().Be(HttpStatusCode.Created, await created.Content.ReadAsStringAsync());
+        var warnings = (await created.ReadAsync<JsonElement>()).GetProperty("warnings").EnumerateArray()
+            .Select(w => (Code: w.GetProperty("code").GetString(), Message: w.GetProperty("message").GetString()!)).ToList();
+        warnings.Should().Contain(w => w.Code == "RELATIONSHIP_AGE_MISMATCH" && w.Message.StartsWith("Lê Văn Già"));
+        warnings.Should().Contain(w => w.Code == "RELATIONSHIP_GENDER_MISMATCH" && w.Message.StartsWith("Phạm Văn Bạn"));
+        warnings.Should().Contain(w => w.Code == "RELATIONSHIP_REQUIRED" && w.Message.StartsWith("Ai Đó"));
     }
 
     [Fact]
-    public async Task MinorCoTenant_NeedsGuardianConsent()
+    public async Task MinorCoTenant_WithoutGuardianConsent_IsWarned()
     {
         var owner = await _client.CreateActiveOwnerAsync();
         var token = owner.Tokens.AccessToken;
@@ -95,13 +91,12 @@ public sealed class OccupantRelationshipTests(ApiFactory factory)
         var (_, _, _, contractId) = await _client.CreateActiveContractAsync(token, today);
         var teen = await RenterAsync(token, "Học Sinh", today.AddYears(-16).ToString("yyyy-MM-dd"), "Female");
 
-        var missing = await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/occupants",
-            new { renterId = teen, moveInDate = today, relationshipType = "NephewNiece" }, token);
-        (await ErrorKeysAsync(missing)).Should().Equal("guardianConsent");
-
         (await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/occupants",
-                new { renterId = teen, moveInDate = today, relationshipType = "NephewNiece", guardianConsent = true }, token))
+                new { renterId = teen, moveInDate = today, relationshipType = "NephewNiece" }, token))
             .StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        var detail = await (await _client.GetAsync($"/api/v1/contracts/{contractId}", token)).ReadAsync<JsonElement>();
+        detail.GetProperty("warnings").EnumerateArray().Select(w => w.GetProperty("code").GetString()).Should().Contain("GUARDIAN_CONSENT_REQUIRED");
     }
 
     [Fact]

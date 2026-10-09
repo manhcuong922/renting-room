@@ -52,7 +52,7 @@ public sealed class RefreshToken : Entity
 
         return new RefreshToken
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             UserId = userId,
             FamilyId = familyId,
             TokenHash = tokenHash,

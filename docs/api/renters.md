@@ -69,8 +69,8 @@ Sắp theo tên. Response (cả hai endpoint): trang `RenterDto` (như chi tiế
 | `fullName` | ✅ | ≤ 200 |
 | `dateOfBirth` | ✅ | Từ 1900 tới hôm nay. (Người **ký** hợp đồng phải đủ 18 — kiểm tra khi tạo HĐ) |
 | `gender` | ✅ | `Male` / `Female` / `Other` |
-| `idType` | ✅ | `CitizenId` / `LegacyId` / `Passport` |
-| `idNumber` | ✅ | CCCD 12 số · CMND 9 số · hộ chiếu 6–20 chữ/số (bỏ qua khoảng trắng). **Trẻ em chưa có thẻ**: nhập **số định danh cá nhân** 12 số (trên giấy khai sinh / VNeID của cha mẹ) với `idType = CitizenId`; ngày cấp, nơi cấp để trống |
+| `idType` | ✅ từ 14 tuổi | `CitizenId` / `LegacyId` / `Passport`; trẻ **dưới 14 tuổi** chưa có giấy tờ: để `null` cùng `idNumber` |
+| `idNumber` | ✅ từ 14 tuổi | CCCD 12 số · CMND 9 số · hộ chiếu 6–20 chữ/số (bỏ qua khoảng trắng). **Dưới 14 tuổi** được để trống (hoặc nhập số định danh cá nhân 12 số nếu có). Người không có giấy tờ **không đứng tên HĐ** được (`REPRESENTATIVE_ID_REQUIRED`) và không tự nhận ra trùng hồ sơ |
 | `idIssueDate` | | Sau ngày sinh, không ở tương lai |
 | `phone` | | Di động VN hoặc dạng `+mã nước` |
 | `nationality` | | Mã ISO 2 chữ (`VN`, `KR`, `CN`…), mặc định `VN` |
@@ -111,9 +111,12 @@ UI: `idType = Passport` → gợi ý chọn `nationality` khác VN; nhãn ô s�
   "emergencyContactPhone": null,
   "note": null,
   "createdAt": "2026-10-02T13:19:06.745243+00:00",
-  "version": "950"
+  "version": "950",
+  "anonymizedAt": null
 }
 ```
+
+**Ẩn danh**: người thuê rời đi quá thời gian giữ của tổ chức (mặc định **36 tháng**, xem [members.md](members.md#thời-gian-giữ-dữ-liệu-người-thuê)) và không còn HĐ đang chạy / nợ / chờ hoàn được hệ thống ẩn danh mỗi đêm. Chủ trọ ẩn danh ngay được bằng `POST /renters/{id}/anonymize` `{ "reason": "Người thuê yêu cầu xóa dữ liệu" }` → 204 (chỉ chủ trọ; còn HĐ đang chạy → 422 `RENTER_HAS_ACTIVE_CONTRACT`, còn nợ / chờ hoàn → 422 `RENTER_HAS_UNSETTLED_INVOICES`; **không đảo ngược** — UI hỏi xác nhận 2 lần). Sau khi ẩn danh: biển số + hiệu – màu các **xe đã kết thúc** của HĐ người đó đứng tên / xe người đó là chủ bị xóa; `anonymizedAt` có giá trị, `fullName` = "Đã ẩn danh #xxxx", các trường cá nhân rỗng, `dateOfBirth` = `0001-01-01`, số giấy tờ `************`. Hồ sơ ẩn danh không hiện trong tìm kiếm, không sửa / không xem số giấy tờ (422 `RENTER_ANONYMIZED`), không chọn được cho HĐ mới. UI nên hiện nhãn "Đã ẩn danh" và ẩn các ô trống.
 
 Tab "Lịch sử thuê" trong chi tiết: `GET /contracts?renterId={id}` — các hợp đồng người này **đứng tên hoặc ở cùng**
 (xem [contracts.md](contracts.md)).
@@ -130,7 +133,8 @@ Tab "Lịch sử thuê" trong chi tiết: `GET /contracts?renterId={id}` — cá
 ```
 
 - `idNumber: null` = **giữ số cũ** (form sửa để trống ô số, placeholder = `idNumberMasked`).
-- Đổi `idType` thì bắt buộc nhập số mới → 400 `ID_NUMBER_REQUIRED`.
+- Đổi `idType` thì bắt buộc nhập số mới → 400 `ID_NUMBER_REQUIRED`. `idType: null` + `idNumber: null` = bỏ giấy tờ — chỉ khi dưới 14 tuổi.
+- Hồ sơ không có giấy tờ: `idType`, `idNumberMasked` = `null`.
 - Key lỗi validation có tiền tố: `renter.fullName`, `renter.idNumber`.
 - Sửa hồ sơ **không đổi** thông tin đã in trên hợp đồng đã kích hoạt (hợp đồng giữ bản chụp lúc ký).
 

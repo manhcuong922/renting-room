@@ -10,7 +10,8 @@ tài khoản ngân hàng nhận tiền, nội quy. Quyền: chủ trọ và phó
 | Danh sách khu (thẻ hoặc bảng) | `GET /properties` |
 | Form tạo khu | `POST /properties` |
 | Chi tiết khu — tab **Thông tin & cài đặt thu** | `GET /properties/{id}`, `PUT /properties/{id}` |
-| Tab **Bên cho thuê** | `PUT /properties/{id}/lessor`, `POST /properties/{id}/lessor/reveal-id-number` |
+| Cài đặt tổ chức — **Thông tin chủ trọ** (khai 1 lần) | `GET` / `PUT /org/lessor`, `POST /org/lessor/reveal-id-number` |
+| Tab **Bên cho thuê** của khu (chỉ khi khác chủ trọ) | `PUT` / `DELETE /properties/{id}/lessor`, `POST /properties/{id}/lessor/reveal-id-number` |
 | Tab **Ngân hàng** | `PUT /properties/{id}/bank-account` |
 | Tab **Nội quy** | `PUT /properties/{id}/house-rules` |
 | Tab **Phòng**, **Nhóm phòng** | xem [rooms.md](rooms.md) |
@@ -20,7 +21,7 @@ tài khoản ngân hàng nhận tiền, nội quy. Quyền: chủ trọ và phó
 
 ```
 Bước 1  Thông tin khu + địa chỉ + cài đặt thu   POST /properties
-Bước 2  Bên cho thuê                             PUT  /properties/{id}/lessor        ⚠ thiếu thì không kích hoạt được hợp đồng
+Bước 2  Bên cho thuê — mặc định dùng thông tin chủ trọ (GET /org/lessor); khác chủ trọ mới PUT /properties/{id}/lessor
 Bước 3  Ngân hàng (tùy chọn)                     PUT  /properties/{id}/bank-account
 Bước 4  Tạo phòng hàng loạt                      POST /properties/{id}/rooms/bulk
 ```
@@ -48,7 +49,8 @@ Bước 4  Tạo phòng hàng loạt                      POST /properties/{id}/
 ```
 
 - Thẻ khu: tên, địa chỉ, `occupiedRoomCount/roomCount` (thanh tỉ lệ lấp đầy).
-- `lessorComplete = false` → cảnh báo vàng "Chưa khai báo đủ bên cho thuê — chưa ký được hợp đồng" + link sang tab Bên cho thuê.
+- `lessorComplete = false` (xét bên cho thuê hiệu lực — riêng của khu hoặc thông tin chủ trọ) → cảnh báo vàng "Chưa đủ thông tin bên cho thuê —
+  chưa in được hợp đồng đầy đủ" + link sang **Thông tin chủ trọ**. Không chặn kích hoạt / thu tiền.
 - `isArchived = true` → làm mờ, nhãn "Ngừng sử dụng".
 
 ## Tạo khu
@@ -69,7 +71,7 @@ Bước 4  Tạo phòng hàng loạt                      POST /properties/{id}/
   "description": null,
   "evnCustomerCode": null,
   "land": { "parcelNo": null, "mapSheetNo": null, "ownershipCertificateNo": null },
-  "billingDefaults": { "anchorDay": 1, "chargeMode": "Prepaid", "paymentDueDays": 5, "prorationMode": "Daily", "noticeDays": 30 }
+  "billing": { "anchorDay": 1, "chargeMode": "Postpaid", "paymentDueDays": 5, "prorationMode": "Daily", "noticeDays": 30 }
 }
 ```
 
@@ -84,17 +86,17 @@ Bước 4  Tạo phòng hàng loạt                      POST /properties/{id}/
 | `address.communeCode` / `provinceCode` | | Mã ĐVHC (chưa có API danh mục — để null) |
 | `evnCustomerCode` | | Mã khách hàng điện lực (≤ 20) |
 | `land.*` | | Số thửa, số tờ bản đồ, số giấy chứng nhận — in vào hợp đồng |
-| `billingDefaults` | | Bỏ trống = mặc định như ví dụ. **Là giá trị gợi ý khi tạo hợp đồng mới** |
+| `billing` | | Bỏ trống = mặc định như ví dụ (chốt ngày 1, **thu sau**). **Mọi hợp đồng của khu dùng chung** (HĐ không chọn riêng) |
 
-### Cài đặt thu (`billingDefaults`)
+### Cài đặt kỳ thu (`billing`)
 
 | Trường | Miền giá trị | Nhãn UI gợi ý |
 |--------|--------------|---------------|
-| `anchorDay` | 1–31 | "Ngày chốt kỳ thu" — ngày 31 tự hiểu là cuối tháng với tháng ngắn |
+| `anchorDay` | **1–28** | "Ngày chốt kỳ thu" — tháng nào cũng có ngày chốt |
 | `chargeMode` | `Prepaid` / `Postpaid` | "Thu tiền phòng đầu kỳ / cuối kỳ" |
 | `paymentDueDays` | 0–60 | "Hạn đóng sau ngày chốt (ngày)" |
 | `prorationMode` | `Daily` / `FullPeriod` | "Tháng lẻ tính theo ngày ở / tính tròn tháng" |
-| `noticeDays` | 0–180 | "Số ngày báo trước khi trả phòng" (mặc định 30 — báo trước 1 tháng) |
+| `noticeDays` | 0–180 | "Số ngày báo trước khi trả phòng" (mặc định 30 — báo trước 1 tháng) — **gợi ý** khi tạo HĐ, HĐ giữ riêng |
 
 ## Chi tiết
 
@@ -110,7 +112,7 @@ Bước 4  Tạo phòng hàng loạt                      POST /properties/{id}/
   "description": null,
   "evnCustomerCode": null,
   "land": { "parcelNo": null, "mapSheetNo": null, "ownershipCertificateNo": null },
-  "billingDefaults": { "anchorDay": 1, "chargeMode": "Prepaid", "paymentDueDays": 5, "prorationMode": "Daily", "noticeDays": 30 },
+  "billing": { "anchorDay": 1, "chargeMode": "Postpaid", "paymentDueDays": 5, "prorationMode": "Daily", "noticeDays": 30, "changes": [] },
   "lessor": {
     "type": "Individual",
     "name": "Nguyễn Văn Chủ",
@@ -137,7 +139,8 @@ Bước 4  Tạo phòng hàng loạt                      POST /properties/{id}/
 }
 ```
 
-`lessor` = `null` khi chưa khai báo; `bankAccount` = `null` khi chưa có.
+`lessor` = bên cho thuê **hiệu lực**: riêng của khu, không có thì thông tin chủ trọ (`lessorInherited: true` → UI ghi "Dùng thông tin
+chủ trọ" + nút "Khai riêng cho khu này"). `null` khi cả hai đều chưa khai. `bankAccount` = `null` khi chưa có.
 
 ## Sửa thông tin khu
 
@@ -150,17 +153,69 @@ Bước 4  Tạo phòng hàng loạt                      POST /properties/{id}/
   "description": "Gần ĐH Quốc gia",
   "evnCustomerCode": "PD0100123456",
   "land": null,
-  "billingDefaults": { "anchorDay": 5, "chargeMode": "Prepaid", "paymentDueDays": 5, "prorationMode": "Daily", "noticeDays": 30 },
   "version": "944"
 }
 ```
 
-`billingDefaults` bắt buộc ở PUT. Đổi cài đặt thu **chỉ áp cho hợp đồng tạo sau** — hợp đồng cũ giữ cài đặt riêng.
-UI nên ghi chú điều này cạnh nhóm cài đặt.
+Cài đặt kỳ thu **không** sửa ở đây — dùng [Cài đặt kỳ thu](#cài-đặt-kỳ-thu--đổi-ngày-chốt).
+
+## Cài đặt kỳ thu / đổi ngày chốt
+
+Chi tiết khu có `billing`:
+
+```json
+"billing": {
+  "anchorDay": 5, "chargeMode": "Postpaid", "paymentDueDays": 5, "prorationMode": "Daily", "noticeDays": 30,
+  "changes": [ { "effectiveFrom": "2026-11-01", "transitionEnd": "2026-12-04", "anchorDay": 5, "chargeMode": "Postpaid", "deviationDays": 4, "adjustDays": 4 } ]
+}
+```
+
+`changes` = các lần đổi khi khu **đã có phiếu** — mỗi lần có một **kỳ chuyển tiếp** `[effectiveFrom, transitionEnd]` (vẫn là tháng thu của
+`effectiveFrom`), dài / ngắn hơn 1 tháng `deviationDays` ngày; tiền phòng kỳ đó = 1 tháng ± `adjustDays` ngày.
+
+**Xem trước** — `GET /properties/{id}/billing/preview?anchorDay=5&chargeMode=Postpaid`:
+
+```json
+{ "effectiveFrom": "2026-11-01", "transitionEnd": "2026-12-04", "transitionDays": 34, "baseDays": 30, "deviationDays": 4,
+  "suggestedAdjustDays": 4, "hasDraftInvoices": false,
+  "rooms": [ { "contractId": "…", "roomCode": "101", "monthlyRent": 3000000, "perDay": 100000, "suggestedAmount": 400000 } ] }
+```
+
+- `effectiveFrom` = đầu kỳ chưa lập phiếu đầu tiên của khu; `null` ⇒ khu chưa có phiếu, đổi là áp lại từ đầu (không có kỳ chuyển tiếp).
+- UI hiện: "Kỳ chuyển tiếp 01/11–04/12 **dư 4 ngày** (≈ 400.000đ/phòng). Tính thêm: [ 4 ] ngày" — ô số ngày điền sẵn `suggestedAdjustDays`
+  (lệch ≤ 3 ngày ⇒ 0), cho sửa trong 0..dư (hoặc thiếu..0 khi kỳ ngắn hơn). Chỉ tiền phòng điều chỉnh; điện nước theo chỉ số thật; dịch vụ trọn tháng.
+- `hasDraftInvoices: true` ⇒ phải chốt / xóa phiếu nháp của khu trước.
+
+**Lưu** — `PUT /properties/{id}/billing` → 200 chi tiết khu:
+
+```json
+{ "anchorDay": 5, "chargeMode": "Postpaid", "paymentDueDays": 5, "prorationMode": "Daily", "noticeDays": 30, "transitionAdjustDays": 4 }
+```
+
+| Lỗi | Khi nào |
+|-----|---------|
+| 422 `BILLING_SETTINGS_DRAFT_INVOICES` | Đổi ngày chốt / thu trước–thu sau khi khu còn phiếu nháp |
+| 400 `TRANSITION_ADJUST_OUT_OF_RANGE` | `transitionAdjustDays` ngoài 0..dư (hoặc thiếu..0) |
+
+- Hạn thanh toán, tính kỳ lẻ, báo trước: áp ngay (phiếu đã chốt giữ số tiền cũ).
+- Đổi lại khi kỳ chuyển tiếp chưa lập phiếu ⇒ ghi đè lần đổi trước; đổi về đúng cài đặt cũ ⇒ bỏ kỳ chuyển tiếp.
+- Đổi thu sau → thu trước: phiếu đầu tiên thu trước có cảnh báo `TWO_RENT_PERIODS` (người thuê trả 2 tháng tiền phòng gần nhau).
 
 ## Bên cho thuê
 
-`PUT /properties/{id}/lessor` → 200 trả chi tiết khu.
+**Thông tin chủ trọ** (khai 1 lần, mọi khu dùng chung):
+
+- `GET /org/lessor` → `{ "lessor": { …như dưới, có isComplete } | null, "prefill": { "name", "phone", "address" } }` — `prefill` lấy từ
+  thông tin liên hệ của tổ chức để điền sẵn form lần đầu.
+- `PUT /org/lessor` (body như dưới) → 200 cùng dạng `GET`. **Chỉ chủ trọ** (phó quản lý 403).
+- `POST /org/lessor/reveal-id-number` → `{ "idNumber" }` (quyền / giới hạn như xem số giấy tờ bên dưới).
+
+**Bên cho thuê riêng của khu** — chỉ khi khác chủ trọ (công ty quản lý, người được ủy quyền):
+
+- `PUT /properties/{id}/lessor` → 200 trả chi tiết khu (`lessorInherited: false`).
+- `DELETE /properties/{id}/lessor` → 200 trả chi tiết khu — bỏ khai riêng, quay về thông tin chủ trọ.
+
+Sửa / bỏ không ảnh hưởng HĐ đã kích hoạt (HĐ giữ bản chụp lúc kích hoạt).
 
 **Cá nhân** (chủ nhà đứng tên):
 
@@ -203,7 +258,7 @@ UI:
 
 ### Xem số giấy tờ đầy đủ
 
-`POST /properties/{id}/lessor/reveal-id-number` → `{ "idNumber": "001080012345" }` (mỗi lần gọi được ghi log kiểm toán). Không có quyền dữ liệu nhạy cảm → 403 `SENSITIVE_DATA_FORBIDDEN`. Giới hạn 5 lần/phút mỗi tài khoản (chung với xem số giấy tờ người thuê, xuất Excel) → 429.
+`POST /properties/{id}/lessor/reveal-id-number` → `{ "idNumber": "001080012345" }` — số của bên cho thuê **hiệu lực** của khu (mỗi lần gọi được ghi log kiểm toán). Không có quyền dữ liệu nhạy cảm → 403 `SENSITIVE_DATA_FORBIDDEN`. Giới hạn 5 lần/phút mỗi tài khoản (chung với xem số giấy tờ người thuê, xuất Excel) → 429.
 
 ## Ngân hàng
 

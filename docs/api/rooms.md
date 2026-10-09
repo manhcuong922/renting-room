@@ -29,12 +29,12 @@ phòng: `RepresentativeMovedOut` "Người ký đã rời đi", `NoOccupantLeft`
 | Bảo trì / ngừng dùng / khôi phục | `POST /rooms/{id}/maintenance/start` · `/maintenance/end` · `/archive` · `/restore` |
 | Nhóm phòng của khu (dùng cho giảm giá theo nhóm sau này) | `/properties/{propertyId}/room-groups`, `/room-groups/{id}` |
 
-Ô phòng trên sơ đồ gợi ý: `code` to · giá niêm yết · `currentContract.representativeName` · `currentContract.occupantCount/maxOccupants` 👤.
+Ô phòng trên sơ đồ gợi ý: `code` to · giá niêm yết · `currentContract.representativeName` · `currentContract.occupantCount` 👤 (kèm "/ maxOccupants" nếu có khai — chỉ mô tả loại phòng, không cảnh báo).
 Bấm ô Trống → nút "Tạo hợp đồng" (mở wizard với `roomId` điền sẵn).
 
 ## Danh sách
 
-`GET /rooms?propertyId=&status=&floor=&groupId=&search=&page=1&pageSize=20`
+`GET /rooms?propertyId=&status=&floor=&groupId=&search=&overdue=&page=1&pageSize=20`
 
 | Query | Ý nghĩa |
 |-------|---------|
@@ -43,6 +43,7 @@ Bấm ô Trống → nút "Tạo hợp đồng" (mở wizard với `roomId` đi�
 | `floor` | Đúng giá trị tầng (VD `1`, `Tầng trệt`) |
 | `groupId` | Phòng thuộc nhóm |
 | `search` | Một phần mã phòng (không phân biệt hoa thường) |
+| `overdue` | `true` = phòng có phiếu **quá hạn thanh toán** chưa thu đủ (bộ lọc nhanh "Quá hạn") |
 
 Sắp xếp sẵn theo mã khu → mã phòng.
 
@@ -82,6 +83,7 @@ Sắp xếp sẵn theo mã khu → mã phòng.
 
 `outstandingAmount` = tổng còn nợ của các phiếu đã chốt của phòng (mọi hợp đồng) — > 0 thì hiện nhãn **"Còn nợ"** + số tiền trên ô phòng
 ([payments.md](payments.md)).
+`overdueAmount` / `isOverdue` = phần còn nợ của phiếu đã **quá hạn thanh toán** (ngày chốt phiếu + số ngày hạn của khu) ⇒ nhãn **đỏ "Quá hạn"**.
 
 `GET /rooms/{id}` trả đúng một phần tử như trên.
 
@@ -111,7 +113,7 @@ Sắp xếp sẵn theo mã khu → mã phòng.
 | `code` | ✅ | ≤ 20, chữ số `. _ / -`, tự viết hoa; duy nhất trong khu (`ROOM_CODE_TAKEN`) |
 | `spec.floor` | | ≤ 10 ký tự (dùng để nhóm sơ đồ) |
 | `spec.areaM2` | | 0 < x ≤ 1000, tối đa 2 số lẻ |
-| `spec.maxOccupants` | ✅ | 1–20 |
+| `spec.maxOccupants` | | `null` hoặc 1–20 — **số người theo loại phòng, chỉ để mô tả**; không giới hạn số người ở (PR-BR-06) |
 | `spec.listedRent` | | Giá niêm yết — **gợi ý** khi tạo hợp đồng, sửa không ảnh hưởng HĐ đã có |
 | `spec.defaultDeposit` | | Tiền cọc gợi ý |
 | `spec.amenities` | | Tối đa 30 mã, mỗi mã `a-z 0-9 _` (VD `air_con`, `wc_private`, `water_heater`, `balcony`). UI tự map mã → nhãn/icon |
@@ -148,8 +150,10 @@ Lỗi validation trả key `spec.areaM2`, `spec.maxOccupants`… khớp đúng b
 
 `PUT /rooms/{id}` — `{ "code": "101A", "spec": { … }, "version": "946" }` → 200 trả phòng.
 
-- Giảm `maxOccupants` dưới số người đang ở → 422 `MAX_OCCUPANTS_BELOW_CURRENT`.
 - Đổi mã trùng phòng khác trong khu → 409 `ROOM_CODE_TAKEN`.
+- Đổi `listedRent` khi phòng đang có người thuê → **không** tự đổi giá HĐ. UI hỏi "Áp giá mới cho người đang thuê?" → có thì gọi
+  `POST /rooms/{id}/apply-listed-rent` → 204 (đổi giá HĐ đang hiệu lực từ kỳ chưa lập phiếu đầu tiên; lỗi 400 `LISTED_RENT_REQUIRED`,
+  422 `CONTRACT_NOT_ACTIVE` — xem [contracts.md](contracts.md#áp-giá-niêm-yết-mới-cho-người-đang-thuê)).
 
 ## Thao tác trạng thái
 

@@ -6,6 +6,7 @@ using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Common.Models;
 using renting_room.Application.Common.Validation;
 using renting_room.Application.Contracts;
+using renting_room.Application.Properties;
 using renting_room.Domain.Billing;
 using renting_room.Domain.Common;
 using renting_room.Domain.Contracts;
@@ -105,7 +106,7 @@ internal static class InvoiceAccess
     public static async Task<Result<InvoiceDetailDto>> MutateAsync(
         IAppDbContext db, Guid invoiceId, DateOnly today, Func<Invoice, Result> action, CancellationToken ct)
     {
-        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        await using var transaction = await db.BeginTransactionAsync(ct);
         await db.LockForUpdateAsync<Invoice>(invoiceId, ct);
         var invoice = await LoadAsync(db, invoiceId, ct);
         if (invoice is null)
@@ -292,7 +293,7 @@ public sealed class DeleteDraftInvoiceHandler(IAppDbContext db) : IRequestHandle
 {
     public async ValueTask<Result> Handle(DeleteDraftInvoiceCommand request, CancellationToken cancellationToken)
     {
-        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        await using var transaction = await db.BeginTransactionAsync(cancellationToken);
         await db.LockForUpdateAsync<Invoice>(request.Id, cancellationToken);
         var invoice = await InvoiceAccess.LoadAsync(db, request.Id, cancellationToken);
         if (invoice is null)
@@ -328,7 +329,7 @@ public sealed class FinalizeInvoiceHandler(IAppDbContext db, IDocumentNumberGene
         if (contractId is null)
             return BillingErrors.NotFound;
 
-        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        await using var transaction = await db.BeginTransactionAsync(ct);
         await db.LockForUpdateAsync<Contract>(contractId.Value, ct);
         await db.LockForUpdateAsync<Invoice>(id, ct);
         var contract = (await ContractMutation.LoadAsync(db, contractId.Value, ct))!;
@@ -336,7 +337,8 @@ public sealed class FinalizeInvoiceHandler(IAppDbContext db, IDocumentNumberGene
         if (invoice.Status != InvoiceStatus.Draft)
             return BillingErrors.NotDraft;
 
-        var period = InvoiceInputs.CurrentPeriod(contract, invoice);
+        var billing = await PropertyBilling.LoadAsync(db, contract.PropertyId, ct);
+        var period = InvoiceInputs.CurrentPeriod(contract, invoice, billing.Schedule);
         if (period is null || period.End != invoice.PeriodEnd)
             return BillingErrors.DraftStale;
         var calculation = InvoiceCalculator.Calculate(await InvoiceInputs.LoadAsync(db, contract, period, invoice.Id, ct, invoice.Type));
@@ -348,7 +350,7 @@ public sealed class FinalizeInvoiceHandler(IAppDbContext db, IDocumentNumberGene
         if (invoice.HasBlockingIssues)
             return BillingErrors.HasIssues(invoice.Issues.Where(i => i.Severity == InvoiceIssue.Error).Select(i => i.Code).Distinct().ToList());
         var invoiceNo = await numbers.NextAsync(currentUser.OrganizationId!.Value, "PB", today.Year, ct);
-        var finalized = invoice.Finalize(invoiceNo, today, contract.PaymentDueDays, now);
+        var finalized = invoice.Finalize(invoiceNo, today, billing.PaymentDueDays, now);
         if (finalized.IsFailure)
             return finalized.Error!;
 
@@ -402,7 +404,7 @@ public sealed class VoidInvoiceHandler(IAppDbContext db, TimeProvider clock) : I
         if (contractId is null)
             return BillingErrors.NotFound;
 
-        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        await using var transaction = await db.BeginTransactionAsync(cancellationToken);
         await db.LockForUpdateAsync<Contract>(contractId.Value, cancellationToken);
         await db.LockForUpdateAsync<Invoice>(request.Id, cancellationToken);
         var invoice = (await InvoiceAccess.LoadAsync(db, request.Id, cancellationToken))!;

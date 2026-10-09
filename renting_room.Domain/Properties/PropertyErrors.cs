@@ -11,6 +11,11 @@ public static class PropertyErrors
     public static readonly Error PropertyHasActiveContracts = Error.BusinessRule("PROPERTY_HAS_ACTIVE_CONTRACTS",
         "Khu trọ còn hợp đồng nháp / đang hiệu lực / đang thanh lý.");
 
+    public static readonly Error TransitionAdjustOutOfRange = Error.Validation("TRANSITION_ADJUST_OUT_OF_RANGE",
+        "Số ngày điều chỉnh tiền phòng kỳ chuyển tiếp phải từ 0 tới số ngày dư (hoặc từ số ngày thiếu tới 0).");
+    public static readonly Error BillingDraftInvoicesExist = Error.BusinessRule("BILLING_SETTINGS_DRAFT_INVOICES",
+        "Khu còn phiếu nháp — chốt hoặc xóa phiếu nháp trước khi đổi ngày chốt / thu trước–thu sau.");
+
     public static readonly Error RoomNotFound = Error.NotFound("ROOM_NOT_FOUND", "Không tìm thấy phòng.");
     public static readonly Error RoomCodeTaken = Error.Conflict("ROOM_CODE_TAKEN", "Mã phòng đã tồn tại trong khu.");
     public static readonly Error RoomArchived = Error.BusinessRule("ROOM_ARCHIVED", "Phòng đã ngừng sử dụng.");
@@ -20,8 +25,6 @@ public static class PropertyErrors
         "Phòng còn hợp đồng nháp / đang hiệu lực / đang thanh lý.");
     public static readonly Error RoomAlreadyUnderMaintenance = Error.Conflict("ROOM_ALREADY_UNDER_MAINTENANCE", "Phòng đang bảo trì.");
     public static readonly Error RoomNotUnderMaintenance = Error.Conflict("ROOM_NOT_UNDER_MAINTENANCE", "Phòng không ở trạng thái bảo trì.");
-    public static readonly Error MaxOccupantsBelowCurrent = Error.BusinessRule("MAX_OCCUPANTS_BELOW_CURRENT",
-        "Sức chứa mới nhỏ hơn số người đang ở.");
 
     public static readonly Error RoomGroupNotFound = Error.NotFound("ROOM_GROUP_NOT_FOUND", "Không tìm thấy nhóm phòng.");
     public static readonly Error RoomGroupNameTaken = Error.Conflict("ROOM_GROUP_NAME_TAKEN", "Tên nhóm phòng đã tồn tại trong khu.");

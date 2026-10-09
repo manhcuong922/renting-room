@@ -13,13 +13,10 @@ public interface IDocumentNumberGenerator
 }
 
 /// <summary>
-/// Kỳ đầu tiên chưa có phiếu đã chốt của hợp đồng (CT-BR-05). Hiện thực thật ở M07 (Billing);
-/// trước khi có M07 trả null = chưa kỳ nào bị khóa.
+/// Kỳ đầu tiên chưa có phiếu đã chốt của hợp đồng (CT-BR-05) — dùng cho đổi giá thuê / dịch vụ (CT-UC-05). Mỗi phiếu thu tiền phòng đúng
+/// kỳ của nó (không còn chu kỳ nhiều tháng) ⇒ một mốc chung cho cả giá thuê và dịch vụ.
 /// </summary>
 public interface IInvoiceLockReader
 {
     Task<DateOnly?> GetFirstOpenPeriodStartAsync(Guid contractId, CancellationToken cancellationToken);
-
-    /// <summary>CT-BR-05: kỳ đầu tiên chưa bị khóa cho đổi giá thuê — sau dòng Tiền phòng đã chốt mới nhất.</summary>
-    Task<DateOnly?> GetFirstOpenRentPeriodStartAsync(Guid contractId, CancellationToken cancellationToken);
 }

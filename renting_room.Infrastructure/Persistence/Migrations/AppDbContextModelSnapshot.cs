@@ -477,9 +477,9 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                         .HasColumnType("date")
                         .HasColumnName("actual_end_date");
 
-                    b.Property<int>("BillingAnchorDay")
-                        .HasColumnType("integer")
-                        .HasColumnName("billing_anchor_day");
+                    b.Property<DateOnly>("BillingStartDate")
+                        .HasColumnType("date")
+                        .HasColumnName("billing_start_date");
 
                     b.Property<string>("CancelReason")
                         .HasMaxLength(500)
@@ -489,12 +489,6 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset?>("CancelledAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("cancelled_at");
-
-                    b.Property<string>("ChargeMode")
-                        .IsRequired()
-                        .HasMaxLength(16)
-                        .HasColumnType("character varying(16)")
-                        .HasColumnName("charge_mode");
 
                     b.Property<string>("Clauses")
                         .HasColumnType("jsonb")
@@ -555,6 +549,10 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("ended_at");
 
+                    b.Property<bool>("HasSignedDocument")
+                        .HasColumnType("boolean")
+                        .HasColumnName("has_signed_document");
+
                     b.Property<string>("HoldoverNote")
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)")
@@ -594,10 +592,6 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("organization_id");
 
-                    b.Property<int>("PaymentDueDays")
-                        .HasColumnType("integer")
-                        .HasColumnName("payment_due_days");
-
                     b.Property<string[]>("PaymentMethods")
                         .IsRequired()
                         .HasColumnType("text[]")
@@ -615,12 +609,6 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("property_id");
 
-                    b.Property<string>("ProrationMode")
-                        .IsRequired()
-                        .HasMaxLength(16)
-                        .HasColumnType("character varying(16)")
-                        .HasColumnName("proration_mode");
-
                     b.Property<Guid>("RepresentativeRenterId")
                         .HasColumnType("uuid")
                         .HasColumnName("representative_renter_id");
@@ -632,6 +620,11 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                     b.Property<DateOnly?>("SignedDate")
                         .HasColumnType("date")
                         .HasColumnName("signed_date");
+
+                    b.Property<string>("SignedDocumentNote")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)")
+                        .HasColumnName("signed_document_note");
 
                     b.Property<string>("SignedPlace")
                         .HasMaxLength(200)
@@ -732,9 +725,11 @@ namespace renting_room.Infrastructure.Persistence.Migrations
 
                     b.ToTable("contracts", null, t =>
                         {
-                            t.HasCheckConstraint("ck_contracts_activated_snapshot", "status NOT IN ('Active','Liquidating','Ended') OR (effective_date IS NOT NULL AND signing_snapshot IS NOT NULL)");
+                            t.HasCheckConstraint("ck_contracts_activated_snapshot", "status NOT IN ('Active','Liquidating','Ended') OR effective_date IS NOT NULL");
 
                             t.HasCheckConstraint("ck_contracts_actual_end", "actual_end_date IS NULL OR actual_end_date >= start_date");
+
+                            t.HasCheckConstraint("ck_contracts_billing_start", "billing_start_date >= start_date AND (end_date IS NULL OR billing_start_date <= end_date)");
 
                             t.HasCheckConstraint("ck_contracts_effective_date", "effective_date IS NULL OR signed_date IS NULL OR effective_date >= signed_date");
 
@@ -742,7 +737,7 @@ namespace renting_room.Infrastructure.Persistence.Migrations
 
                             t.HasCheckConstraint("ck_contracts_liquidation_end", "status NOT IN ('Liquidating','Ended') OR actual_end_date IS NOT NULL");
 
-                            t.HasCheckConstraint("ck_contracts_settings", "billing_anchor_day BETWEEN 1 AND 31 AND deposit_amount >= 0 AND copies_count BETWEEN 1 AND 10");
+                            t.HasCheckConstraint("ck_contracts_settings", "deposit_amount >= 0 AND copies_count BETWEEN 1 AND 10");
 
                             t.HasCheckConstraint("ck_contracts_termination_reason", "status <> 'Ended' OR termination_reason IS NOT NULL");
                         });
@@ -1436,6 +1431,12 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(500)")
                         .HasColumnName("address");
 
+                    b.Property<bool>("AutoAnonymizeEnabled")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true)
+                        .HasColumnName("auto_anonymize_enabled");
+
                     b.Property<string>("Code")
                         .IsRequired()
                         .HasMaxLength(32)
@@ -1465,6 +1466,10 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("created_by");
 
+                    b.Property<string>("DefaultLessor")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("default_lessor");
+
                     b.Property<int>("MaxManagers")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("integer")
@@ -1481,6 +1486,12 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)")
                         .HasColumnName("note");
+
+                    b.Property<int>("PersonalDataRetentionMonths")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(36)
+                        .HasColumnName("personal_data_retention_months");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -1522,6 +1533,8 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                     b.ToTable("organizations", null, t =>
                         {
                             t.HasCheckConstraint("ck_organizations_max_managers", "max_managers BETWEEN 0 AND 100");
+
+                            t.HasCheckConstraint("ck_organizations_retention_months", "personal_data_retention_months BETWEEN 36 AND 120");
 
                             t.HasCheckConstraint("ck_organizations_suspended_reason", "status <> 'Suspended' OR suspended_reason IS NOT NULL");
                         });
@@ -2181,6 +2194,21 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(100)")
                         .HasColumnName("bank_name");
 
+                    b.Property<int>("BillingAnchorDay")
+                        .HasColumnType("integer")
+                        .HasColumnName("billing_anchor_day");
+
+                    b.Property<string>("BillingScheduleEntries")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("billing_schedule");
+
+                    b.Property<string>("ChargeMode")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("charge_mode");
+
                     b.Property<string>("Code")
                         .IsRequired()
                         .HasMaxLength(32)
@@ -2206,29 +2234,9 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("created_by");
 
-                    b.Property<int>("DefaultBillingAnchorDay")
-                        .HasColumnType("integer")
-                        .HasColumnName("default_billing_anchor_day");
-
-                    b.Property<string>("DefaultChargeMode")
-                        .IsRequired()
-                        .HasMaxLength(16)
-                        .HasColumnType("character varying(16)")
-                        .HasColumnName("default_charge_mode");
-
                     b.Property<int>("DefaultNoticeDays")
                         .HasColumnType("integer")
                         .HasColumnName("default_notice_days");
-
-                    b.Property<int>("DefaultPaymentDueDays")
-                        .HasColumnType("integer")
-                        .HasColumnName("default_payment_due_days");
-
-                    b.Property<string>("DefaultProrationMode")
-                        .IsRequired()
-                        .HasMaxLength(16)
-                        .HasColumnType("character varying(16)")
-                        .HasColumnName("default_proration_mode");
 
                     b.Property<string>("Description")
                         .HasMaxLength(2000)
@@ -2337,6 +2345,16 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(50)")
                         .HasColumnName("ownership_certificate_no");
 
+                    b.Property<int>("PaymentDueDays")
+                        .HasColumnType("integer")
+                        .HasColumnName("payment_due_days");
+
+                    b.Property<string>("ProrationMode")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("proration_mode");
+
                     b.Property<string>("ProvinceCode")
                         .HasMaxLength(10)
                         .HasColumnType("character varying(10)")
@@ -2380,7 +2398,7 @@ namespace renting_room.Infrastructure.Persistence.Migrations
 
                     b.ToTable("properties", null, t =>
                         {
-                            t.HasCheckConstraint("ck_properties_anchor_day", "default_billing_anchor_day BETWEEN 1 AND 31");
+                            t.HasCheckConstraint("ck_properties_anchor_day", "billing_anchor_day BETWEEN 1 AND 28");
 
                             t.HasCheckConstraint("ck_properties_lessor_organization", "lessor_type IS DISTINCT FROM 'Organization' OR (lessor_tax_code IS NOT NULL AND lessor_representative_name IS NOT NULL)");
                         });
@@ -2446,7 +2464,7 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(500)")
                         .HasColumnName("maintenance_note");
 
-                    b.Property<int>("MaxOccupants")
+                    b.Property<int?>("MaxOccupants")
                         .HasColumnType("integer")
                         .HasColumnName("max_occupants");
 
@@ -2488,7 +2506,7 @@ namespace renting_room.Infrastructure.Persistence.Migrations
 
                             t.HasCheckConstraint("ck_rooms_maintenance_not_archived", "NOT (is_under_maintenance AND archived_at IS NOT NULL)");
 
-                            t.HasCheckConstraint("ck_rooms_max_occupants", "max_occupants BETWEEN 1 AND 20");
+                            t.HasCheckConstraint("ck_rooms_max_occupants", "max_occupants IS NULL OR max_occupants BETWEEN 1 AND 20");
 
                             t.HasCheckConstraint("ck_rooms_money", "(listed_rent IS NULL OR listed_rent >= 0) AND (default_deposit IS NULL OR default_deposit >= 0)");
                         });
@@ -2619,6 +2637,10 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<DateTimeOffset?>("AnonymizedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("anonymized_at");
+
                     b.Property<DateTimeOffset?>("ArchivedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("archived_at");
@@ -2678,25 +2700,21 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                         .HasColumnName("id_issue_place");
 
                     b.Property<byte[]>("IdNumberEncrypted")
-                        .IsRequired()
                         .HasColumnType("bytea")
                         .HasColumnName("id_number_encrypted");
 
                     b.Property<string>("IdNumberHash")
-                        .IsRequired()
                         .HasMaxLength(64)
                         .HasColumnType("character(64)")
                         .HasColumnName("id_number_hash")
                         .IsFixedLength();
 
                     b.Property<string>("IdNumberLast4")
-                        .IsRequired()
                         .HasMaxLength(4)
                         .HasColumnType("character varying(4)")
                         .HasColumnName("id_number_last4");
 
                     b.Property<string>("IdType")
-                        .IsRequired()
                         .HasMaxLength(16)
                         .HasColumnType("character varying(16)")
                         .HasColumnName("id_type");
@@ -2764,7 +2782,10 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                     b.HasIndex("OrganizationId", "Phone")
                         .HasDatabaseName("ix_renters_phone");
 
-                    b.ToTable("renters", (string)null);
+                    b.ToTable("renters", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_renters_id_document", "(id_type IS NULL) = (id_number_hash IS NULL)");
+                        });
                 });
 
             modelBuilder.Entity("renting_room.Infrastructure.Auditing.AuditLog", b =>

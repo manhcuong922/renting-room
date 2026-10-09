@@ -95,6 +95,48 @@ public sealed class AuditLogTests(ApiFactory factory)
         reveal.IpAddress.Should().Be("203.0.113.7");
     }
 
+    [Fact]
+    public async Task Owner_ReadsEntityHistory_WithUserName_OtherOrganizationSeesNothing()
+    {
+        var owner = await _client.CreateActiveOwnerAsync();
+        var token = owner.Tokens.AccessToken;
+        var renterId = await _client.CreateRenterAsync(token, phone: "0911111111");
+        // Đồng hồ giả đứng yên ⇒ 2 dòng cùng OccurredAt, phần ngẫu nhiên của UUIDv7 làm thứ tự "mới nhất trước" không xác định.
+        factory.Clock.Advance(TimeSpan.FromSeconds(1));
+        (await _client.PutJsonAsync($"/api/v1/renters/{renterId}",
+            new { renter = RenterInput(TestData.NewCitizenId(), "0922222222"), version = await RenterVersionAsync(renterId, token) }, token))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var page = await (await _client.GetAsync($"/api/v1/audit-logs?entityType=Renter&entityId={renterId}", token)).ReadAsync<JsonElement>();
+
+        var items = page.GetProperty("items").EnumerateArray().ToList();
+        items.Select(i => i.GetProperty("action").GetString()).Should().Equal("Updated", "Created"); // mới nhất trước
+        items.Should().AllSatisfy(i =>
+        {
+            i.GetProperty("userId").GetGuid().Should().Be(owner.Organization.OwnerUserId);
+            i.GetProperty("userName").GetString().Should().NotBeNullOrEmpty();
+        });
+        items[0].GetProperty("changes").GetProperty("phone").GetProperty("new").GetString().Should().Be("0922222222");
+
+        var stranger = await _client.CreateActiveOwnerAsync();
+        var foreign = await (await _client.GetAsync($"/api/v1/audit-logs?entityId={renterId}", stranger.Tokens.AccessToken)).ReadAsync<JsonElement>();
+        foreign.GetProperty("totalCount").GetInt32().Should().Be(0, "nhật ký không lộ sang tổ chức khác (C-01)");
+    }
+
+    [Fact]
+    public async Task Manager_CannotReadAuditLogs()
+    {
+        var owner = await _client.CreateActiveOwnerAsync();
+        var created = await _client.PostJsonAsync("/api/v1/org/members",
+            new { fullName = "Phó Quản Lý", phone = TestApi.NewPhone() }, owner.Tokens.AccessToken);
+        var credentials = await created.ReadAsync<TemporaryCredentialsResponse>();
+        var login = await _client.LoginAsync(credentials.Username, credentials.TemporaryPassword);
+        var manager = await (await _client.PostJsonAsync("/api/v1/auth/change-password",
+            new { currentPassword = credentials.TemporaryPassword, newPassword = "PhoQuanLy2026" }, login.AccessToken)).ReadAsync<TokenResponse>();
+
+        (await _client.GetAsync("/api/v1/audit-logs", manager.AccessToken)).StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
     private async Task<uint> RenterVersionAsync(Guid renterId, string token)
     {
         var renter = await (await _client.GetAsync($"/api/v1/renters/{renterId}", token)).ReadAsync<JsonElement>();

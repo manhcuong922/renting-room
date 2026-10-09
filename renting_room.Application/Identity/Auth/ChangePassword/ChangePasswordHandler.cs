@@ -45,7 +45,7 @@ public sealed class ChangePasswordHandler(
 
         user.ChangePassword(passwordHasher.Hash(request.NewPassword), now);
 
-        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        await using var transaction = await db.BeginTransactionAsync(cancellationToken);
 
         await RefreshTokenRevoker.RevokeAllForUserAsync(
             db, user.Id, RefreshTokenRevokeReason.PasswordChanged, now, cancellationToken);

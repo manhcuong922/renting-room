@@ -1,8 +1,11 @@
+using renting_room.Application.Audit;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Infrastructure.Auditing;
+using renting_room.Infrastructure.Jobs;
+using renting_room.Infrastructure.Seeding;
 using renting_room.Infrastructure.Exports;
 using renting_room.Infrastructure.Idempotency;
 using renting_room.Infrastructure.Identity;
@@ -50,6 +53,7 @@ public static class DependencyInjection
         services.AddScoped<IDocumentNumberGenerator, DocumentNumberGenerator>();
         services.AddSingleton<ISpreadsheetWriter, ClosedXmlSpreadsheetWriter>();
         services.AddSingleton<IWordDocumentWriter, OpenXmlWordWriter>();
+        services.AddSingleton<ISpreadsheetReader, ClosedXmlSpreadsheetReader>();
         services.AddOptions<FeeOptions>().Bind(configuration.GetSection(FeeOptions.SectionName));
         services.AddSingleton<IFeeSettings, FeeSettings>();
         services.AddScoped<IFeePriceLockReader, FeePriceLockReader>();
@@ -68,6 +72,17 @@ public static class DependencyInjection
             .ValidateOnStart();
         services.AddSingleton<AuditQueue>();
         services.AddScoped<IAuditTrail, AuditTrail>();
+        services.AddScoped<IAuditLogReader, AuditLogReader>();
+        services.AddScoped<IAuditLogEraser, AuditLogEraser>();
+
+        // Job nền chạy dưới danh nghĩa hệ thống của từng tổ chức (CurrentUserOverride) — RT-BR-06 ẩn danh sau 36 tháng.
+        services.AddScoped<CurrentUserOverride>();
+        services.AddSingleton<RenterAnonymizationService>();
+        services.AddHostedService(sp => sp.GetRequiredService<RenterAnonymizationService>());
+
+        // Dữ liệu demo cho dev / server test — chỉ chạy khi bật Seed:DemoData:Enabled (DatabaseInitializer).
+        services.AddOptions<DemoDataOptions>().Bind(configuration.GetSection(DemoDataOptions.SectionName));
+        services.AddTransient<DemoDataSeeder>();
         services.AddHostedService<AuditLogWriter>();
 
         return services;

@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Common.Security;
 using renting_room.Application.Exports;
+using renting_room.Application.Properties;
 using renting_room.Domain.Common;
 using renting_room.Domain.Contracts;
 
@@ -49,13 +50,15 @@ public sealed class GetContractDocumentHandler(
             .OrderByDescending(o => o.RenterId == contract.ReferenceRenterId)
             .ThenBy(o => o.RelationshipType ?? (OccupantRelationship)int.MaxValue)
             .Select(o => (renters[o.RenterId],
-                full ? protector.Decrypt(renters[o.RenterId].IdNumberEncrypted) : PersonalDataProtectorExtensions.Mask(renters[o.RenterId].IdNumberLast4), o))
+                renters[o.RenterId].IdNumberEncrypted is not { Length: > 0 } encrypted ? string.Empty
+                : full ? protector.Decrypt(encrypted) : PersonalDataProtectorExtensions.Mask(renters[o.RenterId].IdNumberLast4), o))
             .ToList();
 
         var data = new ContractPrintData(contract, snapshot,
             IdNumber(snapshot?.Lessor.IdNumberEncrypted, snapshot?.Lessor.IdNumberLast4, full),
             IdNumber(snapshot?.Representative?.IdNumberEncrypted, snapshot?.Representative?.IdNumberLast4, full),
-            occupants, agreedFees, feeTypes);
+            occupants, agreedFees, feeTypes,
+            (await db.Properties.AsNoTracking().FirstAsync(p => p.Id == contract.PropertyId, cancellationToken)).BillingSettings);
 
         if (full)
             auditTrail.RecordRead(AuditActions.PrintWithIdNumbers, nameof(Contract), contract.Id);
@@ -72,7 +75,7 @@ public sealed class GetContractDocumentHandler(
     private async Task<SigningSnapshot?> CurrentSnapshotAsync(Contract contract, CancellationToken ct)
     {
         var property = await db.Properties.AsNoTracking().FirstAsync(p => p.Id == contract.PropertyId, ct);
-        if (property.Lessor is not { } lessor)
+        if ((await LessorSource.EffectiveAsync(db, property, ct)).Lessor is not { } lessor)
             return null;
         var room = await db.Rooms.AsNoTracking().FirstAsync(r => r.Id == contract.RoomId, ct);
         var representative = await db.Renters.AsNoTracking().FirstAsync(r => r.Id == contract.RepresentativeRenterId, ct);

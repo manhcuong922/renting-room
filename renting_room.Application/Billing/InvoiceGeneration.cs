@@ -4,6 +4,7 @@ using Mediator;
 using Microsoft.EntityFrameworkCore;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Contracts;
+using renting_room.Application.Properties;
 using renting_room.Domain.Billing;
 using renting_room.Domain.Common;
 using renting_room.Domain.Contracts;
@@ -21,9 +22,9 @@ internal static class BillingMonths
         rule.Must(v => Parse(v) is { } m && m <= clock.GetUtcNow().ToBusinessDate().AddMonths(1))
             .WithErrorCode("INVALID_BILLING_MONTH").WithMessage("Tháng thu dạng yyyy-MM, tối đa tháng sau.");
 
-    /// <summary>Kỳ của HĐ có ngày bắt đầu thuộc tháng thu (C-05: tối đa 1).</summary>
-    public static BillingPeriod? PeriodIn(Contract contract, DateOnly month) =>
-        contract.BillingPeriods(month.AddMonths(1).AddDays(-1)).FirstOrDefault(p => p.Start.Year == month.Year && p.Start.Month == month.Month);
+    /// <summary>Kỳ của HĐ có tháng thu = <paramref name="month"/> (C-05: tháng của kỳ chuẩn của khu — mỗi HĐ mỗi tháng tối đa 1 kỳ).</summary>
+    public static BillingPeriod? PeriodIn(Contract contract, DateOnly month, BillingSchedule schedule) =>
+        contract.BillingPeriods(schedule, month.AddMonths(2)).FirstOrDefault(p => p.Month == month);
 }
 
 internal static class InvoiceInputs
@@ -39,6 +40,7 @@ internal static class InvoiceInputs
         InvoiceType type = InvoiceType.Regular)
     {
         var isFinal = type == InvoiceType.Final;
+        var billing = await PropertyBilling.LoadAsync(db, contract.PropertyId, ct);
         var types = await ContractFeeRules.LoadTypesAsync(db, contract, ct);
         var meters = await db.Meters.AsNoTracking().Include(m => m.Readings).Where(m => m.RoomId == contract.RoomId).ToListAsync(ct);
         var others = db.Invoices.AsNoTracking()
@@ -57,12 +59,19 @@ internal static class InvoiceInputs
             var hasRegular = await others.AnyAsync(i => i.Type == InvoiceType.Regular && i.PeriodStart == period.Start, ct);
             final = new FinalSettlement(rentLines.Count > 0 ? rentLines.Sum() : null, hasRegular);
         }
-        return new InvoiceCalcInput(contract, period, types, meters, lastEnd, final);
+        // MT-BR-08: sản lượng điện nước các phiếu thường trước (mới nhất trước) để cảnh báo bất thường.
+        var recent = (await others.Where(i => i.Type == InvoiceType.Regular && i.PeriodStart < period.Start)
+                .SelectMany(i => i.Lines.Where(l => l.Type == InvoiceLineType.Metered && l.FeeTypeId != null)
+                    .Select(l => new { FeeTypeId = l.FeeTypeId!.Value, i.PeriodStart, l.Quantity }))
+                .ToListAsync(ct))
+            .GroupBy(x => x.FeeTypeId)
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<decimal>)g.OrderByDescending(x => x.PeriodStart).Select(x => x.Quantity).ToList());
+        return new InvoiceCalcInput(contract, period, billing.Schedule, billing.ProrationMode, types, meters, lastEnd, final, recent);
     }
 
     /// <summary>Kỳ hiện tại của phiếu theo HĐ (có thể bị cắt ngắn nếu HĐ đã bắt đầu thanh lý).</summary>
-    public static BillingPeriod? CurrentPeriod(Contract contract, Invoice invoice) =>
-        contract.BillingPeriods(invoice.PeriodStart).FirstOrDefault(p => p.Start == invoice.PeriodStart);
+    public static BillingPeriod? CurrentPeriod(Contract contract, Invoice invoice, BillingSchedule schedule) =>
+        contract.BillingPeriods(schedule, invoice.PeriodStart).FirstOrDefault(p => p.Start == invoice.PeriodStart);
 }
 
 // ============================================================ Tạo phiếu nháp hàng loạt
@@ -87,8 +96,8 @@ public sealed class GenerateInvoicesCommandValidator : AbstractValidator<Generat
 }
 
 /// <summary>
-/// BL-UC-01: tạo phiếu nháp kỳ có ngày bắt đầu thuộc tháng thu cho từng HĐ của khu — mỗi HĐ 1 transaction, khóa HĐ (C-07).
-/// Bỏ qua kèm lý do: đã có phiếu, đã lập kỳ sau, chưa lập kỳ trước (BL-BR-21 — trừ phiếu đầu tiên của HĐ), không có kỳ trong tháng.
+/// BL-UC-01: tạo phiếu nháp kỳ có tháng thu = tháng chọn cho từng HĐ của khu — mỗi HĐ 1 transaction, khóa HĐ (C-07).
+/// Bỏ qua kèm lý do: đã có phiếu, đã lập kỳ sau, chưa lập kỳ trước (BL-BR-21 — kỳ đầu = kỳ chứa "Tính tiền từ ngày"), không có kỳ trong tháng.
 /// </summary>
 public sealed class GenerateInvoicesHandler(IAppDbContext db) : IRequestHandler<GenerateInvoicesCommand, Result<GenerateInvoicesResult>>
 {
@@ -110,7 +119,7 @@ public sealed class GenerateInvoicesHandler(IAppDbContext db) : IRequestHandler<
         var candidates = await db.Contracts.AsNoTracking()
             .Where(c => roomIdList.Contains(c.RoomId)
                 && (c.Status == ContractStatus.Active || c.Status == ContractStatus.Liquidating || c.Status == ContractStatus.Ended)
-                && c.StartDate <= monthEnd && (c.ActualEndDate == null || c.ActualEndDate >= month))
+                && c.BillingStartDate <= monthEnd.AddMonths(1) && (c.ActualEndDate == null || c.ActualEndDate >= month))
             .OrderBy(c => c.ContractNo)
             .Select(c => new { c.Id, c.RoomId, c.ContractNo })
             .ToListAsync(cancellationToken);
@@ -135,10 +144,11 @@ public sealed class GenerateInvoicesHandler(IAppDbContext db) : IRequestHandler<
     private async Task<(string Result, bool HasIssues)> GenerateOneAsync(
         Guid contractId, string roomCode, DateOnly month, bool recalculateDrafts, CancellationToken ct)
     {
-        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        await using var transaction = await db.BeginTransactionAsync(ct);
         await db.LockForUpdateAsync<Contract>(contractId, ct);
         var contract = (await ContractMutation.LoadAsync(db, contractId, ct))!;
-        var period = BillingMonths.PeriodIn(contract, month);
+        var schedule = (await PropertyBilling.LoadAsync(db, contract.PropertyId, ct)).Schedule;
+        var period = BillingMonths.PeriodIn(contract, month, schedule);
         if (period is null)
             return ("NO_PERIOD_IN_MONTH", false);
         // BL-BR-02: kỳ chứa ngày trả phòng do phiếu quyết toán đảm nhận.
@@ -152,7 +162,8 @@ public sealed class GenerateInvoicesHandler(IAppDbContext db) : IRequestHandler<
             return ("EXISTS", false);
         if (existing is null && invoices.Any(i => i.PeriodStart > period.Start))
             return ("LATER_PERIOD_BILLED", false);
-        if (existing is null && invoices.Count > 0 && invoices.All(i => i.PeriodEnd != period.Start.AddDays(-1)))
+        // BL-BR-21: lập lần lượt từ kỳ đầu (kỳ chứa "Tính tiền từ ngày") — không để kỳ sau nuốt / bỏ sót kỳ trước.
+        if (existing is null && period.Start != contract.BillingStartDate && invoices.All(i => i.PeriodEnd != period.Start.AddDays(-1)))
             return ("PREVIOUS_PERIOD_NOT_BILLED", false);
 
         var calculation = InvoiceCalculator.Calculate(await InvoiceInputs.LoadAsync(db, contract, period, existing?.Id, ct));
@@ -165,7 +176,7 @@ public sealed class GenerateInvoicesHandler(IAppDbContext db) : IRequestHandler<
         else
         {
             var representative = await db.Renters.Where(r => r.Id == contract.RepresentativeRenterId).Select(r => r.FullName).FirstAsync(ct);
-            invoice = Invoice.CreateDraft(contract.PropertyId, contract.RoomId, contract.Id, period.Start, period.End,
+            invoice = Invoice.CreateDraft(contract.PropertyId, contract.RoomId, contract.Id, period,
                 roomCode, contract.ContractNo, representative, calculation);
             db.Invoices.Add(invoice);
         }
@@ -228,7 +239,7 @@ public sealed class RecalculateInvoicesHandler(IAppDbContext db) : IRequestHandl
 
     private async Task<bool> RecalculateOneAsync(Guid contractId, Guid invoiceId, bool keepManualEdits, CancellationToken ct)
     {
-        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        await using var transaction = await db.BeginTransactionAsync(ct);
         await db.LockForUpdateAsync<Contract>(contractId, ct);
         await db.LockForUpdateAsync<Invoice>(invoiceId, ct);
         var contract = (await ContractMutation.LoadAsync(db, contractId, ct))!;
@@ -236,7 +247,9 @@ public sealed class RecalculateInvoicesHandler(IAppDbContext db) : IRequestHandl
         if (invoice.Status != InvoiceStatus.Draft)
             return false;
 
-        var period = InvoiceInputs.CurrentPeriod(contract, invoice) ?? new BillingPeriod(invoice.PeriodStart, invoice.PeriodEnd);
+        var schedule = (await PropertyBilling.LoadAsync(db, contract.PropertyId, ct)).Schedule;
+        var period = InvoiceInputs.CurrentPeriod(contract, invoice, schedule)
+            ?? new BillingPeriod(invoice.PeriodStart, invoice.PeriodEnd, invoice.BillingMonth);
         var calculation = InvoiceCalculator.Calculate(await InvoiceInputs.LoadAsync(db, contract, period, invoice.Id, ct, invoice.Type));
         invoice.ApplyCalculation(calculation, keepManualEdits, period.End);
         await db.SaveChangesAsync(ct);

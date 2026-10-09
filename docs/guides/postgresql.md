@@ -65,6 +65,9 @@ dotnet run --launch-profile http
 
 Mở `http://localhost:5213/swagger` → gọi `POST /api/v1/auth/login` → bấm **Authorize**, dán `accessToken`.
 
+Lần chạy đầu ở Development còn tự tạo **dữ liệu mẫu** (tổ chức `DEMO`, chủ trọ `0900000009` / `ChuTroDemo2026`) với đủ tình huống
+nghiệp vụ để test tay — xem [demo-data.md](demo-data.md).
+
 > Ở môi trường Development, khóa ký JWT được sinh ngẫu nhiên mỗi lần chạy ⇒ **restart API thì phải đăng nhập lại**.
 > Muốn giữ phiên qua các lần restart: `dotnet user-secrets set "Jwt:SigningKey" "<chuỗi ngẫu nhiên ≥ 32 ký tự>"`.
 

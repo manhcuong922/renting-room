@@ -122,6 +122,30 @@ Cảnh báo (vẫn lưu): `ELECTRICITY_PRICE_ABOVE_THRESHOLD` — giá điện (
 Giá không sửa — **xóa rồi thêm lại**. **Giá theo phiên bản**: giá áp cho một kỳ = bản giá mới nhất có ngày hiệu lực ≤ **ngày cuối kỳ** (điện nước: cuối kỳ sử dụng), áp cả kỳ —
 không chia nửa kỳ giá cũ / nửa kỳ giá mới. Tăng giá thì báo người thuê trước và đặt ngày hiệu lực từ kỳ muốn áp.
 
+## Phòng đang dùng dịch vụ (thêm / bớt hàng loạt)
+
+`GET /fee-types/{id}/usage` → mọi phòng (chưa ngừng dùng) của khu:
+
+```json
+[ { "roomId": "…", "roomCode": "201", "floor": "2", "contractId": "…", "contractNo": "HD2026-0003", "representativeName": "Lê Văn A",
+    "isUsing": true, "quantity": 1, "unitPriceOverride": null, "effectiveFrom": "2026-11-01" },
+  { "roomId": "…", "roomCode": "203", "floor": "2", "contractId": null, "contractNo": null, "representativeName": null,
+    "isUsing": false, "quantity": null, "unitPriceOverride": null, "effectiveFrom": null } ]
+```
+
+- `contractId: null` = phòng trống — không chọn được. `isUsing` = đang dùng hôm nay hoặc đã hẹn từ kỳ sau.
+- UI: chọn dịch vụ → bảng phòng có checkbox; nút **Thêm cho phòng đã chọn** / **Bớt**.
+
+`POST /fee-types/{id}/usage` `{ "action": "Add", "contractIds": ["…", "…"], "quantity": null, "unitPriceOverride": null }` → 200:
+
+```json
+[ { "contractId": "…", "succeeded": true, "errorCode": null, "errorMessage": null },
+  { "contractId": "…", "succeeded": false, "errorCode": "CONTRACT_NOT_ACTIVE", "errorMessage": "…" } ]
+```
+
+- Mỗi HĐ áp từ **kỳ chưa lập phiếu đầu tiên** của nó, lưu riêng — HĐ lỗi không làm hỏng HĐ khác; hiện kết quả từng phòng.
+- `action`: `Add` (thêm / đổi số gói, giá riêng) · `Remove` (thôi tính). ≤ 500 HĐ mỗi lần.
+
 ## Ngừng dùng
 
 `POST /fee-types/{id}/archive` → 204. Còn hợp đồng nháp / hiệu lực / thanh lý đang gắn khoản → 422 `FEE_IN_USE` (gỡ khỏi các

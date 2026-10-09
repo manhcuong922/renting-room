@@ -72,7 +72,7 @@ public sealed class RecordPaymentHandler(IAppDbContext db, IDocumentNumberGenera
 {
     public async ValueTask<Result<PaymentDto>> Handle(RecordPaymentCommand request, CancellationToken cancellationToken)
     {
-        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        await using var transaction = await db.BeginTransactionAsync(cancellationToken);
         await db.LockForUpdateAsync<Contract>(request.ContractId, cancellationToken);
         var contract = await db.Contracts.AsNoTracking().FirstOrDefaultAsync(c => c.Id == request.ContractId, cancellationToken);
         if (contract is null)
@@ -194,7 +194,7 @@ public sealed class ReversePaymentHandler(IAppDbContext db, TimeProvider clock) 
         if (contractId is null)
             return PaymentErrors.NotFound;
 
-        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        await using var transaction = await db.BeginTransactionAsync(cancellationToken);
         await db.LockForUpdateAsync<Contract>(contractId.Value, cancellationToken);
         if (await db.Contracts.Where(c => c.Id == contractId).Select(c => c.Status).FirstAsync(cancellationToken) == ContractStatus.Ended)
             return PaymentErrors.ContractNotBillable;

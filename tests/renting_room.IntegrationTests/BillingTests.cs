@@ -19,7 +19,7 @@ public sealed class BillingTests(ApiFactory factory)
         var token = owner.Tokens.AccessToken;
         var today = TestData.Today(factory);
         var start = new DateOnly(today.Year, today.Month, 1).AddMonths(-2);
-        var propertyId = await _client.CreatePropertyAsync(token);
+        var propertyId = await _client.CreatePropertyAsync(token, anchorDay: 1, chargeMode: chargeMode);
         var roomId = await _client.CreateRoomAsync(token, propertyId);
         var electricity = await _client.FeeIdAsync(token, propertyId, "Điện");
         await _client.PostJsonAsync($"/api/v1/fee-types/{electricity}/prices", new { effectiveFrom = start.AddDays(-30), unitPrice = 3500 }, token);
@@ -37,7 +37,6 @@ public sealed class BillingTests(ApiFactory factory)
             contract = new
             {
                 representativeRenterId = renter, startDate = start, monthlyRent = 3_000_000, depositAmount = 0,
-                billing = new { anchorDay = 1, chargeMode, prorationMode = "Daily", paymentDueDays = 5 },
                 occupants = new[] { new { renterId = renter } },
                 fees = new[] { new { feeTypeId = water } }
             }
@@ -159,7 +158,7 @@ public sealed class BillingTests(ApiFactory factory)
     }
 
     [Fact]
-    public async Task Prepaid_FirstInvoiceAnyPeriod_MeterReplacedMidPeriod_NewPriceForWholePeriod()
+    public async Task Prepaid_SecondInvoice_MeterReplacedMidPeriod_NewPriceForWholePeriod()
     {
         var s = await ArrangeAsync("Prepaid");
         var previousMonth = s.Start.AddMonths(1);
@@ -171,7 +170,9 @@ public sealed class BillingTests(ApiFactory factory)
         await _client.PostJsonAsync($"/api/v1/fee-types/{s.ElectricityId}/prices", new { effectiveFrom = s.Start.AddDays(15), unitPrice = 4000 }, s.Token);
         (await SaveReadingAsync(s, s.Start, 30, newMeter)).StatusCode.Should().Be(HttpStatusCode.OK);
 
-        // Phiếu đầu tiên lập ở tháng thứ 2 (HĐ nhập từ trước) — Prepaid ⇒ điện nước của kỳ trước.
+        // BL-BR-21: lập lần lượt — chưa lập kỳ đầu thì tháng 2 bị bỏ qua. Prepaid ⇒ phiếu tháng 2 thu điện nước của kỳ đầu.
+        (await GenerateAsync(s, previousMonth)).GetProperty("skipped")[0].GetProperty("reason").GetString().Should().Be("PREVIOUS_PERIOD_NOT_BILLED");
+        (await GenerateAsync(s, s.Start)).GetProperty("created").GetInt32().Should().Be(1);
         (await GenerateAsync(s, previousMonth)).GetProperty("created").GetInt32().Should().Be(1);
         var invoice = await InvoiceForAsync(s, previousMonth);
         var metered = invoice.GetProperty("lines").EnumerateArray().Single(l => l.GetProperty("type").GetString() == "Metered");
@@ -180,7 +181,7 @@ public sealed class BillingTests(ApiFactory factory)
         metered.GetProperty("segments").EnumerateArray().Should().HaveCount(2);
 
         var skipped = await GenerateAsync(s, s.Start);
-        skipped.GetProperty("skipped")[0].GetProperty("reason").GetString().Should().Be("LATER_PERIOD_BILLED");
+        skipped.GetProperty("skipped")[0].GetProperty("reason").GetString().Should().Be("EXISTS");
 
         // CT-BR-11: còn phiếu kỳ sau ngày trả phòng ⇒ không bắt đầu thanh lý.
         (await (await _client.PostJsonAsync($"/api/v1/contracts/{s.ContractId}/liquidation/start",
@@ -280,7 +281,11 @@ public sealed class BillingTests(ApiFactory factory)
             new { refundedOn = today, method = "Cash", note = "Trả tiền mặt khi bàn giao" }, s.Token);
         confirmed.StatusCode.Should().Be(HttpStatusCode.OK, await confirmed.Content.ReadAsStringAsync());
         (await confirmed.ReadAsync<JsonElement>()).GetProperty("summary").GetProperty("paymentStatus").GetString().Should().Be("Refunded");
-        (await _client.PostJsonAsync($"/api/v1/contracts/{s.ContractId}/liquidation/complete", new { settlement = (string?)null }, s.Token))
+
+        // Phiếu tháng 1, 2 chưa thu ⇒ còn nợ; phiếu hoàn trả không bù trừ nợ (E2 để sau) ⇒ chọn "Đã thu toàn bộ".
+        (await (await _client.PostJsonAsync($"/api/v1/contracts/{s.ContractId}/liquidation/complete", new { settlement = (string?)null }, s.Token))
+            .ReadProblemCodeAsync()).Should().Be("CONTRACT_HAS_DEBT");
+        (await _client.PostJsonAsync($"/api/v1/contracts/{s.ContractId}/liquidation/complete", new { settlement = "CollectAll" }, s.Token))
             .StatusCode.Should().Be(HttpStatusCode.NoContent);
     }
 

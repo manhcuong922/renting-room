@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text.Json;
 using Npgsql;
 using renting_room.IntegrationTests.Infrastructure;
 
@@ -82,7 +83,7 @@ public sealed class ContractTests(ApiFactory factory)
     }
 
     [Fact]
-    public async Task Activate_RequiresLessorInfo()
+    public async Task Activate_WithoutLessorInfo_Succeeds_WithWarning()
     {
         var owner = await _client.CreateActiveOwnerAsync();
         var token = owner.Tokens.AccessToken;
@@ -93,11 +94,16 @@ public sealed class ContractTests(ApiFactory factory)
 
         var activate = await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/activate", null, token);
 
-        (await activate.ReadProblemCodeAsync()).Should().Be("LESSOR_INFO_INCOMPLETE");
+        activate.StatusCode.Should().Be(HttpStatusCode.NoContent, await activate.Content.ReadAsStringAsync());
+        (await WarningCodesAsync(contractId, token)).Should().Contain(["LESSOR_INFO_INCOMPLETE", "SIGNED_DOCUMENT_MISSING"]);
     }
 
+    private async Task<List<string?>> WarningCodesAsync(Guid contractId, string token) =>
+        (await (await _client.GetAsync($"/api/v1/contracts/{contractId}", token)).ReadAsync<JsonElement>())
+            .GetProperty("warnings").EnumerateArray().Select(w => w.GetProperty("code").GetString()).ToList();
+
     [Fact]
-    public async Task Activate_RejectsUnderageRepresentative()
+    public async Task Activate_UnderageRepresentative_Succeeds_WithWarning()
     {
         var owner = await _client.CreateActiveOwnerAsync();
         var token = owner.Tokens.AccessToken;
@@ -107,7 +113,8 @@ public sealed class ContractTests(ApiFactory factory)
 
         var activate = await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/activate", null, token);
 
-        (await activate.ReadProblemCodeAsync()).Should().Be("REPRESENTATIVE_UNDERAGE");
+        activate.StatusCode.Should().Be(HttpStatusCode.NoContent, "HĐ trong phần mềm là hồ sơ thuê; bản giấy cần người giám hộ ký thay");
+        (await WarningCodesAsync(contractId, token)).Should().Contain("REPRESENTATIVE_UNDERAGE");
     }
 
     [Fact]
@@ -169,7 +176,7 @@ public sealed class ContractTests(ApiFactory factory)
     }
 
     [Fact]
-    public async Task Occupants_CapacityAndDuplicateRules()
+    public async Task Occupants_NoCapacityLimit_DuplicateIsRejected()
     {
         var owner = await _client.CreateActiveOwnerAsync();
         var token = owner.Tokens.AccessToken;
@@ -180,13 +187,10 @@ public sealed class ContractTests(ApiFactory factory)
 
         (await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/occupants", new { renterId = second, moveInDate = today, relationshipType = "CoTenant" }, token))
             .StatusCode.Should().Be(HttpStatusCode.NoContent);
-        (await (await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/occupants", new { renterId = third, moveInDate = today, relationshipType = "CoTenant" }, token))
-            .ReadProblemCodeAsync()).Should().Be("ROOM_CAPACITY_EXCEEDED");
+        (await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/occupants", new { renterId = third, moveInDate = today, relationshipType = "CoTenant" }, token))
+            .StatusCode.Should().Be(HttpStatusCode.NoContent, "phòng loại 2 người vẫn thêm người thứ 3 (PR-BR-06)");
         (await (await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/occupants", new { renterId, moveInDate = today }, token))
             .ReadProblemCodeAsync()).Should().Be("OCCUPANCY_OVERLAP");
-        (await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/occupants",
-                new { renterId = third, moveInDate = today, relationshipType = "CoTenant", overrideCapacity = true }, token))
-            .StatusCode.Should().Be(HttpStatusCode.NoContent);
     }
 
     [Fact]
@@ -211,6 +215,31 @@ public sealed class ContractTests(ApiFactory factory)
     }
 
     [Fact]
+    public async Task ApplyListedRent_ReplacesRentOfFirstUnbilledPeriod_EmptyRoomIsRejected()
+    {
+        var owner = await _client.CreateActiveOwnerAsync();
+        var token = owner.Tokens.AccessToken;
+        var (propertyId, roomId, _, contractId) = await _client.CreateActiveContractAsync(token, TestData.Today(factory));
+        await using (var connection = new NpgsqlConnection(factory.ConnectionString))
+        {
+            await connection.OpenAsync();
+            await using var command = new NpgsqlCommand("UPDATE rooms SET listed_rent = 3900000 WHERE id = @id", connection);
+            command.Parameters.AddWithValue("id", roomId);
+            await command.ExecuteNonQueryAsync();
+        }
+
+        var apply = await _client.PostJsonAsync($"/api/v1/rooms/{roomId}/apply-listed-rent", null, token);
+
+        apply.StatusCode.Should().Be(HttpStatusCode.NoContent, await apply.Content.ReadAsStringAsync());
+        var contract = await GetAsync(token, contractId);
+        contract.CurrentRent.Should().Be(3_900_000);
+        contract.RentTerms.Should().ContainSingle("kỳ đầu chưa lập phiếu ⇒ thay giá, không thêm dòng");
+        var emptyRoom = await _client.CreateRoomAsync(token, propertyId, code: "TRONG");
+        (await (await _client.PostJsonAsync($"/api/v1/rooms/{emptyRoom}/apply-listed-rent", null, token))
+            .ReadProblemCodeAsync()).Should().Be("CONTRACT_NOT_ACTIVE");
+    }
+
+    [Fact]
     public async Task Notice_ShorterThan30Days_ReturnsWarning()
     {
         var owner = await _client.CreateActiveOwnerAsync();
@@ -227,16 +256,21 @@ public sealed class ContractTests(ApiFactory factory)
     }
 
     [Fact]
-    public async Task LessorUnilateralTermination_RequiresGround()
+    public async Task LessorUnilateralTermination_GroundIsOptional_SignedDocumentCanBeMarked()
     {
         var owner = await _client.CreateActiveOwnerAsync();
         var token = owner.Tokens.AccessToken;
         var today = TestData.Today(factory);
         var (_, _, _, contractId) = await _client.CreateActiveContractAsync(token, today);
 
-        var missing = await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/liquidation/start",
-            new { actualEndDate = today.AddDays(30), reason = "LessorUnilateral" }, token);
-        (await missing.ReadProblemCodeAsync()).Should().Be("TERMINATION_GROUND_REQUIRED");
+        (await _client.PutJsonAsync($"/api/v1/contracts/{contractId}/signed-document",
+            new { hasSignedDocument = true, note = "Bản giấy cất tủ hồ sơ" }, token)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+        (await WarningCodesAsync(contractId, token)).Should().NotContain("SIGNED_DOCUMENT_MISSING");
+        var list = await (await _client.GetAsync($"/api/v1/contracts?missingSignedDocument=true", token)).ReadAsync<JsonElement>();
+        list.GetProperty("items").EnumerateArray().Should().NotContain(c => c.GetProperty("id").GetGuid() == contractId);
+
+        (await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/liquidation/start",
+            new { actualEndDate = today.AddDays(30), reason = "LessorUnilateral" }, token)).StatusCode.Should().Be(HttpStatusCode.NoContent);
     }
 
     [Fact]

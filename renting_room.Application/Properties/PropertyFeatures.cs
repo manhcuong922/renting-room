@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Common.Models;
 using renting_room.Application.Common.Validation;
+using renting_room.Domain.Billing;
 using renting_room.Domain.Common;
 using renting_room.Domain.Contracts;
 using renting_room.Domain.Fees;
@@ -28,15 +29,17 @@ internal static class PropertyRules
         });
     }
 
-    public static void BillingRules<T>(this AbstractValidator<T> v, Func<T, BillingDefaultsInput?> billing)
+    /// <summary>PR-BR-09: ngày chốt 1–28 (tháng nào cũng có ngày chốt).</summary>
+    public static void BillingRules<T>(this AbstractValidator<T> v, Func<T, PropertyBillingInput?> billing)
     {
         v.When(x => billing(x) is not null, () =>
         {
-            v.RuleFor(x => billing(x)!.AnchorDay).InclusiveBetween(1, 31).OverridePropertyName("billingDefaults.anchorDay").WithErrorCode("OUT_OF_RANGE");
-            v.RuleFor(x => billing(x)!.PaymentDueDays).InclusiveBetween(0, 60).OverridePropertyName("billingDefaults.paymentDueDays").WithErrorCode("OUT_OF_RANGE");
-            v.RuleFor(x => billing(x)!.NoticeDays).InclusiveBetween(0, 180).OverridePropertyName("billingDefaults.noticeDays").WithErrorCode("OUT_OF_RANGE");
-            v.RuleFor(x => billing(x)!.ChargeMode).IsInEnum().OverridePropertyName("billingDefaults.chargeMode");
-            v.RuleFor(x => billing(x)!.ProrationMode).IsInEnum().OverridePropertyName("billingDefaults.prorationMode");
+            v.RuleFor(x => billing(x)!.AnchorDay).InclusiveBetween(BillingSchedule.MinAnchorDay, BillingSchedule.MaxAnchorDay)
+                .OverridePropertyName("billing.anchorDay").WithErrorCode("OUT_OF_RANGE");
+            v.RuleFor(x => billing(x)!.PaymentDueDays).InclusiveBetween(0, 60).OverridePropertyName("billing.paymentDueDays").WithErrorCode("OUT_OF_RANGE");
+            v.RuleFor(x => billing(x)!.NoticeDays).InclusiveBetween(0, 180).OverridePropertyName("billing.noticeDays").WithErrorCode("OUT_OF_RANGE");
+            v.RuleFor(x => billing(x)!.ChargeMode).IsInEnum().OverridePropertyName("billing.chargeMode");
+            v.RuleFor(x => billing(x)!.ProrationMode).IsInEnum().OverridePropertyName("billing.prorationMode");
         });
     }
 
@@ -60,7 +63,7 @@ public sealed record CreatePropertyCommand(
     string? Description,
     string? EvnCustomerCode,
     LandParcelInput? Land,
-    BillingDefaultsInput? BillingDefaults) : IRequest<Result<Guid>>;
+    PropertyBillingInput? Billing) : IRequest<Result<Guid>>;
 
 public sealed class CreatePropertyCommandValidator : AbstractValidator<CreatePropertyCommand>
 {
@@ -71,7 +74,7 @@ public sealed class CreatePropertyCommandValidator : AbstractValidator<CreatePro
         RuleFor(x => x.Description).OptionalText(2000);
         RuleFor(x => x.EvnCustomerCode).OptionalText(20);
         this.AddressRules(x => x.Address);
-        this.BillingRules(x => x.BillingDefaults);
+        this.BillingRules(x => x.Billing);
         this.LandRules(x => x.Land);
     }
 }
@@ -85,7 +88,7 @@ public sealed class CreatePropertyHandler(IAppDbContext db) : IRequestHandler<Cr
             return PropertyErrors.PropertyCodeTaken;
 
         var property = Property.Create(
-            code, request.Name, request.Address.ToDomain(), request.BillingDefaults?.ToDomain() ?? BillingDefaults.Standard);
+            code, request.Name, request.Address.ToDomain(), request.Billing?.ToDomain() ?? BillingSettings.Standard);
         property.UpdateInfo(request.Name, request.Address.ToDomain(), request.Description, request.EvnCustomerCode, request.Land.ToDomain());
 
         db.Properties.Add(property);
@@ -103,7 +106,6 @@ public sealed record UpdatePropertyCommand(
     string? Description,
     string? EvnCustomerCode,
     LandParcelInput? Land,
-    BillingDefaultsInput BillingDefaults,
     uint Version) : IRequest<Result<PropertyDetailDto>>;
 
 public sealed class UpdatePropertyCommandValidator : AbstractValidator<UpdatePropertyCommand>
@@ -113,14 +115,12 @@ public sealed class UpdatePropertyCommandValidator : AbstractValidator<UpdatePro
         RuleFor(x => x.Name).RequiredText(200, "Tên khu trọ");
         RuleFor(x => x.Description).OptionalText(2000);
         RuleFor(x => x.EvnCustomerCode).OptionalText(20);
-        RuleFor(x => x.BillingDefaults).NotNull().WithErrorCode("REQUIRED");
         this.AddressRules(x => x.Address);
-        this.BillingRules(x => x.BillingDefaults);
         this.LandRules(x => x.Land);
     }
 }
 
-/// <summary>PR-BR-09: đổi cài đặt thu mặc định không ảnh hưởng hợp đồng đã tạo (hợp đồng giữ bản chụp).</summary>
+/// <summary>Sửa thông tin khu. Cài đặt kỳ thu đổi qua <see cref="UpdatePropertyBillingCommand"/> (K4).</summary>
 public sealed class UpdatePropertyHandler(IAppDbContext db, TimeProvider clock) : IRequestHandler<UpdatePropertyCommand, Result<PropertyDetailDto>>
 {
     public async ValueTask<Result<PropertyDetailDto>> Handle(UpdatePropertyCommand request, CancellationToken cancellationToken)
@@ -131,10 +131,9 @@ public sealed class UpdatePropertyHandler(IAppDbContext db, TimeProvider clock) 
 
         db.SetExpectedVersion(property, request.Version);
         property.UpdateInfo(request.Name, request.Address.ToDomain(), request.Description, request.EvnCustomerCode, request.Land.ToDomain());
-        property.UpdateBillingDefaults(request.BillingDefaults.ToDomain());
         await db.SaveChangesAsync(cancellationToken);
 
-        return property.ToDetail(clock.GetUtcNow().ToBusinessDate());
+        return await property.ToDetailAsync(db, clock.GetUtcNow().ToBusinessDate(), cancellationToken);
     }
 }
 
@@ -147,7 +146,7 @@ public sealed class ArchivePropertyHandler(IAppDbContext db, TimeProvider clock)
 {
     public async ValueTask<Result> Handle(ArchivePropertyCommand request, CancellationToken cancellationToken)
     {
-        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        await using var transaction = await db.BeginTransactionAsync(cancellationToken);
         await db.LockForUpdateAsync<Property>(request.Id, cancellationToken);
 
         var property = await db.Properties.FirstOrDefaultAsync(p => p.Id == request.Id, cancellationToken);
@@ -243,9 +242,12 @@ public sealed class ListPropertiesHandler(IAppDbContext db, TimeProvider clock)
             })
             .ToListAsync(cancellationToken);
 
+        // PR-BR-17: khu không khai bên cho thuê riêng ⇒ xét thông tin chủ trọ.
+        var organizationLessorComplete = rows.Count > 0
+            && (await LessorSource.OrganizationLessorAsync(db, rows[0].Property.OrganizationId, cancellationToken))?.IsComplete(today) == true;
         var items = rows.Select(r => new PropertySummaryDto(
                 r.Property.Id, r.Property.Code, r.Property.Name, r.Property.Address.FullText, r.RoomCount, r.OccupiedRoomCount,
-                r.Property.Lessor?.IsComplete(today) == true, r.Property.IsArchived))
+                r.Property.Lessor?.IsComplete(today) ?? organizationLessorComplete, r.Property.IsArchived))
             .ToList();
 
         return new PagedResult<PropertySummaryDto>(items, request.Page, request.PageSize, total);
@@ -259,6 +261,8 @@ public sealed class GetPropertyHandler(IAppDbContext db, TimeProvider clock) : I
     public async ValueTask<Result<PropertyDetailDto>> Handle(GetPropertyQuery request, CancellationToken cancellationToken)
     {
         var property = await db.Properties.AsNoTracking().FirstOrDefaultAsync(p => p.Id == request.Id, cancellationToken);
-        return property is null ? PropertyErrors.PropertyNotFound : property.ToDetail(clock.GetUtcNow().ToBusinessDate());
+        return property is null
+            ? PropertyErrors.PropertyNotFound
+            : await property.ToDetailAsync(db, clock.GetUtcNow().ToBusinessDate(), cancellationToken);
     }
 }

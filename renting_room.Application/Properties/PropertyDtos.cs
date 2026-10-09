@@ -1,4 +1,6 @@
+using renting_room.Application.Common.Interfaces;
 using renting_room.Domain.Common;
+using renting_room.Domain.Identity;
 using renting_room.Domain.Properties;
 
 namespace renting_room.Application.Properties;
@@ -7,7 +9,16 @@ public sealed record AddressInput(string StreetAddress, string CommuneName, stri
 
 public sealed record LandParcelInput(string? ParcelNo, string? MapSheetNo, string? OwnershipCertificateNo);
 
-public sealed record BillingDefaultsInput(int AnchorDay, ChargeMode ChargeMode, int PaymentDueDays, ProrationMode ProrationMode, int NoticeDays);
+/// <summary>Cài đặt kỳ thu của khu (PR-BR-09): ngày chốt 1–28, thu trước / thu sau, hạn thanh toán, tính kỳ lẻ, số ngày báo trước gợi ý.</summary>
+public sealed record PropertyBillingInput(int AnchorDay, ChargeMode ChargeMode, int PaymentDueDays, ProrationMode ProrationMode, int NoticeDays);
+
+/// <summary>Một lần đổi ngày chốt / cách thu khi khu đã có phiếu (K4): kỳ chuyển tiếp [EffectiveFrom, TransitionEnd].</summary>
+public sealed record BillingChangeDto(
+    DateOnly EffectiveFrom, DateOnly TransitionEnd, int AnchorDay, ChargeMode ChargeMode, int DeviationDays, int AdjustDays);
+
+public sealed record PropertyBillingDto(
+    int AnchorDay, ChargeMode ChargeMode, int PaymentDueDays, ProrationMode ProrationMode, int NoticeDays,
+    IReadOnlyList<BillingChangeDto> Changes);
 
 public sealed record PropertySummaryDto(
     Guid Id,
@@ -47,17 +58,25 @@ public sealed record PropertyDetailDto(
     string? Description,
     string? EvnCustomerCode,
     LandParcelInput Land,
-    BillingDefaultsInput BillingDefaults,
+    PropertyBillingDto Billing,
     LessorDto? Lessor,
     BankAccount? BankAccount,
     string? HouseRulesText,
     bool IsArchived,
     DateTimeOffset CreatedAt,
-    string Version);
+    string Version,
+    bool LessorInherited = false);
 
 internal static class PropertyMapping
 {
-    public static PropertyDetailDto ToDetail(this Property p, DateOnly today) => new(
+    /// <summary><c>lessor</c> = bên cho thuê hiệu lực (PR-BR-17): riêng của khu, không có thì của chủ trọ (<c>LessorInherited</c>).</summary>
+    public static async Task<PropertyDetailDto> ToDetailAsync(this Property p, IAppDbContext db, DateOnly today, CancellationToken ct)
+    {
+        var (lessor, inherited) = await LessorSource.EffectiveAsync(db, p, ct);
+        return p.ToDetail(today, lessor, inherited);
+    }
+
+    private static PropertyDetailDto ToDetail(this Property p, DateOnly today, LessorDetails? lessor, bool inherited) => new(
         p.Id,
         p.Code,
         p.Name,
@@ -66,19 +85,23 @@ internal static class PropertyMapping
         p.Description,
         p.EvnCustomerCode,
         new LandParcelInput(p.LandParcelNo, p.LandMapSheetNo, p.OwnershipCertificateNo),
-        new BillingDefaultsInput(p.DefaultBillingAnchorDay, p.DefaultChargeMode, p.DefaultPaymentDueDays, p.DefaultProrationMode, p.DefaultNoticeDays),
-        p.Lessor is { } l
-            ? new LessorDto(
-                l.Type, l.Name, l.Address, l.Phone, l.Email, l.IdType,
-                l.IdNumberLast4 is null ? null : $"********{l.IdNumberLast4}",
-                l.IdIssueDate, l.IdIssuePlace, l.DateOfBirth, l.TaxCode, l.RepresentativeName, l.RepresentativeTitle,
-                l.AuthorizationDocNo, l.AuthorizationDocDate, l.IsComplete(today))
-            : null,
+        p.ToBillingDto(),
+        lessor?.ToDto(today),
         p.BankAccount,
         p.HouseRulesText,
         p.IsArchived,
         p.CreatedAt,
-        p.Version.ToString());
+        p.Version.ToString(),
+        lessor is not null && inherited);
+
+    public static LessorDto ToDto(this LessorDetails l, DateOnly today) => new(
+        l.Type, l.Name, l.Address, l.Phone, l.Email, l.IdType,
+        l.IdNumberLast4 is null ? null : $"********{l.IdNumberLast4}",
+        l.IdIssueDate, l.IdIssuePlace, l.DateOfBirth, l.TaxCode, l.RepresentativeName, l.RepresentativeTitle,
+        l.AuthorizationDocNo, l.AuthorizationDocDate, l.IsComplete(today));
+
+    public static OrganizationLessorDto ToLessorDto(this Organization o, DateOnly today) =>
+        new(o.DefaultLessor?.ToDto(today), new LessorPrefillDto(o.ContactName ?? o.Name, o.ContactPhone, o.Address));
 
     public static PropertyAddress ToDomain(this AddressInput a) =>
         new(a.StreetAddress, a.CommuneName, a.ProvinceName, a.CommuneCode, a.ProvinceCode);
@@ -86,6 +109,17 @@ internal static class PropertyMapping
     public static LandParcel ToDomain(this LandParcelInput? land) =>
         new(land?.ParcelNo, land?.MapSheetNo, land?.OwnershipCertificateNo);
 
-    public static BillingDefaults ToDomain(this BillingDefaultsInput b) =>
+    public static BillingSettings ToDomain(this PropertyBillingInput b) =>
         new(b.AnchorDay, b.ChargeMode, b.PaymentDueDays, b.ProrationMode, b.NoticeDays);
+
+    public static PropertyBillingDto ToBillingDto(this Property p)
+    {
+        var schedule = p.BillingSchedule;
+        var changes = schedule.Entries.Skip(1).Select(e =>
+        {
+            var transition = schedule.StandardPeriodContaining(e.EffectiveFrom);
+            return new BillingChangeDto(e.EffectiveFrom, transition.End, e.AnchorDay, e.ChargeMode, transition.DeviationDays, e.AdjustDays);
+        }).ToList();
+        return new PropertyBillingDto(p.BillingAnchorDay, p.ChargeMode, p.PaymentDueDays, p.ProrationMode, p.DefaultNoticeDays, changes);
+    }
 }

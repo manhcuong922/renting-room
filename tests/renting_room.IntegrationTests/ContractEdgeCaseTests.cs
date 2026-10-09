@@ -24,14 +24,18 @@ public sealed class ContractEdgeCaseTests(ApiFactory factory)
     }
 
     [Fact]
-    public async Task FamilyLargerThanRoomCapacity_CanBeActivated_WithExplicitOverride()
+    public async Task FamilyLargerThanRoomType_IsActivated_ChildUnder14NeedsNoIdDocument()
     {
         var owner = await _client.CreateActiveOwnerAsync();
         var token = owner.Tokens.AccessToken;
         var roomId = await _client.CreateRoomAsync(token, await _client.CreatePropertyAsync(token), maxOccupants: 2);
         var father = await RenterAsync(token, "Bố", "1985-05-01", "Male");
         var mother = await RenterAsync(token, "Mẹ", "1988-03-02", "Female");
-        var baby = await RenterAsync(token, "Con", "2025-01-01", "Female");
+        // RT-BR-01: dưới 14 tuổi được để trống giấy tờ; từ 14 tuổi bắt buộc.
+        (await _client.PostJsonAsync("/api/v1/renters", new { fullName = "Con lớn", dateOfBirth = TestData.Today(factory).AddYears(-15), gender = "Male" }, token))
+            .StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var baby = await (await _client.PostJsonAsync("/api/v1/renters", new { fullName = "Con", dateOfBirth = "2025-01-01", gender = "Female" }, token))
+            .ReadIdAsync();
         var contractId = await (await _client.PostJsonAsync("/api/v1/contracts", new
         {
             roomId,
@@ -42,10 +46,15 @@ public sealed class ContractEdgeCaseTests(ApiFactory factory)
             }
         }, token)).ReadIdAsync();
 
-        (await (await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/activate", null, token))
-            .ReadProblemCodeAsync()).Should().Be("ROOM_CAPACITY_EXCEEDED");
-        (await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/activate", new { overrideCapacity = true }, token))
-            .StatusCode.Should().Be(HttpStatusCode.NoContent);
+        (await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/activate", null, token))
+            .StatusCode.Should().Be(HttpStatusCode.NoContent, "phòng loại 2 người vẫn cho gia đình 3 người ở (PR-BR-06)");
+
+        // Người không có giấy tờ không được đứng tên HĐ.
+        (await (await _client.PostJsonAsync("/api/v1/contracts", new
+        {
+            roomId = await _client.CreateRoomAsync(token, await _client.CreatePropertyAsync(token)),
+            contract = new { representativeRenterId = baby, startDate = TestData.Today(factory), monthlyRent = 3_000_000, occupants = new[] { new { renterId = baby } } }
+        }, token)).ReadProblemCodeAsync()).Should().Be("REPRESENTATIVE_ID_REQUIRED");
     }
 
     [Fact]
@@ -86,7 +95,8 @@ public sealed class ContractEdgeCaseTests(ApiFactory factory)
         var owner = await _client.CreateActiveOwnerAsync();
         var token = owner.Tokens.AccessToken;
         var today = TestData.Today(factory);
-        var (_, roomId, _, contractId) = await _client.CreateActiveContractAsync(token, today.AddDays(-30));
+        var start = TestData.StartWithinOnePeriod(today, 20);
+        var (_, roomId, _, contractId) = await _client.CreateActiveContractAsync(token, start, anchorDay: start.Day);
         await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/liquidation/start", new { actualEndDate = today, reason = "MutualAgreement" }, token);
         await _client.SettleAndCompleteAsync(token, contractId);
 

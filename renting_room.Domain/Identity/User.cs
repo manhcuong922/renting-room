@@ -82,7 +82,7 @@ public sealed class User : AuditableEntity
 
         return new User
         {
-            Id = Guid.NewGuid(),
+            Id = Guid.CreateVersion7(),
             OrganizationId = organizationId,
             Role = role,
             FullName = fullName.Trim(),

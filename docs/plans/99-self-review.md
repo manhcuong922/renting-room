@@ -68,11 +68,11 @@
 
 | # | Vấn đề | Kịch bản lỗi | Xử lý | Nơi sửa |
 |---|--------|--------------|-------|---------|
-| R-55 ✅ | Không lưu **bên cho thuê** ở đâu | Hợp đồng in ra thiếu nội dung bắt buộc (Điều 163 khoản 1), không dùng làm giấy tờ tạm trú được | Thông tin bên cho thuê theo khu + snapshot khi kích hoạt | PR-BR-12, CT-BR-19 |
+| R-55 ✅ | Không lưu **bên cho thuê** ở đâu | Hợp đồng in ra thiếu nội dung bắt buộc (Điều 163 khoản 1), không dùng làm giấy tờ tạm trú được | Thông tin bên cho thuê theo khu + snapshot khi kích hoạt; thiếu ⇒ cảnh báo (09/10/2026) | PR-BR-12, CT-BR-19 |
 | R-56 ✅ | Thiếu **thời điểm có hiệu lực** | Tranh chấp ngày bắt đầu nghĩa vụ (nhất là cọc trước ngày bàn giao) | `effective_date` mặc định = ngày ký (Điều 164) | CT-BR-20 |
-| R-57 ✅ | Người dưới 18 tuổi đứng tên ký | Hợp đồng có thể vô hiệu (BLDS Điều 117) | Chặn khi kích hoạt | CT-BR-18 |
+| R-57 ✅ | Người dưới 18 tuổi đứng tên ký | Hợp đồng có thể vô hiệu (BLDS Điều 117) | Cảnh báo (09/10/2026 — trước chặn): bản giấy cần người giám hộ ký | CT-BR-18 |
 | R-58 ✅ | Đơn giá điện nước chỉ nằm ở danh mục khu | Chủ trọ đổi giá → không chứng minh được giá đã thỏa thuận lúc ký | `utility_price_snapshot` | CT-BR-19 |
-| R-59 ✅ | Kết thúc hợp đồng không ghi lý do | Chủ trọ đơn phương chấm dứt ngoài các trường hợp luật cho phép mà không được cảnh báo | `termination_reason` + `termination_ground` theo Điều 172 | CT-BR-21 |
+| R-59 ✅ | Kết thúc hợp đồng không ghi lý do | Chủ trọ đơn phương chấm dứt ngoài các trường hợp luật cho phép mà không được cảnh báo | `termination_reason` + `termination_ground` theo Điều 172 (ground tùy chọn từ 09/10/2026) | CT-BR-21 |
 | R-60 ✅ | Không có biên bản tài sản bàn giao | Tranh chấp trừ cọc khi trả phòng | `contract_assets` + gợi ý trừ cọc có xác nhận | CT-BR-23 |
 | R-61 ✅ | Mật khẩu tạm không hết hạn | Mật khẩu tạm bị lộ dùng được mãi | Hạn 72h | ID-BR-20 |
 
@@ -101,8 +101,8 @@
 | R-75 ✅ | HĐ thực tế có tiêu đề, điều khoản theo mục, thỏa thuận điện (giá nhà nước, trả cuối tháng), nước (đ/người, trả đầu tháng), wifi — DB không có chỗ chứa | Mất nội dung khi nhập HĐ giấy; mỗi chủ trọ một kiểu HĐ | Mẫu hợp đồng + trường tùy biến chép vào HĐ | CT-BR-25, 26 |
 | R-76 ✅ | HĐ giấy thiếu điều khoản giải quyết tranh chấp, thời điểm & hiện trạng bàn giao (Luật Nhà ở 2023 Điều 163) | HĐ in ra thiếu nội dung bắt buộc | Mẫu gợi ý có sẵn các mục này | Mẫu gợi ý |
 | R-77 ✅ | HĐ không cọc vẫn nhận cọc mặc định của phòng | Sổ cọc sai, phiếu quyết toán hoàn cọc không có thật | Mẫu `no_deposit` ⇒ cọc = 0, gửi > 0 bị chặn; lọc `hasDeposit` | CT-BR-27 |
-| R-78 ✅ | Người ở không có quan hệ với người đứng tên; dữ liệu vô lý (vợ là nam, con lớn tuổi hơn cha, 2 vợ, vợ chồng chưa đủ tuổi) | Không lập được tờ khai tạm trú chung hộ; danh sách gửi công an sai | Danh mục quan hệ theo TT 55/2021 Điều 6 (sửa bởi TT 66/2023) + kiểm tra hợp lý; kiểm lại khi kích hoạt | CT-BR-28, 29 |
-| R-79 ✅ | Người chưa thành niên ở trọ cùng người không phải cha mẹ / giám hộ | Tờ khai tạm trú bị từ chối (Luật Cư trú Điều 28) | Bắt buộc `guardian_consent` | CT-BR-30 |
+| R-78 ✅ | Người ở không có quan hệ với người đứng tên; dữ liệu vô lý (vợ là nam, con lớn tuổi hơn cha, 2 vợ, vợ chồng chưa đủ tuổi) | Không lập được tờ khai tạm trú chung hộ; danh sách gửi công an sai | Danh mục quan hệ theo TT 55/2021 Điều 6 (sửa bởi TT 66/2023) + kiểm tra hợp lý — **cảnh báo** kèm tên người (09/10/2026) | CT-BR-28, 29 |
+| R-79 ✅ | Người chưa thành niên ở trọ cùng người không phải cha mẹ / giám hộ | Tờ khai tạm trú bị từ chối (Luật Cư trú Điều 28) | Cảnh báo thiếu `guardian_consent` (09/10/2026) | CT-BR-30 |
 | R-80 ✅ | Một người được thêm vào 2 phòng cùng lúc | Danh sách người ở / tạm trú mâu thuẫn; đếm sai số người tính định mức điện (L9) | Chặn ở Application; chuyển đi – vào ở cùng ngày hợp lệ | CT-BR-31 |
 | R-81 ✅ | (phát hiện khi code) HĐ đang thanh lý: `move_out_date` của người ở chỉ ghi khi hoàn tất | Kiểm tra ở 2 phòng chặn nhầm HĐ mới; xuất Excel theo ngày vẫn liệt kê người đã trả phòng | Ngày ra hiệu lực = `COALESCE(move_out_date, actual_end_date)` | M05 §4, E1 |
 | R-82 ✅ | Xuất Excel: tên người nhập dạng `=HYPERLINK(...)`, SĐT / CCCD mất số 0 đầu | Chèn công thức độc hại; sai dữ liệu | Quote-prefix chuỗi bắt đầu `= + - @`; cột chữ định dạng `@` | RP-BR-02 |
@@ -111,7 +111,7 @@
 
 | # | Vấn đề | Kịch bản lỗi | Xử lý | Nơi sửa |
 |---|--------|--------------|-------|---------|
-| R-83 ✅ | Nháp cho phép "vẫn thêm" vượt sức chứa nhưng kích hoạt luôn chặn, không có cách vượt | Gia đình vợ chồng + con nhỏ ở phòng 2 người không kích hoạt được HĐ | Kích hoạt nhận `overrideCapacity` (ghi audit); audit cả khi thêm người ở | CT-BR-09 |
+| R-83 ✅ | Nháp cho phép "vẫn thêm" vượt sức chứa nhưng kích hoạt luôn chặn, không có cách vượt | Gia đình vợ chồng + con nhỏ ở phòng 2 người không kích hoạt được HĐ | Kích hoạt nhận `overrideCapacity` (ghi audit) — **thay bằng R-155 (09/10/2026)**: bỏ hẳn giới hạn số người | CT-BR-09 |
 | R-84 ✅ | Ghi "chuyển đi" lần 2 ghi đè ngày ra cũ | Kéo dài ngày ra chồng lên nơi ở mới ⇒ một người ở 2 phòng (lọt CT-BR-31) | Đã chuyển đi thì không ghi lại → 409 `OCCUPANT_ALREADY_MOVED_OUT` | CT-BR-08 |
 | R-85 ✅ | Hủy thanh lý khi người ở đã sang phòng khác | Người ở trở lại "đang ở" vô thời hạn ở phòng cũ ⇒ ở 2 phòng | Kiểm CT-BR-31 khi hủy thanh lý | CT-BR-34 |
 | R-86 ✅ | Kiểm "ở nơi khác" cũng bắt HĐ cùng phòng | Lỗi `OCCUPANT_LIVES_ELSEWHERE` che lỗi gốc `ROOM_PERIOD_OVERLAP` | Chỉ xét phòng khác | `OccupantChecks` |
@@ -206,6 +206,22 @@
 | R-145 ✅ | Quy tắc giảm / tăng tự động (theo %, nhiều tháng) | Phức tạp, chủ trọ không dùng giảm % | **Bỏ**; dùng phụ thu / giảm trừ / hoàn trả cho 1 hoặc nhiều phòng | M07 BL-UC-10, BL-BR-08/09/19 |
 | R-146 ✅ | Phí tối thiểu, định mức theo số người, công tơ tổng | Thêm phức tạp không cần cho phòng trọ thường | Không làm: dùng bao nhiêu thu bấy nhiêu; mỗi phòng 1 hộ; chỉ công tơ riêng từng phòng | M04 Q2/Q3, M06 Q1 |
 
+## B12. Phần 5 (ngoài tính tiền) — 08/10/2026
+
+| # | Vấn đề | Kịch bản lỗi | Xử lý | Nơi sửa |
+|---|--------|--------------|-------|---------|
+| R-147 ✅ | Audit log ghi được nhưng chủ trọ không xem được | ID-BR-19 "biết phó quản lý nào đã làm gì" chỉ đọc được bằng SQL | `GET /audit-logs` chỉ chủ trọ, lọc tường minh theo tổ chức (bảng không có global filter), phó quản lý 403 | C-10, ID-BR-19 |
+| R-148 ✅ | Plan ghi UUIDv7, code dùng `Guid.NewGuid()` | Id ngẫu nhiên làm index phân mảnh | Id entity dùng `Guid.CreateVersion7()`; security stamp / JTI / họ token giữ ngẫu nhiên | C-02 |
+| R-150 ✅ | Chưa có ẩn danh; nhật ký giữ tên / SĐT vô thời hạn | Dữ liệu cá nhân người thuê cũ còn mãi trong hồ sơ, phiếu, nhật ký | Job hằng ngày ẩn danh sau 36 tháng, xóa cả trong phiếu, phiếu thu, bản chụp lúc ký, audit | RT-BR-06 |
+| R-155 ✅ | Phần mềm chặn số người theo sức chứa phòng | Chủ trọ cho gia đình có con nhỏ ở phòng "2 người" phải bấm vượt + bị ghi nhật ký; import phải hỏi xác nhận | Số người = mô tả loại phòng, không chặn / không cảnh báo | PR-BR-06 |
+| R-156 ✅ | Bắt số giấy tờ cho mọi người ở | Trẻ < 14 tuổi chưa có CCCD không khai được ⇒ danh sách người ở thiếu | Giấy tờ bắt buộc từ 14 tuổi / người đứng tên | RT-BR-01 |
+| R-157 ✅ | Import giữ bản xem trước trong RAM, lưu tất cả hoặc không gì, chỉ số công tơ khai ở 2 form | Tốn RAM, mất khi khởi động lại, 1 dòng lỗi chặn cả file, chỉ số 2 nơi mâu thuẫn | Xem trước không giữ ở server, sửa trên màn, lưu phần hợp lệ theo đơn vị (dòng phòng / phòng), chỉ số chỉ ở form phòng; import chỉ tạo mới | PR-UC-11, RT-UC-10 |
+| R-153 ✅ | Kỳ chuyển tiếp chọn "gần 1 tháng nhất" (1 → 20: 01/11–19/11) | Kỳ sau 20/11–19/12 cũng là "tháng 11" ⇒ 2 phiếu cùng tháng, lập phiếu theo tháng bị lệch | Kỳ chuyển tiếp luôn tới trước ngày chốt mới của tháng sau (lệch tới ±27 ngày, chủ trọ chọn số ngày tính) | PR-BR-09, BL-BR-28 |
+| R-154 ✅ | Lệnh nghiệp vụ tự mở transaction riêng | Import nhiều dòng không lưu được "tất cả hoặc không gì" | `IAppDbContext.BeginTransactionAsync`: đang có transaction ⇒ tham gia | PR-UC-11, RT-UC-10 |
+| R-152 ✅ | Bên cho thuê khai theo từng khu dù hầu hết là chính chủ trọ | Nhập lặp lại mỗi khu; khu mới quên khai ⇒ HĐ cảnh báo, in thiếu | Khai thông tin chủ trọ 1 lần ở tổ chức, khu thừa hưởng, chỉ khai riêng khi khác | PR-BR-17 |
+| R-151 ✅ | HĐ bắt đủ giấy tờ pháp lý (bên cho thuê, SĐT, tuổi, quan hệ, căn cứ Điều 172) mới kích hoạt | Chủ trọ nhập HĐ cũ / import không kích hoạt được ⇒ không thu được tiền, bỏ dùng phần mềm | Chỉ bắt buộc phần thu tiền; giấy tờ thành cảnh báo + cờ "Thiếu tài liệu" | CT-BR-46, CT-UC-23 |
+| R-149 ✅ | Plan nhắc Serilog nhưng code không dùng | Hiểu sai cách che dữ liệu | Bỏ Serilog: log chỉ ghi id, FE che hiển thị | C-11 |
+
 ## C. Rủi ro còn lại / cần quyết định
 
 | # | Vấn đề | Ảnh hưởng | Đề xuất |
@@ -214,7 +230,7 @@
 | O-02 ✅ | Công tơ tổng dùng chung nhiều phòng | Không tính tự động được | **Ngoài phạm vi** (chốt 08/10/2026): chỉ phòng / chung cư mini có công tơ riêng; công tơ tổng thì chủ trọ tự chia, nhập phụ thu nhiều phòng (M06 Q1) |
 | O-03 ⚠️ | Định nghĩa "doanh thu" cho báo cáo thuế (E6) | Số liệu khác cách hiểu của cơ quan thuế | Kế toán xác nhận; ghi rõ "chỉ tham khảo" |
 | O-04 ⚠️ | Lưu trữ dữ liệu cá nhân trên cloud nước ngoài | Có thể vướng quy định chuyển dữ liệu xuyên biên giới (L11) | Chọn object storage + DB đặt tại VN |
-| O-05 ⚠️ | Thời hạn lưu giữ dữ liệu người thuê sau khi rời đi | Lưu quá lâu = rủi ro; xóa sớm = mất chứng cứ tranh chấp | Mặc định gợi ý ẩn danh sau 24 tháng, không tự động |
+| O-05 ✅ | Thời hạn lưu giữ dữ liệu người thuê sau khi rời đi | Lưu quá lâu = rủi ro; xóa sớm = mất chứng cứ tranh chấp | Mặc định 36 tháng, chủ trọ chọn 36–120 tháng hoặc tắt (cảnh báo, audit); job tự động hằng ngày + ẩn danh bằng tay khi người thuê yêu cầu (RT-BR-06) |
 | O-06 ⚠️ | `paid_amount` là cache | Bug code có thể làm lệch | Test bất biến sau mỗi integration test + job đối soát đêm (P2) |
 | O-07 ⚠️ | Hiệu năng tạo phiếu cho khu lớn (load snapshot) | Chậm khi > 1.000 phòng | Loader theo khu (vài query batch), đo trong test hiệu năng P1 |
 | O-08 ⚠️ | Chủ trọ cần thu theo **giường** / nhiều phòng 1 HĐ | Không hỗ trợ P1 | Workaround: mỗi giường 1 `Room` |
@@ -225,7 +241,7 @@
 | O-13 ⚠️ | Điện một giá / theo bậc do chủ trọ đặt (FE-BR-15) | TT 60/2025: tổng tiền điện thu không vượt hóa đơn EVN; một giá cao có thể vượt khi phòng dùng ít | Giữ cảnh báo ngưỡng (FE-BR-13) + làm đối chiếu hóa đơn (LEG-05, M10 E7) |
 | O-14 ⚠️ | Đồ của người bỏ đi không báo (CT-BR-41) | Tự ý xử lý đồ có thể bị khiếu nại | Hệ thống chỉ nhắc lập biên bản có người làm chứng; cách xử lý đồ / cọc cần ghi trong điều khoản HĐ — hỏi luật sư |
 | O-15 ⚠️ | "Ở tiếp chưa ký lại" (CT-BR-45) | BLDS 2015 không tự gia hạn; tranh chấp khó chứng minh điều khoản đang áp | Nhắc ký phụ lục mỗi 30 ngày; bản in ghi rõ HĐ đã hết hạn |
-| O-16 ⚠️ | Sửa tay phiếu (BL-BR-07), phụ thu / hoàn trả nhiều phòng, bỏ nợ | Sửa tay quá nhiều làm số liệu báo cáo lệch nguồn; không biết ai sửa | Báo cáo M10 có cột "đã sửa tay"; audit log (C-10) **chưa làm** — hiện chỉ có `created_by/updated_by` |
+| O-16 ✅ | Sửa tay phiếu (BL-BR-07), phụ thu / hoàn trả nhiều phòng, bỏ nợ | Không biết ai sửa | Audit log (C-10) ghi mọi thay đổi (giá trị cũ → mới, người làm, IP); chủ trọ xem qua `GET /audit-logs`; báo cáo M10 thêm cột "đã sửa tay" |
 
 ## C2. Câu hỏi mở sau khi rà chéo — 04/10/2026
 
@@ -242,22 +258,16 @@ Tài liệu UI (`docs/api/`) mô tả **code đang chạy** (một giá, chưa c
 
 ## C3. Việc còn dở — cập nhật 08/10/2026 (làm tiếp từ đây)
 
-**Câu hỏi chờ chốt (nhóm 1 — tháng thu)**
+**Đã chốt 09/10/2026 — đã code hết (nhóm 1)**: K5 "Tính tiền từ ngày" không cộng thêm tiền, kỳ đầu không gộp, tháng thu theo kỳ khu, lập tuần tự từ kỳ đầu (C-05, BL-BR-21); K6 sửa giá / dịch vụ trực tiếp trên HĐ (CT-UC-05); K7 giá theo ngày cuối kỳ dù tạo phiếu muộn (BL-BR-05); L1 phiếu quyết toán thu dịch vụ trọn tháng (BL-BR-17); L2 nước theo người tự áp số gói = số người (FE-BR-14); L3 ngưỡng cảnh báo (MT-BR-08); L4 thay bằng màn "Phòng đang dùng dịch vụ" thêm / bớt hàng loạt (FE-UC-08); L5 import phòng / người thuê + lượt thuê có xem trước rồi mới lưu (PR-UC-11, RT-UC-10); mặc định khu mới **thu sau**; phương tiện quản lý theo phòng (CT-UC-14); ẩn danh xóa cả biển số xe đã kết thúc (RT-BR-06); K4 đổi ngày chốt / thu trước–thu sau bằng kỳ chuyển tiếp (PR-BR-09, BL-BR-28); bên cho thuê = thông tin chủ trọ khai 1 lần (PR-BR-17). Code 09/10/2026: lịch kỳ thu của khu + kỳ chuyển tiếp, "Tính tiền từ ngày", lập tuần tự, dịch vụ trọn tháng, nhãn "Quá hạn", cảnh báo điện nước bất thường, xóa biển số khi ẩn danh, màn "Phòng đang dùng dịch vụ", import phòng / người thuê + lượt thuê, mặc định thu sau; seeder Khu C (import) + Khu D (đổi ngày chốt).
 
-| # | Câu hỏi | Đề xuất đang chờ xác nhận |
-|---|---------|---------------------------|
-| K4 | Đổi ngày chốt / cài đặt kỳ thu của khu khi khu đã có phiếu | Chỉ cho đổi khi khu chưa có phiếu nào |
-| K5 | Kỳ đầu khi vào ở giữa kỳ (VD khu chốt ngày 5, vào 03/11 hoặc 20/10) | Trường "Tính tiền từ ngày" trên HĐ (mặc định = ngày bắt đầu; HĐ nhập từ sổ cũ đặt = đầu kỳ đầu tiên dùng phần mềm); phiếu đầu tiên tự gồm mọi ngày lẻ tới hết tháng thu đang tạo; tháng thu của phiếu = tháng của kỳ mà phiếu kết thúc. Tránh phiếu lẻ 2 ngày và tránh sót 15 ngày khi quên lập phiếu kỳ đầu (thu trước) |
-| K6 | Sửa giá thuê / dịch vụ trên HĐ | Sửa trực tiếp trên HĐ, hệ thống tự áp từ kỳ chưa chốt đầu tiên và giữ lịch sử (tháng cũ tính lại vẫn ra giá cũ) |
-| K7 | Giá có hiệu lực **01/11** với khu chốt ngày 1 thuộc tháng mấy | Tháng 11 (kỳ tháng 10 = 01/10–31/10) — tháng 10 vẫn giá cũ |
-| L1 | Phiếu quyết toán: dịch vụ thu trọn tháng như BL-BR-04 | Có, chủ trọ sửa số lượng |
-| L2 | Nước theo đầu người | Tự đếm số người đầu kỳ làm số gói, sửa được trên nháp |
-| L3 | Ngưỡng cảnh báo điện nước (MT-BR-08) | Gấp 3× trung bình 3 kỳ **và** tăng ≥ 50 đơn vị, hoặc = 0 khi có người; chưa đủ 3 kỳ thì bỏ qua |
-| L4 | Tự gắn dịch vụ theo nhóm phòng (VD phòng có điều hòa) | Để sau |
-| L5 | Import Excel (tải template → điền → kiểm lỗi từng dòng → nhập tất cả hoặc không) | Mức 1 phòng trước; mức 2 người thuê + HĐ đang ở + chỉ số hiện tại ngay sau |
-| — | Mặc định khu mới thu trước hay thu sau | Thu sau (chủ trọ ưu tiên luồng thu sau) |
+**Câu hỏi còn chờ chốt**
 
-**Nhóm để sau (E–J, đã liệt kê ví dụ ngày 07/10)**: giới hạn số tiền hoàn trả (E1), bù trừ hoàn trả với nợ phiếu khác (E2), tổng âm trên phiếu thường (E3), nút tạo dòng hoàn trả từ `RENT_OVERPAID` (E4), "Nợ cũ" trên phiếu (F1), bỏ nợ khi HĐ còn hiệu lực (F2), số dư có (F3), phạt chậm trả (F4), trả cọc khi chưa có sổ cọc (G1), làm tròn tổng phiếu về nghìn (H1), cờ nháp lỗi thời (I1), đối chiếu hóa đơn EVN (J1). Ngoài tính tiền: audit log C-10, UUIDv7 C-02, Serilog C-11, mật khẩu DB trong `appsettings.Development.json`, thu gọn phần pháp lý M05 nếu HĐ chỉ để lưu thông tin.
+| # | Câu hỏi | Đề xuất |
+|---|---------|---------|
+| ~~K4~~ ✅ | Khu đã có phiếu rồi mới đổi ngày chốt / thu trước–thu sau | **Chốt 09/10/2026 (cách C)**: cho đổi, kỳ chuyển tiếp tới trước ngày chốt mới tháng sau (mỗi tháng 1 kỳ); chỉ tiền phòng điều chỉnh theo số ngày chủ trọ chọn (điền sẵn: lệch ≤ 3 ngày ⇒ 0, ≥ 4 ⇒ đủ số ngày), công tơ theo chỉ số thật, dịch vụ cố định trọn tháng; thu trước ↔ thu sau: mỗi kỳ chỉ thu 1 lần + cảnh báo phiếu 2 tháng tiền phòng; **chưa khóa** mức lệch (để sau) — PR-BR-09, BL-BR-28. ✅ code 09/10/2026 |
+| ~~HĐ~~ ✅ | "Bỏ hợp đồng khỏi hệ thống" | **Chốt 09/10/2026**: giữ HĐ, chỉ bắt buộc phần thu tiền; giấy tờ / pháp lý thành cảnh báo + cờ "Thiếu tài liệu"; giữ in HĐ; đổi giá phòng hỏi áp cho người đang thuê (CT-BR-46, CT-UC-23, CT-UC-05) — **đã code** |
+
+**Nhóm để sau (E–J, đã liệt kê ví dụ ngày 07/10)**: giới hạn số tiền hoàn trả (E1), bù trừ hoàn trả với nợ phiếu khác (E2), tổng âm trên phiếu thường (E3), nút tạo dòng hoàn trả từ `RENT_OVERPAID` (E4), "Nợ cũ" trên phiếu (F1), bỏ nợ khi HĐ còn hiệu lực (F2), số dư có (F3), phạt chậm trả (F4), trả cọc khi chưa có sổ cọc (G1), làm tròn tổng phiếu về nghìn (H1), cờ nháp lỗi thời (I1), đối chiếu hóa đơn EVN (J1). Ngoài tính tiền (08/10/2026): ✅ audit log + API xem nhật ký (C-10), ✅ UUIDv7 (C-02), ✅ bỏ Serilog (C-11), ✅ mật khẩu DB dev (P0-02). Còn: thu gọn phần pháp lý M05 nếu HĐ chỉ để lưu thông tin (cần bàn); ✅ ẩn danh tự động sau 36 tháng + xóa dữ liệu cá nhân trong audit (RT-BR-06); chính sách lưu giữ audit.
 
 **Code chưa theo plan (làm sau khi chốt các câu trên)**
 
@@ -271,7 +281,7 @@ Tài liệu UI (`docs/api/`) mô tả **code đang chạy** (một giá, chưa c
 | Dọn `GetFirstOpenRentPeriodStartAsync` (trùng `GetFirstOpenPeriodStartAsync` sau khi bỏ chu kỳ) | CT-BR-05 |
 | Import Excel phòng (mức 1), rồi người thuê + HĐ (mức 2) | L5 |
 
-**Đã code nhưng chưa kiểm / chưa commit (từ 07/10)**: bỏ chu kỳ nhiều tháng, giá dịch vụ theo cuối kỳ, nhóm Hoàn trả + xác nhận hoàn, thêm dòng tay nhiều phòng — build + 171 unit test xanh; **chưa chạy integration test** (cần Docker), **chưa áp migration** `RemoveRentCycleAddInvoiceRefund` (cần Postgres), `openapi.json` sửa bằng script — xuất lại khi chạy được app.
+**Kiểm tra (08/10/2026)**: ✅ 198 unit + 152 integration test xanh trên Postgres thật; ✅ đã áp migration `RemoveRentCycleAddInvoiceRefund`, `AddAuditLogs`, `AddRenterAnonymization` vào DB dev; ✅ xuất lại `openapi.json`; ✅ **seeder dữ liệu demo** (`docs/guides/demo-data.md`) — mỗi tính năng mới phải thêm kịch bản vào seeder. Chưa commit.
 
 ## D. Ma trận kiểm tra chéo (đã đối chiếu)
 

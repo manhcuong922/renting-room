@@ -48,16 +48,6 @@ public sealed class InvoiceLockReader(AppDbContext db) : IInvoiceLockReader
             .MaxAsync(i => (DateOnly?)i.PeriodEnd, cancellationToken);
         return lastEnd?.AddDays(1);
     }
-
-    public async Task<DateOnly?> GetFirstOpenRentPeriodStartAsync(Guid contractId, CancellationToken cancellationToken)
-    {
-        var invoiceEnd = await GetFirstOpenPeriodStartAsync(contractId, cancellationToken);
-        var rentEnd = await db.Invoices.Where(i => i.ContractId == contractId && i.Status == InvoiceStatus.Finalized)
-            .SelectMany(i => i.Lines).Where(l => l.Type == InvoiceLineType.Rent)
-            .MaxAsync(l => (DateOnly?)l.ServiceTo, cancellationToken);
-        var afterRent = rentEnd?.AddDays(1);
-        return afterRent > invoiceEnd || invoiceEnd is null ? afterRent : invoiceEnd;
-    }
 }
 
 /// <summary>FE-BR-07: ngày cuối của dòng phiếu đã chốt có dùng khoản thu — không thêm / xóa giá hồi tố trước ngày đó.</summary>

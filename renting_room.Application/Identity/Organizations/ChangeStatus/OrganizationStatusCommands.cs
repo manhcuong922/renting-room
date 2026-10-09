@@ -43,7 +43,7 @@ public sealed class SuspendOrganizationHandler(
             return suspended;
 
         var now = clock.GetUtcNow();
-        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        await using var transaction = await db.BeginTransactionAsync(cancellationToken);
 
         await db.SaveChangesAsync(cancellationToken);
         await RefreshTokenRevoker.RevokeAllForOrganizationAsync(

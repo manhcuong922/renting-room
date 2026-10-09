@@ -13,7 +13,9 @@ public sealed class ContractAttentionTests(ApiFactory factory)
     private async Task<JsonElement> ContractAsync(string token, Guid id) =>
         await (await _client.GetAsync($"/api/v1/contracts/{id}", token)).ReadAsync<JsonElement>();
 
-    private static IEnumerable<string?> Flags(JsonElement e) => e.GetProperty("flags").EnumerateArray().Select(f => f.GetString());
+    /// <summary>Cờ cần xử lý — bỏ "MissingSignedDocument" (HĐ test không có bản ký; cờ này có test riêng).</summary>
+    private static IEnumerable<string?> Flags(JsonElement e) =>
+        e.GetProperty("flags").EnumerateArray().Select(f => f.GetString()).Where(f => f != "MissingSignedDocument");
 
     [Fact]
     public async Task RepresentativeMovesOut_RoomStaysOccupied_ResignForRemainingOccupant()

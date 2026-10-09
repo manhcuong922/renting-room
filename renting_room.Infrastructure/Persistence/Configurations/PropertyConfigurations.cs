@@ -1,5 +1,9 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using renting_room.Domain.Billing;
 using renting_room.Domain.Identity;
 using renting_room.Domain.Properties;
 
@@ -11,7 +15,7 @@ internal sealed class PropertyConfiguration : IEntityTypeConfiguration<Property>
     {
         builder.ToTable("properties", t =>
         {
-            t.HasCheckConstraint("ck_properties_anchor_day", "default_billing_anchor_day BETWEEN 1 AND 31");
+            t.HasCheckConstraint("ck_properties_anchor_day", "billing_anchor_day BETWEEN 1 AND 28");
             t.HasCheckConstraint("ck_properties_lessor_organization",
                 "lessor_type IS DISTINCT FROM 'Organization' OR (lessor_tax_code IS NOT NULL AND lessor_representative_name IS NOT NULL)");
         });
@@ -32,8 +36,19 @@ internal sealed class PropertyConfiguration : IEntityTypeConfiguration<Property>
         builder.Property(p => p.ProvinceCode).HasMaxLength(10);
         builder.Property(p => p.Description).HasMaxLength(2000);
         builder.Property(p => p.EvnCustomerCode).HasMaxLength(20);
-        builder.Property(p => p.DefaultChargeMode).HasConversion<string>().HasMaxLength(16);
-        builder.Property(p => p.DefaultProrationMode).HasConversion<string>().HasMaxLength(16);
+        builder.Property(p => p.ChargeMode).HasConversion<string>().HasMaxLength(16);
+        builder.Property(p => p.ProrationMode).HasConversion<string>().HasMaxLength(16);
+        // Lịch kỳ thu (K4): danh sách mốc đổi ngày chốt / cách thu — jsonb, luôn đọc cùng khu.
+        builder.Property(p => p.BillingScheduleEntries)
+            .HasColumnName("billing_schedule")
+            .HasColumnType("jsonb")
+            .HasConversion(
+                v => JsonSerializer.Serialize(v, PropertyJson.Schedule),
+                s => JsonSerializer.Deserialize<BillingScheduleEntry[]>(s, PropertyJson.Schedule) ?? Array.Empty<BillingScheduleEntry>(),
+                new ValueComparer<IReadOnlyList<BillingScheduleEntry>>(
+                    (a, b) => a!.SequenceEqual(b!),
+                    v => v.Aggregate(0, (h, e) => HashCode.Combine(h, e.GetHashCode())),
+                    v => v.ToArray()));
 
         builder.Property(p => p.LessorType).HasConversion<string>().HasMaxLength(16);
         builder.Property(p => p.LessorName).HasMaxLength(200);
@@ -55,7 +70,8 @@ internal sealed class PropertyConfiguration : IEntityTypeConfiguration<Property>
         builder.Property(p => p.BankAccountName).HasMaxLength(200);
         builder.Property(p => p.HouseRulesText).HasMaxLength(20_000);
 
-        builder.Ignore(p => p.BillingDefaults);
+        builder.Ignore(p => p.BillingSettings);
+        builder.Ignore(p => p.BillingSchedule);
         builder.Ignore(p => p.Address);
         builder.Ignore(p => p.Lessor);
         builder.Ignore(p => p.BankAccount);
@@ -64,13 +80,18 @@ internal sealed class PropertyConfiguration : IEntityTypeConfiguration<Property>
     }
 }
 
+internal static class PropertyJson
+{
+    public static readonly JsonSerializerOptions Schedule = new(JsonSerializerDefaults.Web) { Converters = { new JsonStringEnumConverter() } };
+}
+
 internal sealed class RoomConfiguration : IEntityTypeConfiguration<Room>
 {
     public void Configure(EntityTypeBuilder<Room> builder)
     {
         builder.ToTable("rooms", t =>
         {
-            t.HasCheckConstraint("ck_rooms_max_occupants", $"max_occupants BETWEEN 1 AND {Room.MaxOccupantsLimit}");
+            t.HasCheckConstraint("ck_rooms_max_occupants", $"max_occupants IS NULL OR max_occupants BETWEEN 1 AND {Room.MaxOccupantsLimit}");
             t.HasCheckConstraint("ck_rooms_area", "area_m2 IS NULL OR area_m2 > 0");
             t.HasCheckConstraint("ck_rooms_money", "(listed_rent IS NULL OR listed_rent >= 0) AND (default_deposit IS NULL OR default_deposit >= 0)");
             t.HasCheckConstraint("ck_rooms_maintenance_not_archived", "NOT (is_under_maintenance AND archived_at IS NOT NULL)");

@@ -55,7 +55,7 @@ public sealed class RefreshTokenHandler(
 
         var (tokens, successor) = tokenIssuer.IssueRotation(user, current, now, request.IpAddress);
 
-        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        await using var transaction = await db.BeginTransactionAsync(cancellationToken);
 
         // Chỉ một request được xoay vòng token này: điều kiện RevokedAt IS NULL chặn request song song.
         var rotated = await db.RefreshTokens
@@ -88,7 +88,7 @@ public sealed class RefreshTokenHandler(
         if (!token.IsSuspiciousReuse(now))
             return;
 
-        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        await using var transaction = await db.BeginTransactionAsync(cancellationToken);
 
         var revoked = await RefreshTokenRevoker.RevokeFamilyAsync(
             db, token.FamilyId, RefreshTokenRevokeReason.Reuse, now, cancellationToken);

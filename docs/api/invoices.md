@@ -9,15 +9,15 @@ Quyền: chủ trọ và phó quản lý.
 
 | Nhóm | `type` của dòng | Nguồn | Ví dụ |
 |------|-----------------|-------|-------|
-| Tiền phòng | `Rent` | Giá thuê HĐ × hệ số kỳ lẻ | 3.000.000 |
+| Tiền phòng | `Rent` | Giá thuê HĐ × hệ số kỳ lẻ (kỳ chuyển tiếp: 1 tháng ± số ngày chủ trọ chọn) | 3.000.000 · "Tiền phòng (1 tháng + 4 ngày — đổi ngày chốt)" |
 | Điện nước | `Metered` | Công tơ của phòng ([meters.md](meters.md)) × một giá hoặc **giá theo bậc** (bản giá mới nhất tới cuối kỳ) | Điện 88 kWh × 3.500 · "Điện (giá bậc)" |
-| Dịch vụ | `Service` | Dịch vụ gắn HĐ: theo phòng / theo đầu người / theo số gói | Nước 2 người × 20.000; Giữ xe 2 × 100.000 |
+| Dịch vụ | `Service` | Dịch vụ gắn HĐ: theo phòng / theo đầu người / theo số gói — **trọn tháng**, kỳ lẻ không chia ngày (sửa tay trên nháp nếu cần) | Nước 2 người × 20.000; Giữ xe 2 × 100.000 |
 | Phụ thu | `Surcharge` | **Nhập tay**, bắt buộc lý do — 1 phiếu hoặc nhiều phòng một lúc | Thay khóa cửa 250.000 |
 | Giảm trừ | `ManualDiscount` | Nhập tay (số dương, lưu âm) — không vượt phần thu | −200.000 |
 | Hoàn trả | `Refund` | **Nhập tay** như phụ thu, bắt buộc lý do (số dương, lưu âm) — được làm **tổng phiếu âm** = chủ trọ trả lại người thuê | Hoàn tiền phòng 15 ngày chưa ở −1.500.000 |
 
-- **Kỳ**: mỗi tháng thu (`billingMonth` = tháng của ngày bắt đầu kỳ) tối đa 1 phiếu / hợp đồng. Kỳ lẻ (vào giữa tháng, trả phòng giữa kỳ)
-  tính theo ngày nếu HĐ chọn `Daily` (`prorationFactor` trên dòng, VD 1,0667).
+- **Kỳ**: mỗi tháng thu (`billingMonth` = tháng của kỳ chuẩn của khu chứa kỳ) tối đa 1 phiếu / hợp đồng. Tiền phòng kỳ lẻ (vào giữa kỳ, trả phòng
+  giữa kỳ) tính theo ngày nếu khu chọn `Daily` (`prorationFactor` trên dòng); dịch vụ luôn trọn tháng.
 - **Điện nước trả sau / trả trước**: `Postpaid` — điện nước của chính kỳ; `Prepaid` — điện nước của **kỳ trước** (kỳ đầu không có),
   riêng kỳ cuối (có ngày trả phòng) gộp luôn điện nước tới chỉ số cuối.
 - **Thay công tơ giữa kỳ**: hệ thống tự cộng phần công tơ cũ (`segments` có 2 đoạn). Cách khác: nhập tiền điện công tơ cũ thành phụ thu.
@@ -57,14 +57,16 @@ Quyền: chủ trọ và phó quản lý.
 | `reason` bỏ qua | Ý nghĩa / UI |
 |-----------------|--------------|
 | `EXISTS` | Kỳ này đã có phiếu (gửi `recalculateExistingDrafts: true` để tính lại nháp) |
-| `PREVIOUS_PERIOD_NOT_BILLED` | Chưa lập phiếu kỳ trước — lập lần lượt từng tháng (phiếu **đầu tiên** của HĐ thì lập tháng nào cũng được) |
+| `PREVIOUS_PERIOD_NOT_BILLED` | Chưa lập phiếu kỳ trước — lập **lần lượt từ kỳ đầu** (kỳ chứa "Tính tiền từ ngày"); UI gợi ý tạo tháng còn thiếu. HĐ nhập từ sổ cũ đặt `billingStartDate` thay vì bỏ qua kỳ đầu |
 | `LATER_PERIOD_BILLED` | Đã có phiếu kỳ sau |
-| `NO_PERIOD_IN_MONTH` | HĐ không có kỳ bắt đầu trong tháng này |
+| `NO_PERIOD_IN_MONTH` | HĐ không có kỳ thuộc tháng thu này |
 | `USE_FINAL_INVOICE` | Kỳ chứa ngày trả phòng — lập **phiếu quyết toán** thay phiếu thường |
 
 `withIssues` = số phiếu còn **vấn đề chặn chốt** (`issues` có `severity: "Error"`): `MISSING_READING` (thiếu chỉ số — vào lưới ghi chỉ số),
 `FEE_PRICE_MISSING` (khoản chưa có giá), `RENT_TERM_MISSING`, `NEGATIVE_TOTAL` (giảm trừ lớn hơn phần thu). Cảnh báo (`Warning`): `EDITED_BASE_CHANGED`,
-`RENT_OVERPAID` (phiếu quyết toán: tiền phòng kỳ cuối đã thu nhiều hơn số ngày ở — message ghi số thừa; thêm dòng Hoàn trả nếu trả lại).
+`RENT_OVERPAID` (phiếu quyết toán: tiền phòng kỳ cuối đã thu nhiều hơn số ngày ở — message ghi số thừa; thêm dòng Hoàn trả nếu trả lại),
+`UNUSUAL_USAGE` (điện nước bất thường — gấp ≥ 3 lần trung bình 3 kỳ trước và tăng ≥ 50, hoặc = 0 khi có người ở: kiểm lại chỉ số),
+`TWO_RENT_PERIODS` (khu vừa đổi sang thu trước: người thuê trả 2 tháng tiền phòng gần nhau — nên báo trước).
 
 ## Chi tiết phiếu
 
@@ -175,7 +177,7 @@ Lập từ hợp đồng đang thanh lý: `POST /contracts/{id}/final-invoice` (
 Là phiếu bình thường (sửa tay, phụ thu, tính lại, chốt, hủy như trên) cho đoạn cuối **[đầu kỳ cuối, ngày trả phòng]**, chỉ **thu phần còn thiếu**:
 
 - **Tiền phòng** những ngày đã ở của kỳ cuối nếu chưa thu (đã thu trọn kỳ ⇒ không có dòng; thu thừa ⇒ cảnh báo `RENT_OVERPAID`, chủ trọ thêm dòng **Hoàn trả** nếu trả lại).
-- **Dịch vụ** kỳ cuối nếu kỳ đó chưa có phiếu thường (tính theo ngày).
+- **Dịch vụ** kỳ cuối nếu kỳ đó chưa có phiếu thường — **trọn tháng** (sửa số lượng / thành tiền trên nháp nếu thỏa thuận khác).
 - **Điện nước** tới **chỉ số cuối** (trả trước: gồm cả kỳ trước nếu chưa thu).
 
 Phiếu quyết toán đã chốt là điều kiện hoàn tất thanh lý; còn nợ thì chọn "Đã thu toàn bộ" / "Bỏ nợ"; còn phiếu Chờ hoàn thì xác nhận đã hoàn trước ([contracts.md](contracts.md#hoàn-tất--post-contractsidliquidationcomplete)).

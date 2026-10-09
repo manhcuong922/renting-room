@@ -15,7 +15,7 @@ namespace renting_room.Application.Rooms;
 public sealed record RoomSpecInput(
     string? Floor,
     decimal? AreaM2,
-    int MaxOccupants,
+    int? MaxOccupants,
     decimal? ListedRent,
     decimal? DefaultDeposit,
     IReadOnlyCollection<string>? Amenities,
@@ -36,7 +36,7 @@ public sealed record RoomDto(
     string Code,
     string? Floor,
     decimal? AreaM2,
-    int MaxOccupants,
+    int? MaxOccupants,
     decimal? ListedRent,
     decimal? DefaultDeposit,
     string[] Amenities,
@@ -45,7 +45,12 @@ public sealed record RoomDto(
     string? MaintenanceNote,
     CurrentContractDto? CurrentContract,
     string Version,
-    decimal OutstandingAmount = 0);
+    decimal OutstandingAmount = 0,
+    decimal OverdueAmount = 0)
+{
+    /// <summary>PR-BR-16: nhãn đỏ "Quá hạn" — có phiếu đã chốt chưa thu đủ đã quá hạn thanh toán.</summary>
+    public bool IsOverdue => OverdueAmount > 0;
+}
 
 internal static class RoomSpecRules
 {
@@ -55,7 +60,7 @@ internal static class RoomSpecRules
         v.RuleFor(x => spec(x).AreaM2)
             .Must(a => a is null || (a > 0 && a <= 1000 && decimal.Round(a.Value, 2) == a))
             .OverridePropertyName($"{prefix}areaM2").WithErrorCode("OUT_OF_RANGE").WithMessage("Diện tích từ 0 đến 1000 m², tối đa 2 số lẻ.");
-        v.RuleFor(x => spec(x).MaxOccupants).InclusiveBetween(1, Room.MaxOccupantsLimit)
+        v.RuleFor(x => spec(x).MaxOccupants).InclusiveBetween(1, Room.MaxOccupantsLimit).When(x => spec(x).MaxOccupants is not null)
             .OverridePropertyName($"{prefix}maxOccupants").WithErrorCode("OUT_OF_RANGE");
         v.RuleFor(x => spec(x).ListedRent).OptionalMoney().OverridePropertyName($"{prefix}listedRent");
         v.RuleFor(x => spec(x).DefaultDeposit).OptionalMoney().OverridePropertyName($"{prefix}defaultDeposit");
@@ -81,10 +86,14 @@ internal sealed class RoomRow
     /// <summary>PR-BR-16 / PM-UC-12: tổng phiếu đã chốt chưa thu đủ của phòng (mọi HĐ) ⇒ nhãn "Còn nợ".</summary>
     public decimal OutstandingAmount { get; init; }
 
+    /// <summary>PR-BR-16 (K3): phần còn nợ của phiếu đã quá hạn thanh toán (ngày chốt phiếu + số ngày hạn của khu) ⇒ nhãn đỏ "Quá hạn".</summary>
+    public decimal OverdueAmount { get; init; }
+
     public RoomDto ToDto(IReadOnlyDictionary<Guid, IReadOnlyList<ContractFlag>> flags) => new(
         Room.Id, Room.PropertyId, PropertyCode, Room.Code, Room.Floor, Room.AreaM2, Room.MaxOccupants, Room.ListedRent,
         Room.DefaultDeposit, Room.Amenities, Room.Description, Status, Room.MaintenanceNote,
-        Current is null ? null : Current with { Flags = flags.GetValueOrDefault(Current.Id, []) }, Room.Version.ToString(), OutstandingAmount);
+        Current is null ? null : Current with { Flags = flags.GetValueOrDefault(Current.Id, []) }, Room.Version.ToString(), OutstandingAmount,
+        OverdueAmount);
 }
 
 internal static class RoomStatusQuery
@@ -110,6 +119,9 @@ internal static class RoomStatusQuery
                 .FirstOrDefault(),
             Outstanding = db.Invoices.Where(i => i.RoomId == r.Id && i.Status == InvoiceStatus.Finalized && i.PaidAmount < i.TotalAmount)
                 .Sum(i => (decimal?)(i.TotalAmount - i.PaidAmount)) ?? 0,
+            Overdue = db.Invoices.Where(i => i.RoomId == r.Id && i.Status == InvoiceStatus.Finalized && i.PaidAmount < i.TotalAmount
+                    && i.DueDate < today)
+                .Sum(i => (decimal?)(i.TotalAmount - i.PaidAmount)) ?? 0,
             // Giữ chỗ: có hợp đồng nháp, hoặc đã kích hoạt nhưng ngày bàn giao ở tương lai (kích hoạt trước 1 ngày).
             HasDraft = db.Contracts.Any(c => c.RoomId == r.Id
                 && (c.Status == ContractStatus.Draft || (c.Status == ContractStatus.Active && c.StartDate > today)))
@@ -120,6 +132,7 @@ internal static class RoomStatusQuery
             PropertyCode = x.PropertyCode,
             Current = x.Current,
             OutstandingAmount = x.Outstanding,
+            OverdueAmount = x.Overdue,
             Status = x.Room.ArchivedAt != null ? RoomDisplayStatus.Archived
                 : x.Room.IsUnderMaintenance ? RoomDisplayStatus.Maintenance
                 : x.Current != null ? RoomDisplayStatus.Occupied
@@ -186,7 +199,7 @@ public sealed record BulkRoomFloor(string? Floor, IReadOnlyList<string> Codes);
 public sealed record BulkCreateRoomsCommand(
     Guid PropertyId,
     IReadOnlyList<BulkRoomFloor> Floors,
-    int MaxOccupants,
+    int? MaxOccupants,
     decimal? AreaM2,
     decimal? ListedRent,
     decimal? DefaultDeposit,
@@ -272,19 +285,11 @@ public sealed class UpdateRoomHandler(IAppDbContext db, TimeProvider clock) : IR
         if (await db.Rooms.AnyAsync(r => r.PropertyId == room.PropertyId && r.Code == code && r.Id != room.Id, cancellationToken))
             return PropertyErrors.RoomCodeTaken;
 
-        // PR-BR-06: không giảm sức chứa xuống dưới số người đang ở.
-        var today = clock.GetUtcNow().ToBusinessDate();
-        var currentOccupants = await db.Contracts
-            .Where(c => c.RoomId == room.Id && (c.Status == ContractStatus.Active || c.Status == ContractStatus.Liquidating))
-            .SelectMany(c => c.Occupants)
-            .CountAsync(o => o.MoveInDate <= today && (o.MoveOutDate == null || o.MoveOutDate >= today), cancellationToken);
-        if (request.Spec.MaxOccupants < currentOccupants)
-            return PropertyErrors.MaxOccupantsBelowCurrent;
-
         db.SetExpectedVersion(room, request.Version);
         room.Update(code, request.Spec.ToDomain());
         await db.SaveChangesAsync(cancellationToken);
 
+        var today = clock.GetUtcNow().ToBusinessDate();
         var row = await db.Rooms.AsNoTracking().Where(r => r.Id == room.Id).ToRows(db, today).FirstAsync(cancellationToken);
         return (await new[] { row }.ToDtosAsync(db, today, cancellationToken))[0];
     }
@@ -312,7 +317,7 @@ public sealed class ChangeRoomStateHandler(IAppDbContext db, TimeProvider clock)
 {
     public async ValueTask<Result> Handle(ChangeRoomStateCommand request, CancellationToken cancellationToken)
     {
-        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        await using var transaction = await db.BeginTransactionAsync(cancellationToken);
         await db.LockForUpdateAsync<Room>(request.Id, cancellationToken);
 
         var room = await db.Rooms.FirstOrDefaultAsync(r => r.Id == request.Id, cancellationToken);
@@ -359,7 +364,8 @@ public sealed record ListRoomsQuery(
     Guid? GroupId,
     string? Search,
     int Page = 1,
-    int PageSize = Paging.DefaultPageSize) : IRequest<PagedResult<RoomDto>>;
+    int PageSize = Paging.DefaultPageSize,
+    bool? Overdue = null) : IRequest<PagedResult<RoomDto>>;
 
 public sealed class ListRoomsQueryValidator : AbstractValidator<ListRoomsQuery>
 {
@@ -396,6 +402,9 @@ public sealed class ListRoomsHandler(IAppDbContext db, TimeProvider clock) : IRe
         var query = rooms.ToRows(db, today);
         if (request.Status is { } status)
             query = query.Where(r => r.Status == status);
+        // PR-BR-16: bộ lọc "Quá hạn" — phòng có phiếu quá hạn thanh toán chưa thu đủ.
+        if (request.Overdue is { } overdue)
+            query = query.Where(r => (r.OverdueAmount > 0) == overdue);
 
         var total = await query.CountAsync(cancellationToken);
         var rows = await query

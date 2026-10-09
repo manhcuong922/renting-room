@@ -1,3 +1,4 @@
+using renting_room.Domain.Billing;
 using renting_room.Domain.Contracts;
 using renting_room.Domain.Fees;
 using renting_room.Domain.Properties;
@@ -95,15 +96,15 @@ public sealed class ContractFeeTests
     private static readonly DateOnly Start = new(2026, 10, 5);
     private static readonly Guid Water = Guid.NewGuid();
     private static readonly Guid Parking = Guid.NewGuid();
+    private static readonly BillingSchedule Schedule = BillingSchedule.Single(5, ChargeMode.Prepaid);
 
     private static Contract ActiveContract()
     {
         var renter = Guid.NewGuid();
-        var data = new ContractDraftData(renter, Start, null, null, null, null, 3_000_000, 0, null, 5, ChargeMode.Prepaid,
-            ProrationMode.Daily, 5, 30, [PaymentMethod.Cash], 2, null, null, [new OccupantInput(renter, Start, null, null, null)],
+        var data = new ContractDraftData(renter, Start, null, null, null, null, 3_000_000, 0, null, 30, [PaymentMethod.Cash], 2, null, null, [new OccupantInput(renter, Start, null, null, null)],
             Fees: [new ContractFeeInput(Water, 1, null), new ContractFeeInput(Parking, 1, null)]);
         var contract = Contract.CreateDraft(Guid.NewGuid(), Guid.NewGuid(), "HD2026-0001", data);
-        contract.Activate(new ActivationContext(Start, DateTimeOffset.UtcNow, true, 4, true, "{}", null, new DateOnly(1990, 1, 1), true))
+        contract.Activate(new ActivationContext(Start, DateTimeOffset.UtcNow, true, "{}", null))
             .IsSuccess.Should().BeTrue();
         return contract;
     }
@@ -113,7 +114,7 @@ public sealed class ContractFeeTests
     {
         var contract = ActiveContract();
 
-        contract.ChangeFee(new ContractFeeInput(Parking, 2, 90_000), Start.AddMonths(1), null).IsSuccess.Should().BeTrue();
+        contract.ChangeFee(new ContractFeeInput(Parking, 2, 90_000), Start.AddMonths(1), null, Schedule).IsSuccess.Should().BeTrue();
 
         var parking = contract.Fees.Where(f => f.FeeTypeId == Parking).OrderBy(f => f.EffectiveFrom).ToList();
         parking.Should().HaveCount(2);
@@ -127,12 +128,12 @@ public sealed class ContractFeeTests
         var contract = ActiveContract();
         var nextPeriod = Start.AddMonths(1);
 
-        contract.ChangeFee(new ContractFeeInput(Water, 1, 20_000), nextPeriod.AddDays(3), null).Error.Should().Be(ContractErrors.NotPeriodStart);
-        contract.ChangeFee(new ContractFeeInput(Water, 1, 20_000), nextPeriod, firstOpenPeriodStart: nextPeriod.AddMonths(1))
+        contract.ChangeFee(new ContractFeeInput(Water, 1, 20_000), nextPeriod.AddDays(3), null, Schedule).Error.Should().Be(ContractErrors.NotPeriodStart);
+        contract.ChangeFee(new ContractFeeInput(Water, 1, 20_000), nextPeriod, firstOpenPeriodStart: nextPeriod.AddMonths(1), Schedule)
             .Error.Should().Be(ContractErrors.PeriodAlreadyBilled);
 
-        contract.ChangeFee(new ContractFeeInput(Water, 1, 20_000), nextPeriod.AddMonths(1), null).IsSuccess.Should().BeTrue();
-        contract.ChangeFee(new ContractFeeInput(Water, 1, 25_000), nextPeriod, null).Error.Should().Be(ContractErrors.FeeLaterChangeExists);
+        contract.ChangeFee(new ContractFeeInput(Water, 1, 20_000), nextPeriod.AddMonths(1), null, Schedule).IsSuccess.Should().BeTrue();
+        contract.ChangeFee(new ContractFeeInput(Water, 1, 25_000), nextPeriod, null, Schedule).Error.Should().Be(ContractErrors.FeeLaterChangeExists);
     }
 
     [Fact]
@@ -140,11 +141,11 @@ public sealed class ContractFeeTests
     {
         var contract = ActiveContract();
 
-        contract.RemoveFee(Parking, Start.AddMonths(2), null).IsSuccess.Should().BeTrue();
+        contract.RemoveFee(Parking, Start.AddMonths(2), null, Schedule).IsSuccess.Should().BeTrue();
         contract.Fees.Single(f => f.FeeTypeId == Parking).EffectiveTo.Should().Be(Start.AddMonths(2).AddDays(-1));
 
-        contract.RemoveFee(Water, Start, null).IsSuccess.Should().BeTrue();
+        contract.RemoveFee(Water, Start, null, Schedule).IsSuccess.Should().BeTrue();
         contract.Fees.Should().NotContain(f => f.FeeTypeId == Water);
-        contract.RemoveFee(Water, Start.AddMonths(1), null).Error.Should().Be(ContractErrors.FeeNotRegistered);
+        contract.RemoveFee(Water, Start.AddMonths(1), null, Schedule).Error.Should().Be(ContractErrors.FeeNotRegistered);
     }
 }

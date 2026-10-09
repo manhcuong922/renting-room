@@ -16,7 +16,7 @@ public sealed class RoomGroup : TenantEntity
 
     public static RoomGroup Create(Guid propertyId, string name, string? description)
     {
-        var group = new RoomGroup { Id = Guid.NewGuid(), PropertyId = propertyId };
+        var group = new RoomGroup { Id = Guid.CreateVersion7(), PropertyId = propertyId };
         group.Rename(name, description);
         return group;
     }
@@ -46,7 +46,7 @@ public sealed class RoomGroupMember : TenantEntity
 
     internal RoomGroupMember(Guid roomGroupId, Guid propertyId, Guid roomId)
     {
-        Id = Guid.NewGuid();
+        Id = Guid.CreateVersion7();
         RoomGroupId = roomGroupId;
         PropertyId = propertyId;
         RoomId = roomId;

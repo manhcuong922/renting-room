@@ -5,6 +5,7 @@ using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Common.Models;
 using renting_room.Application.Common.Validation;
 using renting_room.Application.Meters;
+using renting_room.Application.Properties;
 using renting_room.Domain.Common;
 using renting_room.Domain.Contracts;
 using renting_room.Domain.Meters;
@@ -23,9 +24,13 @@ internal sealed class ContractInputValidator : AbstractValidator<ContractInput>
         RuleFor(x => x.EndDate)
             .Must((x, end) => end is null || (end > x.StartDate && end <= x.StartDate.AddYears(10)))
             .WithErrorCode("INVALID_END_DATE").WithMessage("Ngày kết thúc phải sau ngày bắt đầu và không quá 10 năm.");
+        // K5: HĐ nhập từ sổ cũ được bắt đầu xa (≤ 10 năm) nhưng phần tính tiền trong phần mềm không trước hôm nay quá 1 năm.
         RuleFor(x => x.StartDate)
-            .Must(d => d >= clock.GetUtcNow().ToBusinessDate().AddYears(-1))
-            .WithErrorCode("INVALID_START_DATE").WithMessage("Ngày bắt đầu không được trước hôm nay quá 1 năm.");
+            .Must((x, d) => d >= clock.GetUtcNow().ToBusinessDate().AddYears(x.BillingStartDate is null ? -1 : -10))
+            .WithErrorCode("INVALID_START_DATE").WithMessage("Ngày bắt đầu không được trước hôm nay quá 1 năm (HĐ cũ: nhập \"Tính tiền từ ngày\").");
+        RuleFor(x => x.BillingStartDate)
+            .Must(d => d is null || d >= clock.GetUtcNow().ToBusinessDate().AddYears(-1))
+            .WithErrorCode("INVALID_BILLING_START_DATE").WithMessage("\"Tính tiền từ ngày\" không được trước hôm nay quá 1 năm.");
         RuleFor(x => x.SignedDate)
             .Must(d => d is null || d <= clock.GetUtcNow().ToBusinessDate())
             .WithErrorCode("INVALID_SIGNED_DATE").WithMessage("Ngày ký không được ở tương lai.");
@@ -38,13 +43,10 @@ internal sealed class ContractInputValidator : AbstractValidator<ContractInput>
             .WithErrorCode("INVALID_AMOUNT").WithMessage("Giá thuê phải lớn hơn 0.");
         RuleFor(x => x.DepositAmount).OptionalMoney();
         RuleFor(x => x.DepositTerms).OptionalText(5000);
-        When(x => x.Billing is not null, () =>
-        {
-            RuleFor(x => x.Billing!.AnchorDay).InclusiveBetween(1, 31).OverridePropertyName("billing.anchorDay").WithErrorCode("OUT_OF_RANGE");
-            RuleFor(x => x.Billing!.PaymentDueDays).InclusiveBetween(0, 60).OverridePropertyName("billing.paymentDueDays").WithErrorCode("OUT_OF_RANGE");
-            RuleFor(x => x.Billing!.ChargeMode).IsInEnum().OverridePropertyName("billing.chargeMode");
-            RuleFor(x => x.Billing!.ProrationMode).IsInEnum().OverridePropertyName("billing.prorationMode");
-        });
+        // K5: "Tính tiền từ ngày" nằm trong thời gian HĐ.
+        RuleFor(x => x.BillingStartDate)
+            .Must((x, d) => d is null || (d >= x.StartDate && (x.EndDate is null || d <= x.EndDate)))
+            .WithErrorCode("INVALID_BILLING_START_DATE").WithMessage("\"Tính tiền từ ngày\" phải từ ngày bắt đầu tới ngày kết thúc hợp đồng.");
         RuleFor(x => x.NoticeDays).InclusiveBetween(0, 180).When(x => x.NoticeDays is not null).WithErrorCode("OUT_OF_RANGE");
         RuleFor(x => x.PaymentMethods)
             .Must(m => m is null || (m.Count > 0 && m.All(Enum.IsDefined)))
@@ -122,12 +124,11 @@ internal static class ContractDraftBuilder
         var people = await OccupantChecks.LoadPeopleAsync(db, occupants.Select(o => o.RenterId).Append(input.RepresentativeRenterId), ct);
         if (occupants.Any(o => !people.ContainsKey(o.RenterId)) || !people.ContainsKey(input.RepresentativeRenterId))
             return RenterErrors.RenterNotFound;
+        // RT-BR-01: người đứng tên phải có giấy tờ (người ở dưới 14 tuổi thì không bắt buộc).
+        if (!await OccupantChecks.HasIdNumberAsync(db, input.RepresentativeRenterId, ct))
+            return ContractErrors.RepresentativeIdRequired;
 
-        // CT-BR-28..30: quan hệ của từng người ở với người đứng tên.
-        OccupantChecks.ThrowIfInvalid(
-            OccupantRelationshipRules.Check(people[reference].Facts,
-                occupants.Select(o => (o, people[o.RenterId].Facts)).ToList()),
-            v => $"contract.occupants[{v.Index}].{v.Field}");
+        // CT-BR-28..30: quan hệ người ở chỉ còn là cảnh báo (ContractPaperWarnings) — không chặn tạo / sửa nháp.
 
         var rent = input.MonthlyRent ?? room.ListedRent;
         if (rent is null or <= 0)
@@ -140,7 +141,7 @@ internal static class ContractDraftBuilder
         if (fees.IsFailure)
             return fees.Error!;
 
-        var defaults = property.BillingDefaults;
+        var defaults = property.BillingSettings;
         return new ContractDraftData(
             input.RepresentativeRenterId,
             input.StartDate,
@@ -151,10 +152,6 @@ internal static class ContractDraftBuilder
             rent.Value,
             deposit,
             input.DepositTerms,
-            input.Billing?.AnchorDay ?? defaults.AnchorDay,
-            input.Billing?.ChargeMode ?? defaults.ChargeMode,
-            input.Billing?.ProrationMode ?? defaults.ProrationMode,
-            input.Billing?.PaymentDueDays ?? defaults.PaymentDueDays,
             input.NoticeDays ?? defaults.NoticeDays,
             input.PaymentMethods ?? DefaultPaymentMethods,
             input.CopiesCount ?? DefaultCopies,
@@ -163,7 +160,8 @@ internal static class ContractDraftBuilder
             occupants,
             document,
             input.HouseholdHeadRenterId,
-            fees.Value!);
+            fees.Value!,
+            input.BillingStartDate);
     }
 
     private static async Task<Result<ContractTemplate?>> LoadTemplateAsync(
@@ -219,7 +217,7 @@ public sealed class CreateContractHandler(
     public async ValueTask<Result<CreatedWithWarnings>> Handle(CreateContractCommand request, CancellationToken cancellationToken)
     {
         // Khóa hàng phòng: không tạo được nháp đồng thời với lệnh ngừng dùng phòng (PR-BR-05).
-        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        await using var transaction = await db.BeginTransactionAsync(cancellationToken);
         await db.LockForUpdateAsync<Room>(request.RoomId, cancellationToken);
 
         var room = await db.Rooms.AsNoTracking().FirstOrDefaultAsync(r => r.Id == request.RoomId, cancellationToken);
@@ -249,7 +247,7 @@ public sealed class CreateContractHandler(
         db.Contracts.Add(contract);
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
-        return new CreatedWithWarnings(contract.Id, ContractWarnings.For(contract));
+        return new CreatedWithWarnings(contract.Id, [.. ContractWarnings.For(contract), .. await ContractPaperWarnings.ForAsync(db, contract, clock.GetUtcNow().ToBusinessDate(), cancellationToken)]);
     }
 }
 
@@ -311,17 +309,16 @@ public sealed class CancelContractHandler(IAppDbContext db, TimeProvider clock) 
 
 // ============================================================ Kích hoạt (bàn giao phòng)
 
-/// <param name="OverrideCapacity">Chủ ý vượt sức chứa phòng (VD gia đình có con nhỏ) — ghi log kiểm toán.</param>
 /// <param name="HandoverReadings">MT-BR-13: chỉ số nhận phòng cho mỗi công tơ của phòng; value null = "Dùng số mới nhất".</param>
 public sealed record ActivateContractCommand(
-    Guid Id, bool OverrideCapacity = false, IReadOnlyList<MeterReadingInput>? HandoverReadings = null) : IRequest<Result>;
+    Guid Id, IReadOnlyList<MeterReadingInput>? HandoverReadings = null) : IRequest<Result>;
 
 /// <summary>
 /// CT-BR-01/02/18/19. Khóa theo thứ tự rooms → contracts (C-07). Hai hợp đồng cùng phòng kích hoạt song song:
 /// khóa hàng phòng tuần tự hóa, EXCLUDE constraint trong DB là chốt chặn cuối (→ 409 ROOM_PERIOD_OVERLAP).
 /// </summary>
 public sealed class ActivateContractHandler(
-    IAppDbContext db, TimeProvider clock, IAuditTrail auditTrail)
+    IAppDbContext db, TimeProvider clock)
     : IRequestHandler<ActivateContractCommand, Result>
 {
     public async ValueTask<Result> Handle(ActivateContractCommand request, CancellationToken cancellationToken)
@@ -330,7 +327,7 @@ public sealed class ActivateContractHandler(
         if (roomId is null)
             return Result.Failure(ContractErrors.NotFound);
 
-        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        await using var transaction = await db.BeginTransactionAsync(cancellationToken);
         await db.LockForUpdateAsync<Room>(roomId.Value, cancellationToken);
         await db.LockForUpdateAsync<Contract>(request.Id, cancellationToken);
 
@@ -345,51 +342,36 @@ public sealed class ActivateContractHandler(
 
         var now = clock.GetUtcNow();
         var today = now.ToBusinessDate();
-        var lessor = property.Lessor;
+        var (lessor, _) = await LessorSource.EffectiveAsync(db, property, cancellationToken);
         var feeTypes = await ContractFeeRules.LoadTypesAsync(db, contract, cancellationToken);
         var context = new ActivationContext(
             today,
             now,
             RoomAvailable: !room.IsArchived && !room.IsUnderMaintenance && !property.IsArchived,
-            RoomMaxOccupants: room.MaxOccupants,
-            LessorComplete: lessor?.IsComplete(today) == true,
-            SigningSnapshotJson: lessor is null ? "{}" : SigningSnapshot.From(property, lessor, room, representative, now).ToJson(),
+            // Bên cho thuê: riêng của khu, không có thì của chủ trọ (PR-BR-17). Chưa khai cả hai ⇒ không chụp (chỉ cảnh báo LESSOR_INFO_INCOMPLETE).
+            SigningSnapshotJson: lessor is null ? null : SigningSnapshot.From(property, lessor, room, representative, now).ToJson(),
             HouseRulesSnapshot: property.HouseRulesText,
-            RepresentativeDateOfBirth: representative.DateOfBirth,
-            RepresentativeHasPhone: representative.Phone is not null,
-            OverrideCapacity: request.OverrideCapacity,
             UtilityPriceSnapshotJson: UtilityPriceSnapshotJson.ToJson(UtilityPriceSnapshotJson.Capture(contract, feeTypes)));
 
         var activated = contract.Activate(context);
         if (activated.IsFailure)
             return activated;
         var handover = await ContractMeterReadings.RecordAsync(
-            db, contract, ReadingKind.Handover, contract.StartDate, request.HandoverReadings, cancellationToken);
+            // K5: chỉ số nhận phòng tại "Tính tiền từ ngày" (= ngày bắt đầu, trừ HĐ nhập từ sổ cũ) — điện nước trước mốc đó không tính.
+            db, contract, ReadingKind.Handover, contract.BillingStartDate, request.HandoverReadings, cancellationToken);
         if (handover.IsFailure)
             return handover;
-        if (request.OverrideCapacity && contract.ExceedsCapacity(room.MaxOccupants))
-            auditTrail.Record(AuditActions.OverrideCapacity, nameof(Contract), contract.Id,
-                new { operation = "Activate", maxOccupants = room.MaxOccupants });
-
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return Result.Success();
     }
 
-    /// <summary>CT-BR-28..31 tại thời điểm bàn giao: quan hệ vẫn hợp lệ với hồ sơ hiện tại, không ai đang ở phòng khác.</summary>
+    /// <summary>CT-BR-31 tại thời điểm bàn giao: không ai đang ở phòng khác (quan hệ người ở chỉ cảnh báo — ContractPaperWarnings).</summary>
     private async Task<Error?> CheckOccupantsAsync(Contract contract, CancellationToken ct)
     {
         var people = await OccupantChecks.LoadPeopleAsync(
             db, contract.Occupants.Select(o => o.RenterId).Append(contract.ReferenceRenterId), ct);
         var occupants = contract.Occupants.ToList();
-        var violation = OccupantRelationshipRules.Check(
-                people[contract.ReferenceRenterId].Facts,
-                occupants.Select(o => (o.ToInput(), people[o.RenterId].Facts)).ToList())
-            .FirstOrDefault();
-        if (violation is not null)
-            return Error.BusinessRule(violation.Error.Code,
-                $"{people[occupants[violation.Index].RenterId].Name}: {violation.Error.Message}");
-
         return await OccupantChecks.FindLivingElsewhereAsync(db, contract,
             occupants.Select(o => (o.RenterId, o.MoveInDate, o.MoveOutDate)).ToList(),
             people.ToDictionary(p => p.Key, p => p.Value.Name), ct);
