@@ -23,7 +23,8 @@ public sealed record ListContractsQuery(
     int Page = 1,
     int PageSize = Paging.DefaultPageSize,
     bool? HasDeposit = null,
-    bool? MissingSignedDocument = null) : IRequest<PagedResult<ContractSummaryDto>>;
+    bool? MissingSignedDocument = null,
+    bool? DepositNotRefunded = null) : IRequest<PagedResult<ContractSummaryDto>>;
 
 public sealed class ListContractsQueryValidator : AbstractValidator<ListContractsQuery>
 {
@@ -66,6 +67,9 @@ public sealed class ListContractsHandler(IAppDbContext db, TimeProvider clock)
                 && c.HasSignedDocument != missing);
         if (request.HasDeposit is { } hasDeposit)
             query = hasDeposit ? query.Where(c => c.DepositAmount > 0) : query.Where(c => c.DepositAmount == 0);
+        // M08 PM-BR-35: HĐ đã kết thúc có cọc mà chưa đánh dấu hoàn trả.
+        if (request.DepositNotRefunded == true)
+            query = query.Where(c => c.Status == ContractStatus.Ended && c.DepositAmount > 0 && c.DepositStatus == DepositStatus.Holding);
         if (!string.IsNullOrWhiteSpace(request.Search))
         {
             var term = TextNormalizer.NormalizeCode(request.Search);
@@ -132,6 +136,7 @@ public sealed class GetContractHandler(IAppDbContext db, TimeProvider clock) : I
     {
         var contract = await db.Contracts.AsNoTracking()
             .Include(c => c.RentTerms).Include(c => c.Occupants).Include(c => c.Assets).Include(c => c.Vehicles).Include(c => c.Fees)
+            .Include(c => c.RoomMoves)
             .AsSplitQuery()
             .FirstOrDefaultAsync(c => c.Id == request.Id, cancellationToken);
         if (contract is null)
@@ -146,6 +151,8 @@ public sealed class GetContractHandler(IAppDbContext db, TimeProvider clock) : I
         var roomCode = await db.Rooms.Where(r => r.Id == contract.RoomId).Select(r => r.Code).FirstAsync(cancellationToken);
         var today = clock.GetUtcNow().ToBusinessDate();
         var snapshot = SigningSnapshot.FromJson(contract.SigningSnapshot);
+        var movedFrom = contract.RoomMoves.Select(m => m.RoomId).ToList();
+        var movedCodes = await db.Rooms.AsNoTracking().Where(r => movedFrom.Contains(r.Id)).ToDictionaryAsync(r => r.Id, r => r.Code, cancellationToken);
 
         return new ContractDetailDto(
             contract.Id, contract.ContractNo, contract.Status, contract.PropertyId, propertyCode, contract.RoomId, roomCode,
@@ -165,8 +172,8 @@ public sealed class GetContractHandler(IAppDbContext db, TimeProvider clock) : I
                     o.ExpectedEndDate, o.Relationship, o.Note, o.RenterId == contract.RepresentativeRenterId, o.RelationshipType,
                     o.GuardianConsent, o.RenterId == contract.ReferenceRenterId)).ToList(),
             contract.Assets.OrderBy(a => a.Name)
-                .Select(a => new AssetDto(a.Id, a.Name, a.Quantity, a.ConditionAtHandover, a.ConditionAtReturn, a.ValueEstimate,
-                    a.CompensationValue, a.Note)).ToList(),
+                .Select(a => new AssetDto(a.Id, a.Name, a.Quantity, a.ConditionAtHandover, a.ConditionAtReturn, a.ValueEstimate, a.Note))
+                .ToList(),
             contract.Vehicles.OrderBy(v => v.RegisteredFrom)
                 .Select(v => new VehicleDto(v.Id, v.RenterId, v.VehicleType, v.PlateNumber, v.BrandColor, v.RegisteredFrom, v.RegisteredTo,
                     v.Note)).ToList(),
@@ -185,7 +192,13 @@ public sealed class GetContractHandler(IAppDbContext db, TimeProvider clock) : I
             contract.Version.ToString(),
             contract.HasSignedDocument,
             contract.SignedDocumentNote,
-            contract.BillingStartDate);
+            contract.BillingStartDate,
+            new ContractDepositDto(contract.DepositAmount, contract.HasDeposit ? contract.DepositStatus : null, contract.DepositRefundedOn,
+                contract.DepositRefundedAmount, contract.DepositNote,
+                contract.Status == ContractStatus.Ended && contract.HasDeposit && contract.DepositStatus == DepositStatus.Holding),
+            contract.RoomSince,
+            contract.RoomMoves.OrderBy(m => m.FromDate)
+                .Select(m => new RoomMoveDto(m.RoomId, movedCodes.GetValueOrDefault(m.RoomId, ""), m.FromDate, m.ToDate)).ToList());
     }
 }
 

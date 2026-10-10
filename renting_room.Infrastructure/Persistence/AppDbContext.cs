@@ -34,6 +34,7 @@ public class AppDbContext(
     public DbSet<FeeType> FeeTypes => Set<FeeType>();
     public DbSet<Meter> Meters => Set<Meter>();
     public DbSet<Invoice> Invoices => Set<Invoice>();
+    public DbSet<RoomCharge> RoomCharges => Set<RoomCharge>();
     public DbSet<Payment> Payments => Set<Payment>();
     public DbSet<Contract> Contracts => Set<Contract>();
 
@@ -119,9 +120,12 @@ public class AppDbContext(
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
         var auditLogs = PrepareForSave();
+        var staleMarker = InvoiceStaleMarker.Collect(ChangeTracker);
         try
         {
-            return base.SaveChanges(acceptAllChangesOnSuccess);
+            var saved = base.SaveChanges(acceptAllChangesOnSuccess);
+            staleMarker?.Mark(this);
+            return saved;
         }
         catch
         {
@@ -133,9 +137,13 @@ public class AppDbContext(
     public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
     {
         var auditLogs = PrepareForSave();
+        var staleMarker = InvoiceStaleMarker.Collect(ChangeTracker);
         try
         {
-            return await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+            var saved = await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+            if (staleMarker is not null)
+                await staleMarker.MarkAsync(this, cancellationToken);
+            return saved;
         }
         catch
         {

@@ -17,4 +17,8 @@ public sealed class AuditOptions
 
     /// <summary>Thời gian gom tối đa tính từ bản ghi đầu tiên của lô — cũng là lượng audit tối đa có thể mất khi app crash.</summary>
     public TimeSpan FlushInterval { get; set; } = TimeSpan.FromSeconds(2);
+
+    /// <summary>S2: nhật ký cũ hơn số năm này bị job hằng ngày xóa (mặc định 5).</summary>
+    [Range(1, 50)]
+    public int RetentionYears { get; set; } = 5;
 }

@@ -99,4 +99,4 @@ Ngày là kiểu ngày Excel (`dd/MM/yyyy`) — sắp xếp/lọc được. Chu�
 | `EXPORT_TOO_LARGE` | 422 | > 20.000 dòng — thu hẹp bộ lọc |
 | `VALIDATION_FAILED` (`toDate`: `INVALID_DATE_RANGE`) | 400 | Lỗi dưới ô ngày |
 
-Xuất thông tin phòng, tiền phòng tháng, công nợ, sổ cọc: chưa có (chờ các module thu tiền).
+Xuất thông tin phòng, tiền phòng tháng, công nợ, danh sách cọc: chưa có (M10 — để sau).

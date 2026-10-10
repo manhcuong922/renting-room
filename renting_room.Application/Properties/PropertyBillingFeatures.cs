@@ -113,7 +113,7 @@ public sealed class UpdatePropertyBillingHandler(IAppDbContext db, TimeProvider 
             return PropertyErrors.PropertyNotFound;
 
         var billing = request.Billing;
-        property.UpdateBillingTerms(billing.PaymentDueDays, billing.ProrationMode, billing.NoticeDays);
+        property.UpdateBillingTerms(billing.PaymentDueDays, billing.ProrationMode, billing.NoticeDays, billing.RoundInvoiceTotal ?? property.RoundInvoiceTotal);
         var before = property.BillingScheduleEntries.ToList();
         var from = await BillingChangePlanner.FirstUnbilledPeriodStartAsync(db, property, cancellationToken);
         var changed = property.ChangeBillingCycle(billing.AnchorDay, billing.ChargeMode, from, request.TransitionAdjustDays);

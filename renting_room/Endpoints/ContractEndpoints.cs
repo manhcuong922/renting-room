@@ -40,13 +40,19 @@ public sealed record ExtendContractRequest(DateOnly NewEndDate);
 
 public sealed record HoldoverRequest(string? Note);
 
-public sealed record ResignContractRequest(DateOnly HandoverDate, Guid RepresentativeRenterId, DateOnly? EndDate);
+public sealed record RefundDepositRequest(DateOnly RefundedOn, decimal? Amount, string? Note);
+
+public sealed record TransferRoomRequest(
+    Guid ToRoomId, DateOnly Date, IReadOnlyList<MeterReadingInput>? OldRoomReadings, IReadOnlyList<MeterReadingInput>? NewRoomReadings,
+    decimal? MonthlyRent, string? Note);
+
+public sealed record ResignContractRequest(DateOnly HandoverDate, Guid RepresentativeRenterId, DateOnly? EndDate, bool? TransferDeposit);
 
 public sealed record GiveNoticeRequest(DateOnly NoticeDate, DateOnly PlannedMoveOutDate);
 
 public sealed record StartLiquidationRequest(DateOnly ActualEndDate, TerminationReason Reason, TerminationGround? Ground, string? Note);
 
-public sealed record AssetReturnRequest(string? ConditionAtReturn, decimal? CompensationValue);
+public sealed record AssetReturnRequest(string? ConditionAtReturn);
 
 public sealed record RegisterVehicleRequest(Guid? RenterId, VehicleType VehicleType, string? PlateNumber, string? BrandColor, DateOnly? RegisteredFrom, string? Note);
 
@@ -64,11 +70,12 @@ public static class ContractEndpoints
 
         group.MapGet("/", async (
                 Guid? propertyId, Guid? roomId, Guid? renterId, ContractStatus? status, int? expiringWithinDays, bool? overdue,
-                string? search, bool? hasDeposit, bool? missingSignedDocument, int? page, int? pageSize, ISender sender, CancellationToken ct) =>
+                string? search, bool? hasDeposit, bool? missingSignedDocument, bool? depositNotRefunded, int? page, int? pageSize, ISender sender,
+                CancellationToken ct) =>
                 Results.Ok(await sender.Send(new ListContractsQuery(
                     propertyId, roomId, renterId, status, expiringWithinDays, overdue, search, page ?? 1, pageSize ?? Paging.DefaultPageSize,
-                    hasDeposit, missingSignedDocument), ct)))
-            .WithSummary("Danh sách hợp đồng — lọc khu, phòng, người thuê, trạng thái, sắp hết hạn, quá hạn, có/không cọc, thiếu bản HĐ ký");
+                    hasDeposit, missingSignedDocument, depositNotRefunded), ct)))
+            .WithSummary("Danh sách hợp đồng — lọc khu, phòng, người thuê, trạng thái, sắp hết hạn, quá hạn, có/không cọc, chưa hoàn cọc, thiếu bản HĐ ký");
 
         group.MapPost("/", async (CreateContractRequest body, ISender sender, CancellationToken ct) =>
                 (await sender.Send(new CreateContractCommand(body.RoomId, body.ContractNo, body.Contract), ct)).ToCreated(Route))
@@ -144,8 +151,21 @@ public static class ContractEndpoints
         group.MapPost("/{id:guid}/holdover", async (Guid id, HoldoverRequest? b, ISender sender, CancellationToken ct) =>
                 (await sender.Send(new StartHoldoverCommand(id, b?.Note), ct)).ToHttp())
             .WithSummary("HĐ đã hết hạn: cho ở tiếp, chưa ký lại (CT-UC-22)");
+        group.MapPost("/{id:guid}/deposit/refund", async (Guid id, RefundDepositRequest b, ISender sender, CancellationToken ct) =>
+                (await sender.Send(new RefundDepositCommand(id, b.RefundedOn, b.Amount, b.Note), ct)).ToHttp())
+            .WithSummary("Đã hoàn trả cọc (ngày, số tiền thực trả — mặc định đủ cọc, ghi chú bắt buộc nếu trả ít hơn)");
+        group.MapDelete("/{id:guid}/deposit/refund", async (Guid id, ISender sender, CancellationToken ct) =>
+                (await sender.Send(new CancelDepositRefundCommand(id), ct)).ToHttp())
+            .WithSummary("Bỏ đánh dấu hoàn trả / chuyển cọc (nhập nhầm)");
+        group.MapPost("/{id:guid}/transfer-room", async (Guid id, TransferRoomRequest b, ISender sender, CancellationToken ct) =>
+            {
+                var result = await sender.Send(new TransferRoomCommand(id, b.ToRoomId, b.Date, b.OldRoomReadings, b.NewRoomReadings, b.MonthlyRent, b.Note), ct);
+                return result.IsSuccess ? Results.Ok(new { warnings = result.Value }) : result.ToHttp();
+            })
+            .WithIdempotency(required: true)
+            .WithSummary("Chuyển phòng (cùng khu): HĐ giữ nguyên, chỉ số cuối phòng cũ + nhận phòng mới tại ngày chuyển, giá mới tùy chọn");
         group.MapPost("/{id:guid}/re-sign", async (Guid id, ResignContractRequest b, ISender sender, CancellationToken ct) =>
-                (await sender.Send(new ResignContractCommand(id, b.HandoverDate, b.RepresentativeRenterId, b.EndDate), ct)).ToCreated(Route))
+                (await sender.Send(new ResignContractCommand(id, b.HandoverDate, b.RepresentativeRenterId, b.EndDate, b.TransferDeposit ?? true), ct)).ToCreated(Route))
             .WithIdempotency(required: true)
             .WithSummary("Ký lại cho người còn ở: thanh lý HĐ cũ tại ngày bàn giao, tạo HĐ nháp mới từ ngày hôm sau (CT-UC-21)");
         group.MapPost("/{id:guid}/notice", async (Guid id, GiveNoticeRequest b, ISender sender, CancellationToken ct) =>
@@ -181,7 +201,7 @@ public static class ContractEndpoints
                 (await sender.Send(new RemoveAssetCommand(id, assetId), ct)).ToHttp())
             .WithSummary("Xóa tài sản bàn giao");
         group.MapPost("/{id:guid}/assets/{assetId:guid}/return", async (Guid id, Guid assetId, AssetReturnRequest b, ISender sender, CancellationToken ct) =>
-                (await sender.Send(new RecordAssetReturnCommand(id, assetId, b.ConditionAtReturn, b.CompensationValue), ct)).ToHttp())
+                (await sender.Send(new RecordAssetReturnCommand(id, assetId, b.ConditionAtReturn), ct)).ToHttp())
             .WithSummary("Ghi tình trạng tài sản khi trả phòng + giá trị bồi thường");
 
         // ---- Xe gửi

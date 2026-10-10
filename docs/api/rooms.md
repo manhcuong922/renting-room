@@ -83,6 +83,8 @@ Sắp xếp sẵn theo mã khu → mã phòng.
 
 `outstandingAmount` = tổng còn nợ của các phiếu đã chốt của phòng (mọi hợp đồng) — > 0 thì hiện nhãn **"Còn nợ"** + số tiền trên ô phòng
 ([payments.md](payments.md)).
+`depositHeld` = **"Đang giữ cọc"** — cọc thỏa thuận của HĐ đang ở phòng mà chưa đánh dấu hoàn trả (0 = không cọc / đã hoàn; [contracts.md](contracts.md#tiền-cọc)).
+
 `overdueAmount` / `isOverdue` = phần còn nợ của phiếu đã **quá hạn thanh toán** (ngày chốt phiếu + số ngày hạn của khu) ⇒ nhãn **đỏ "Quá hạn"**.
 
 `GET /rooms/{id}` trả đúng một phần tử như trên.

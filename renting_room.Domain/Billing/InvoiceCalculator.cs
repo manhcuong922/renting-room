@@ -48,14 +48,20 @@ public sealed record UsagePeriod(DateOnly Start, DateOnly End, DateOnly ClosingP
     /// M06 §3.3 — chỉ số đầu: số cuối của đoạn đo gần nhất trên phiếu chưa hủy của HĐ (MT-BR-12); chưa có phiếu nào ⇒ chỉ số lắp
     /// (công tơ lắp trong kỳ) hoặc chỉ số gần nhất ≤ đầu kỳ (nhận phòng / tháng trước — phiếu đầu tiên của HĐ nhập từ trước).
     /// </summary>
-    public MeterReading? StartReading(Meter meter, Guid? lastSegmentEndReadingId) =>
+    /// <param name="stay">Khoảng HĐ ở phòng của công tơ — chuyển tới phòng giữa kỳ (CT-BR-47) ⇒ bắt đầu từ chỉ số nhận phòng của HĐ.</param>
+    public MeterReading? StartReading(Meter meter, Guid? lastSegmentEndReadingId, Guid contractId, RoomStay? stay = null) =>
         lastSegmentEndReadingId is { } id ? meter.Find(id)
+        : stay is not null && stay.From > Start ? meter.FindHandover(contractId)
         : meter.InstalledDate > Start ? meter.Ordered.FirstOrDefault(r => r.Kind == ReadingKind.Initial)
         : meter.LatestOnOrBefore(Start);
 
-    /// <summary>Chỉ số cuối: tháo công tơ trong kỳ ⇒ số tháo (MT-BR-15); kỳ cuối ⇒ chỉ số cuối HĐ; còn lại ⇒ chỉ số cuối kỳ.</summary>
-    public MeterReading? EndReading(Meter meter, Guid contractId) =>
+    /// <summary>
+    /// Chỉ số cuối: tháo công tơ trong kỳ ⇒ số tháo (MT-BR-15); kỳ cuối hoặc HĐ chuyển khỏi phòng trong kỳ (CT-BR-47) ⇒ chỉ số cuối HĐ;
+    /// còn lại ⇒ chỉ số cuối kỳ.
+    /// </summary>
+    public MeterReading? EndReading(Meter meter, Guid contractId, RoomStay? stay = null) =>
         meter.RemovedDate is { } removed && removed <= End ? meter.Removal
+        : stay is { To: { } left } && left < End && !EndsWithFinal ? meter.FindFinal(contractId)
         : EndsWithFinal ? meter.FindFinal(contractId) ?? meter.FindPeriodic(contractId, ClosingPeriodStart)
         : meter.FindPeriodic(contractId, ClosingPeriodStart);
 }
@@ -66,6 +72,7 @@ public sealed record UsagePeriod(DateOnly Start, DateOnly End, DateOnly ClosingP
 /// <param name="ProrationMode">Cách tính tiền phòng kỳ lẻ của khu.</param>
 /// <param name="Final">Có ⇒ tính phiếu quyết toán (BL-BR-17); null ⇒ phiếu thường.</param>
 /// <param name="RecentUsage">Theo khoản điện nước: sản lượng các phiếu thường trước của HĐ, mới nhất trước (MT-BR-08).</param>
+/// <param name="RoundTotal">Khu bật làm tròn tổng phiếu xuống nghìn (BL-BR-29).</param>
 public sealed record InvoiceCalcInput(
     Contract Contract,
     BillingPeriod Period,
@@ -75,7 +82,8 @@ public sealed record InvoiceCalcInput(
     IReadOnlyList<Meter> RoomMeters,
     IReadOnlyDictionary<Guid, Guid> LastSegmentEndReadings,
     FinalSettlement? Final = null,
-    IReadOnlyDictionary<Guid, IReadOnlyList<decimal>>? RecentUsage = null);
+    IReadOnlyDictionary<Guid, IReadOnlyList<decimal>>? RecentUsage = null,
+    bool RoundTotal = false);
 
 /// <summary>
 /// Bối cảnh phiếu quyết toán: <paramref name="RentBilled"/> = tiền phòng kỳ cuối đã nằm trên phiếu thường (null = chưa thu) ⇒ không thu thêm;
@@ -107,7 +115,7 @@ public static class InvoiceCalculator
             AddServices(input, lines, issues);
         WarnTwoRentPeriods(input, issues);
         AddMetered(input, lines, segments, issues);
-        return new InvoiceCalculation(lines.OrderBy(l => l.SortOrder).ToList(), segments, issues);
+        return new InvoiceCalculation(lines.OrderBy(l => l.SortOrder).ToList(), segments, issues, input.RoundTotal);
     }
 
     /// <summary>
@@ -128,6 +136,10 @@ public static class InvoiceCalculator
         lines.Add(new CalculatedLine(InvoiceLineType.Rent, null, name, "tháng", period.Start, period.End, 1, rent,
             factor, Invoice.Money(rent * factor), 0));
     }
+
+    private static DateOnly Max(DateOnly a, DateOnly b) => a > b ? a : b;
+
+    private static DateOnly Min(DateOnly a, DateOnly b) => a < b ? a : b;
 
     /// <summary>
     /// BL-BR-17: kỳ cuối đã thu tiền phòng trên phiếu thường mà người thuê trả phòng sớm hơn ⇒ nhắc phần thu thừa để chủ trọ thêm dòng
@@ -194,8 +206,11 @@ public static class InvoiceCalculator
         if (usage is null)
             return;
 
+        // CT-BR-47: công tơ của mọi phòng HĐ đã ở trong kỳ sử dụng (chuyển phòng giữa kỳ ⇒ 2 phòng).
+        var stays = input.Contract.RoomStays.Where(s => s.Overlaps(usage.Start, usage.End)).ToList();
+        RoomStay? StayOf(Meter m) => stays.LastOrDefault(s => s.RoomId == m.RoomId);
         var groups = input.RoomMeters
-            .Where(m => m.Overlaps(usage.Start, usage.End)
+            .Where(m => StayOf(m) is { } stay && m.Overlaps(Max(usage.Start, stay.From), Min(usage.End, stay.To ?? usage.End))
                 && input.FeeTypes.TryGetValue(m.FeeTypeId, out var t) && t.Group == FeeGroup.Metered)
             .GroupBy(m => m.FeeTypeId);
         foreach (var group in groups)
@@ -204,8 +219,10 @@ public static class InvoiceCalculator
             var parts = new List<CalculatedSegment>();
             foreach (var meter in group.OrderBy(m => m.InstalledDate))
             {
-                var start = usage.StartReading(meter, input.LastSegmentEndReadings.TryGetValue(meter.Id, out var last) ? last : null);
-                var end = usage.EndReading(meter, input.Contract.Id);
+                var stay = stays.Count > 1 ? StayOf(meter) : null;
+                var start = usage.StartReading(meter, input.LastSegmentEndReadings.TryGetValue(meter.Id, out var last) ? last : null,
+                    input.Contract.Id, stay);
+                var end = usage.EndReading(meter, input.Contract.Id, stay);
                 var name = meter.SerialNo is null ? type.Name : $"{type.Name} ({meter.SerialNo})";
                 if (start is null || end is null)
                 {

@@ -143,7 +143,7 @@ public sealed class ImportTests(ApiFactory factory)
             ["101", "Ở cùng", "Trần Thị Lan", new DateOnly(2000, 4, 15), "Nữ", null, "CCCD", wifeId, "VN", null, null, "Vợ", today.AddYears(-2), null, null],
             ["101", "Ở cùng", "Phạm Minh An", today.AddYears(-7), "Nam", null, null, null, "VN", null, "Học sinh", "Con", today.AddYears(-2), null, null],
             ["102", "Đứng tên (không ở)", "Phạm Văn Hùng", new DateOnly(1985, 4, 2), "Nam", "0912345678", "CCCD", husbandId, "VN", null, null, null,
-                today.AddMonths(-3), 2_500_000, 0],
+                today.AddMonths(-3), 2_500_000, 1_000_000],
             ["102", "Ở cùng", "Đào Thị Nga", new DateOnly(2004, 5, 5), "Nữ", null, "CCCD", studentId, "VN", null, "Sinh viên", "Cùng ở thuê",
                 today.AddMonths(-3), null, null],
             ["103", "Đứng tên", "Lý Văn Mạnh", new DateOnly(1995, 3, 3), "Nam", null, "CCCD", TestData.NewCitizenId(), "VN", null, null, null,
@@ -179,6 +179,10 @@ public sealed class ImportTests(ApiFactory factory)
         detail102.GetProperty("representativeRenterId").GetGuid().Should().Be(detail101.GetProperty("representativeRenterId").GetGuid(),
             "một người đứng tên 2 phòng dùng chung 1 hồ sơ");
         detail102.GetProperty("occupants").GetArrayLength().Should().Be(1, "người đứng tên không ở phòng 102");
+
+        // Cọc import = cọc thỏa thuận, mặc định "Đang giữ" (M08 PM-BR-32).
+        detail101.GetProperty("deposit").GetProperty("amount").GetDecimal().Should().Be(3_500_000);
+        detail101.GetProperty("deposit").GetProperty("status").GetString().Should().Be("Holding");
 
         // Gửi lại lần 2 không nhân đôi: phòng đã có HĐ ⇒ bỏ qua.
         var again = await (await _client.PostJsonAsync(url, Rows(preview), token)).ReadAsync<JsonElement>();

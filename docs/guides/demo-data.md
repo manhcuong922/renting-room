@@ -20,7 +20,7 @@ Seed lỗi giữa chừng ⇒ app dừng với thông báo `Demo seed failed at 
 | Vai trò | Đăng nhập | Mật khẩu |
 |---------|-----------|----------|
 | Chủ trọ | `0900000009` | `ChuTroDemo2026` |
-| Phó quản lý | `0900000008` | `PhoQuanLy2026` |
+| Phó quản lý | `0900000008` | `PhoQuanLy2026` — **chưa có quyền bỏ nợ** (chủ trọ bật / tắt riêng tại màn thành viên) |
 | SystemAdmin | theo `Bootstrap:Admin` (user-secrets) | |
 
 ## Tình huống
@@ -34,18 +34,18 @@ wifi 100.000đ → **120.000đ từ ngày 10 tháng M−1** (cả tháng M−1 t
 
 | Phòng | Tình huống |
 |-------|-----------|
-| 101 | Vợ chồng + con 9 tuổi (có đồng ý người giám hộ), 2 xe máy, 3 tháng đã thu đủ; HĐ **duy nhất đã có bản ký** (các HĐ khác mang nhãn "Thiếu tài liệu") |
-| 102 | Phiếu M−2 **quá hạn** chưa thu (nhãn đỏ **Quá hạn**, lọc `GET /rooms?overdue=true`); phiếu M−1 **thu một phần**; người ở ghép **chưa khai quan hệ** ⇒ cảnh báo `RELATIONSHIP_REQUIRED` |
-| 103 | Phiếu nháp M−1: **sửa tay** tiền phòng, **phụ thu** thay khóa, **giảm trừ** mất nước; điện **= 0** khi có người ở ⇒ cảnh báo `UNUSUAL_USAGE` |
+| 101 | Vợ chồng + con 9 tuổi (có đồng ý người giám hộ), 2 xe máy, 3 tháng đã thu đủ; HĐ **duy nhất đã có bản ký** (các HĐ khác mang nhãn "Thiếu tài liệu"); hôm nay hỏng khóa ⇒ **khoản phát sinh "Thay khóa cửa" chờ vào phiếu** tháng này |
+| 102 | Phiếu M−2 **quá hạn** chưa thu (nhãn đỏ **Quá hạn**, lọc `GET /rooms?overdue=true`); phiếu M−1 **thu một phần**; phiếu M−1 hiện **"Nợ các kỳ trước"** (M−2) + **"Tổng cần thanh toán"**; người ở ghép **chưa khai quan hệ** ⇒ cảnh báo `RELATIONSHIP_REQUIRED`; **khoản bù "Mất nước 2 ngày" chờ vào phiếu** tháng này |
+| 103 | Phiếu nháp M−1: **sửa tay** tiền phòng, **phụ thu** thay khóa, **giảm trừ** mất nước; điện **= 0** khi có người ở ⇒ cảnh báo `UNUSUAL_USAGE`; khoản **"Làm thêm chìa khóa" đã thu ngay** ⇒ hiện trên nháp, không tính vào tổng; phụ thu / giảm trừ trên nháp cũng nằm trong danh sách khoản phát sinh của phòng |
 | 104 | Người nước ngoài (hộ chiếu) **vào giữa tháng**, ở ghép; phòng tính **nước theo người** (không công tơ nước); giá niêm yết tăng 3tr → 3,1tr rồi **áp cho người đang thuê** ⇒ HĐ 2,8tr → 3,1tr từ tháng M (tháng M−1 đã lập phiếu giữ giá cũ) |
-| 105 | **Đang thanh lý** — báo trả phòng sau 15 ngày |
-| 106 | Bỏ đi không báo giữa tháng M−1 ⇒ phiếu quyết toán, **bỏ nợ**, HĐ đã kết thúc |
-| 201 | HĐ cũ đã kết thúc ~10 tháng trước (lịch sử) |
+| 105 | **Đang thanh lý** — báo trả phòng sau 15 ngày; phiếu M−1 **"Thanh toán + bỏ phần còn lại"** (trả thiếu 200k, chủ trọ bỏ do mất nước) |
+| 106 | Bỏ đi không báo giữa tháng M−1, làm vỡ gương ⇒ tài sản ghi "Vỡ", phiếu quyết toán có **phụ thu "Bồi thường gương nhà tắm" 300k**; hoàn tất thanh lý bằng **bỏ nợ**; cọc **chưa đánh dấu hoàn** ⇒ nhãn **"Chưa hoàn cọc"** (`GET /contracts?depositNotRefunded=true`) |
+| 201 | HĐ cũ đã kết thúc ~10 tháng trước (lịch sử) — **"Đã hoàn trả cọc"** đủ 2,5tr |
 | 202 | HĐ **hết hạn chờ quyết định**; người đứng tên **không có SĐT** ⇒ cảnh báo `REPRESENTATIVE_PHONE_MISSING` |
-| 203 | HĐ hết hạn, **ở tiếp chưa ký lại** |
-| 204 | **HĐ nháp** sắp vào ở + 1 HĐ nháp **đã hủy** |
+| 203 | HĐ hết hạn, **ở tiếp chưa ký lại**; **chuyển sang phòng 206 hôm nay** (giá mới 3,2tr) ⇒ HĐ và cọc giữ nguyên, 203 trống từ mai |
+| 204 | **HĐ nháp** sắp vào ở + 1 HĐ nháp **đã hủy**: khách đổi ý ⇒ ghi **"Đã hoàn trả cọc" 0đ** kèm lý do (mất cọc giữ chỗ) |
 | 205 | Phòng **bảo trì** |
-| 206 | Phòng trống; thêm 1 hồ sơ người thuê chưa từng thuê |
+| 206 | Phòng của HĐ **chuyển từ 203** (chuyển phòng hôm nay); thêm 1 hồ sơ người thuê chưa từng thuê |
 
 Khu A có khoản **"Phí điều hòa"** thêm hàng loạt cho 101, 102 qua màn "Phòng đang dùng dịch vụ" (`POST /fee-types/{id}/usage`).
 
@@ -53,11 +53,12 @@ Khu A có khoản **"Phí điều hòa"** thêm hàng loạt cho 101, 102 qua m�
 
 | Phòng | Tình huống |
 |-------|-----------|
-| B01 | Trả phòng sớm kỳ này ⇒ phiếu quyết toán có cảnh báo **thu thừa**, dòng **hoàn trả**, tổng âm ⇒ **Chờ hoàn**; HĐ đang thanh lý |
-| B02 | Trả phòng sớm kỳ trước ⇒ hoàn trả **đã xác nhận hoàn**, HĐ kết thúc, người thuê **ẩn danh bằng tay** (yêu cầu xóa dữ liệu) — biển số xe máy đã bị xóa |
+| B01 | Trả phòng sớm kỳ này ⇒ phiếu quyết toán có cảnh báo **thu thừa**, dòng **hoàn trả** (phiếu nguồn = phiếu kỳ này đã thu trọn tiền phòng), tổng âm ⇒ **Chờ hoàn**; HĐ đang thanh lý, cọc **đang giữ** |
+| B02 | Trả phòng sớm kỳ trước ⇒ hoàn trả **đã xác nhận hoàn**, HĐ kết thúc, **"Đã hoàn trả cọc"** đủ; người thuê **ẩn danh bằng tay** — biển số xe máy đã bị xóa |
 | B03 | **Thay công tơ điện** giữa kỳ trước ⇒ phiếu nháp kỳ này có 2 đoạn đo |
-| B04 | 3 người, **450 kWh** ⇒ phiếu nháp tính giá bậc |
+| B04 | 3 người, **450 kWh** ⇒ phiếu nháp tính giá bậc (tổng lẻ ⇒ **"Làm tròn"**); người ở thứ 4 vào **sau khi lập nháp** ⇒ nháp **"Cần tính lại"** (`GET /invoices?stale=true`); khoản **bù "hỏng quạt" đã trả tiền mặt** ⇒ hiện trên nháp, không trừ vào tổng |
 | B05 | Phòng trống |
+| B06 | Người đứng tên chuyển đi, vợ **ký lại** HĐ mới từ mai ⇒ cọc HĐ cũ **"Đã chuyển sang HĐ mới"**, HĐ cũ đang thanh lý |
 
 **Khu C — nhập từ Excel** (thu sau, chốt ngày 1): import phòng (xem trước → lưu dòng hợp lệ; C05 gõ sai số người bị bỏ qua; chỉ số đầu
 kỳ ⇒ công tơ lắp từ ngày 1 tháng M), rồi import người thuê đang ở (1 sheet, mỗi dòng 1 người; phòng C09 không tồn tại bị bỏ qua).
@@ -69,12 +70,17 @@ kỳ ⇒ công tơ lắp từ ngày 1 tháng M), rồi import người thuê đa
 | C03 | **Hà Văn Toàn đứng tên (không ở)** — cùng người đứng tên C01 ⇒ 1 người thuê 2 phòng; sinh viên ở cùng |
 | C04 | Phòng trống |
 
+Khu C: **điện lực thay công tơ điện hàng loạt** hôm nay (`EVN-C01`, `EVN-C02`) ⇒ phiếu tháng này cộng 2 công tơ.
+
 **Khu D — đổi ngày chốt** (thu sau): chốt ngày 1, đã lập + thu đủ phiếu M−2, M−1 của D01, rồi đổi sang **ngày 5** ⇒ kỳ chuyển tiếp
 đầu tháng M → ngày 4 tháng M+1 (dư 4 ngày, gợi ý tính thêm 4 ngày); phiếu nháp tháng M có dòng "Tiền phòng (1 tháng + 4 ngày — đổi ngày chốt)"
-(còn thiếu chỉ số cuối kỳ).
+(còn thiếu chỉ số cuối kỳ). Khu D **tắt "Làm tròn tổng phiếu"** (các khu khác bật mặc định) ⇒ tổng nháp giữ số lẻ.
 
 Không seed được HĐ "kết thúc hơn 36 tháng" (phần tính tiền không được trước hôm nay quá 1 năm) — ẩn danh tự động
 được kiểm bằng integration test với ngày giả lập.
+
+**Không có trong dữ liệu mẫu** (cần dữ liệu nhiều năm — có integration test riêng): xóa nhật ký cũ hơn 5 năm (`AuditRetentionTests`),
+ẩn danh người thuê sau 36 tháng (`RenterAnonymizationTests`).
 
 ## Quy tắc
 

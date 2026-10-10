@@ -11,6 +11,8 @@ public sealed record UpdateManagerRequest(string FullName, string? Phone, string
 
 public sealed record SensitiveDataAccessRequest(bool Allowed);
 
+public sealed record WriteOffPermissionRequest(bool Allowed);
+
 /// <summary>Thành viên tổ chức: chủ trọ + phó quản lý (M01 §3.3).</summary>
 public static class MemberEndpoints
 {
@@ -62,6 +64,10 @@ public static class MemberEndpoints
         ownerOnly.MapPut("/{id:guid}/sensitive-data-access", async (Guid id, SensitiveDataAccessRequest body, ISender sender, CancellationToken ct) =>
                 (await sender.Send(new SetSensitiveDataAccessCommand(id, body.Allowed), ct)).ToHttp())
             .WithSummary("Cấp / thu hồi quyền xem dữ liệu nhạy cảm (số giấy tờ đầy đủ) cho phó quản lý");
+
+        ownerOnly.MapPut("/{id:guid}/write-off-permission", async (Guid id, WriteOffPermissionRequest body, ISender sender, CancellationToken ct) =>
+                (await sender.Send(new SetWriteOffPermissionCommand(id, body.Allowed), ct)).ToHttp())
+            .WithSummary("Cấp / thu hồi quyền bỏ nợ cho từng phó quản lý (mặc định không)");
 
         ownerOnly.MapPost("/{id:guid}/reset-password", async (Guid id, ISender sender, CancellationToken ct) =>
                 (await sender.Send(new ResetManagerPasswordCommand(id), ct)).ToHttp())

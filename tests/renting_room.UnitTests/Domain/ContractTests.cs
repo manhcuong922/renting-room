@@ -173,11 +173,11 @@ public sealed class ContractTests
         contract.Activate(Context());
 
         contract.AddAsset(new AssetInput("Giường", 1, null, null, null)).Error.Should().Be(ContractErrors.NotDraft);
-        contract.RecordAssetReturn(asset.Id, "Hỏng remote", 200_000).Error.Should().Be(ContractErrors.NotLiquidating);
+        contract.RecordAssetReturn(asset.Id, "Hỏng remote").Error.Should().Be(ContractErrors.NotLiquidating);
 
         contract.StartLiquidation(Start.AddMonths(1), TerminationReason.MutualAgreement, null, null, Start.AddMonths(1));
-        contract.RecordAssetReturn(asset.Id, "Hỏng remote", 200_000).IsSuccess.Should().BeTrue();
-        contract.Assets.Single().CompensationValue.Should().Be(200_000);
+        contract.RecordAssetReturn(asset.Id, "Hỏng remote").IsSuccess.Should().BeTrue();
+        contract.Assets.Single().ConditionAtReturn.Should().Be("Hỏng remote");
     }
 
     [Fact]
@@ -363,5 +363,49 @@ public sealed class ContractTests
         MoveOut(contract, OccupantA, handover);
         MoveOut(contract, OccupantB, handover);
         contract.ResignDraft(handover, OccupantA, null).Error.Should().Be(ContractErrors.ResignNoOccupantLeft);
+    }
+
+    [Fact]
+    public void TransferRoom_KeepsContract_RecordsHistory_RejectsSameRoomAndBadDates()
+    {
+        var contract = NewActive();
+        var oldRoom = contract.RoomId;
+        var newRoom = Guid.NewGuid();
+        var today = Start.AddDays(20);
+
+        contract.TransferRoom(oldRoom, Start.AddDays(5), today).Error.Should().Be(ContractErrors.TransferSameRoom);
+        contract.TransferRoom(newRoom, Start, today).Error.Should().Be(ContractErrors.TransferInvalidDate, "phải sau ngày vào phòng");
+        contract.TransferRoom(newRoom, today.AddDays(1), today).Error.Should().Be(ContractErrors.TransferInvalidDate, "không ở tương lai");
+
+        contract.TransferRoom(newRoom, Start.AddDays(10), today).IsSuccess.Should().BeTrue();
+        contract.RoomId.Should().Be(newRoom);
+        contract.RoomSince.Should().Be(Start.AddDays(10));
+        contract.RoomStays.Should().Equal(new RoomStay(oldRoom, Start, Start.AddDays(10)), new RoomStay(newRoom, Start.AddDays(10), null));
+        contract.TransferRoom(oldRoom, Start.AddDays(10), today).Error.Should().Be(ContractErrors.TransferInvalidDate, "ngày chuyển tiếp phải sau lần chuyển trước");
+    }
+
+    [Fact]
+    public void Deposit_RefundFullOrPartialWithNote_Undo_TransferOnResign()
+    {
+        var contract = NewActive();
+        var today = Start.AddDays(5);
+        contract.DepositStatus.Should().Be(DepositStatus.Holding);
+
+        contract.RefundDeposit(today, 1_000_000, null, today).Error.Should().Be(ContractErrors.InvalidRefundAmount, "trả ít hơn cọc phải có lý do");
+        contract.RefundDeposit(today, 3_500_001, "Thừa", today).Error.Should().Be(ContractErrors.InvalidRefundAmount);
+        contract.RefundDeposit(today.AddDays(1), null, null, today).Error.Should().Be(ContractErrors.InvalidRefundDate);
+        contract.RefundDeposit(today, 0, " Mất cọc — tự ý bỏ đi ", today).IsSuccess.Should().BeTrue();
+        contract.DepositRefundedAmount.Should().Be(0);
+        contract.DepositNote.Should().Be("Mất cọc — tự ý bỏ đi");
+        contract.RefundDeposit(today, null, null, today).Error.Should().Be(ContractErrors.DepositAlreadyRefunded);
+
+        contract.CancelDepositRefund().IsSuccess.Should().BeTrue();
+        contract.DepositStatus.Should().Be(DepositStatus.Holding);
+        contract.DepositRefundedOn.Should().BeNull();
+        contract.CancelDepositRefund().Error.Should().Be(ContractErrors.DepositNotRefunded);
+
+        contract.MarkDepositTransferred("HD2026-0002");
+        contract.DepositStatus.Should().Be(DepositStatus.Transferred);
+        contract.DepositNote.Should().Contain("HD2026-0002");
     }
 }

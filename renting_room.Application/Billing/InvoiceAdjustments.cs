@@ -22,7 +22,8 @@ public sealed record BulkManualLineResult(int Added, IReadOnlyList<BulkManualLin
 /// </summary>
 public sealed record BulkAddManualLineCommand(
     IReadOnlyList<Guid>? InvoiceIds, Guid? PropertyId, string? BillingMonth, IReadOnlyList<Guid>? RoomIds, string? Floor,
-    InvoiceLineType Type, string Description, decimal? Quantity, decimal? UnitPrice, decimal Amount, string Note, Guid? FeeTypeId)
+    InvoiceLineType Type, string Description, decimal? Quantity, decimal? UnitPrice, decimal Amount, string Note, Guid? FeeTypeId,
+    ChargeSettlement? Settlement = null)
     : IRequest<Result<BulkManualLineResult>>;
 
 public sealed class BulkAddManualLineCommandValidator : AbstractValidator<BulkAddManualLineCommand>
@@ -35,11 +36,15 @@ public sealed class BulkAddManualLineCommandValidator : AbstractValidator<BulkAd
         RuleFor(x => x.InvoiceIds).Must(i => i is null || i.Count <= 1000).WithErrorCode("OUT_OF_RANGE");
         RuleFor(x => x.RoomIds).Must(r => r is null || r.Count <= 1000).WithErrorCode("OUT_OF_RANGE");
         ManualLineRules.Apply(this, x => x.Type, x => x.Description, x => x.Note, x => x.Amount, x => x.Quantity, x => x.UnitPrice);
+        // BL-BR-27 (E): hoàn trả gắn phiếu nguồn riêng của từng phòng ⇒ không thêm hàng loạt.
+        RuleFor(x => x.Type).NotEqual(InvoiceLineType.Refund)
+            .WithErrorCode("REFUND_NOT_BULK").WithMessage("Hoàn trả thêm từng phiếu (chọn phiếu nguồn đã thu) — không thêm hàng loạt.");
     }
 }
 
 /// <summary>BL-UC-05: thêm phụ thu / giảm trừ / hoàn trả cho 1 phòng hay nhiều phòng một lúc — mỗi phiếu 1 transaction, trả kết quả từng phiếu.</summary>
-public sealed class BulkAddManualLineHandler(IAppDbContext db) : IRequestHandler<BulkAddManualLineCommand, Result<BulkManualLineResult>>
+public sealed class BulkAddManualLineHandler(IAppDbContext db, TimeProvider clock)
+    : IRequestHandler<BulkAddManualLineCommand, Result<BulkManualLineResult>>
 {
     public async ValueTask<Result<BulkManualLineResult>> Handle(BulkAddManualLineCommand request, CancellationToken cancellationToken)
     {
@@ -108,8 +113,8 @@ public sealed class BulkAddManualLineHandler(IAppDbContext db) : IRequestHandler
         var invoice = await InvoiceAccess.LoadAsync(db, invoiceId, ct);
         if (invoice is null)
             return Result.Failure(BillingErrors.NotFound);
-        var added = invoice.AddManualLine(request.Type, request.Description, request.Quantity, request.UnitPrice, request.Amount,
-            request.Note, request.FeeTypeId);
+        var added = RoomChargeBilling.AddManualLine(db, invoice, request.Type, request.Description, request.Quantity, request.UnitPrice,
+            request.Amount, request.Note, request.FeeTypeId, null, request.Settlement, clock.GetUtcNow().ToBusinessDate());
         if (added.IsFailure)
             return Result.Failure(added.Error!);
         await db.SaveChangesAsync(ct);

@@ -20,7 +20,7 @@ có thể tạo tài khoản nhân viên quản lý.
 - Danh mục khoản thu 3 nhóm: **Theo chỉ số** (điện, nước, …), **Dịch vụ cố định** (rác, wifi…),
   **Dịch vụ theo số lượng** (giữ xe ×N…).
 - Màn hình ghi chỉ số cuối kỳ; tính tiền phòng; sửa tay trên phiếu nháp; phụ thu / giảm trừ / hoàn trả cho 1 hoặc nhiều phòng;
-  chốt phiếu; thu tiền; sổ cọc.
+  chốt phiếu; thu tiền, bỏ nợ; theo dõi cọc (có cọc / đã hoàn trả).
 - Upload ảnh/file lưu trữ; xuất Excel (người thuê, tiền phòng tháng, thông tin phòng) cho 1 hoặc nhiều khu.
 
 **Ngoài phạm vi** (ghi rõ để không bị "trôi" yêu cầu)
@@ -60,7 +60,7 @@ Căn cứ pháp lý & quy tắc LEG-xx: [00-legal-basis.md](00-legal-basis.md).
 | M05 | Contract (hợp đồng, người ở, phụ lục, thanh lý) | [05-contract.md](05-contract.md) | P1 | M02, M03, M04 |
 | M06 | Meter Reading (công tơ, ghi chỉ số) | [06-meter-reading.md](06-meter-reading.md) | P1 | M02, M04, M05 |
 | M07 | Billing (kỳ thu, phiếu báo tiền, điều chỉnh, giảm giá) | [07-billing.md](07-billing.md) | P1 | M04, M05, M06 |
-| M08 | Payment & Deposit (thu tiền, phân bổ, sổ cọc) | [08-payment-deposit.md](08-payment-deposit.md) | P1 | M05, M07 |
+| M08 | Payment & Deposit (thu tiền, bỏ nợ, theo dõi cọc) | [08-payment-deposit.md](08-payment-deposit.md) | P1 | M05, M07 |
 | M09 | File Storage (ảnh, tài liệu đính kèm) | [09-file-storage.md](09-file-storage.md) | P1 | M01 |
 | M10 | Reporting & Export (Excel, dashboard, nhắc việc) | [10-reporting-export.md](10-reporting-export.md) | P1–P2 | Tất cả |
 | — | Self-review: lỗi tìm thấy & cách xử lý | [99-self-review.md](99-self-review.md) | — | — |
@@ -108,7 +108,7 @@ Tạo/tìm người thuê (theo số giấy tờ) → chọn **mẫu hợp đồ
 3. Chủ trọ rà soát phiếu nháp: **sửa tay** mọi ô, thêm phụ thu / giảm trừ, tính lại theo phòng / tầng / khu
    (không có quy tắc giảm/tăng tự động — dùng phụ thu / giảm trừ / hoàn trả cho nhiều phòng một lúc).
 4. **Chốt phiếu** (Finalize) → phiếu bất biến, có số phiếu.
-5. **Thu tiền** (toàn phần/một phần). Cấn trừ cọc: để sau.
+5. **Thu tiền** (toàn phần / một phần / thanh toán + bỏ phần còn lại). Cọc chỉ theo dõi, không trừ vào phiếu.
 6. **Xuất Excel** tiền phòng tháng cho 1/nhiều khu.
 
 ### F5. Trả phòng / thanh lý (M05, M06, M07, M08)
@@ -229,6 +229,7 @@ hoàn tất thanh lý: còn nợ ⇒ "Đã thu toàn bộ" / "Bỏ nợ"; còn p
 - Audit **tự động** cho mọi entity kế thừa `Entity` trừ `RefreshToken` (sự kiện đăng nhập ở bảng `login_events` — M01 §11). Không áp dụng cho lệnh `ExecuteUpdate` / `ExecuteDelete` / SQL thô (không qua ChangeTracker) ⇒ lệnh nghiệp vụ cần audit không được viết bằng các API này, hoặc phải tự gọi `IAuditTrail.Record`.
 - `changes`: sửa ⇒ chỉ trường đổi `{"field":{"old":…,"new":…}}`; tạo / xóa ⇒ giá trị các trường. Bỏ cột đã có trên dòng audit (id, organization_id, created/updated_*, version).
 - Trường nhạy cảm **không** ghi giá trị — ghi `"[redacted]"`: tên kết thúc `Encrypted` / `Hash`, mọi cột nhị phân, `SecurityStamp`, `SigningSnapshot` (chứa số giấy tờ đã mã hóa).
+- ✅ **Thời gian lưu nhật ký** (S2 — chốt 09/10/2026): job hằng ngày xóa dòng `audit_logs` có `occurred_at` cũ hơn **5 năm** (theo lô 5.000 dòng, mọi tổ chức; cấu hình `Audit:RetentionYears`, 1–50; job `AuditRetentionService` xóa theo từng tổ chức dùng index `(organization_id, occurred_at)`). Không ảnh hưởng dữ liệu nghiệp vụ.
 - ✅ Xem nhật ký (ID-BR-19, 08/10/2026): `GET /audit-logs?entityType=&entityId=&userId=&action=&from=&to=&page=` — **chỉ chủ trọ**, luôn lọc theo tổ chức của người gọi (bảng không có global filter), mới nhất trước, kèm tên người làm; `no-store` vì có dữ liệu cá nhân.
 - ✅ Ẩn danh (RT-BR-06): xóa giá trị cá nhân trong `changes` của người được ẩn danh, cùng transaction với lệnh ẩn danh.
 - Job nền chạy trên dữ liệu tổ chức qua `CurrentUserOverride` (người dùng hệ thống của tổ chức, `user_id` rỗng trên audit) — vẫn bị lọc và kiểm tổ chức như request.

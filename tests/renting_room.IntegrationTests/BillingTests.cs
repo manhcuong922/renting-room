@@ -263,10 +263,24 @@ public sealed class BillingTests(ApiFactory factory)
             new { finalReadings = new[] { new { meterId = s.MeterId, value = (decimal?)170 } } }, s.Token)).ReadAsync<JsonElement>();
         final.GetProperty("issues").EnumerateArray().Select(i => i.GetProperty("code").GetString()).Should().Contain("RENT_OVERPAID");
 
+        // E (BL-BR-27): hoàn trả phải chỉ ra phiếu nguồn và ≤ số người thuê đã trả thật cho phiếu đó.
+        var second = await InvoiceForAsync(s, secondMonth);
+        Task<HttpResponseMessage> RefundAsync(Guid? source, decimal amount) => _client.PostJsonAsync($"/api/v1/invoices/{Id(final)}/manual-lines",
+            new { type = "Refund", description = "Hoàn tiền phòng 15 ngày chưa ở", amount, note = "Trả phòng sớm theo thỏa thuận", sourceInvoiceId = source }, s.Token);
+        var noSource = await RefundAsync(null, 1_000_000);
+        noSource.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await noSource.ReadAsync<JsonElement>()).GetProperty("errors").TryGetProperty("sourceInvoiceId", out _).Should().BeTrue();
+        (await (await RefundAsync(Id(second), 1_000_000)).ReadProblemCodeAsync()).Should().Be("REFUND_EXCEEDS_PAID", "tháng 2 chưa thu đồng nào");
+        (await _client.PostJsonAsync($"/api/v1/contracts/{s.ContractId}/payments", new
+        {
+            amount = second.GetProperty("summary").GetProperty("totalAmount").GetDecimal(), method = "Cash", paidAt = TestData.Today(factory),
+            invoiceId = Id(second)
+        }, s.Token)).StatusCode.Should().Be(HttpStatusCode.Created);
+
         // Hoàn trả lớn hơn phần thu ⇒ tổng âm = chủ trọ phải trả lại.
-        var refund = await _client.PostJsonAsync($"/api/v1/invoices/{Id(final)}/manual-lines",
-            new { type = "Refund", description = "Hoàn tiền phòng 15 ngày chưa ở", amount = 1_000_000, note = "Trả phòng sớm theo thỏa thuận" }, s.Token);
+        var refund = await RefundAsync(Id(second), 1_000_000);
         refund.StatusCode.Should().Be(HttpStatusCode.OK, await refund.Content.ReadAsStringAsync());
+        (await (await RefundAsync(Id(second), 3_000_000)).ReadProblemCodeAsync()).Should().Be("REFUND_EXCEEDS_PAID", "đã hoàn 1tr trên phiếu này rồi");
         var finalized = await FinalizeAsync(s, Id(final));
         Total(finalized).Should().Be(20 * 3500 - 1_000_000);
         finalized.GetProperty("summary").GetProperty("paymentStatus").GetString().Should().Be("RefundPending");
@@ -282,7 +296,7 @@ public sealed class BillingTests(ApiFactory factory)
         confirmed.StatusCode.Should().Be(HttpStatusCode.OK, await confirmed.Content.ReadAsStringAsync());
         (await confirmed.ReadAsync<JsonElement>()).GetProperty("summary").GetProperty("paymentStatus").GetString().Should().Be("Refunded");
 
-        // Phiếu tháng 1, 2 chưa thu ⇒ còn nợ; phiếu hoàn trả không bù trừ nợ (E2 để sau) ⇒ chọn "Đã thu toàn bộ".
+        // Phiếu tháng 1 chưa thu ⇒ còn nợ; phiếu hoàn trả không bù trừ nợ ⇒ chọn "Đã thu toàn bộ".
         (await (await _client.PostJsonAsync($"/api/v1/contracts/{s.ContractId}/liquidation/complete", new { settlement = (string?)null }, s.Token))
             .ReadProblemCodeAsync()).Should().Be("CONTRACT_HAS_DEBT");
         (await _client.PostJsonAsync($"/api/v1/contracts/{s.ContractId}/liquidation/complete", new { settlement = "CollectAll" }, s.Token))

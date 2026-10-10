@@ -8,6 +8,7 @@ using renting_room.Application.Contracts;
 using renting_room.Domain.Billing;
 using renting_room.Domain.Common;
 using renting_room.Domain.Contracts;
+using renting_room.Domain.Payments;
 using renting_room.Domain.Properties;
 
 namespace renting_room.Application.Rooms;
@@ -46,7 +47,8 @@ public sealed record RoomDto(
     CurrentContractDto? CurrentContract,
     string Version,
     decimal OutstandingAmount = 0,
-    decimal OverdueAmount = 0)
+    decimal OverdueAmount = 0,
+    decimal DepositHeld = 0)
 {
     /// <summary>PR-BR-16: nhãn đỏ "Quá hạn" — có phiếu đã chốt chưa thu đủ đã quá hạn thanh toán.</summary>
     public bool IsOverdue => OverdueAmount > 0;
@@ -89,11 +91,14 @@ internal sealed class RoomRow
     /// <summary>PR-BR-16 (K3): phần còn nợ của phiếu đã quá hạn thanh toán (ngày chốt phiếu + số ngày hạn của khu) ⇒ nhãn đỏ "Quá hạn".</summary>
     public decimal OverdueAmount { get; init; }
 
+    /// <summary>M08 PM-BR-32: cọc HĐ hiện tại của phòng đang giữ (chưa hoàn trả / chưa chuyển) — 0 = không cọc / đã hoàn.</summary>
+    public decimal DepositHeld { get; init; }
+
     public RoomDto ToDto(IReadOnlyDictionary<Guid, IReadOnlyList<ContractFlag>> flags) => new(
         Room.Id, Room.PropertyId, PropertyCode, Room.Code, Room.Floor, Room.AreaM2, Room.MaxOccupants, Room.ListedRent,
         Room.DefaultDeposit, Room.Amenities, Room.Description, Status, Room.MaintenanceNote,
         Current is null ? null : Current with { Flags = flags.GetValueOrDefault(Current.Id, []) }, Room.Version.ToString(), OutstandingAmount,
-        OverdueAmount);
+        OverdueAmount, DepositHeld);
 }
 
 internal static class RoomStatusQuery
@@ -104,10 +109,12 @@ internal static class RoomStatusQuery
         {
             Room = r,
             PropertyCode = db.Properties.Where(p => p.Id == r.PropertyId).Select(p => p.Code).First(),
+            // PR-BR-02 + CT-BR-14: HĐ đang ở phòng từ ngày vào phòng, hoặc HĐ đã chuyển khỏi phòng nhưng hôm nay là ngày chuyển (còn ở).
             Current = db.Contracts
-                .Where(c => c.RoomId == r.Id
-                    && (c.Status == ContractStatus.Active || c.Status == ContractStatus.Liquidating || c.Status == ContractStatus.Ended)
-                    && c.StartDate <= today && (c.ActualEndDate == null || c.ActualEndDate >= today))
+                .Where(c => (c.Status == ContractStatus.Active || c.Status == ContractStatus.Liquidating || c.Status == ContractStatus.Ended)
+                    && ((c.RoomId == r.Id && c.RoomSince <= today && (c.ActualEndDate == null || c.ActualEndDate >= today))
+                        || c.RoomMoves.Any(m => m.RoomId == r.Id && m.FromDate <= today && m.ToDate >= today)))
+                .OrderBy(c => c.RoomId == r.Id ? 0 : 1)
                 .Select(c => new CurrentContractDto(
                     c.Id,
                     c.ContractNo,
@@ -122,6 +129,10 @@ internal static class RoomStatusQuery
             Overdue = db.Invoices.Where(i => i.RoomId == r.Id && i.Status == InvoiceStatus.Finalized && i.PaidAmount < i.TotalAmount
                     && i.DueDate < today)
                 .Sum(i => (decimal?)(i.TotalAmount - i.PaidAmount)) ?? 0,
+            DepositHeld = db.Contracts
+                .Where(c => c.RoomId == r.Id && (c.Status == ContractStatus.Active || c.Status == ContractStatus.Liquidating)
+                    && c.DepositStatus == DepositStatus.Holding)
+                .Sum(c => (decimal?)c.DepositAmount) ?? 0,
             // Giữ chỗ: có hợp đồng nháp, hoặc đã kích hoạt nhưng ngày bàn giao ở tương lai (kích hoạt trước 1 ngày).
             HasDraft = db.Contracts.Any(c => c.RoomId == r.Id
                 && (c.Status == ContractStatus.Draft || (c.Status == ContractStatus.Active && c.StartDate > today)))
@@ -133,6 +144,7 @@ internal static class RoomStatusQuery
             Current = x.Current,
             OutstandingAmount = x.Outstanding,
             OverdueAmount = x.Overdue,
+            DepositHeld = x.DepositHeld,
             Status = x.Room.ArchivedAt != null ? RoomDisplayStatus.Archived
                 : x.Room.IsUnderMaintenance ? RoomDisplayStatus.Maintenance
                 : x.Current != null ? RoomDisplayStatus.Occupied

@@ -1,6 +1,7 @@
 using renting_room.Application.Billing;
 using renting_room.Application.Contracts;
 using renting_room.Application.Meters;
+using renting_room.Application.Payments;
 using renting_room.Application.Renters;
 using renting_room.Domain.Billing;
 using renting_room.Domain.Contracts;
@@ -64,8 +65,11 @@ public sealed partial class DemoDataSeeder
             var daysStayed = leftOn.DayNumber - periodStart.DayNumber + 1;
             var periodDays = periodStart.AddMonths(1).DayNumber - periodStart.DayNumber;
             var overpaid = Invoice.Money(PrepaidRent * (periodDays - daysStayed) / periodDays);
+            // E (BL-BR-27): nguồn = phiếu thường của kỳ cuối đã thu trọn tiền phòng.
+            var source = (await Raw(new ListInvoicesQuery(null, $"{periodStart:yyyy-MM}", null, null, contract, null)))
+                .Items.Single(i => i.Type == InvoiceType.Regular).Id;
             await Send(new AddInvoiceManualLineCommand(final.Summary.Id, InvoiceLineType.Refund, $"Hoàn tiền phòng {periodDays - daysStayed} ngày chưa ở",
-                null, null, overpaid, "Trả phòng sớm — đã thu trọn kỳ", null));
+                null, null, overpaid, "Trả phòng sớm — đã thu trọn kỳ", null, source));
             return await FinalizeAsync(final.Summary.Id, leftOn.AddDays(1));
         }
 
@@ -85,6 +89,7 @@ public sealed partial class DemoDataSeeder
         var refunded = await MoveOutEarly(b02, c02, Period(-1), Period(-1).AddDays(10));
         await Send(new ConfirmInvoiceRefundCommand(refunded.Summary.Id, _today, PaymentMethod.Cash, "Trả tiền mặt khi bàn giao phòng"));
         await Send(new CompleteLiquidationCommand(c02));
+        await Send(new RefundDepositCommand(c02, _today, null, null)); // "Đã hoàn trả cọc" đủ
         await Send(new AnonymizeRenterCommand(tenant02, "Người thuê yêu cầu xóa dữ liệu cá nhân sau khi trả phòng"));
 
         // B03 — Thay công tơ điện giữa kỳ trước ⇒ phiếu nháp kỳ này có 2 đoạn đo (công tơ cũ + mới).
@@ -110,8 +115,25 @@ public sealed partial class DemoDataSeeder
         await History(b04, c04, -1, -1);
         await Close(b04, c04, Period(-1), 450, 12);
         await DraftAsync(propertyId, b04.Id, c04, Period(0));
+        // Khoản bù đã trả ngay bằng tiền mặt: hiện trên nháp, không trừ vào tổng (BL-BR-33).
+        await Send(new CreateRoomChargeCommand(b04.Id, RoomChargeKind.Credit, "Bù hỏng quạt trần 3 ngày", 100000, Min(Period(0).AddDays(2), _today),
+            "Quạt hỏng do chủ trọ chậm sửa", new ChargeSettlement(Min(Period(0).AddDays(2), _today), PaymentMethod.Cash)));
+
+        // I1 (BL-BR-20): người ở mới vào B04 SAU khi đã lập nháp kỳ này ⇒ nháp "Cần tính lại" (lọc ?stale=true, tính lại hàng loạt).
+        // Điện giá bậc ra số lẻ ⇒ tổng phiếu có dòng "Làm tròn" (khu bật mặc định — BL-BR-29).
+        await Send(new AddOccupantCommand(c04, await RenterAsync("Hồ Thị Lan", new DateOnly(1997, 2, 2), Gender.Female, Phone(29)),
+            Min(Period(0).AddDays(3), _today), null, null, null, OccupantRelationship.Sibling));
 
         // B05 — phòng trống.
         await Room("B05");
+
+        // B06 — Người đứng tên chuyển đi, người ở cùng ký lại HĐ mới từ mai ⇒ cọc chuyển sang HĐ nháp mới (PM-BR-27).
+        var b06 = await Room("B06");
+        var leaving = await RenterAsync("Kiều Văn Sơn", new DateOnly(1992, 4, 4), Gender.Male, Phone(27));
+        var staying = await RenterAsync("Kiều Thị Vân", new DateOnly(1994, 9, 9), Gender.Female, Phone(28));
+        var c06 = await ContractAsync(b06.Id, leaving, Period(0), PrepaidRent, b06.Meters,
+            [new(staying, Period(0), null, null, null, OccupantRelationship.Wife)], fees: standard);
+        await History(b06, c06, 0, 0);
+        await Send(new ResignContractCommand(c06, _today, staying, null));
     }
 }

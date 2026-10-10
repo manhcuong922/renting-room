@@ -1,10 +1,13 @@
 using renting_room.Application.Billing;
 using renting_room.Application.Contracts;
+using renting_room.Application.Meters;
+using renting_room.Application.Payments;
 using renting_room.Application.Rooms;
 using renting_room.Domain.Billing;
 using renting_room.Domain.Common;
 using renting_room.Domain.Contracts;
 using renting_room.Domain.Fees;
+using renting_room.Domain.Payments;
 using renting_room.Domain.Properties;
 using renting_room.Domain.Renters;
 
@@ -64,6 +67,8 @@ public sealed partial class DemoDataSeeder
             await Close(r101, c101, Month(k), Month(k), 110 + 10 * k);
             await Bill(r101, c101, Month(k));
         }
+        // Khoản phát sinh (BL-BR-30..33): hôm nay 101 làm hỏng khóa ⇒ phụ thu chưa thu, tháng này chưa lập phiếu ⇒ "Chờ vào phiếu".
+        await Send(new CreateRoomChargeCommand(r101.Id, RoomChargeKind.Surcharge, "Thay khóa cửa", 250000, _today, "Người thuê làm hỏng khóa", null));
 
         // 102 — Nợ: tháng -2 chưa thu (quá hạn); tháng -1 lập hôm nay (còn trong hạn), mới thu một phần.
         // Người ở ghép chưa khai quan hệ ⇒ cảnh báo RELATIONSHIP_REQUIRED (không chặn).
@@ -76,6 +81,8 @@ public sealed partial class DemoDataSeeder
         await Bill(r102, c102, Month(-2), full: false);
         await Close(r102, c102, Month(-1), Month(-1), 105);
         await BillAsync(propertyId, r102.Id, c102, Month(-1), _today, paid: 1000000, payInFull: false);
+        // Khoản bù chờ vào phiếu tháng này (phiếu tháng trước đã chốt ⇒ đẩy sang kỳ kế tiếp).
+        await Send(new CreateRoomChargeCommand(r102.Id, RoomChargeKind.Credit, "Bù mất nước 2 ngày", 40000, _today, "Sự cố bồn nước cả khu", null));
 
         // 103 — Phiếu nháp tháng trước: sửa tay tiền phòng, phụ thu, giảm trừ (chưa chốt); điện = 0 khi có người ở ⇒ cảnh báo UNUSUAL_USAGE (MT-BR-08).
         var r103 = await Room("103");
@@ -87,6 +94,9 @@ public sealed partial class DemoDataSeeder
         await Send(new EditInvoiceLineCommand(draft, rentLine.Id, null, null, 2800000, "Giảm do sửa nhà vệ sinh 3 ngày"));
         await Send(new AddInvoiceManualLineCommand(draft, InvoiceLineType.Surcharge, "Thay khóa cửa", null, null, 250000, "Người thuê làm hỏng khóa", null));
         await Send(new AddInvoiceManualLineCommand(draft, InvoiceLineType.ManualDiscount, "Mất nước 1 ngày", null, null, 50000, "Sự cố bồn nước", null));
+        // Khoản đã thu ngay: vẫn hiện trên nháp nhưng không tính vào tổng (BL-BR-33).
+        await Send(new CreateRoomChargeCommand(r103.Id, RoomChargeKind.Surcharge, "Làm thêm chìa khóa", 50000, Min(Month(-1).AddDays(20), _today),
+            "Người thuê xin thêm 1 chìa", new ChargeSettlement(Min(Month(-1).AddDays(20), _today), PaymentMethod.Cash)));
 
         // 104 — Người nước ngoài (hộ chiếu) vào giữa tháng, ở ghép; phòng tính nước theo người (không công tơ nước).
         var r104 = await Room("104", waterMeter: false);
@@ -114,14 +124,20 @@ public sealed partial class DemoDataSeeder
         for (var k = -3; k <= -1; k++)
         {
             await Close(r105, c105, Month(k), Month(k), 90);
-            await Bill(r105, c105, Month(k));
+            var bill105 = await Bill(r105, c105, Month(k), full: k < -1);
+            if (k == -1) // F2: trả gần đủ, chủ trọ bỏ phần còn lại do mất nước 2 ngày (PM-UC-16).
+                await Send(new PayAndWriteOffCommand(bill105.Summary.Id, bill105.Summary.TotalAmount - 200000, PaymentMethod.Cash,
+                    Min(Month(0).AddDays(2), _today), null, null, "Mất nước 2 ngày — chủ trọ bỏ 200.000đ"));
         }
         await Send(new StartLiquidationCommand(c105, _today.AddDays(15), TerminationReason.MutualAgreement, null, "Chuyển chỗ làm, báo trước 15 ngày"));
 
-        // 106 — Trả phòng giữa tháng trước, còn nợ, người thuê bỏ đi ⇒ phiếu quyết toán + bỏ nợ.
+        // 106 — Trả phòng giữa tháng trước, còn nợ, người thuê bỏ đi, làm vỡ gương ⇒ tài sản ghi "Vỡ", bồi thường là phụ thu trên phiếu quyết
+        // toán (CT-BR-23); hoàn tất thanh lý bằng bỏ nợ phần không đòi được.
         var r106 = await Room("106");
         var c106 = await ContractAsync(r106.Id, await RenterAsync("Đặng Văn Tú", new DateOnly(1990, 8, 18), Gender.Male, Phone(8)),
-            Month(-3), 3000000, r106.Meters, fees: standard);
+            Month(-3), 3000000, r106.Meters, fees: standard, activate: false);
+        var mirror = await Send(new AddAssetCommand(c106, new AssetRequest("Gương nhà tắm", 1, "Nguyên vẹn", 300000, null)));
+        await Send(new ActivateContractCommand(c106, r106.Meters.Select(m => new MeterReadingInput(m, null)).ToList()));
         await Close(r106, c106, Month(-3), Month(-3), 100);
         await Bill(r106, c106, Month(-3));
         await Close(r106, c106, Month(-2), Month(-2), 100);
@@ -129,8 +145,12 @@ public sealed partial class DemoDataSeeder
         var leftOn = Month(-1).AddDays(9);
         await Send(new StartLiquidationCommand(c106, leftOn, TerminationReason.Abandoned, null,
             "Phát hiện bỏ đi ngày 10, đồ để lại: 1 vali — biên bản có tổ trưởng làm chứng"));
+        await Send(new RecordAssetReturnCommand(c106, mirror, "Vỡ, phải thay mới"));
         var final106 = await Send(new CreateFinalInvoiceCommand(c106, [FinalReading(r106.Electricity, 35), FinalReading(r106.Water!.Value, 2)]));
+        await Send(new AddInvoiceManualLineCommand(final106.Summary.Id, InvoiceLineType.Surcharge, "Bồi thường gương nhà tắm", null, null, 300000,
+            "Gương vỡ khi trả phòng", null));
         await FinalizeAsync(final106.Summary.Id, leftOn.AddDays(1));
+        // Cọc chưa đánh dấu hoàn trả ⇒ HĐ đã kết thúc hiện "Chưa hoàn cọc" (lọc depositNotRefunded — PM-BR-35).
         await Send(new CompleteLiquidationCommand(c106, DebtSettlement.WriteOff, null, null, "Người thuê bỏ đi, không liên lạc được"));
 
         // 201 — HĐ cũ đã kết thúc ~10 tháng trước (lịch sử). HĐ không được bắt đầu trước hôm nay quá 1 năm nên không seed được case
@@ -144,11 +164,12 @@ public sealed partial class DemoDataSeeder
         var final201 = await Send(new CreateFinalInvoiceCommand(c201, [FinalReading(r201.Electricity, 60), FinalReading(r201.Water!.Value, 3)]));
         await FinalizeAsync(final201.Summary.Id, oldEnd.AddDays(1));
         await Send(new CompleteLiquidationCommand(c201, DebtSettlement.CollectAll, PaymentMethod.Cash, oldEnd.AddDays(1), null));
+        await Send(new RefundDepositCommand(c201, oldEnd.AddDays(1), null, null)); // "Đã hoàn trả cọc" đủ 2,5tr
 
         // 202 — Hết hạn, chờ chủ trọ quyết định (gia hạn / ở tiếp / thanh lý). HĐ nhập từ sổ cũ (chưa có phiếu trong phần mềm).
         var r202 = await Room("202");
         // Người đứng tên không có SĐT ⇒ cảnh báo REPRESENTATIVE_PHONE_MISSING.
-        await ContractAsync(r202.Id, await RenterAsync("Trịnh Văn Long", new DateOnly(1987, 3, 9), Gender.Male, null),
+        var c202 = await ContractAsync(r202.Id, await RenterAsync("Trịnh Văn Long", new DateOnly(1987, 3, 9), Gender.Male, null),
             Month(-11), 3000000, r202.Meters, fees: standard, end: _today.AddDays(-5));
 
         // 203 — Hết hạn nhưng vẫn ở tiếp, chưa ký lại (holdover).
@@ -157,18 +178,22 @@ public sealed partial class DemoDataSeeder
             Month(-11), 3000000, r203.Meters, fees: standard, end: _today.AddDays(-20));
         await Send(new StartHoldoverCommand(c203, "Người thuê xin ở thêm 2 tháng, chưa ký phụ lục"));
 
-        // 204 — HĐ nháp sắp vào ở + 1 HĐ nháp đã hủy (khách đổi ý).
+        // 204 — HĐ nháp sắp vào ở + 1 HĐ nháp đã hủy: khách đổi ý ⇒ ghi "Đã hoàn trả cọc" 0đ kèm lý do (mất cọc giữ chỗ — PM-BR-33).
         var r204 = await Room("204");
-        await ContractAsync(r204.Id, await RenterAsync("Mai Văn Phúc", new DateOnly(1999, 6, 6), Gender.Male, Phone(12)),
+        var booked = await ContractAsync(r204.Id, await RenterAsync("Mai Văn Phúc", new DateOnly(1999, 6, 6), Gender.Male, Phone(12)),
             _today.AddDays(3), 3000000, r204.Meters, fees: standard, activate: false);
         var cancelled = await ContractAsync(r204.Id, await RenterAsync("Tạ Thị Yến", new DateOnly(2000, 1, 25), Gender.Female, Phone(13)),
             _today.AddDays(7), 3000000, r204.Meters, fees: standard, activate: false);
         await Send(new CancelContractCommand(cancelled, "Khách đổi ý không thuê"));
+        await Send(new RefundDepositCommand(cancelled, _today, 0, "Khách đổi ý không thuê — mất cọc giữ chỗ theo thỏa thuận"));
 
         // 205 — Phòng bảo trì; 206 — phòng trống. Thêm 1 hồ sơ người thuê chưa từng thuê.
         var r205 = await Room("205");
         await Send(new ChangeRoomStateCommand(r205.Id, RoomAction.StartMaintenance, "Sơn lại tường, thay bình nóng lạnh"));
-        await Room("206");
+        // 206 — CT-UC-12: người ở 203 (đang ở tiếp sau hết hạn) chuyển sang 206 hôm nay, giá mới 3,2tr; HĐ, cọc, người ở giữ nguyên.
+        var r206 = await Room("206");
+        await Send(new TransferRoomCommand(c203, r206.Id, _today, [FinalReading(r203.Electricity, 25), FinalReading(r203.Water!.Value, 2)], null,
+            3200000, "Chuyển sang phòng rộng hơn"));
         await RenterAsync("Phan Văn Rỗi", new DateOnly(2001, 4, 4), Gender.Male, Phone(14), occupation: "Sinh viên");
     }
 }

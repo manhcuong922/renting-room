@@ -339,6 +339,9 @@ public sealed class ActivateContractHandler(
         var occupantError = await CheckOccupantsAsync(contract, cancellationToken);
         if (occupantError is not null)
             return Result.Failure(occupantError);
+        // CT-BR-14: HĐ khác đã chuyển khỏi phòng này vẫn tính là ở tới ngày chuyển (lịch sử không nằm trong EXCLUDE của contracts).
+        if (await db.Contracts.AnyAsync(c => c.RoomMoves.Any(m => m.RoomId == contract.RoomId && m.ToDate >= contract.StartDate), cancellationToken))
+            return Result.Failure(ContractErrors.RoomPeriodOverlap);
 
         var now = clock.GetUtcNow();
         var today = now.ToBusinessDate();

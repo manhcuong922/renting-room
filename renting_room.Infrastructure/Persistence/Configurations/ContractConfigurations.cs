@@ -15,6 +15,9 @@ internal sealed class ContractConfiguration : IEntityTypeConfiguration<Contract>
         builder.ToTable("contracts", t =>
         {
             t.HasCheckConstraint("ck_contracts_end_after_start", "end_date IS NULL OR end_date > start_date");
+            // M08 PM-BR-33: đã hoàn trả cọc phải có ngày và số tiền 0 … cọc thỏa thuận.
+            t.HasCheckConstraint("ck_contracts_deposit_refund",
+                "deposit_status <> 'Refunded' OR (deposit_refunded_on IS NOT NULL AND deposit_refunded_amount BETWEEN 0 AND deposit_amount)");
             t.HasCheckConstraint("ck_contracts_actual_end", "actual_end_date IS NULL OR actual_end_date >= start_date");
             // K5: "Tính tiền từ ngày" nằm trong thời gian HĐ.
             t.HasCheckConstraint("ck_contracts_billing_start", "billing_start_date >= start_date AND (end_date IS NULL OR billing_start_date <= end_date)");
@@ -53,6 +56,10 @@ internal sealed class ContractConfiguration : IEntityTypeConfiguration<Contract>
         builder.Property(c => c.SignedPlace).HasMaxLength(200);
         builder.Property(c => c.DepositAmount).HasColumnType("numeric(18,0)");
         builder.Property(c => c.DepositTerms).HasMaxLength(5000);
+        builder.Property(c => c.DepositStatus).HasConversion<string>().HasMaxLength(12);
+        builder.Property(c => c.DepositRefundedAmount).HasColumnType("numeric(18,0)");
+        builder.Property(c => c.DepositNote).HasMaxLength(500);
+        builder.Ignore(c => c.HasDeposit);
         builder.Property(c => c.PaymentMethods)
             .HasColumnType("text[]")
             .HasConversion(
@@ -87,6 +94,7 @@ internal sealed class ContractConfiguration : IEntityTypeConfiguration<Contract>
             .HasPrincipalKey(r => new { r.OrganizationId, r.Id })
             .OnDelete(DeleteBehavior.Restrict);
         builder.Ignore(c => c.ReferenceRenterId);
+        builder.Ignore(c => c.RoomStays);
         builder.HasOne<ContractTemplate>()
             .WithMany()
             .HasForeignKey(c => new { c.OrganizationId, c.TemplateId })
@@ -121,8 +129,15 @@ internal sealed class ContractConfiguration : IEntityTypeConfiguration<Contract>
             .HasForeignKey(f => new { f.OrganizationId, f.PropertyId, f.ContractId })
             .HasPrincipalKey(c => new { c.OrganizationId, c.PropertyId, c.Id })
             .OnDelete(DeleteBehavior.Cascade);
+        builder.HasMany(c => c.RoomMoves).WithOne()
+            .HasForeignKey(m => new { m.OrganizationId, m.ContractId }).HasPrincipalKey(c => new { c.OrganizationId, c.Id })
+            .OnDelete(DeleteBehavior.Cascade);
 
-        foreach (var navigation in new[] { nameof(Contract.RentTerms), nameof(Contract.Occupants), nameof(Contract.Assets), nameof(Contract.Vehicles), nameof(Contract.Fees) })
+        foreach (var navigation in new[]
+                 {
+                     nameof(Contract.RentTerms), nameof(Contract.Occupants), nameof(Contract.Assets), nameof(Contract.Vehicles), nameof(Contract.Fees),
+                     nameof(Contract.RoomMoves)
+                 })
             builder.Navigation(navigation).UsePropertyAccessMode(PropertyAccessMode.Field);
     }
 }
@@ -179,8 +194,20 @@ internal sealed class ContractAssetConfiguration : IEntityTypeConfiguration<Cont
         builder.Property(a => a.ConditionAtHandover).HasMaxLength(500);
         builder.Property(a => a.ConditionAtReturn).HasMaxLength(500);
         builder.Property(a => a.ValueEstimate).HasColumnType("numeric(18,0)");
-        builder.Property(a => a.CompensationValue).HasColumnType("numeric(18,0)");
         builder.Property(a => a.Note).HasMaxLength(500);
+    }
+}
+
+/// <summary>CT-BR-14: lịch sử chuyển phòng. EXCLUDE (room_id, daterange) tạo bằng SQL trong migration.</summary>
+internal sealed class ContractRoomMoveConfiguration : IEntityTypeConfiguration<ContractRoomMove>
+{
+    public void Configure(EntityTypeBuilder<ContractRoomMove> builder)
+    {
+        builder.ToTable("contract_room_moves", t => t.HasCheckConstraint("ck_contract_room_moves_dates", "to_date >= from_date"));
+        builder.HasKey(m => m.Id);
+        builder.ConfigureAuditable();
+        builder.HasOne<Room>().WithMany().HasForeignKey(m => m.RoomId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasIndex(m => new { m.OrganizationId, m.RoomId, m.ToDate }).HasDatabaseName("ix_contract_room_moves_room");
     }
 }
 

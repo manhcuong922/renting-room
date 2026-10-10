@@ -28,6 +28,7 @@ public interface IAppDbContext
     DbSet<Contract> Contracts { get; }
     DbSet<Meter> Meters { get; }
     DbSet<Invoice> Invoices { get; }
+    DbSet<RoomCharge> RoomCharges { get; }
     DbSet<Payment> Payments { get; }
 
     /// <summary>Dùng cho transaction tường minh khi một use case cần nhiều lệnh ghi nguyên tử.</summary>

@@ -97,6 +97,7 @@ Bước 4  Tạo phòng hàng loạt                      POST /properties/{id}/
 | `paymentDueDays` | 0–60 | "Hạn đóng sau ngày chốt (ngày)" |
 | `prorationMode` | `Daily` / `FullPeriod` | "Tháng lẻ tính theo ngày ở / tính tròn tháng" |
 | `noticeDays` | 0–180 | "Số ngày báo trước khi trả phòng" (mặc định 30 — báo trước 1 tháng) — **gợi ý** khi tạo HĐ, HĐ giữ riêng |
+| `roundInvoiceTotal` | bool, mặc định `true` | "Làm tròn tổng phiếu xuống nghìn" — dòng "Làm tròn" cuối phiếu |
 
 ## Chi tiết
 
@@ -189,8 +190,12 @@ Chi tiết khu có `billing`:
 **Lưu** — `PUT /properties/{id}/billing` → 200 chi tiết khu:
 
 ```json
-{ "anchorDay": 5, "chargeMode": "Postpaid", "paymentDueDays": 5, "prorationMode": "Daily", "noticeDays": 30, "transitionAdjustDays": 4 }
+{ "anchorDay": 5, "chargeMode": "Postpaid", "paymentDueDays": 5, "prorationMode": "Daily", "noticeDays": 30, "transitionAdjustDays": 4,
+  "roundInvoiceTotal": true }
 ```
+
+`roundInvoiceTotal` (BL-BR-29): làm tròn tổng phiếu xuống nghìn — mặc định **bật** (bỏ trống = giữ như cũ). Đổi ⇒ nháp của khu
+"Cần tính lại"; phiếu đã chốt giữ nguyên.
 
 | Lỗi | Khi nào |
 |-----|---------|

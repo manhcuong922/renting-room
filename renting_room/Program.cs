@@ -34,6 +34,7 @@ app.MapImportEndpoints();
 app.MapFeeEndpoints();
 app.MapMeterEndpoints();
 app.MapBillingEndpoints();
+app.MapRoomChargeEndpoints();
 app.MapAuditEndpoints();
 app.MapDataRetentionEndpoints();
 
