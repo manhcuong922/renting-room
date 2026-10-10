@@ -75,8 +75,7 @@ public sealed record OccupantDto(
     bool IsHouseholdHead);
 
 public sealed record AssetDto(
-    Guid Id, string Name, int Quantity, string? ConditionAtHandover, string? ConditionAtReturn, decimal? ValueEstimate,
-    decimal? CompensationValue, string? Note);
+    Guid Id, string Name, int Quantity, string? ConditionAtHandover, string? ConditionAtReturn, decimal? ValueEstimate, string? Note);
 
 public sealed record VehicleDto(
     Guid Id, Guid? RenterId, VehicleType VehicleType, string? PlateNumber, string? BrandColor, DateOnly RegisteredFrom,
@@ -137,7 +136,20 @@ public sealed record ContractDetailDto(
     string Version,
     bool HasSignedDocument = false,
     string? SignedDocumentNote = null,
-    DateOnly? BillingStartDate = null);
+    DateOnly? BillingStartDate = null,
+    ContractDepositDto? Deposit = null,
+    DateOnly? RoomSince = null,
+    IReadOnlyList<RoomMoveDto>? RoomMoves = null);
+
+/// <summary>
+/// M08 PM-BR-32..35: cọc chỉ theo dõi. <paramref name="Status"/> null = HĐ không cọc; <paramref name="NotRefundedReminder"/> = HĐ đã kết thúc mà
+/// chưa đánh dấu hoàn cọc ("Chưa hoàn cọc").
+/// </summary>
+public sealed record ContractDepositDto(
+    decimal Amount, DepositStatus? Status, DateOnly? RefundedOn, decimal? RefundedAmount, string? Note, bool NotRefundedReminder);
+
+/// <summary>CT-BR-14: phòng HĐ đã ở trước khi chuyển (ngày chuyển đi vẫn tính là ở).</summary>
+public sealed record RoomMoveDto(Guid RoomId, string RoomCode, DateOnly FromDate, DateOnly ToDate);
 
 /// <summary>Văn bản hợp đồng (CT-BR-25): loại, tiêu đề, điều khoản, định nghĩa trường (chụp từ mẫu) và giá trị đã nhập.</summary>
 public sealed record ContractDocumentDto(

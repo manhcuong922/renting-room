@@ -38,6 +38,7 @@ public static class DbConstraints
     /// <summary>EXCLUDE constraint tạo bằng SQL trong migration (EF không khai báo được).</summary>
     public const string ContractRoomPeriodExclusion = "ex_contracts_room_period";
     public const string OccupantPeriodExclusion = "ex_contract_occupants_period";
+    public const string RoomMovePeriodExclusion = "ex_contract_room_moves_period";
 
     private static readonly Dictionary<string, Error> ViolationErrors = new(StringComparer.Ordinal)
     {
@@ -59,7 +60,8 @@ public static class DbConstraints
         [InvoicePeriodUnique] = Error.Conflict("INVOICE_EXISTS", "Kỳ này đã có phiếu — tải lại."),
         [SegmentEndReadingUnique] = BillingErrors.DraftStale,
         [ContractRoomPeriodExclusion] = ContractErrors.RoomPeriodOverlap,
-        [OccupantPeriodExclusion] = ContractErrors.OccupantOverlap
+        [OccupantPeriodExclusion] = ContractErrors.OccupantOverlap,
+        [RoomMovePeriodExclusion] = ContractErrors.TransferRoomUnavailable
     };
 
     public static Error? FromViolation(string? constraintName) =>

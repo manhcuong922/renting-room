@@ -190,29 +190,41 @@ public sealed class ReversePaymentHandler(IAppDbContext db, TimeProvider clock) 
 {
     public async ValueTask<Result<PaymentDto>> Handle(ReversePaymentCommand request, CancellationToken cancellationToken)
     {
-        var contractId = await db.Payments.Where(p => p.Id == request.PaymentId).Select(p => (Guid?)p.ContractId).FirstOrDefaultAsync(cancellationToken);
-        if (contractId is null)
+        var head = await db.Payments.Where(p => p.Id == request.PaymentId).Select(p => new { p.ContractId, p.Kind }).FirstOrDefaultAsync(cancellationToken);
+        if (head is null)
             return PaymentErrors.NotFound;
 
         await using var transaction = await db.BeginTransactionAsync(cancellationToken);
-        await db.LockForUpdateAsync<Contract>(contractId.Value, cancellationToken);
-        if (await db.Contracts.Where(c => c.Id == contractId).Select(c => c.Status).FirstAsync(cancellationToken) == ContractStatus.Ended)
+        await db.LockForUpdateAsync<Contract>(head.ContractId, cancellationToken);
+        if (await db.Contracts.Where(c => c.Id == head.ContractId).Select(c => c.Status).FirstAsync(cancellationToken) == ContractStatus.Ended)
             return PaymentErrors.ContractNotBillable;
-        var payment = await db.Payments.Include(p => p.Allocations).FirstAsync(p => p.Id == request.PaymentId, cancellationToken);
-        var reversed = payment.Reverse(request.Reason, clock.GetUtcNow());
+        var payment = await PaymentReversal.ReverseAsync(db, request.PaymentId, request.Reason, clock.GetUtcNow(), cancellationToken);
+        if (payment.IsFailure)
+            return payment.Error!;
+
+        await db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return (await PaymentMapping.ToDtosAsync(db, [payment.Value!], cancellationToken))[0];
+    }
+}
+
+/// <summary>Đảo phiếu thu trong transaction của người gọi (đã khóa HĐ): hủy phân bổ, khóa phiếu báo theo id rồi giảm tiền đã thu.</summary>
+internal static class PaymentReversal
+{
+    public static async Task<Result<Payment>> ReverseAsync(IAppDbContext db, Guid paymentId, string reason, DateTimeOffset now, CancellationToken ct)
+    {
+        var payment = await db.Payments.Include(p => p.Allocations).FirstAsync(p => p.Id == paymentId, ct);
+        var reversed = payment.Reverse(reason, now);
         if (reversed.IsFailure)
             return reversed.Error!;
 
         foreach (var (invoiceId, _) in reversed.Value!.OrderBy(a => a.InvoiceId))
-            await db.LockForUpdateAsync<Invoice>(invoiceId, cancellationToken);
+            await db.LockForUpdateAsync<Invoice>(invoiceId, ct);
         var ids = reversed.Value!.Select(a => a.InvoiceId).ToList();
-        var invoices = await db.Invoices.Where(i => ids.Contains(i.Id)).ToDictionaryAsync(i => i.Id, cancellationToken);
+        var invoices = await db.Invoices.Where(i => ids.Contains(i.Id)).ToDictionaryAsync(i => i.Id, ct);
         foreach (var (invoiceId, amount) in reversed.Value!)
             invoices[invoiceId].ApplyPayment(-amount, payment.Kind == PaymentKind.WriteOff);
-
-        await db.SaveChangesAsync(cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
-        return (await PaymentMapping.ToDtosAsync(db, [payment], cancellationToken))[0];
+        return payment;
     }
 }
 

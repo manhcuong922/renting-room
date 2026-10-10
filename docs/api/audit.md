@@ -46,3 +46,5 @@ Quyền: **chỉ chủ trọ** (phó quản lý → 403). Chỉ thấy nhật k�
 | Ai đã xem số CCCD của người thuê X | `entityType=Renter&entityId=…&action=RevealIdNumber` |
 
 Dữ liệu có thông tin cá nhân — không lưu cache trình duyệt (`Cache-Control: no-store`).
+
+Nhật ký được giữ **5 năm** (`Audit:RetentionYears`): job hằng ngày xóa dòng cũ hơn. Tên người nộp / nhận cọc luôn bị che (`[redacted]`).

@@ -49,6 +49,7 @@ internal static class ContractMutation
             .Include(c => c.Assets)
             .Include(c => c.Vehicles)
             .Include(c => c.Fees)
+            .Include(c => c.RoomMoves)
             .AsSplitQuery()
             .FirstOrDefaultAsync(c => c.Id == contractId, ct);
 }

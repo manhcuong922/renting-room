@@ -288,7 +288,7 @@ Nhiều bản **nháp** cho cùng một phòng được phép (đàm phán song 
       "relationship": null, "note": null, "isRepresentative": true, "relationshipType": null, "guardianConsent": false }
   ],
   "assets": [
-    { "id": "f9f10c36-…", "name": "Điều hòa", "quantity": 1, "conditionAtHandover": "Tốt", "conditionAtReturn": null, "valueEstimate": 6000000, "compensationValue": null, "note": null }
+    { "id": "f9f10c36-…", "name": "Điều hòa", "quantity": 1, "conditionAtHandover": "Tốt", "conditionAtReturn": null, "valueEstimate": 6000000, "note": null }
   ],
   "vehicles": [
     { "id": "c77c1cf7-…", "renterId": null, "vehicleType": "Motorbike", "plateNumber": "29B112345", "brandColor": "Honda Vision đỏ", "registeredFrom": "2026-10-02", "registeredTo": null, "note": null }
@@ -329,7 +329,7 @@ Nhiều bản **nháp** cho cùng một phòng được phép (đàm phán song 
   hiển thị dữ liệu hiện tại của khu/phòng/người thuê kèm ghi chú "sẽ chốt khi kích hoạt").
 - **Tab Người ở**: `occupants` (đang ở = `moveOutDate` null hoặc ≥ hôm nay), nút Thêm / Chuyển đi.
 - **Tab Giá thuê**: `rentTerms` theo thời gian (dòng cuối có `effectiveFrom` ≤ hôm nay là giá hiện hành) + nút Sửa giá thuê.
-- **Tab Tài sản bàn giao**: `assets`, cột tình trạng khi trả / bồi thường hiện ở giai đoạn thanh lý.
+- **Tab Tài sản bàn giao**: `assets`, cột tình trạng khi trả hiện ở giai đoạn thanh lý (bồi thường: thêm phụ thu trên phiếu quyết toán).
 - **Tab Xe**: `vehicles` (đang gửi = `registeredTo` null).
 - **Tab Kỳ thu**: `GET /contracts/{id}/billing-periods`.
 - **Tab Nội quy**: `houseRulesSnapshot`.
@@ -580,13 +580,72 @@ nên ký phụ lục sớm (nút Gia hạn).
 | 422 `CONTRACT_NOT_EXPIRED` | HĐ chưa quá `endDate` (hoặc không thời hạn) |
 | 409 `HOLDOVER_ALREADY` | Đã ghi nhận trước đó |
 
+## Tiền cọc
+
+Cọc **chỉ để theo dõi** (M08 PM-BR-32..35): HĐ có cọc không, cọc bao nhiêu, đã hoàn trả chưa. Không ghi tiền cọc vào / ra, không trừ cọc vào
+phiếu, không chặn hủy / thanh lý, không tính doanh thu.
+
+Chi tiết HĐ có `deposit`:
+
+```json
+{ "amount": 3500000, "status": "Refunded", "refundedOn": "2026-11-20", "refundedAmount": 3000000, "note": "Giữ lại 500k sửa tường",
+  "notRefundedReminder": false }
+```
+
+`status`: `Holding` (đang giữ) · `Refunded` (đã hoàn trả) · `Transferred` (chuyển sang HĐ ký lại) · `null` (HĐ không cọc — `amount` = 0).
+`notRefundedReminder` = HĐ đã kết thúc mà chưa đánh dấu hoàn cọc ⇒ nhãn **"Chưa hoàn cọc"**; lọc `GET /contracts?depositNotRefunded=true`.
+
+| Thao tác | Endpoint | Ghi chú |
+|----------|----------|---------|
+| **Đã hoàn trả cọc** | `POST /contracts/{id}/deposit/refund` `{ "refundedOn": "2026-11-20", "amount": null, "note": null }` | `amount` null = đủ cọc; 0 … cọc; **ít hơn cọc** (giữ lại một phần / mất cọc) ⇒ `note` bắt buộc. Được ở mọi trạng thái HĐ (kể cả đã kết thúc / đã hủy) → 204 |
+| Bỏ đánh dấu (nhập nhầm) | `DELETE /contracts/{id}/deposit/refund` | Về "Đang giữ" → 204 |
+
+| Lỗi | Khi nào |
+|-----|---------|
+| 422 `NO_DEPOSIT` | HĐ không có cọc |
+| 400 `INVALID_REFUND_AMOUNT` | Số tiền âm / lớn hơn cọc, hoặc trả ít hơn cọc mà không ghi lý do |
+| 400 `INVALID_REFUND_DATE` | Ngày hoàn ở tương lai |
+| 422 `DEPOSIT_ALREADY_REFUNDED` | Đã hoàn / đã chuyển — bỏ đánh dấu trước |
+| 422 `DEPOSIT_NOT_REFUNDED` | Bỏ đánh dấu khi chưa đánh dấu |
+
+## Chuyển phòng
+
+`POST /contracts/{id}/transfer-room` — **Idempotency-Key**
+
+```json
+{ "toRoomId": "…", "date": "2026-11-12",
+  "oldRoomReadings": [ { "meterId": "…", "value": 4250 } ], "newRoomReadings": null, "monthlyRent": 3200000, "note": null }
+```
+
+→ **200** `{ "warnings": [ { "code": "RESIDENCE_ROOM_CHANGED", … } ] }`. HĐ **đi theo người thuê**: giữ nguyên số HĐ, người ở, xe, dịch vụ, cọc;
+chỉ đổi phòng từ `date` (D):
+- `oldRoomReadings`: chỉ số cuối **mọi** công tơ phòng cũ tại D — thiếu → 422 `FINAL_READING_REQUIRED`.
+- `newRoomReadings`: chỉ số nhận phòng phòng mới tại D — null / `value` null = số mới nhất.
+- `monthlyRent` (tùy chọn): giá mới từ **kỳ chưa chốt đầu tiên** (như sửa giá) — kỳ chứa D chưa có phiếu thì áp luôn kỳ đó.
+- Ngày D tính là còn ở **cả 2 phòng**; phòng cũ trống từ D+1. Chi tiết HĐ: `roomId` = phòng hiện tại, `roomSince`, `roomMoves[]`
+  (`roomId`, `roomCode`, `fromDate`, `toDate`). Bản HĐ đã ký giữ phòng lúc ký.
+- **Phiếu kỳ chứa D**: điện nước cộng 2 phòng (công tơ phòng cũ tới chỉ số tại D + công tơ phòng mới từ chỉ số nhận phòng); phiếu thuộc
+  phòng hiện tại. Lưới ghi chỉ số chỉ còn công tơ phòng mới (chỉ số cũ = chỉ số nhận phòng).
+
+| Lỗi | Khi nào |
+|-----|---------|
+| 422 `CONTRACT_NOT_ACTIVE` | HĐ không đang hiệu lực (nháp, đang thanh lý, đã kết thúc) |
+| 400 `ROOM_TRANSFER_SAME_ROOM` | Trùng phòng hiện tại |
+| 422 `ROOM_TRANSFER_OTHER_PROPERTY` | Phòng khu khác — dùng thanh lý + HĐ mới + chuyển cọc |
+| 422 `ROOM_TRANSFER_ROOM_UNAVAILABLE` | Phòng mới không trống từ D (có HĐ đang thuê / giữ chỗ / vừa chuyển đi), bảo trì hoặc ngừng dùng |
+| 400 `ROOM_TRANSFER_INVALID_DATE` | D không sau ngày vào phòng hiện tại, hoặc ở tương lai |
+| 422 `ROOM_TRANSFER_ALREADY_BILLED` | Điện nước phòng cũ đã lập phiếu tới sau D — hủy phiếu đó trước |
+
 ## Ký lại cho người còn ở
 
 `POST /contracts/{id}/re-sign` — **Idempotency-Key**
 
 ```json
-{ "handoverDate": "2026-11-15", "representativeRenterId": "…người còn ở", "endDate": null }
+{ "handoverDate": "2026-11-15", "representativeRenterId": "…người còn ở", "endDate": null, "transferDeposit": true }
 ```
+
+`transferDeposit` (mặc định `true`): cọc của HĐ cũ ghi **"Đã chuyển sang HĐ mới"** (HĐ mới chép cọc thỏa thuận); `false` ⇒ HĐ cũ vẫn
+"Đang giữ cọc" để đánh dấu hoàn trả sau ([Tiền cọc](#tiền-cọc)).
 
 → **201** `{ "id": "<HĐ nháp mới>", "warnings": [] }`. Trong 1 thao tác:
 1. HĐ cũ **bắt đầu thanh lý** tại `handoverDate` (lý do `MutualAgreement`, ghi chú tự sinh).
@@ -660,8 +719,10 @@ Cảnh báo (trong `warnings` của chi tiết HĐ khi đang thanh lý): `LESSOR
 ### Ghi tình trạng tài sản — `POST /contracts/{id}/assets/{assetId}/return`
 
 ```json
-{ "conditionAtReturn": "Hỏng remote", "compensationValue": 200000 }
+{ "conditionAtReturn": "Hỏng remote" }
 ```
+
+Chỉ ghi tình trạng. **Bồi thường = phụ thu** "Bồi thường …" chủ trọ thêm trên nháp phiếu quyết toán ([invoices.md](invoices.md)).
 
 ### Hủy thanh lý — `POST /contracts/{id}/liquidation/cancel` → quay lại `Active`.
 
@@ -695,7 +756,8 @@ Bước trả phòng sau khi bắt đầu thanh lý: nhập **chỉ số cuối*
 ```
 
 Điều kiện (lỗi theo thứ tự): từ ngày `actualEndDate` (`LIQUIDATION_BEFORE_END_DATE`) · có chỉ số cuối mọi công tơ (`FINAL_READING_REQUIRED`) ·
-không còn phiếu nháp (`INVOICE_DRAFT_EXISTS`) · **phiếu quyết toán đã chốt** (`FINAL_INVOICE_REQUIRED`).
+không còn phiếu nháp (`INVOICE_DRAFT_EXISTS`) · **phiếu quyết toán đã chốt** (`FINAL_INVOICE_REQUIRED`) · không còn phiếu chờ hoàn
+(`REFUND_PENDING`). **Cọc không chặn** — sau khi kết thúc, HĐ chưa đánh dấu hoàn cọc hiện nhắc "Chưa hoàn cọc" ([Tiền cọc](#tiền-cọc)).
 
 **Còn nợ** (phiếu đã chốt chưa thu đủ) và không gửi `settlement` → 422 `CONTRACT_HAS_DEBT` (body có `outstanding`) — UI hiện cảnh báo
 "Hợp đồng còn nợ X đ" với 2 nút:
@@ -703,10 +765,11 @@ không còn phiếu nháp (`INVOICE_DRAFT_EXISTS`) · **phiếu quyết toán đ
 | Nút | Gửi lại | Kết quả |
 |-----|---------|---------|
 | **Đã thu toàn bộ** | `{ "settlement": "CollectAll", "method": "Cash", "paidAt": null }` | Ghi 1 phiếu thu đúng số còn nợ (mặc định tiền mặt, hôm nay) |
-| **Bỏ nợ** (người thuê trốn / không đòi được) | `{ "settlement": "WriteOff", "reason": "Bỏ đi không trả" }` | Đóng nợ không thu tiền, phiếu thành `WrittenOff`, **không tính doanh thu**; `reason` bắt buộc |
+| **Bỏ nợ** (người thuê trốn / không đòi được) | `{ "settlement": "WriteOff", "reason": "Bỏ đi không trả" }` | Đóng nợ không thu tiền, phiếu thành `WrittenOff`, **không tính doanh thu**; `reason` bắt buộc; chủ trọ hoặc phó quản lý được cấp quyền (403 `WRITE_OFF_NOT_ALLOWED`) |
 
 → 204, HĐ `Ended`, đóng người ở và xe. Sau đó không ghi / đảo phiếu thu cho HĐ này (`CONTRACT_NOT_BILLABLE`).
-Cọc, hoàn tiền phòng chưa ở, bồi thường: chưa làm. Phòng vẫn tính "Đang thuê" **trong ngày trả phòng**, sang hôm sau mới Trống.
+Bồi thường tài sản: thêm **phụ thu** trên nháp phiếu quyết toán. Phòng vẫn tính "Đang thuê"
+**trong ngày trả phòng**, sang hôm sau mới Trống.
 
 ## Tài sản bàn giao (khi còn nháp)
 

@@ -115,6 +115,16 @@ Mọi lỗi có dạng ProblemDetails (xem [conventions.md](conventions.md#lỗi
 | `OCCUPANT_LIVES_ELSEWHERE` | 409 | Người này đang ở phòng khác — ghi chuyển đi ở HĐ cũ trước |
 | `OCCUPANT_ALREADY_MOVED_OUT` | 409 | Đã ghi chuyển đi — thêm lại như người ở mới nếu quay lại |
 | `DEPOSIT_TOO_HIGH` | 400 | Tiền cọc > 12 tháng tiền thuê |
+| `NO_DEPOSIT` | 422 | Đánh dấu hoàn cọc cho HĐ không cọc |
+| `INVALID_REFUND_AMOUNT` | 400 | Hoàn cọc: số tiền âm / lớn hơn cọc, hoặc ít hơn cọc mà không ghi lý do |
+| `INVALID_REFUND_DATE` | 400 | Hoàn cọc / hoàn trả: ngày không hợp lệ |
+| `DEPOSIT_ALREADY_REFUNDED` | 422 | Cọc đã hoàn / đã chuyển — bỏ đánh dấu trước |
+| `DEPOSIT_NOT_REFUNDED` | 422 | Bỏ đánh dấu hoàn cọc khi chưa đánh dấu |
+| `ROOM_TRANSFER_SAME_ROOM` | 400 | Chuyển phòng: trùng phòng hiện tại |
+| `ROOM_TRANSFER_OTHER_PROPERTY` | 422 | Chuyển phòng sang khu khác — thanh lý + HĐ mới |
+| `ROOM_TRANSFER_ROOM_UNAVAILABLE` | 422 | Phòng mới không trống từ ngày chuyển / bảo trì / ngừng dùng |
+| `ROOM_TRANSFER_INVALID_DATE` | 400 | Ngày chuyển không sau ngày vào phòng hiện tại hoặc ở tương lai |
+| `ROOM_TRANSFER_ALREADY_BILLED` | 422 | Điện nước phòng cũ đã lập phiếu tới sau ngày chuyển |
 | `CONTRACT_EXPIRED_EXTEND_FIRST` | 422 | Ngày vào ở sau ngày hết hạn — hiện nút "Gia hạn" |
 | `VEHICLE_OWNER_NOT_IN_CONTRACT` | 422 | Kết thúc đăng ký xe của người không còn thuộc HĐ trước |
 | `HOUSEHOLD_HEAD_NOT_OCCUPANT` | 400 | Chủ hộ phải là một người ở |
@@ -176,6 +186,12 @@ Cảnh báo mềm: `ROOM_WITHOUT_METER` (HĐ hiệu lực, phòng chưa có côn
 | `NEGATIVE_TOTAL` | 422 | Giảm trừ lớn hơn phần thu — bớt giảm trừ; trả lại tiền cho người thuê thì dùng dòng Hoàn trả |
 | `NOTE_REQUIRED` | 400 | Nhập lý do / ghi chú (phụ thu, sửa tiền phòng) |
 | `INVOICE_HAS_PAYMENTS` | 422 | Đảo phiếu thu trước khi hủy phiếu |
+| `ROOM_CHARGE_NO_TENANT` | 422 | Khoản phát sinh: phòng không có người thuê tại ngày phát sinh |
+| `ROOM_CHARGE_NO_OPEN_INVOICE` | 422 | Khoản phát sinh: HĐ đã chốt phiếu quyết toán / đã kết thúc |
+| `ROOM_CHARGE_LOCKED` | 422 | Khoản phát sinh đã nằm trên phiếu đã chốt — không đánh dấu / hủy |
+| `REFUND_SOURCE_INVALID` | 422 | Phiếu nguồn của dòng hoàn trả không phải phiếu đã chốt của cùng HĐ |
+| `REFUND_EXCEEDS_PAID` | 422 | Hoàn trả vượt số người thuê đã trả thật cho phiếu nguồn trừ các lần hoàn trước (`available`) |
+| `REFUND_NOT_BULK` | 400 | Thêm hoàn trả hàng loạt — hoàn từng phiếu (chọn phiếu nguồn) |
 | `REFUND_CONFIRMED` | 422 | Phiếu đã xác nhận hoàn tiền — bỏ xác nhận (`DELETE /invoices/{id}/refund`) trước khi hủy / xác nhận lại |
 | `REFUND_NOT_CONFIRMED` | 422 | Phiếu chưa xác nhận hoàn tiền |
 | `NOTHING_TO_REFUND` | 422 | Phiếu không có khoản phải trả lại người thuê (tổng không âm) |
@@ -188,6 +204,8 @@ Cảnh báo mềm: `ROOM_WITHOUT_METER` (HĐ hiệu lực, phòng chưa có côn
 | `READINGS_INVALID` | 422 | Lưu chỉ số: tô đỏ dòng theo `rowErrors[].index`, chưa lưu dòng nào |
 | `READING_LOCKED` | 422 | Chỉ số đã dùng cho phiếu đã chốt — hủy phiếu trước |
 | `PAYMENT_EXCEEDS_DEBT` | 422 | Số tiền lớn hơn số còn nợ |
+| `WRITE_OFF_NOT_ALLOWED` | 403 | Bỏ nợ (riêng / kèm thanh toán / khi hoàn tất thanh lý) — phó quản lý chưa được chủ trọ cấp quyền |
+| `NOTHING_TO_WRITE_OFF` | 422 | "Thanh toán + bỏ phần còn lại" mà số trả = số còn nợ — dùng "Đã thu" |
 | `NO_OUTSTANDING_INVOICE` | 422 | Không còn phiếu nào chưa thu đủ |
 | `PAYMENT_ALREADY_REVERSED` | 409 | Phiếu thu đã đảo — tải lại |
 | `FINAL_INVOICE_EXISTS` | 409 | Đã có phiếu quyết toán — mở phiếu đó |

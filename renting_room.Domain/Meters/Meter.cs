@@ -81,6 +81,10 @@ public sealed class Meter : TenantEntity
     public MeterReading? FindFinal(Guid contractId) =>
         Ordered.FirstOrDefault(r => r.Kind == ReadingKind.Final && r.ContractId == contractId);
 
+    /// <summary>Chỉ số nhận phòng của HĐ trên công tơ này (MT-BR-13; chuyển tới phòng giữa kỳ — CT-BR-47).</summary>
+    public MeterReading? FindHandover(Guid contractId) =>
+        Ordered.LastOrDefault(r => r.Kind == ReadingKind.Handover && r.ContractId == contractId);
+
     public MeterReading? Removal => Ordered.FirstOrDefault(r => r.Kind == ReadingKind.Removal);
 
     /// <summary>Công tơ đo trong (một phần) khoảng [<paramref name="from"/>, <paramref name="to"/>] — ngày tháo vẫn thuộc khoảng (chỉ số tháo là số cuối).</summary>

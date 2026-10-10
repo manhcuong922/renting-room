@@ -290,10 +290,82 @@ public sealed class InvoiceTests
             .Which.Message.Should().Contain($"{overpaid:N0}");
     }
 
-    private static Invoice Draft(decimal rent = 1_000_000) =>
+    private static Invoice Draft(decimal rent = 1_000_000, bool round = false) =>
         Invoice.CreateDraft(PropertyId, RoomId, Guid.NewGuid(), new BillingPeriod(Start, Start.AddMonths(1).AddDays(-1), new DateOnly(Start.Year, Start.Month, 1)), "101", "HD2026-0001", "A",
             new InvoiceCalculation([new CalculatedLine(InvoiceLineType.Rent, null, "Tiền phòng", "tháng", Start, Start.AddMonths(1).AddDays(-1),
-                1, rent, 1, rent, 0)], [], []));
+                1, rent, 1, rent, 0)], [], [], round));
+
+    [Fact]
+    public void RoundTotal_DropsOddPartBelowThousand_TowardZero_AndFollowsManualLines()
+    {
+        var invoice = Draft(523_560, round: true);
+        invoice.RoundingAmount.Should().Be(-560);
+        invoice.TotalAmount.Should().Be(523_000);
+
+        invoice.AddManualLine(InvoiceLineType.Surcharge, "Thay bóng đèn", null, null, 1_440, "Hỏng", null).IsSuccess.Should().BeTrue();
+        invoice.RoundingAmount.Should().Be(0, "tổng 525.000 đã tròn nghìn");
+        invoice.TotalAmount.Should().Be(525_000);
+
+        invoice.AddManualLine(InvoiceLineType.Refund, "Hoàn", null, null, 537_400, "Thu nhầm", null, Guid.NewGuid());
+        invoice.TotalAmount.Should().Be(-12_000, "tổng âm −12.400 ⇒ làm tròn về 0");
+        invoice.RoundingAmount.Should().Be(400);
+
+        Draft(523_560).TotalAmount.Should().Be(523_560, "khu tắt làm tròn");
+    }
+
+    [Fact]
+    public void SettledChargeLine_ShownOnInvoice_ButNotCounted_ToggleChangesTotal()
+    {
+        var invoice = Draft();
+        var paidNow = Guid.NewGuid();
+        var unpaid = Guid.NewGuid();
+
+        invoice.AddManualLine(InvoiceLineType.Surcharge, "Thay bóng đèn", null, null, 60_000, "Vỡ", null, roomChargeId: paidNow, isSettled: true)
+            .IsSuccess.Should().BeTrue();
+        invoice.AddManualLine(InvoiceLineType.Surcharge, "Thay khóa", null, null, 250_000, "Hỏng khóa", null, roomChargeId: unpaid)
+            .IsSuccess.Should().BeTrue();
+        invoice.Lines.Should().HaveCount(3, "khoản đã thanh toán vẫn hiện trên phiếu");
+        invoice.TotalAmount.Should().Be(1_250_000, "đã thu ngay ⇒ không tính vào tổng");
+
+        invoice.SetChargeSettled(unpaid, true).IsSuccess.Should().BeTrue();
+        invoice.TotalAmount.Should().Be(1_000_000);
+        invoice.SetChargeSettled(unpaid, false).IsSuccess.Should().BeTrue();
+        invoice.TotalAmount.Should().Be(1_250_000);
+
+        // Bù đã trả ngay lớn hơn phần thu vẫn ghi được (không trừ vào tổng); bỏ đánh dấu thì bị chặn vì làm phần thu âm.
+        var credit = Guid.NewGuid();
+        invoice.AddManualLine(InvoiceLineType.ManualDiscount, "Bù đã trả", null, null, 2_000_000, "Trả tiền mặt", null, roomChargeId: credit, isSettled: true)
+            .IsSuccess.Should().BeTrue();
+        invoice.TotalAmount.Should().Be(1_250_000);
+        invoice.SetChargeSettled(credit, false).Error.Should().Be(BillingErrors.NegativeTotal);
+
+        invoice.RemoveChargeLine(unpaid).IsSuccess.Should().BeTrue();
+        invoice.ChargeLine(unpaid).Should().BeNull();
+        invoice.TotalAmount.Should().Be(1_000_000);
+    }
+
+    [Fact]
+    public void RoomCharge_SettleUnsettleCancel()
+    {
+        var charge = RoomCharge.Create(PropertyId, RoomId, Guid.NewGuid(), RoomChargeKind.Credit, " Mất nước ", 50_000, Start, " Sự cố ");
+        charge.Description.Should().Be("Mất nước");
+        charge.LineType.Should().Be(InvoiceLineType.ManualDiscount);
+        charge.IsPending.Should().BeTrue();
+
+        charge.Settle(Start.AddDays(1), PaymentMethod.Cash, Start).Error.Should().Be(RoomChargeErrors.InvalidSettledDate);
+        charge.Unsettle().Error.Should().Be(RoomChargeErrors.NotSettled);
+        charge.Settle(Start, PaymentMethod.Cash, Start).IsSuccess.Should().BeTrue();
+        charge.Unsettle().IsSuccess.Should().BeTrue();
+        charge.SettledOn.Should().BeNull();
+
+        charge.AttachTo(Guid.NewGuid());
+        charge.IsPending.Should().BeFalse();
+        charge.Cancel(" Ghi nhầm ", DateTimeOffset.UnixEpoch).IsSuccess.Should().BeTrue();
+        charge.InvoiceId.Should().BeNull();
+        charge.Cancel("Lần 2", DateTimeOffset.UnixEpoch).Error.Should().Be(RoomChargeErrors.Cancelled);
+        FluentActions.Invoking(() => RoomCharge.Create(PropertyId, RoomId, Guid.NewGuid(), RoomChargeKind.Surcharge, "X", 0, Start, "Y"))
+            .Should().Throw<ArgumentOutOfRangeException>();
+    }
 
     [Fact]
     public void Refund_CanMakeTotalNegative_DiscountCannotExceedCharges()
@@ -303,6 +375,8 @@ public sealed class InvoiceTests
         invoice.AddManualLine(InvoiceLineType.ManualDiscount, "Giảm", null, null, 1_000_001, "Lý do", null).Error
             .Should().Be(BillingErrors.NegativeTotal, "giảm trừ không vượt phần thu");
         invoice.AddManualLine(InvoiceLineType.Refund, "Hoàn tiền phòng chưa ở", null, null, 1_500_000, "Trả phòng sớm", null)
+            .Error.Should().Be(BillingErrors.RefundSourceRequired, "hoàn trả phải chỉ ra phiếu đã thu bị tính sai");
+        invoice.AddManualLine(InvoiceLineType.Refund, "Hoàn tiền phòng chưa ở", null, null, 1_500_000, "Trả phòng sớm", null, Guid.NewGuid())
             .IsSuccess.Should().BeTrue();
 
         invoice.Lines.Single(l => l.Type == InvoiceLineType.Refund).Amount.Should().Be(-1_500_000);
@@ -316,7 +390,7 @@ public sealed class InvoiceTests
     public void NegativeInvoice_Finalized_IsRefundPending_UntilConfirmed_AndNotDebt()
     {
         var invoice = Draft();
-        invoice.AddManualLine(InvoiceLineType.Refund, "Hoàn cọc giữ chỗ", null, null, 1_200_000, "Trả phòng", null);
+        invoice.AddManualLine(InvoiceLineType.Refund, "Hoàn cọc giữ chỗ", null, null, 1_200_000, "Trả phòng", null, Guid.NewGuid());
         var today = Start.AddMonths(1);
         invoice.Finalize("PB2026-000001", today, 5, DateTimeOffset.UtcNow).IsSuccess.Should().BeTrue();
 

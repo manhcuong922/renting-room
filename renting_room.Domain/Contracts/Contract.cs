@@ -18,6 +18,7 @@ public sealed class Contract : TenantEntity
     private readonly List<ContractAsset> _assets = [];
     private readonly List<ContractVehicle> _vehicles = [];
     private readonly List<ContractFee> _fees = [];
+    private readonly List<ContractRoomMove> _roomMoves = [];
 
     private Contract() { } // EF Core
 
@@ -30,6 +31,9 @@ public sealed class Contract : TenantEntity
     public string? SignedPlace { get; private set; }
     public DateOnly? EffectiveDate { get; private set; }
     public DateOnly StartDate { get; private set; }
+
+    /// <summary>CT-BR-14: ngày vào phòng hiện tại — = ngày bắt đầu, đổi khi chuyển phòng. Ràng buộc "1 phòng 1 HĐ" tính từ ngày này.</summary>
+    public DateOnly RoomSince { get; private set; }
     public DateOnly? EndDate { get; private set; }
     public DateOnly? ActualEndDate { get; private set; }
     public DateOnly? NoticeGivenDate { get; private set; }
@@ -37,6 +41,14 @@ public sealed class Contract : TenantEntity
     public int NoticeDays { get; private set; }
     public decimal DepositAmount { get; private set; }
     public string? DepositTerms { get; private set; }
+
+    /// <summary>M08 PM-BR-32: cọc chỉ theo dõi — đang giữ / đã hoàn trả / đã chuyển sang HĐ ký lại.</summary>
+    public DepositStatus DepositStatus { get; private set; } = DepositStatus.Holding;
+    public DateOnly? DepositRefundedOn { get; private set; }
+    public decimal? DepositRefundedAmount { get; private set; }
+    public string? DepositNote { get; private set; }
+
+    public bool HasDeposit => DepositAmount > 0;
     /// <summary>
     /// K5 — "Tính tiền từ ngày" (C-05): kỳ đầu bắt đầu từ ngày này, những ngày trước không tính tiền (HĐ nhập từ sổ cũ, cho ở miễn phí vài
     /// ngày đầu). Mặc định = ngày bắt đầu. Ngày chốt / thu trước–thu sau / tính kỳ lẻ là của khu (CT-BR-04).
@@ -104,6 +116,11 @@ public sealed class Contract : TenantEntity
     public IReadOnlyList<Guid> EraseEndedVehicleIdentity(Guid? ownerRenterId) =>
         _vehicles.Where(v => ownerRenterId is null || v.RenterId == ownerRenterId).Where(v => v.EraseIdentity()).Select(v => v.Id).ToList();
     public IReadOnlyList<ContractFee> Fees => _fees;
+    public IReadOnlyList<ContractRoomMove> RoomMoves => _roomMoves;
+
+    /// <summary>Các phòng HĐ đã / đang ở theo thời gian (CT-BR-47 — tính điện nước kỳ có chuyển phòng).</summary>
+    public IReadOnlyList<RoomStay> RoomStays =>
+        [.. _roomMoves.OrderBy(m => m.FromDate).Select(m => new RoomStay(m.RoomId, m.FromDate, m.ToDate)), new RoomStay(RoomId, RoomSince, ActualEndDate)];
 
     public bool IsOverdue(DateOnly today) => Status == ContractStatus.Active && EndDate < today;
 
@@ -222,6 +239,7 @@ public sealed class Contract : TenantEntity
 
         RepresentativeRenterId = data.RepresentativeRenterId;
         StartDate = data.StartDate;
+        RoomSince = data.StartDate;
         EndDate = data.EndDate;
         SignedDate = data.SignedDate;
         SignedPlace = TextNormalizer.TrimToNull(data.SignedPlace);
@@ -498,6 +516,27 @@ public sealed class Contract : TenantEntity
         return Result.Success(new NoticeResult(actualDays < NoticeDays, NoticeDays, actualDays));
     }
 
+    // ------------------------------------------------------------------ Chuyển phòng
+
+    /// <summary>
+    /// CT-UC-12 / CT-BR-14: HĐ đi theo người thuê sang phòng khác cùng khu từ ngày <paramref name="date"/> — người ở, xe, dịch vụ, cọc giữ nguyên.
+    /// Phòng mới trống, chỉ số công tơ: Application kiểm và ghi.
+    /// </summary>
+    public Result TransferRoom(Guid newRoomId, DateOnly date, DateOnly today)
+    {
+        if (Status != ContractStatus.Active)
+            return Result.Failure(ContractErrors.NotActive);
+        if (newRoomId == RoomId)
+            return Result.Failure(ContractErrors.TransferSameRoom);
+        if (date <= RoomSince || date > today)
+            return Result.Failure(ContractErrors.TransferInvalidDate);
+
+        _roomMoves.Add(new ContractRoomMove(Id, RoomId, RoomSince, date));
+        RoomId = newRoomId;
+        RoomSince = date;
+        return Result.Success();
+    }
+
     // ------------------------------------------------------------------ Thanh lý
 
     public Result StartLiquidation(
@@ -549,6 +588,53 @@ public sealed class Contract : TenantEntity
     public void ReplaceSigningSnapshot(string? signingSnapshot) => SigningSnapshot = signingSnapshot;
 
     /// <summary>Đánh dấu đã có / chưa có bản HĐ ký (giấy, ảnh, PDF) và ghi chú nơi cất — mọi trạng thái trừ đã hủy.</summary>
+    // ------------------------------------------------------------------ Cọc (chỉ theo dõi — M08 PM-BR-32..34)
+
+    /// <summary>
+    /// PM-BR-33: "Đã hoàn trả cọc" — ở mọi trạng thái HĐ. <paramref name="amount"/> null = đủ cọc; trả ít hơn (giữ lại một phần / mất cọc)
+    /// ⇒ ghi chú bắt buộc.
+    /// </summary>
+    public Result RefundDeposit(DateOnly refundedOn, decimal? amount, string? note, DateOnly today)
+    {
+        if (!HasDeposit)
+            return Result.Failure(ContractErrors.NoDeposit);
+        if (DepositStatus != DepositStatus.Holding)
+            return Result.Failure(ContractErrors.DepositAlreadyRefunded);
+        if (refundedOn > today)
+            return Result.Failure(ContractErrors.InvalidRefundDate);
+        var value = amount ?? DepositAmount;
+        var trimmed = TextNormalizer.TrimToNull(note);
+        if (value < 0 || value > DepositAmount || decimal.Round(value, 0) != value || (value < DepositAmount && trimmed is null))
+            return Result.Failure(ContractErrors.InvalidRefundAmount);
+
+        DepositStatus = DepositStatus.Refunded;
+        DepositRefundedOn = refundedOn;
+        DepositRefundedAmount = value;
+        DepositNote = trimmed;
+        return Result.Success();
+    }
+
+    /// <summary>Bỏ đánh dấu hoàn trả / chuyển cọc (nhập nhầm) ⇒ về "Đang giữ cọc".</summary>
+    public Result CancelDepositRefund()
+    {
+        if (DepositStatus == DepositStatus.Holding)
+            return Result.Failure(ContractErrors.DepositNotRefunded);
+        DepositStatus = DepositStatus.Holding;
+        DepositRefundedOn = null;
+        DepositRefundedAmount = null;
+        DepositNote = null;
+        return Result.Success();
+    }
+
+    /// <summary>PM-BR-34: ký lại — cọc của HĐ cũ chuyển sang HĐ mới (HĐ mới chép cọc thỏa thuận).</summary>
+    public void MarkDepositTransferred(string newContractNo)
+    {
+        if (!HasDeposit || DepositStatus != DepositStatus.Holding)
+            return;
+        DepositStatus = DepositStatus.Transferred;
+        DepositNote = $"Chuyển sang hợp đồng {newContractNo}";
+    }
+
     public Result SetSignedDocument(bool hasSignedDocument, string? note)
     {
         if (Status == ContractStatus.Cancelled)
@@ -613,7 +699,7 @@ public sealed class Contract : TenantEntity
             : Result.Failure(ContractErrors.AssetNotFound);
     }
 
-    public Result RecordAssetReturn(Guid assetId, string? condition, decimal? compensationValue)
+    public Result RecordAssetReturn(Guid assetId, string? condition)
     {
         if (Status != ContractStatus.Liquidating)
             return Result.Failure(ContractErrors.NotLiquidating);
@@ -622,7 +708,7 @@ public sealed class Contract : TenantEntity
         if (asset is null)
             return Result.Failure(ContractErrors.AssetNotFound);
 
-        asset.RecordReturn(condition, compensationValue);
+        asset.RecordReturn(condition);
         return Result.Success();
     }
 

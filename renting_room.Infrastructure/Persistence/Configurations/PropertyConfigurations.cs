@@ -38,6 +38,7 @@ internal sealed class PropertyConfiguration : IEntityTypeConfiguration<Property>
         builder.Property(p => p.EvnCustomerCode).HasMaxLength(20);
         builder.Property(p => p.ChargeMode).HasConversion<string>().HasMaxLength(16);
         builder.Property(p => p.ProrationMode).HasConversion<string>().HasMaxLength(16);
+        builder.Property(p => p.RoundInvoiceTotal);
         // Lịch kỳ thu (K4): danh sách mốc đổi ngày chốt / cách thu — jsonb, luôn đọc cùng khu.
         builder.Property(p => p.BillingScheduleEntries)
             .HasColumnName("billing_schedule")

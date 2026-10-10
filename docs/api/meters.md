@@ -12,6 +12,7 @@ Quyền: chủ trọ và phó quản lý.
 | Tab **Công tơ** trong chi tiết phòng | `GET /rooms/{roomId}/meters?includeRemoved=false` |
 | Lắp công tơ | `POST /rooms/{roomId}/meters` |
 | Thay công tơ (hỏng / quay vòng về 0) | `POST /meters/{id}/replace` |
+| **Thay công tơ hàng loạt** giữa tháng (điện lực thay cả khu) | `GET /properties/{id}/meters/replace-sheet?feeTypeId=` · `POST /properties/{id}/meters/bulk-replace` |
 | Tháo công tơ (không thay) | `POST /meters/{id}/remove` |
 | Lịch sử chỉ số + sửa chỉ số nhập sai | `GET /meters/{id}/readings`, `PUT /meter-readings/{id}` |
 | Bước "Chỉ số nhận phòng" khi kích hoạt hợp đồng | [contracts.md](contracts.md#kích-hoạt-bàn-giao-phòng) |
@@ -64,6 +65,23 @@ Quyền: chủ trọ và phó quản lý.
 → **201** `{ "id": "<công tơ mới>" }`. Công tơ cũ ngừng hoạt động với **số cuối bắt buộc**; công tơ mới bắt đầu cùng ngày.
 Cuối kỳ chỉ cần nhập số công tơ mới — module phiếu sẽ tự cộng phần của công tơ cũ (1.250 → 1.320).
 Cách khác: không ghi thay công tơ, nhập tiền điện công tơ cũ thành **phụ thu** trên phiếu nháp.
+
+## Thay hàng loạt (MT-UC-08)
+
+Lưới: `GET /properties/{propertyId}/meters/replace-sheet?feeTypeId=…` → **200** mỗi công tơ đang hoạt động của khoản thu trong khu:
+`[ { "meterId", "roomId", "roomCode", "floor", "serialNo", "lastValue", "lastDate" } ]`.
+
+Lưu: `POST /properties/{propertyId}/meters/bulk-replace` — **Idempotency-Key**
+
+```json
+{ "feeTypeId": "…", "replacedOn": "2026-11-12", "note": "Điện lực thay đồng loạt",
+  "rows": [ { "meterId": "…", "oldFinalValue": 4250, "newSerialNo": "EVN-101", "newInitialValue": null } ] }
+```
+
+- Một ngày thay chung; mỗi dòng = 1 lệnh thay đơn (số cuối công tơ cũ, serial mới, chỉ số đầu mới — bỏ trống = 0). Chỉ gửi phòng có thay; tối đa 500 dòng.
+- **Tất cả hoặc không**: dòng lỗi (số cuối nhỏ hơn chỉ số cũ, ngày thay trước chỉ số gần nhất, công tơ không thuộc khu / khoản thu) ⇒
+  422 `BULK_REPLACE_INVALID` kèm `rowErrors: [ { "index", "meterId", "code", "message" } ]`, không lưu dòng nào.
+- → **200** `{ "replaced": 18, "newMeterIds": ["…"] }`. Kỳ có thay: phiếu tự cộng 2 công tơ (2 đoạn đo); nháp đã lập của phòng ⇒ "Cần tính lại".
 
 ## Tháo (không thay)
 

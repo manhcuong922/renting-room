@@ -42,6 +42,19 @@ public enum ContractFlag
     MissingSignedDocument
 }
 
+/// <summary>M08 PM-BR-32: cọc chỉ để theo dõi — có nghĩa khi <c>deposit_amount</c> &gt; 0.</summary>
+public enum DepositStatus
+{
+    /// <summary>Đang giữ cọc.</summary>
+    Holding,
+
+    /// <summary>Đã hoàn trả (ngày, số tiền thực trả — có thể ít hơn cọc, ghi chú).</summary>
+    Refunded,
+
+    /// <summary>Ký lại: cọc chuyển sang HĐ mới (PM-BR-34).</summary>
+    Transferred
+}
+
 /// <summary>Căn cứ bên cho thuê chấm dứt — Luật Nhà ở 2023 Điều 172 khoản 2; HĐ không thời hạn: báo trước 90 ngày (CT-BR-42).</summary>
 public enum TerminationGround
 {

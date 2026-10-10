@@ -26,7 +26,8 @@ public sealed record MemberDto(
     DateTimeOffset? LastLoginAt,
     DateTimeOffset CreatedAt,
     bool CanViewSensitiveData,
-    string Version);
+    string Version,
+    bool CanWriteOff = false);
 
 /// <summary>Mật khẩu tạm chỉ trả về đúng một lần — không lưu dạng rõ, không ghi log.</summary>
 public sealed record TemporaryCredentials(Guid UserId, string Username, string TemporaryPassword, DateTimeOffset ExpiresAt);
@@ -46,5 +47,6 @@ internal static class MemberProjection
             u.LastLoginAt,
             u.CreatedAt,
             u.Role == UserRole.OrgOwner || u.CanViewSensitiveData,
-            u.Version.ToString()));
+            u.Version.ToString(),
+            u.Role == UserRole.OrgOwner || u.CanWriteOff));
 }

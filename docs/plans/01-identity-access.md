@@ -98,6 +98,7 @@ xuất Excel, in hợp đồng có số đầy đủ) trừ khi chủ trọ cấ
 | ID-BR-20 | Mật khẩu tạm (tạo tài khoản, cấp lại) hết hạn sau `Auth:TemporaryPasswordHours` (mặc định 72h). Đăng nhập **đúng** mật khẩu tạm nhưng đã hết hạn → 401 `TEMPORARY_PASSWORD_EXPIRED` (người cấp phải cấp lại) | Domain + LoginHandler |
 | ID-BR-21 | Phó quản lý xem được thông tin bên cho thuê của khu (M02) và hồ sơ người thuê như chủ trọ, nhưng số giấy tờ luôn ở dạng che (`********1234`). **Đã đổi 04/10/2026** — thay mặc định cũ "phó quản lý xem số đầy đủ" bằng ID-BR-22 | Policy |
 | ID-BR-22 ✅ | **Quyền dữ liệu nhạy cảm**: chủ trọ luôn có; phó quản lý chỉ khi chủ trọ cấp (`users.can_view_sensitive_data`). Áp cho: xem số giấy tờ đầy đủ (người thuê, bên cho thuê) → 403 `SENSITIVE_DATA_FORBIDDEN`; xuất Excel `includeSensitive` → 403; in hợp đồng → **vẫn in được** nhưng số giấy tờ ở dạng che. Quyền đọc từ DB ở mỗi request (không nằm trong token) ⇒ thu hồi có hiệu lực ngay. Cấp / thu hồi ghi audit; gỡ phó quản lý ⇒ mất quyền. `/me` và danh sách thành viên trả `canViewSensitiveData` để UI ẩn nút | Domain `User` + `SensitiveDataAccess` |
+| ID-BR-23 ✅ | **Quyền bỏ nợ** (10/10/2026, M08 PM-BR-16): chủ trọ luôn có; phó quản lý chỉ khi chủ trọ bật **cho riêng người đó** (`users.can_write_off`, mặc định tắt) — người tin tưởng thì bật, người mới thì không. `PUT /org/members/{id}/write-off-permission { allowed }`; gỡ phó quản lý ⇒ tắt. Áp cho: bỏ nợ riêng, "Thanh toán + bỏ phần còn lại", "Bỏ nợ" khi hoàn tất thanh lý → 403 `WRITE_OFF_NOT_ALLOWED` | Domain + Application |
 
 API (owner/manager — trong phạm vi tổ chức của mình):
 
@@ -178,6 +179,7 @@ stateDiagram-v2
 | last_login_at | timestamptz | Y | |
 | temp_password_expires_at | timestamptz | Y | hạn mật khẩu tạm (ID-BR-20); NULL khi mật khẩu đã đổi |
 | can_view_sensitive_data | bool | N | false — phó quản lý được chủ trọ cấp quyền dữ liệu nhạy cảm (ID-BR-22); chủ trọ bỏ qua cờ này |
+| can_write_off | bool | N | false — phó quản lý được chủ trọ cấp quyền bỏ nợ (ID-BR-23) |
 | password_changed_at | timestamptz | Y | lần đổi mật khẩu gần nhất |
 | removed_at / removed_by | timestamptz / uuid | Y | CHECK: NOT NULL ⇔ status = `Removed` |
 | created_at/by, updated_at/by, xmin | | | |
@@ -352,6 +354,8 @@ Access token claims: `sub`, `org` (nếu có), `role`, `stamp`, `jti`, `exp`. K�
 | Quản lý phó quản lý (§3.3) | ❌ | ✅ | ❌ |
 | Xem / xuất / in số giấy tờ đầy đủ (ID-BR-22) | ❌ | ✅ | Chỉ khi chủ trọ cấp quyền |
 | Cấp / thu hồi quyền dữ liệu nhạy cảm | ❌ | ✅ | ❌ |
+| Bỏ nợ (ID-BR-23) | ❌ | ✅ | Chỉ khi chủ trọ cấp quyền cho riêng người đó |
+| Cấp / thu hồi quyền bỏ nợ | ❌ | ✅ | ❌ |
 | Xem danh sách thành viên tổ chức | ✅ (chỉ thông tin tài khoản) | ✅ | ✅ (chỉ xem) |
 
 Policies: `RequireSystemAdmin`, `RequireOrgMember` (role ∈ OrgOwner/OrgManager ∧ org Active ∧ !MustChangePassword).

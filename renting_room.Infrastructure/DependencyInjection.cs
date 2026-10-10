@@ -79,6 +79,9 @@ public static class DependencyInjection
         services.AddScoped<CurrentUserOverride>();
         services.AddSingleton<RenterAnonymizationService>();
         services.AddHostedService(sp => sp.GetRequiredService<RenterAnonymizationService>());
+        // S2: xóa nhật ký cũ hơn Audit:RetentionYears (mặc định 5 năm).
+        services.AddSingleton<AuditRetentionService>();
+        services.AddHostedService(sp => sp.GetRequiredService<AuditRetentionService>());
 
         // Dữ liệu demo cho dev / server test — chỉ chạy khi bật Seed:DemoData:Enabled (DatabaseInitializer).
         services.AddOptions<DemoDataOptions>().Bind(configuration.GetSection(DemoDataOptions.SectionName));

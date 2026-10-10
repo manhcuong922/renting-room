@@ -91,5 +91,64 @@ public sealed class DemoDataSeederTests(ApiFactory factory)
         // FE-UC-08: "Phí điều hòa" thêm hàng loạt cho 101, 102.
         (await DetailAsync("101", "Active")).GetProperty("fees").EnumerateArray().Select(f => f.GetProperty("name").GetString())
             .Should().Contain("Phí điều hòa");
+
+        // Cọc chỉ theo dõi (M08 PM-BR-32..35): đang giữ / đã hoàn trả / đã chuyển (ký lại); HĐ kết thúc chưa hoàn cọc được nhắc.
+        static JsonElement Deposit(JsonElement detail) => detail.GetProperty("deposit");
+        Deposit(await DetailAsync("101", "Active")).GetProperty("status").GetString().Should().Be("Holding");
+        var moved203 = await DetailAsync("206", "Active");
+        Deposit(moved203).GetProperty("status").GetString().Should().Be("Holding", "chuyển phòng ⇒ cọc giữ nguyên theo HĐ");
+        moved203.GetProperty("roomMoves")[0].GetProperty("roomCode").GetString().Should().Be("203", "203 chuyển sang 206");
+        var refunded201 = Deposit(await DetailAsync("201", "Ended"));
+        refunded201.GetProperty("status").GetString().Should().Be("Refunded");
+        refunded201.GetProperty("refundedAmount").GetDecimal().Should().Be(2_500_000);
+        var forfeited = Deposit(await DetailAsync("204", "Cancelled"));
+        forfeited.GetProperty("refundedAmount").GetDecimal().Should().Be(0, "khách đổi ý ⇒ giữ lại cọc giữ chỗ, có lý do");
+        forfeited.GetProperty("note").GetString().Should().NotBeNullOrEmpty();
+        Deposit(await DetailAsync("106", "Ended")).GetProperty("notRefundedReminder").GetBoolean().Should().BeTrue("chưa hoàn cọc");
+        var notRefunded = await (await _client.GetAsync("/api/v1/contracts?depositNotRefunded=true&pageSize=100", token)).ReadAsync<JsonElement>();
+        notRefunded.GetProperty("items").EnumerateArray().Select(c => c.GetProperty("roomCode").GetString()).Should().Contain("106");
+        Deposit(await DetailAsync("B06", "Liquidating")).GetProperty("status").GetString().Should().Be("Transferred", "ký lại ⇒ cọc chuyển sang HĐ mới");
+        var final106 = items.Single(i => i.GetProperty("roomCode").GetString() == "106" && i.GetProperty("type").GetString() == "Final");
+        (await (await _client.GetAsync($"/api/v1/invoices/{final106.GetProperty("id").GetGuid()}", token)).ReadAsync<JsonElement>())
+            .GetProperty("lines").EnumerateArray().Should().Contain(l => l.GetProperty("type").GetString() == "Surcharge"
+                && l.GetProperty("description").GetString()!.StartsWith("Bồi thường"));
+
+        // Khoản phát sinh theo phòng (BL-BR-30..37): chờ vào phiếu / trên nháp / đã vào phiếu; khoản đã thanh toán không tính vào tổng.
+        var charges = await (await _client.GetAsync("/api/v1/room-charges", token)).ReadAsync<JsonElement>();
+        charges.EnumerateArray().Select(c => c.GetProperty("status").GetString()).Should().Contain(["Pending", "OnDraft", "Billed"]);
+        charges.EnumerateArray().Where(c => c.GetProperty("status").GetString() == "Pending").Select(c => c.GetProperty("roomCode").GetString())
+            .Should().BeEquivalentTo(["101", "102"]);
+        var draft103Detail = await (await _client.GetAsync(
+            $"/api/v1/invoices/{items.Single(i => i.GetProperty("roomCode").GetString() == "103" && i.GetProperty("status").GetString() == "Draft").GetProperty("id").GetGuid()}",
+            token)).ReadAsync<JsonElement>();
+        var settledLine = draft103Detail.GetProperty("lines").EnumerateArray().Single(l => l.GetProperty("isSettled").GetBoolean());
+        settledLine.GetProperty("description").GetString().Should().Be("Làm thêm chìa khóa");
+        draft103Detail.GetProperty("summary").GetProperty("totalAmount").GetDecimal()
+            .Should().Be(draft103Detail.GetProperty("lines").EnumerateArray().Where(l => !l.GetProperty("isSettled").GetBoolean())
+                .Sum(l => l.GetProperty("amount").GetDecimal()) + draft103Detail.GetProperty("summary").GetProperty("roundingAmount").GetDecimal());
+
+        // I1 — nháp B04 "Cần tính lại" (người ở mới vào sau khi lập nháp); H1 — khu D tắt làm tròn.
+        var staleDrafts = await (await _client.GetAsync("/api/v1/invoices?stale=true&pageSize=100", token)).ReadAsync<JsonElement>();
+        staleDrafts.GetProperty("items").EnumerateArray().Select(i => i.GetProperty("roomCode").GetString()).Should().Equal("B04");
+        billing.GetProperty("roundInvoiceTotal").GetBoolean().Should().BeFalse();
+        transition.GetProperty("roundingAmount").GetDecimal().Should().Be(0);
+
+        // F1 — phiếu M−1 của 102 hiện nợ M−2 chưa thu.
+        var bill102 = items.Where(i => i.GetProperty("roomCode").GetString() == "102").OrderByDescending(i => i.GetProperty("periodStart").GetString()).First();
+        var detail102 = await (await _client.GetAsync($"/api/v1/invoices/{bill102.GetProperty("id").GetGuid()}", token)).ReadAsync<JsonElement>();
+        detail102.GetProperty("previousDebts").GetArrayLength().Should().Be(1);
+        detail102.GetProperty("totalDue").GetDecimal().Should().BeGreaterThan(detail102.GetProperty("summary").GetProperty("outstanding").GetDecimal());
+
+        // M2 — khu C thay công tơ điện hàng loạt: lưới thay chỉ còn công tơ mới (EVN-…).
+        var khuC = properties.GetProperty("items").EnumerateArray().Single(p => p.GetProperty("code").GetString() == "C").GetProperty("id").GetGuid();
+        var electricityC = await _client.FeeIdAsync(token, khuC, "Điện");
+        var replaceSheet = await (await _client.GetAsync($"/api/v1/properties/{khuC}/meters/replace-sheet?feeTypeId={electricityC}", token))
+            .ReadAsync<JsonElement>();
+        replaceSheet.EnumerateArray().Should().OnlyContain(r => r.GetProperty("serialNo").GetString()!.StartsWith("EVN-"));
+
+        // F2 — 105: thanh toán + bỏ phần còn lại.
+        var payments105 = await (await _client.GetAsync(
+            $"/api/v1/payments?contractId={all.First(c => c.GetProperty("roomCode").GetString() == "105").GetProperty("id").GetGuid()}", token)).ReadAsync<JsonElement>();
+        payments105.EnumerateArray().Should().Contain(p => p.GetProperty("kind").GetString() == "WriteOff" && p.GetProperty("amount").GetDecimal() == 200000);
     }
 }

@@ -42,7 +42,9 @@ internal static class InvoiceInputs
         var isFinal = type == InvoiceType.Final;
         var billing = await PropertyBilling.LoadAsync(db, contract.PropertyId, ct);
         var types = await ContractFeeRules.LoadTypesAsync(db, contract, ct);
-        var meters = await db.Meters.AsNoTracking().Include(m => m.Readings).Where(m => m.RoomId == contract.RoomId).ToListAsync(ct);
+        // CT-BR-47: công tơ của mọi phòng HĐ đã ở (chuyển phòng) — bộ tính chỉ lấy phòng có khoảng ở trùng kỳ sử dụng.
+        var roomIds = contract.RoomStays.Select(s => s.RoomId).Distinct().ToList();
+        var meters = await db.Meters.AsNoTracking().Include(m => m.Readings).Where(m => roomIds.Contains(m.RoomId)).ToListAsync(ct);
         var others = db.Invoices.AsNoTracking()
             .Where(i => i.ContractId == contract.Id && i.Status != InvoiceStatus.Void && (excludeInvoiceId == null || i.Id != excludeInvoiceId));
         var previous = await others.Where(i => isFinal ? i.PeriodStart <= period.Start : i.PeriodStart < period.Start)
@@ -66,7 +68,8 @@ internal static class InvoiceInputs
                 .ToListAsync(ct))
             .GroupBy(x => x.FeeTypeId)
             .ToDictionary(g => g.Key, g => (IReadOnlyList<decimal>)g.OrderByDescending(x => x.PeriodStart).Select(x => x.Quantity).ToList());
-        return new InvoiceCalcInput(contract, period, billing.Schedule, billing.ProrationMode, types, meters, lastEnd, final, recent);
+        return new InvoiceCalcInput(contract, period, billing.Schedule, billing.ProrationMode, types, meters, lastEnd, final, recent,
+            billing.RoundInvoiceTotal);
     }
 
     /// <summary>Kỳ hiện tại của phiếu theo HĐ (có thể bị cắt ngắn nếu HĐ đã bắt đầu thanh lý).</summary>
@@ -180,6 +183,8 @@ public sealed class GenerateInvoicesHandler(IAppDbContext db) : IRequestHandler<
                 roomCode, contract.ContractNo, representative, calculation);
             db.Invoices.Add(invoice);
         }
+        // BL-BR-32/36: khoản phát sinh đang chờ của HĐ tự vào nháp.
+        await RoomChargeBilling.AttachPendingAsync(db, invoice, ct);
 
         await db.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
@@ -192,16 +197,17 @@ public sealed class GenerateInvoicesHandler(IAppDbContext db) : IRequestHandler<
 public sealed record RecalculateInvoicesResult(int Recalculated, int WithIssues, IReadOnlyList<Guid> NotDraft);
 
 /// <summary>BL-UC-06: phạm vi = danh sách phiếu, hoặc khu + tháng (lọc phòng / tầng). Mặc định giữ ô sửa tay.</summary>
+/// <param name="StaleOnly">BL-BR-20 (I1): chỉ các nháp "Cần tính lại" — theo khu, tháng thu tùy chọn.</param>
 public sealed record RecalculateInvoicesCommand(
     IReadOnlyList<Guid>? InvoiceIds, Guid? PropertyId, string? BillingMonth, IReadOnlyList<Guid>? RoomIds, string? Floor,
-    bool KeepManualEdits = true) : IRequest<Result<RecalculateInvoicesResult>>;
+    bool KeepManualEdits = true, bool StaleOnly = false) : IRequest<Result<RecalculateInvoicesResult>>;
 
 public sealed class RecalculateInvoicesCommandValidator : AbstractValidator<RecalculateInvoicesCommand>
 {
     public RecalculateInvoicesCommandValidator(TimeProvider clock)
     {
-        RuleFor(x => x).Must(x => x.InvoiceIds is { Count: > 0 } || (x.PropertyId is not null && x.BillingMonth is not null))
-            .WithErrorCode("SCOPE_REQUIRED").WithMessage("Chọn phiếu, hoặc khu + tháng thu.");
+        RuleFor(x => x).Must(x => x.InvoiceIds is { Count: > 0 } || (x.PropertyId is not null && (x.BillingMonth is not null || x.StaleOnly)))
+            .WithErrorCode("SCOPE_REQUIRED").WithMessage("Chọn phiếu, hoặc khu + tháng thu (tính lại nháp cần tính lại: chỉ cần khu).");
         RuleFor(x => x.BillingMonth).BillingMonth(clock).When(x => x.BillingMonth is not null);
         RuleFor(x => x.InvoiceIds).Must(i => i is null || i.Count <= 1000).WithErrorCode("OUT_OF_RANGE");
     }
@@ -216,13 +222,16 @@ public sealed class RecalculateInvoicesHandler(IAppDbContext db) : IRequestHandl
             query = query.Where(i => ids.Contains(i.Id));
         else
         {
-            var month = BillingMonths.Parse(request.BillingMonth)!.Value;
-            query = query.Where(i => i.PropertyId == request.PropertyId && i.BillingMonth == month);
+            query = query.Where(i => i.PropertyId == request.PropertyId);
+            if (BillingMonths.Parse(request.BillingMonth) is { } month)
+                query = query.Where(i => i.BillingMonth == month);
             if (request.RoomIds is { Count: > 0 } roomIds)
                 query = query.Where(i => roomIds.Contains(i.RoomId));
             if (!string.IsNullOrWhiteSpace(request.Floor))
                 query = query.Where(i => db.Rooms.Any(r => r.Id == i.RoomId && r.Floor == request.Floor.Trim()));
         }
+        if (request.StaleOnly)
+            query = query.Where(i => i.Status == InvoiceStatus.Draft && i.IsStale);
         var targets = await query.Select(i => new { i.Id, i.ContractId, i.Status }).ToListAsync(cancellationToken);
 
         int recalculated = 0, withIssues = 0;
@@ -252,6 +261,7 @@ public sealed class RecalculateInvoicesHandler(IAppDbContext db) : IRequestHandl
             ?? new BillingPeriod(invoice.PeriodStart, invoice.PeriodEnd, invoice.BillingMonth);
         var calculation = InvoiceCalculator.Calculate(await InvoiceInputs.LoadAsync(db, contract, period, invoice.Id, ct, invoice.Type));
         invoice.ApplyCalculation(calculation, keepManualEdits, period.End);
+        await RoomChargeBilling.AttachPendingAsync(db, invoice, ct);
         await db.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
         return invoice.HasBlockingIssues;

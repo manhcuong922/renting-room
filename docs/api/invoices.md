@@ -12,10 +12,13 @@ Quyền: chủ trọ và phó quản lý.
 | Tiền phòng | `Rent` | Giá thuê HĐ × hệ số kỳ lẻ (kỳ chuyển tiếp: 1 tháng ± số ngày chủ trọ chọn) | 3.000.000 · "Tiền phòng (1 tháng + 4 ngày — đổi ngày chốt)" |
 | Điện nước | `Metered` | Công tơ của phòng ([meters.md](meters.md)) × một giá hoặc **giá theo bậc** (bản giá mới nhất tới cuối kỳ) | Điện 88 kWh × 3.500 · "Điện (giá bậc)" |
 | Dịch vụ | `Service` | Dịch vụ gắn HĐ: theo phòng / theo đầu người / theo số gói — **trọn tháng**, kỳ lẻ không chia ngày (sửa tay trên nháp nếu cần) | Nước 2 người × 20.000; Giữ xe 2 × 100.000 |
-| Phụ thu | `Surcharge` | **Nhập tay**, bắt buộc lý do — 1 phiếu hoặc nhiều phòng một lúc | Thay khóa cửa 250.000 |
+| Phụ thu | `Surcharge` | **Nhập tay**, bắt buộc lý do — 1 phiếu hoặc nhiều phòng một lúc. **Bồi thường tài sản khi trả phòng cũng là phụ thu** trên phiếu quyết toán | Thay khóa cửa 250.000 · Bồi thường gương 300.000 |
 | Giảm trừ | `ManualDiscount` | Nhập tay (số dương, lưu âm) — không vượt phần thu | −200.000 |
 | Hoàn trả | `Refund` | **Nhập tay** như phụ thu, bắt buộc lý do (số dương, lưu âm) — được làm **tổng phiếu âm** = chủ trọ trả lại người thuê | Hoàn tiền phòng 15 ngày chưa ở −1.500.000 |
+| Làm tròn | `summary.roundingAmount` (không phải dòng) | Khu bật **làm tròn tổng phiếu** (mặc định bật): bỏ phần lẻ dưới 1.000đ của tổng, về 0 — tính lại mỗi khi tổng nháp đổi | Làm tròn −560 (523.560 ⇒ 523.000) |
 
+- **Khoản phát sinh theo phòng** ([room-charges.md](room-charges.md)): phụ thu / bù tạo giữa tháng tự thành dòng `Surcharge` / `ManualDiscount` trên nháp
+  (`roomChargeId`). Dòng `isSettled: true` (đã thu / đã trả ngay) hiện trên phiếu nhưng không cộng vào `totalAmount`.
 - **Kỳ**: mỗi tháng thu (`billingMonth` = tháng của kỳ chuẩn của khu chứa kỳ) tối đa 1 phiếu / hợp đồng. Tiền phòng kỳ lẻ (vào giữa kỳ, trả phòng
   giữa kỳ) tính theo ngày nếu khu chọn `Daily` (`prorationFactor` trên dòng); dịch vụ luôn trọn tháng.
 - **Điện nước trả sau / trả trước**: `Postpaid` — điện nước của chính kỳ; `Prepaid` — điện nước của **kỳ trước** (kỳ đầu không có),
@@ -31,6 +34,7 @@ Quyền: chủ trọ và phó quản lý.
 | Bảng phiếu theo khu + tháng (lọc tầng, trạng thái, còn nợ) | `GET /invoices?propertyId=&billingMonth=2026-11&status=&floor=&unpaidOnly=` |
 | Nút **"Tạo phiếu tháng này"** (cả khu / phòng chọn / 1 tầng) | `POST /invoices/generate` |
 | Nút **"Tính lại"** (phiếu chọn / cả tháng / 1 tầng) | `POST /invoices/recalculate` |
+| Nhãn **"Cần tính lại"** + nút **"Tính lại các nháp cần tính lại"** | `summary.isStale`, `GET /invoices?propertyId=&stale=true`, `POST /invoices/recalculate` `{ propertyId, staleOnly: true }` |
 | Chi tiết phiếu nháp — sửa ô, thêm phụ thu / giảm trừ / hoàn trả | `GET /invoices/{id}`, `PUT/DELETE /invoices/{id}/lines/{lineId}`, `POST /invoices/{id}/manual-lines` |
 | Nút **"Thêm phụ thu / hoàn trả cho nhiều phòng"** (phòng chọn / 1 tầng / cả khu) | `POST /invoices/manual-lines` |
 | Nút **"Đã hoàn tiền"** trên phiếu Chờ hoàn | `POST /invoices/{id}/refund`, `DELETE /invoices/{id}/refund` (bỏ xác nhận) |
@@ -78,7 +82,8 @@ Quyền: chủ trọ và phó quản lý.
     "id": "…", "invoiceNo": null, "type": "Regular", "status": "Draft", "paymentStatus": null,
     "propertyId": "…", "roomId": "…", "roomCode": "101", "contractId": "…", "contractNo": "HD2026-0012", "representativeName": "Trần Thị Lan",
     "billingMonth": "2026-11", "periodStart": "2026-11-01", "periodEnd": "2026-11-30",
-    "totalAmount": 3378000, "paidAmount": 0, "outstanding": 0, "refundDue": 0, "dueDate": null, "errorCount": 0, "version": "…"
+    "totalAmount": 3378000, "paidAmount": 0, "outstanding": 0, "refundDue": 0, "dueDate": null, "errorCount": 0, "version": "…",
+    "isStale": false, "roundingAmount": 0
   },
   "subtotal": 3378000, "discountTotal": 0, "refundTotal": 0, "refundedOn": null, "refundMethod": null, "refundNote": null, "issueDate": null,
   "lines": [
@@ -92,9 +97,15 @@ Quyền: chủ trọ và phó quản lý.
     { "id": "…", "type": "Surcharge", "isSystem": false, "description": "Thay khóa cửa", "quantity": 1, "unitPrice": 250000,
       "amount": 250000, "note": "Người thuê làm hỏng khóa", "segments": [] }
   ],
-  "issues": [], "note": null, "finalizedAt": null, "voidedAt": null, "voidReason": null
+  "issues": [], "note": null, "finalizedAt": null, "voidedAt": null, "voidReason": null,
+  "previousDebts": [ { "invoiceId": "…", "invoiceNo": "PB2026-000088", "billingMonth": "2026-10", "dueDate": "2026-11-06", "outstanding": 3200000 } ],
+  "totalDue": 6578000
 }
 ```
+
+**Nợ các kỳ trước** (`previousDebts`, F1 — chỉ có ở chi tiết): phiếu kỳ trước của cùng HĐ đã chốt còn nợ — **chỉ hiển thị**, không cộng vào
+phiếu này. **Tổng cần thanh toán** (`totalDue`) = còn phải trả của phiếu này (nháp: tổng phiếu) + nợ các kỳ trước. Thu theo tổng
+(`POST /contracts/{id}/payments` không `invoiceId`) trừ phiếu cũ nhất trước. Gửi thông báo (P2) kèm cả phiếu mới và các phiếu còn nợ.
 
 UI: ô có `isManuallyEdited` hiện nhãn **"Sửa tay"** và số hệ thống (`systemAmount`) bên cạnh, nút "Bỏ sửa tay".
 
@@ -104,7 +115,8 @@ UI: ô có `isManuallyEdited` hiện nhãn **"Sửa tay"** và số hệ thống
 |----------|----------|---------|
 | Sửa tay ô của dòng hệ thống | `PUT /invoices/{id}/lines/{lineId}` `{ "quantity": null, "unitPrice": null, "amount": 2800000, "note": "…" }` | Bỏ trống `amount` ⇒ = số lượng × đơn giá × hệ số kỳ. Dòng Tiền phòng **bắt buộc ghi chú** |
 | Bỏ sửa tay / xóa phụ thu, giảm trừ, hoàn trả | `DELETE /invoices/{id}/lines/{lineId}` | Dòng hệ thống về số hệ thống; dòng tay bị xóa |
-| Thêm phụ thu / giảm trừ | `POST /invoices/{id}/manual-lines` `{ "type": "Surcharge", "description": "Thay khóa", "quantity": null, "unitPrice": null, "amount": 250000, "note": "Lý do", "feeTypeId": null }` | `type`: `Surcharge` / `ManualDiscount`; `note` (lý do) bắt buộc |
+| Thêm phụ thu / giảm trừ | `POST /invoices/{id}/manual-lines` `{ "type": "Surcharge", "description": "Thay khóa", "quantity": null, "unitPrice": null, "amount": 250000, "note": "Lý do", "feeTypeId": null, "settled": false, "settledOn": null, "method": null }` | `type`: `Surcharge` / `ManualDiscount`; `note` (lý do) bắt buộc. Tạo luôn **khoản phát sinh của phòng** ([room-charges.md](room-charges.md)); `settled: true` = đã thanh toán / đã hoàn ngay ⇒ dòng hiện trên phiếu, **không tính vào tổng** |
+| Thêm **hoàn trả** | `POST /invoices/{id}/manual-lines` `{ "type": "Refund", "description": "Hoàn tiền phòng 15 ngày chưa ở", "amount": 1500000, "note": "Trả phòng sớm", "sourceInvoiceId": "…phiếu đã thu" }` | Chỉ khi **phiếu đã chốt bị tính sai mà người thuê đã trả**: `sourceInvoiceId` bắt buộc (400), phiếu đã chốt của cùng HĐ (422 `REFUND_SOURCE_INVALID`); `amount` ≤ số đã thu thật của phiếu nguồn (đã thu − bỏ nợ) − các lần hoàn trước trỏ tới nó (422 `REFUND_EXCEEDS_PAID`, body `available`). Phiếu nguồn chưa thu mà tính sai ⇒ không hoàn — bỏ nợ phần sai ([payments.md](payments.md)) |
 | Sửa phụ thu / giảm trừ / hoàn trả | `PUT /invoices/{id}/lines/{lineId}` (như trên, `note` bắt buộc) | |
 | Ghi chú in trên phiếu | `PUT /invoices/{id}/note` `{ "note": "…" }` | |
 
@@ -113,7 +125,8 @@ Phiếu đã chốt → 422 `INVOICE_NOT_DRAFT`.
 
 ### Thêm cho nhiều phòng
 
-`POST /invoices/manual-lines` — cùng một dòng (phụ thu / giảm trừ / hoàn trả) vào từng phiếu **nháp** trong phạm vi:
+`POST /invoices/manual-lines` — cùng một dòng (phụ thu / giảm trừ) vào từng phiếu **nháp** trong phạm vi. **Hoàn trả không thêm hàng loạt**
+(mỗi phòng một phiếu nguồn) → 400 `REFUND_NOT_BULK`:
 
 ```json
 { "invoiceIds": null, "propertyId": "…", "billingMonth": "2026-11", "roomIds": ["…", "…"], "floor": null,
@@ -132,7 +145,12 @@ phiếu đã chốt → `INVOICE_NOT_DRAFT`; giảm trừ vượt phần thu →
 ```json
 { "invoiceIds": ["…", "…"], "keepManualEdits": true }
 { "propertyId": "…", "billingMonth": "2026-11", "roomIds": null, "floor": "2", "keepManualEdits": true }
+{ "propertyId": "…", "billingMonth": null, "staleOnly": true }
 ```
+
+**"Cần tính lại"** (`summary.isStale`, BL-BR-20): nháp đã lập mà sau đó dữ liệu nguồn đổi — chỉ số công tơ của phòng (nhập / sửa / hủy,
+thay công tơ), giá khoản thu của khu, HĐ (giá thuê, dịch vụ, người ở, ngày trả phòng, "Tính tiền từ ngày", chuyển phòng). Tự đặt cùng lần lưu dữ liệu nguồn; tính lại thì hết. Chỉ là gợi ý — chốt vẫn tính lại và so (`DRAFT_STALE`).
+`staleOnly: true` = tính lại mọi nháp có cờ của khu (`billingMonth` tùy chọn).
 
 → **200** `{ "recalculated": 12, "withIssues": 0, "notDraft": ["…"] }`. Mặc định **giữ ô sửa tay** (số hệ thống được cập nhật bên cạnh;
 khác lúc sửa ⇒ cảnh báo `EDITED_BASE_CHANGED`); `keepManualEdits: false` ⇒ tính lại từ đầu. Phụ thu / giảm trừ luôn giữ.

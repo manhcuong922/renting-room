@@ -86,7 +86,8 @@ public sealed class GetMeterReadingSheetHandler(IAppDbContext db) : IRequestHand
                 && (string.IsNullOrWhiteSpace(request.Floor) || r.Floor == request.Floor.Trim()))
             .ToDictionaryAsync(r => r.Id, cancellationToken);
         var roomIds = rooms.Keys.ToList();
-        var contracts = await db.Contracts.AsNoTracking().Include(c => c.RentTerms).Include(c => c.Occupants).AsSplitQuery()
+        var contracts = await db.Contracts.AsNoTracking().Include(c => c.RentTerms).Include(c => c.Occupants).Include(c => c.RoomMoves)
+            .AsSplitQuery()
             .Where(c => roomIds.Contains(c.RoomId)
                 && (c.Status == ContractStatus.Active || c.Status == ContractStatus.Liquidating || c.Status == ContractStatus.Ended)
                 && c.BillingStartDate <= monthEnd.AddMonths(1))
@@ -121,11 +122,13 @@ public sealed class GetMeterReadingSheetHandler(IAppDbContext db) : IRequestHand
             var lastEnd = segments.Where(x => x.ContractId == contract.Id && x.PeriodStart < period!.Start)
                 .GroupBy(x => x.MeterId).ToDictionary(g => g.Key, g => g.MaxBy(x => x.PeriodStart)!.EndReadingId);
             var room = rooms[contract.RoomId];
+            // CT-BR-47: chuyển tới phòng này giữa kỳ ⇒ chỉ số cũ = chỉ số nhận phòng của HĐ (công tơ phòng cũ đã có chỉ số cuối lúc chuyển).
+            var stay = contract.RoomStays[^1];
 
             foreach (var meter in meters.Where(m => m.RoomId == contract.RoomId && m.Overlaps(usage.Start, usage.End)
                          && !(m.RemovedDate <= usage.End)))
             {
-                var previous = usage.StartReading(meter, lastEnd.TryGetValue(meter.Id, out var id) ? id : null);
+                var previous = usage.StartReading(meter, lastEnd.TryGetValue(meter.Id, out var id) ? id : null, contract.Id, stay);
                 var current = usage.EndReading(meter, contract.Id);
                 var fee = fees[meter.FeeTypeId];
                 var recent = history[(contract.Id, fee.Id)].Where(x => x.PeriodStart < period!.Start)

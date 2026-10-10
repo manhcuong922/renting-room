@@ -57,6 +57,8 @@ public sealed class CreateFinalInvoiceHandler(IAppDbContext db, TimeProvider clo
         var invoice = Invoice.CreateDraft(contract.PropertyId, contract.RoomId, contract.Id, period, room, contract.ContractNo,
             representative, calculation, InvoiceType.Final);
         db.Invoices.Add(invoice);
+        // BL-BR-32: mọi khoản phát sinh còn chờ của HĐ vào phiếu quyết toán.
+        await RoomChargeBilling.AttachPendingAsync(db, invoice, cancellationToken);
 
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);

@@ -16,14 +16,13 @@ cảnh báo bất thường; khóa chỉ số đã dùng cho phiếu đã chốt
 
 **Ngoài phạm vi**: công tơ tổng chia theo người/phòng (P3); đọc công tơ IoT; OCR ảnh.
 
-**Code đợt 1 (04/10/2026)** — phần không phụ thuộc phiếu (M07):
-- Lắp / thay (phiên bản) / gỡ công tơ từng phòng; xem công tơ của phòng kèm **chỉ số mới nhất**; lịch sử chỉ số; sửa chỉ số (đơn điệu).
-- Kích hoạt HĐ: **bắt buộc chỉ số nhận phòng** cho mỗi công tơ hoạt động tại `start_date` (`value` bỏ trống = "Dùng số mới nhất").
-- Hoàn tất thanh lý: **bắt buộc chỉ số cuối** (`Final`) cho mỗi công tơ hoạt động tại `actual_end_date` (✅ đã chuyển sang bước lập phiếu quyết toán `POST /contracts/{id}/final-invoice`, MT-UC-05).
-- Điện nước trong bản chụp giá / bản in / rà dữ liệu chỉ lấy khoản có **công tơ thực ở phòng** (phòng tính nước theo người không còn dòng nước công tơ).
-- Ngừng dùng khoản Metered còn công tơ hoạt động → 422 `FEE_HAS_ACTIVE_METERS`; HĐ hiệu lực ở phòng chưa có công tơ điện → cảnh báo `ROOM_WITHOUT_METER`.
-
-**Đợt 2 (cùng M07 — đang code)**: lưới ghi chỉ số hằng tháng (MT-UC-04) + lưu hàng loạt all-or-nothing (MT-BR-07), `MeterUsageCalculator` (§3.3, tự cộng công tơ cũ khi thay — MT-BR-15), khóa chỉ số theo phiếu đã chốt (MT-BR-06). Để sau: cảnh báo bất thường (MT-BR-08), ngày ghi lệch (MT-BR-05), lắp hàng loạt, hủy chỉ số.
+**Hiện trạng (rà soát 10/10/2026 — đã code)**
+- Lắp / thay (phiên bản) / gỡ công tơ từng phòng; **thay hàng loạt** giữa tháng theo khu (MT-UC-08); công tơ của phòng kèm chỉ số mới nhất; lịch sử; sửa chỉ số (đơn điệu).
+- Kích hoạt HĐ: bắt buộc **chỉ số nhận phòng** mỗi công tơ (bỏ trống = số mới nhất); trả phòng: **chỉ số cuối** nhập khi lập phiếu quyết toán (MT-UC-05);
+  chuyển phòng: chỉ số cuối phòng cũ + nhận phòng mới tại ngày chuyển (M05 CT-BR-14).
+- Lưới ghi chỉ số hằng tháng (MT-UC-04) + lưu hàng loạt tất cả hoặc không (MT-BR-07); tính sản lượng tự cộng nhiều công tơ (thay công tơ — MT-BR-15,
+  chuyển phòng — M05 CT-BR-47); khóa chỉ số theo phiếu đã chốt (MT-BR-06); cảnh báo sản lượng bất thường (MT-BR-08).
+- Ngừng dùng khoản điện nước còn công tơ hoạt động → 422 `FEE_HAS_ACTIVE_METERS`; HĐ ở phòng chưa có công tơ điện → cảnh báo `ROOM_WITHOUT_METER`.
 
 **Phase**: P1.
 
@@ -51,6 +50,7 @@ cảnh báo bất thường; khóa chỉ số đã dùng cho phiếu đã chốt
 | MT-UC-05 ✅ | Ghi **chỉ số nhận phòng** (`Handover`) khi kích hoạt HĐ — "dùng số mới nhất" hoặc nhập số khác (MT-BR-13) — và **chỉ số cuối** (`Final`) khi trả phòng. **Đổi 04/10/2026 ✅**: chỉ số cuối nhập ở bước **lập phiếu quyết toán** (M07 BL-UC-11) thay vì lúc hoàn tất — vì phiếu quyết toán cần chỉ số cuối để tính điện nước |
 | MT-UC-06 ✅ | Sửa/hủy chỉ số chưa bị khóa |
 | MT-UC-07 ✅ | Xem lịch sử chỉ số của công tơ, biểu đồ sản lượng |
+| MT-UC-08 ✅ | **Thay công tơ hàng loạt giữa tháng** (M2 — chốt 09/10/2026; VD điện lực thay đồng loạt cả khu): chọn khu + loại công tơ (khoản thu) + **1 ngày thay chung** → lưới mỗi phòng có công tơ đang hoạt động: chỉ số cũ gần nhất, ô **số cuối công tơ cũ**, **serial mới**, **chỉ số đầu công tơ mới** (mặc định 0); bỏ trống số cuối = không thay phòng đó. Lưu **tất cả hoặc không** (MT-BR-07): dòng lỗi được đánh dấu (số cuối < số cũ, ngày thay trước chỉ số gần nhất / trong kỳ đã chốt, trùng serial). Kỳ có thay: tính tiền tự cộng 2 công tơ (MT-BR-15) |
 
 ### 3.2 Quy tắc nghiệp vụ
 
@@ -68,11 +68,12 @@ Quy tắc đợt 1 đã code: MT-BR-01, 02, 03, 09, 10, 11, 13 (✅ ở đầu d
 | MT-BR-08 ✅ | Cảnh báo bất thường (không chặn — chốt làm 08/10, ngưỡng (chốt 09/10/2026); code 09/10/2026 — `UsageAnomaly`; lưới trả `recentAverage` (TB 3 kỳ) + `usageWarning`), hiện trên lưới chỉ số và phiếu nháp `UNUSUAL_USAGE`: (1) sản lượng **gấp ≥ 3 lần trung bình 3 kỳ trước VÀ tăng ≥ 50 đơn vị** (tránh báo nhầm phòng dùng ít: 10 → 35 kWh); (2) **= 0 khi phòng có người ở** (có thể hợp lệ — đi vắng — chỉ để kiểm lại số). HĐ chưa đủ 3 kỳ lịch sử ⇒ không cảnh báo (1). Sản lượng âm đã bị chặn (MT-BR-03) | Application |
 | MT-BR-09 ✅ | **Công tơ có phiên bản**: 1 phòng có thể có nhiều công tơ cho cùng khoản thu theo thời gian, **chỉ 1 đang hoạt động** (MT-BR-01). Thay công tơ = ngừng công tơ cũ (**bắt buộc nhập số cuối** `Removal`) + thêm công tơ mới (số ban đầu `Initial`) cùng ngày, trong 1 lệnh. Không được thay nếu ngày thay < chỉ số cuối cùng đã ghi của công tơ cũ | Domain |
 | MT-BR-10 ✅ | Gỡ công tơ (không thay) bắt buộc chỉ số tháo (`Removal`); phòng đang có HĐ hiệu lực → **cảnh báo** `ROOM_HAS_OPEN_CONTRACT` (từ kỳ sau phiếu không còn dòng của khoản đó) | Application |
-| MT-BR-11 ✅ | ~~HĐ đăng ký khoản Metered thì phòng phải có công tơ~~ — **đổi 04/10/2026**: HĐ không đăng ký Metered. Kích hoạt HĐ không bị chặn vì công tơ; phòng chưa có công tơ của khoản Metered đang dùng ở khu → cảnh báo `ROOM_WITHOUT_METER` (phòng tính nước theo người thì bỏ qua). Phòng có công tơ → bắt buộc có chỉ số `Handover` tại `start_date` (MT-BR-13) | M05 Application |
+| MT-BR-11 ✅ | HĐ không đăng ký Metered. Kích hoạt HĐ không bị chặn vì công tơ; phòng chưa có công tơ của khoản Metered đang dùng ở khu → cảnh báo `ROOM_WITHOUT_METER` (phòng tính nước theo người thì bỏ qua). Phòng có công tơ → bắt buộc có chỉ số `Handover` tại `start_date` (MT-BR-13) | M05 Application |
 | MT-BR-12 ✅ | **Chuỗi liên tục**: chỉ số đầu của đoạn đo kỳ N = chỉ số cuối của đoạn đo kỳ N−1 (cùng HĐ, cùng công tơ) **trên phiếu chưa Void**; kỳ đầu tiên dùng chỉ số `Handover` (hoặc `Initial` nếu công tơ lắp sau khi kích hoạt). Không có khoảng hở hoặc chồng lấn | Domain (`MeterUsageCalculator`) + DB unique trên end reading |
 | MT-BR-13 ✅ | **Chỉ số nhận phòng (mốc bắt đầu tính của HĐ)**: khi kích hoạt HĐ, **bắt buộc** nhập cho mỗi công tơ hoạt động của phòng 1 chỉ số `Handover` tại `start_date` (ngày phòng có người ở). Hai cách: **"Dùng số mới nhất"** = chỉ số gần nhất của công tơ ≤ `start_date` (số cuối của HĐ trước, hoặc số tháng trước đã dùng tính tiền) — hoặc **nhập số khác** ≥ số đó (đơn điệu MT-BR-03). Sửa lại được khi chưa bị khóa (MT-BR-06). VD: người cũ trả phòng ngày 15 ở số 100; thợ sửa chữa dùng 8 kWh; người mới vào ngày 18 ⇒ nhập **108**, người mới chỉ trả từ 108 | Domain + Application |
 | MT-BR-14 | **Sản lượng khoảng trống** giữa `Final` của HĐ trước và `Handover` của HĐ sau (VD 100 → 108: sửa chữa, phòng trống) **không tính cho người thuê nào**; báo cáo M10 hiển thị "sản lượng phòng trống" theo phòng / khu để chủ trọ đối chiếu hóa đơn EVN (LEG-05) | Domain + M10 |
 | MT-BR-15 ✅ | **Kỳ có thay công tơ**: cuối kỳ chỉ nhập số của **công tơ mới**; hệ thống tự kiểm tra trong kỳ sử dụng có thay công tơ không và cộng: (số cuối công tơ cũ − số đầu kỳ của công tơ cũ) + (số cuối kỳ công tơ mới − số ban đầu công tơ mới), tính tiền trên **tổng sản lượng** theo bản giá mới nhất tới cuối kỳ (một giá hoặc theo bậc — BL-BR-05, FE-BR-10). Lưới ghi chỉ số hiển thị dòng phụ "Công tơ cũ (đã thay ngày dd/MM): 1.250 → 1.320 = 70" để chủ trọ kiểm tra. Cách thay thế: không ghi công tơ phiên bản, nhập tiền điện công tơ cũ thành **phụ thu** trên phiếu nháp (BL-BR-23) | Domain (`MeterUsageCalculator`) |
+| MT-BR-18 ✅ | **Thay hàng loạt** (MT-UC-08): mỗi dòng = đúng lệnh thay công tơ đơn (MT-UC-02, cùng kiểm tra MT-BR-09); cả lô trong 1 transaction, khóa công tơ theo id; lỗi bất kỳ dòng ⇒ 422 `BULK_REPLACE_INVALID` kèm `rows[{meterId, code, message}]`, không lưu dòng nào. Tối đa 500 dòng. Nháp đã lập của phòng bị đánh dấu "Cần tính lại" (BL-BR-20) | Application |
 | MT-BR-16 ✅ | **Chỉ số cũ của kỳ sau** = chỉ số cuối của phiếu **đã chốt** gần nhất (MT-BR-12). Phiếu nháp chỉ "đề xuất"; khi chốt phiếu, chỉ số cuối kỳ bị khóa và trở thành chỉ số cũ của phòng cho kỳ sau | Domain |
 | MT-BR-17 | Phòng **ngừng dùng / bảo trì không tháo công tơ** — công tơ vẫn chạy khi không có người thuê (sửa chữa, thử phòng); phần dùng khi phòng trống không tính cho ai (MT-BR-14), hiển thị trong báo cáo sản lượng phòng trống | Thiết kế |
 
@@ -179,6 +180,7 @@ MeterUsageCalculator (domain service): Calculate(contract, feeType, usagePeriod,
 |----------|------|---------------|
 | `InstallMeterCommand` / `BulkInstallMetersCommand` | Cmd | `METER_ALREADY_ACTIVE`, `FEE_NOT_METERED` |
 | `ReplaceMeterCommand` | Cmd | `READING_NOT_MONOTONIC`, `INVALID_REPLACE_DATE` |
+| `BulkReplaceMetersCommand` (MT-UC-08; `POST /properties/{id}/meters/bulk-replace` `{ feeTypeId, replacedOn, rows[{meterId, oldFinalValue, newSerial?, newInitialValue?}] }`; `GET /properties/{id}/meters/replace-sheet?feeTypeId=`) | Cmd / Qry | `BULK_REPLACE_INVALID` |
 | `RemoveMeterCommand` | Cmd | bắt buộc chỉ số tháo; cảnh báo `ROOM_HAS_OPEN_CONTRACT` (MT-BR-10) |
 | `GetMeterReadingSheetQuery` | Qry | propertyId, billingMonth (`yyyy-MM`), feeTypeIds?, floor? → rows (§3.4) |
 | `SaveMeterReadingsCommand` (Idempotency-Key) | Cmd | upsert theo khóa MT-BR-04; trả `rowErrors[]`, `warnings[]`, `staleDraftInvoiceIds[]` |
@@ -201,7 +203,7 @@ MeterUsageCalculator (domain service): Calculate(contract, feeType, usagePeriod,
 | POST | `/contracts/{id}/activate` `{ handoverReadings: [{ meterId, value? }] }` | 422 `HANDOVER_READING_REQUIRED` (kèm `meterIds`) — `value` null = số mới nhất |
 | POST | `/contracts/{id}/final-invoice` `{ finalReadings: [{ meterId, value }] }` (lập phiếu quyết toán) | 422 `FINAL_READING_REQUIRED` (kèm `meterIds`) |
 
-**Đợt 2 (thiết kế)**
+**API công tơ**
 
 | Method | Route | Mã lỗi |
 |--------|-------|--------|

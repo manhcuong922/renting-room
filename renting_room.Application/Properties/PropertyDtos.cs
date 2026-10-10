@@ -9,8 +9,12 @@ public sealed record AddressInput(string StreetAddress, string CommuneName, stri
 
 public sealed record LandParcelInput(string? ParcelNo, string? MapSheetNo, string? OwnershipCertificateNo);
 
-/// <summary>Cài đặt kỳ thu của khu (PR-BR-09): ngày chốt 1–28, thu trước / thu sau, hạn thanh toán, tính kỳ lẻ, số ngày báo trước gợi ý.</summary>
-public sealed record PropertyBillingInput(int AnchorDay, ChargeMode ChargeMode, int PaymentDueDays, ProrationMode ProrationMode, int NoticeDays);
+/// <summary>
+/// Cài đặt kỳ thu của khu (PR-BR-09): ngày chốt 1–28, thu trước / thu sau, hạn thanh toán, tính kỳ lẻ, số ngày báo trước gợi ý,
+/// làm tròn tổng phiếu xuống nghìn (BL-BR-29 — null = bật).
+/// </summary>
+public sealed record PropertyBillingInput(
+    int AnchorDay, ChargeMode ChargeMode, int PaymentDueDays, ProrationMode ProrationMode, int NoticeDays, bool? RoundInvoiceTotal = null);
 
 /// <summary>Một lần đổi ngày chốt / cách thu khi khu đã có phiếu (K4): kỳ chuyển tiếp [EffectiveFrom, TransitionEnd].</summary>
 public sealed record BillingChangeDto(
@@ -18,7 +22,7 @@ public sealed record BillingChangeDto(
 
 public sealed record PropertyBillingDto(
     int AnchorDay, ChargeMode ChargeMode, int PaymentDueDays, ProrationMode ProrationMode, int NoticeDays,
-    IReadOnlyList<BillingChangeDto> Changes);
+    IReadOnlyList<BillingChangeDto> Changes, bool RoundInvoiceTotal = true);
 
 public sealed record PropertySummaryDto(
     Guid Id,
@@ -110,7 +114,7 @@ internal static class PropertyMapping
         new(land?.ParcelNo, land?.MapSheetNo, land?.OwnershipCertificateNo);
 
     public static BillingSettings ToDomain(this PropertyBillingInput b) =>
-        new(b.AnchorDay, b.ChargeMode, b.PaymentDueDays, b.ProrationMode, b.NoticeDays);
+        new(b.AnchorDay, b.ChargeMode, b.PaymentDueDays, b.ProrationMode, b.NoticeDays, b.RoundInvoiceTotal ?? true);
 
     public static PropertyBillingDto ToBillingDto(this Property p)
     {
@@ -120,6 +124,7 @@ internal static class PropertyMapping
             var transition = schedule.StandardPeriodContaining(e.EffectiveFrom);
             return new BillingChangeDto(e.EffectiveFrom, transition.End, e.AnchorDay, e.ChargeMode, transition.DeviationDays, e.AdjustDays);
         }).ToList();
-        return new PropertyBillingDto(p.BillingAnchorDay, p.ChargeMode, p.PaymentDueDays, p.ProrationMode, p.DefaultNoticeDays, changes);
+        return new PropertyBillingDto(p.BillingAnchorDay, p.ChargeMode, p.PaymentDueDays, p.ProrationMode, p.DefaultNoticeDays, changes,
+            p.RoundInvoiceTotal);
     }
 }

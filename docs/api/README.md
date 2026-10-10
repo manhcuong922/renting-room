@@ -21,6 +21,7 @@
 | [fees.md](fees.md) | Khoản thu của khu: điện nước theo công tơ; dịch vụ theo phòng / đầu người / số gói (mạng, nước theo người, giữ xe); bảng giá (một giá) | Chủ trọ, phó quản lý |
 | [meters.md](meters.md) | Công tơ điện nước của phòng: lắp, thay (phiên bản), tháo, lịch sử, sửa chỉ số; lưới ghi chỉ số hằng tháng | Chủ trọ, phó quản lý |
 | [invoices.md](invoices.md) | Phiếu tiền phòng: tạo nháp theo tháng, sửa tay, phụ thu, tính lại, chốt, hủy | Chủ trọ, phó quản lý |
+| [room-charges.md](room-charges.md) | Khoản phát sinh theo phòng: phụ thu / bù tạo ngay lúc xảy ra, đã thanh toán hay chưa, tự vào phiếu cuối tháng | Chủ trọ, phó quản lý |
 | [payments.md](payments.md) | Thu tiền ("Đã thu"), phiếu thu, đảo phiếu thu, còn nợ | Chủ trọ, phó quản lý |
 | [contract-templates.md](contract-templates.md) | Mẫu hợp đồng theo loại (thuê phòng trọ / thuê nhà): tiêu đề, điều khoản, trường tùy biến | Chủ trọ, phó quản lý |
 | [contracts.md](contracts.md) | Hợp đồng: tạo, kích hoạt, người ở, phụ lục, báo trả phòng, thanh lý, tài sản, xe | Chủ trọ, phó quản lý |
@@ -103,4 +104,4 @@ sequenceDiagram
 ## Chưa có trong API (đừng làm UI)
 
 Các module sau mới có trong plan (`docs/plans/`), **chưa có endpoint**: công tơ & ghi chỉ số (M06),
-phiếu báo tiền phòng (M07), thu tiền & sổ cọc (M08), upload ảnh/file (M09), các file Excel khác ngoài danh sách người thuê (M10), theo dõi tạm trú (M03 phần cư trú).
+phiếu báo tiền phòng (M07), thu tiền (M08), upload ảnh/file (M09), các file Excel khác ngoài danh sách người thuê (M10), theo dõi tạm trú (M03 phần cư trú).

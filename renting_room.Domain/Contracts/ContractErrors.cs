@@ -10,6 +10,22 @@ public static class ContractErrors
     public static readonly Error NotActive = Error.BusinessRule("CONTRACT_NOT_ACTIVE", "Hợp đồng không ở trạng thái đang hiệu lực.");
     public static readonly Error NotLiquidating = Error.BusinessRule("CONTRACT_NOT_LIQUIDATING", "Hợp đồng không ở trạng thái đang thanh lý.");
     public static readonly Error NotEditable = Error.BusinessRule("CONTRACT_NOT_EDITABLE", "Hợp đồng đã kết thúc hoặc đã hủy.");
+    public static readonly Error NoDeposit = Error.BusinessRule("NO_DEPOSIT", "Hợp đồng không có cọc.");
+    public static readonly Error DepositAlreadyRefunded = Error.BusinessRule("DEPOSIT_ALREADY_REFUNDED",
+        "Cọc đã hoàn trả / đã chuyển sang HĐ mới — bỏ đánh dấu trước nếu nhập nhầm.");
+    public static readonly Error DepositNotRefunded = Error.BusinessRule("DEPOSIT_NOT_REFUNDED", "Cọc chưa đánh dấu hoàn trả.");
+    public static readonly Error InvalidRefundAmount = Error.Validation("INVALID_REFUND_AMOUNT",
+        "Số tiền hoàn trả từ 0 đến số tiền cọc; trả ít hơn cọc thì ghi rõ lý do.");
+    public static readonly Error InvalidRefundDate = Error.Validation("INVALID_REFUND_DATE", "Ngày hoàn trả không được ở tương lai.");
+    public static readonly Error TransferSameRoom = Error.Validation("ROOM_TRANSFER_SAME_ROOM", "Phòng mới trùng phòng hiện tại.");
+    public static readonly Error TransferOtherProperty = Error.BusinessRule("ROOM_TRANSFER_OTHER_PROPERTY",
+        "Chỉ chuyển sang phòng cùng khu — khác khu thì thanh lý và lập HĐ mới (chuyển cọc).");
+    public static readonly Error TransferRoomUnavailable = Error.BusinessRule("ROOM_TRANSFER_ROOM_UNAVAILABLE",
+        "Phòng mới không trống từ ngày chuyển (đang thuê, có HĐ giữ chỗ, đang bảo trì hoặc ngừng dùng).");
+    public static readonly Error TransferInvalidDate = Error.Validation("ROOM_TRANSFER_INVALID_DATE",
+        "Ngày chuyển phải sau ngày vào phòng hiện tại và không ở tương lai.");
+    public static readonly Error TransferAlreadyBilled = Error.BusinessRule("ROOM_TRANSFER_ALREADY_BILLED",
+        "Điện nước phòng cũ đã lập phiếu tới sau ngày chuyển — hủy phiếu đó trước.");
 
     public static readonly Error RoomUnavailable = Error.BusinessRule("ROOM_UNAVAILABLE", "Phòng đã ngừng sử dụng hoặc đang bảo trì.");
     public static readonly Error RoomPeriodOverlap = Error.Conflict("ROOM_PERIOD_OVERLAP",

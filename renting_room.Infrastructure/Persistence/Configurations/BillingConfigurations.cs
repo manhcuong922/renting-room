@@ -6,6 +6,7 @@ using renting_room.Domain.Billing;
 using renting_room.Domain.Contracts;
 using renting_room.Domain.Meters;
 using renting_room.Domain.Payments;
+using renting_room.Domain.Properties;
 
 namespace renting_room.Infrastructure.Persistence.Configurations;
 
@@ -20,7 +21,9 @@ internal sealed class InvoiceConfiguration : IEntityTypeConfiguration<Invoice>
             t.HasCheckConstraint("ck_invoices_period", "period_end >= period_start");
             // BL-BR-10: giảm trừ không vượt phần thu; chỉ dòng hoàn trả được làm tổng âm (BL-BR-27).
             t.HasCheckConstraint("ck_invoices_total", "subtotal + discount_total >= 0 OR status = 'Draft'");
-            t.HasCheckConstraint("ck_invoices_refund", "refund_total <= 0 AND total_amount = subtotal + discount_total + refund_total");
+            t.HasCheckConstraint("ck_invoices_refund",
+                "refund_total <= 0 AND total_amount = subtotal + discount_total + refund_total + rounding_amount");
+            t.HasCheckConstraint("ck_invoices_rounding", "rounding_amount > -1000 AND rounding_amount < 1000");
             t.HasCheckConstraint("ck_invoices_refunded", "refunded_on IS NULL OR (total_amount < 0 AND refund_method IS NOT NULL)");
             t.HasCheckConstraint("ck_invoices_paid", "paid_amount >= 0 AND paid_amount <= GREATEST(total_amount, 0)");
             t.HasCheckConstraint("ck_invoices_written_off", "written_off_amount >= 0 AND written_off_amount <= paid_amount");
@@ -42,13 +45,17 @@ internal sealed class InvoiceConfiguration : IEntityTypeConfiguration<Invoice>
         builder.Property(i => i.Type).HasColumnName("invoice_type").HasConversion<string>().HasMaxLength(8);
         builder.Property(i => i.Status).HasConversion<string>().HasMaxLength(12);
         builder.Property(i => i.InvoiceNo).HasMaxLength(20);
-        foreach (var money in new[] { nameof(Invoice.Subtotal), nameof(Invoice.DiscountTotal), nameof(Invoice.TotalAmount), nameof(Invoice.PaidAmount), nameof(Invoice.WrittenOffAmount), nameof(Invoice.RefundTotal) })
+        foreach (var money in new[] { nameof(Invoice.Subtotal), nameof(Invoice.DiscountTotal), nameof(Invoice.TotalAmount), nameof(Invoice.PaidAmount), nameof(Invoice.WrittenOffAmount), nameof(Invoice.RefundTotal),
+                     nameof(Invoice.RoundingAmount) })
             builder.Property(money).HasColumnType("numeric(18,0)");
         builder.Property(i => i.SnapshotRoomCode).HasMaxLength(20).IsRequired();
         builder.Property(i => i.SnapshotContractNo).HasMaxLength(30).IsRequired();
         builder.Property(i => i.SnapshotRepresentativeName).HasMaxLength(200).IsRequired();
         builder.Property(i => i.Note).HasMaxLength(1000);
         builder.Property(i => i.VoidReason).HasMaxLength(300);
+        // BL-BR-20: nháp "Cần tính lại" — lọc nhanh theo khu.
+        builder.HasIndex(i => new { i.OrganizationId, i.PropertyId }, "ix_invoices_stale_drafts").HasDatabaseName("ix_invoices_stale_drafts")
+            .HasFilter("status = 'Draft' AND is_stale");
         builder.Property(i => i.RefundMethod).HasConversion<string>().HasMaxLength(16);
         builder.Property(i => i.RefundNote).HasMaxLength(300);
         builder.Property(i => i.Issues)
@@ -110,6 +117,12 @@ internal sealed class InvoiceLineConfiguration : IEntityTypeConfiguration<Invoic
         builder.Property(l => l.SystemAmount).HasColumnType("numeric(18,0)");
         builder.Property(l => l.Note).HasMaxLength(300);
         builder.Ignore(l => l.Key);
+        // BL-BR-33: dòng của khoản phát sinh (không unique — phiếu đã hủy vẫn giữ dòng cũ khi khoản vào phiếu lập lại).
+        builder.HasIndex(l => l.RoomChargeId, "ix_invoice_lines_room_charge").HasDatabaseName("ix_invoice_lines_room_charge")
+            .HasFilter("room_charge_id IS NOT NULL");
+        // BL-BR-27: cộng các lần hoàn của 1 phiếu nguồn.
+        builder.HasIndex(l => l.SourceInvoiceId, "ix_invoice_lines_source_invoice").HasDatabaseName("ix_invoice_lines_source_invoice")
+            .HasFilter("source_invoice_id IS NOT NULL");
 
         builder.HasIndex(l => l.InvoiceId, "ux_invoice_lines_rent").HasDatabaseName("ux_invoice_lines_rent")
             .IsUnique().HasFilter("line_type = 'Rent' AND is_system");
@@ -142,6 +155,44 @@ internal sealed class InvoiceMeterSegmentConfiguration : IEntityTypeConfiguratio
             .IsUnique().HasFilter("NOT voided");
         builder.HasIndex(s => s.StartReadingId, "ux_invoice_meter_segments_start").HasDatabaseName("ux_invoice_meter_segments_start")
             .IsUnique().HasFilter("NOT voided");
+    }
+}
+
+/// <summary>M07 BL-BR-30..37 — khoản phát sinh (phụ thu / bù) của phòng đang có người thuê.</summary>
+internal sealed class RoomChargeConfiguration : IEntityTypeConfiguration<RoomCharge>
+{
+    public void Configure(EntityTypeBuilder<RoomCharge> builder)
+    {
+        builder.ToTable("room_charges", t =>
+        {
+            t.HasCheckConstraint("ck_room_charges_amount", "amount > 0");
+            t.HasCheckConstraint("ck_room_charges_settled", "NOT is_settled OR (settled_on IS NOT NULL AND settled_method IS NOT NULL)");
+            t.HasCheckConstraint("ck_room_charges_cancelled", "cancelled_at IS NULL OR (cancel_reason IS NOT NULL AND invoice_id IS NULL)");
+        });
+        builder.HasKey(c => c.Id);
+        builder.ConfigureAuditable();
+        builder.Ignore(c => c.IsCancelled);
+        builder.Ignore(c => c.IsPending);
+        builder.Ignore(c => c.LineType);
+
+        builder.HasOne<Contract>()
+            .WithMany()
+            .HasForeignKey(c => new { c.OrganizationId, c.PropertyId, c.ContractId })
+            .HasPrincipalKey(c => new { c.OrganizationId, c.PropertyId, c.Id })
+            .OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<Room>().WithMany().HasForeignKey(c => c.RoomId).OnDelete(DeleteBehavior.Restrict);
+        builder.HasOne<Invoice>().WithMany().HasForeignKey(c => c.InvoiceId).OnDelete(DeleteBehavior.SetNull);
+
+        builder.Property(c => c.Kind).HasConversion<string>().HasMaxLength(10);
+        builder.Property(c => c.Description).HasMaxLength(200).IsRequired();
+        builder.Property(c => c.Reason).HasMaxLength(300).IsRequired();
+        builder.Property(c => c.Amount).HasColumnType("numeric(18,0)");
+        builder.Property(c => c.SettledMethod).HasConversion<string>().HasMaxLength(20);
+        builder.Property(c => c.CancelReason).HasMaxLength(300);
+
+        builder.HasIndex(c => new { c.OrganizationId, c.RoomId, c.IncurredOn }).HasDatabaseName("ix_room_charges_room");
+        builder.HasIndex(c => new { c.OrganizationId, c.ContractId }).HasDatabaseName("ix_room_charges_pending")
+            .HasFilter("invoice_id IS NULL AND cancelled_at IS NULL");
     }
 }
 

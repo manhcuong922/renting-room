@@ -687,7 +687,7 @@
         "tags": [
           "Contracts"
         ],
-        "summary": "Danh sách hợp đồng — lọc khu, phòng, người thuê, trạng thái, sắp hết hạn, quá hạn, có/không cọc, thiếu bản HĐ ký",
+        "summary": "Danh sách hợp đồng — lọc khu, phòng, người thuê, trạng thái, sắp hết hạn, quá hạn, có/không cọc, chưa hoàn cọc, thiếu bản HĐ ký",
         "parameters": [
           {
             "name": "propertyId",
@@ -751,6 +751,13 @@
           },
           {
             "name": "missingSignedDocument",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "depositNotRefunded",
             "in": "query",
             "schema": {
               "type": "boolean"
@@ -1346,6 +1353,107 @@
               }
             }
           }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/contracts/{id}/deposit/refund": {
+      "post": {
+        "tags": [
+          "Contracts"
+        ],
+        "summary": "Đã hoàn trả cọc (ngày, số tiền thực trả — mặc định đủ cọc, ghi chú bắt buộc nếu trả ít hơn)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefundDepositRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Contracts"
+        ],
+        "summary": "Bỏ đánh dấu hoàn trả / chuyển cọc (nhập nhầm)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/contracts/{id}/transfer-room": {
+      "post": {
+        "tags": [
+          "Contracts"
+        ],
+        "summary": "Chuyển phòng (cùng khu): HĐ giữ nguyên, chỉ số cuối phòng cũ + nhận phòng mới tại ngày chuyển, giá mới tùy chọn",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Khóa duy nhất cho thao tác (VD UUID). Gửi lại cùng khóa ⇒ nhận lại kết quả cũ, không thực thi lần 2.",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 8,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TransferRoomRequest"
+              }
+            }
+          },
+          "required": true
         },
         "responses": {
           "200": {
@@ -2433,7 +2541,7 @@
         "tags": [
           "Invoices"
         ],
-        "summary": "Tính lại phiếu nháp: theo danh sách phiếu, hoặc khu + tháng (lọc phòng / tầng); mặc định giữ ô sửa tay",
+        "summary": "Tính lại phiếu nháp: theo danh sách phiếu, hoặc khu + tháng (lọc phòng / tầng), hoặc các nháp \"Cần tính lại\" của khu; mặc định giữ ô sửa tay",
         "requestBody": {
           "content": {
             "application/json": {
@@ -2456,7 +2564,7 @@
         "tags": [
           "Invoices"
         ],
-        "summary": "Danh sách phiếu (khu, tháng, trạng thái, phòng, hợp đồng, tầng, còn nợ)",
+        "summary": "Danh sách phiếu (khu, tháng, trạng thái, phòng, hợp đồng, tầng, còn nợ, nháp cần tính lại)",
         "parameters": [
           {
             "name": "propertyId",
@@ -2505,6 +2613,13 @@
           },
           {
             "name": "unpaidOnly",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "stale",
             "in": "query",
             "schema": {
               "type": "boolean"
@@ -3030,6 +3145,84 @@
         }
       }
     },
+    "/api/v1/properties/{propertyId}/meters/replace-sheet": {
+      "get": {
+        "tags": [
+          "Meters"
+        ],
+        "summary": "Lưới thay công tơ hàng loạt: công tơ đang hoạt động của khoản thu trong khu, chỉ số gần nhất",
+        "parameters": [
+          {
+            "name": "propertyId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "feeTypeId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/properties/{propertyId}/meters/bulk-replace": {
+      "post": {
+        "tags": [
+          "Meters"
+        ],
+        "summary": "Thay công tơ hàng loạt cùng 1 ngày — lỗi 1 dòng ⇒ không lưu dòng nào (rowErrors)",
+        "parameters": [
+          {
+            "name": "propertyId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Khóa duy nhất cho thao tác (VD UUID). Gửi lại cùng khóa ⇒ nhận lại kết quả cũ, không thực thi lần 2.",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 8,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkReplaceMetersRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/api/v1/meters/{id}/replace": {
       "post": {
         "tags": [
@@ -3468,6 +3661,40 @@
         }
       }
     },
+    "/api/v1/org/members/{id}/write-off-permission": {
+      "put": {
+        "tags": [
+          "Organization members"
+        ],
+        "summary": "Cấp / thu hồi quyền bỏ nợ cho từng phó quản lý (mặc định không)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WriteOffPermissionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/api/v1/org/members/{id}/reset-password": {
       "post": {
         "tags": [
@@ -3606,6 +3833,96 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/RecordPaymentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/invoices/{id}/write-off": {
+      "post": {
+        "tags": [
+          "Payments"
+        ],
+        "summary": "Bỏ nợ phiếu (mặc định toàn bộ số còn nợ) — chủ trọ / phó quản lý được cấp quyền, lý do bắt buộc, không tính doanh thu",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Khóa duy nhất cho thao tác (VD UUID). Gửi lại cùng khóa ⇒ nhận lại kết quả cũ, không thực thi lần 2.",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 8,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WriteOffInvoiceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/invoices/{id}/pay-and-write-off": {
+      "post": {
+        "tags": [
+          "Payments"
+        ],
+        "summary": "Thanh toán + bỏ phần còn lại của phiếu (VD nợ 3tr, trả 2tr, cho 1tr) — chủ trọ / phó quản lý được cấp quyền",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Khóa duy nhất cho thao tác (VD UUID). Gửi lại cùng khóa ⇒ nhận lại kết quả cũ, không thực thi lần 2.",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 8,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PayAndWriteOffRequest"
               }
             }
           },
@@ -4452,6 +4769,224 @@
         }
       }
     },
+    "/api/v1/rooms/{roomId}/charges": {
+      "get": {
+        "tags": [
+          "RoomCharges"
+        ],
+        "summary": "Khoản phát sinh của phòng (chờ vào phiếu / trên nháp / đã vào phiếu / đã hủy)",
+        "parameters": [
+          {
+            "name": "roomId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/RoomChargeStatus"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "RoomCharges"
+        ],
+        "summary": "Tạo phụ thu / bù cho phòng đang có người thuê — đã thanh toán hay chưa; tự vào phiếu của kỳ chứa ngày phát sinh",
+        "parameters": [
+          {
+            "name": "roomId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Khóa duy nhất cho thao tác (VD UUID). Gửi lại cùng khóa ⇒ nhận lại kết quả cũ, không thực thi lần 2.",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 8,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRoomChargeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/room-charges": {
+      "get": {
+        "tags": [
+          "RoomCharges"
+        ],
+        "summary": "Khoản phát sinh theo khu / phòng / trạng thái / khoảng ngày",
+        "parameters": [
+          {
+            "name": "propertyId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "roomId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/RoomChargeStatus"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/room-charges/{id}/settle": {
+      "post": {
+        "tags": [
+          "RoomCharges"
+        ],
+        "summary": "Đánh dấu khoản đã thanh toán / đã hoàn ngay (chưa nằm trên phiếu đã chốt) — dòng trên nháp ra khỏi tổng",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SettleRoomChargeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "RoomCharges"
+        ],
+        "summary": "Bỏ đánh dấu đã thanh toán (nhập nhầm)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/room-charges/{id}/cancel": {
+      "post": {
+        "tags": [
+          "RoomCharges"
+        ],
+        "summary": "Hủy khoản phát sinh (chưa nằm trên phiếu đã chốt)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CancelRoomChargeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/api/v1/rooms": {
       "get": {
         "tags": [
@@ -4850,6 +5385,23 @@
             "type": "string",
             "format": "uuid",
             "nullable": true
+          },
+          "sourceInvoiceId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "settled": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "settledOn": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "method": {
+            "$ref": "#/components/schemas/PaymentMethod"
           }
         },
         "additionalProperties": false
@@ -4957,11 +5509,6 @@
           "conditionAtReturn": {
             "type": "string",
             "nullable": true
-          },
-          "compensationValue": {
-            "type": "number",
-            "format": "double",
-            "nullable": true
           }
         },
         "additionalProperties": false
@@ -5052,6 +5599,18 @@
             "type": "string",
             "format": "uuid",
             "nullable": true
+          },
+          "settled": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "settledOn": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "method": {
+            "$ref": "#/components/schemas/PaymentMethod"
           }
         },
         "additionalProperties": false
@@ -5123,6 +5682,54 @@
         },
         "additionalProperties": false
       },
+      "BulkReplaceMetersRequest": {
+        "type": "object",
+        "properties": {
+          "feeTypeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "replacedOn": {
+            "type": "string",
+            "format": "date"
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BulkReplaceRow"
+            },
+            "nullable": true
+          },
+          "note": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "BulkReplaceRow": {
+        "type": "object",
+        "properties": {
+          "meterId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "oldFinalValue": {
+            "type": "number",
+            "format": "double"
+          },
+          "newSerialNo": {
+            "type": "string",
+            "nullable": true
+          },
+          "newInitialValue": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
       "BulkRoomFloor": {
         "type": "object",
         "properties": {
@@ -5141,6 +5748,16 @@
         "additionalProperties": false
       },
       "CancelContractRequest": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "CancelRoomChargeRequest": {
         "type": "object",
         "properties": {
           "reason": {
@@ -5397,7 +6014,7 @@
           },
           "customFields": {
             "type": "object",
-            "additionalProperties": { },
+            "additionalProperties": {},
             "nullable": true
           },
           "householdHeadRenterId": {
@@ -5677,6 +6294,43 @@
           },
           "billing": {
             "$ref": "#/components/schemas/PropertyBillingInput"
+          }
+        },
+        "additionalProperties": false
+      },
+      "CreateRoomChargeRequest": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/RoomChargeKind"
+          },
+          "description": {
+            "type": "string",
+            "nullable": true
+          },
+          "amount": {
+            "type": "number",
+            "format": "double"
+          },
+          "incurredOn": {
+            "type": "string",
+            "format": "date"
+          },
+          "reason": {
+            "type": "string",
+            "nullable": true
+          },
+          "settled": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "settledOn": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "method": {
+            "$ref": "#/components/schemas/PaymentMethod"
           }
         },
         "additionalProperties": false
@@ -6140,6 +6794,9 @@
           },
           "canViewSensitiveData": {
             "type": "boolean"
+          },
+          "canWriteOff": {
+            "type": "boolean"
           }
         },
         "additionalProperties": false
@@ -6411,6 +7068,35 @@
         },
         "additionalProperties": false
       },
+      "PayAndWriteOffRequest": {
+        "type": "object",
+        "properties": {
+          "amount": {
+            "type": "number",
+            "format": "double"
+          },
+          "method": {
+            "$ref": "#/components/schemas/PaymentMethod"
+          },
+          "paidAt": {
+            "type": "string",
+            "format": "date"
+          },
+          "payerName": {
+            "type": "string",
+            "nullable": true
+          },
+          "reference": {
+            "type": "string",
+            "nullable": true
+          },
+          "reason": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
       "PaymentMethod": {
         "enum": [
           "Cash",
@@ -6480,6 +7166,10 @@
           "noticeDays": {
             "type": "integer",
             "format": "int32"
+          },
+          "roundInvoiceTotal": {
+            "type": "boolean",
+            "nullable": true
           }
         },
         "additionalProperties": false
@@ -6526,6 +7216,10 @@
           "keepManualEdits": {
             "type": "boolean",
             "nullable": true
+          },
+          "staleOnly": {
+            "type": "boolean",
+            "nullable": true
           }
         },
         "additionalProperties": false
@@ -6568,6 +7262,25 @@
         "type": "object",
         "properties": {
           "refreshToken": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "RefundDepositRequest": {
+        "type": "object",
+        "properties": {
+          "refundedOn": {
+            "type": "string",
+            "format": "date"
+          },
+          "amount": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "note": {
             "type": "string",
             "nullable": true
           }
@@ -6741,6 +7454,10 @@
             "type": "string",
             "format": "date",
             "nullable": true
+          },
+          "transferDeposit": {
+            "type": "boolean",
+            "nullable": true
           }
         },
         "additionalProperties": false
@@ -6754,6 +7471,22 @@
           }
         },
         "additionalProperties": false
+      },
+      "RoomChargeKind": {
+        "enum": [
+          "Surcharge",
+          "Credit"
+        ],
+        "type": "string"
+      },
+      "RoomChargeStatus": {
+        "enum": [
+          "Pending",
+          "OnDraft",
+          "Billed",
+          "Cancelled"
+        ],
+        "type": "string"
       },
       "RoomDisplayStatus": {
         "enum": [
@@ -6976,6 +7709,19 @@
         },
         "additionalProperties": false
       },
+      "SettleRoomChargeRequest": {
+        "type": "object",
+        "properties": {
+          "settledOn": {
+            "type": "string",
+            "format": "date"
+          },
+          "method": {
+            "$ref": "#/components/schemas/PaymentMethod"
+          }
+        },
+        "additionalProperties": false
+      },
       "SignedDocumentRequest": {
         "type": "object",
         "properties": {
@@ -7109,6 +7855,43 @@
           "Abandoned"
         ],
         "type": "string"
+      },
+      "TransferRoomRequest": {
+        "type": "object",
+        "properties": {
+          "toRoomId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "oldRoomReadings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MeterReadingInput"
+            },
+            "nullable": true
+          },
+          "newRoomReadings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MeterReadingInput"
+            },
+            "nullable": true
+          },
+          "monthlyRent": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "note": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
       },
       "UpdateBankAccountRequest": {
         "type": "object",
@@ -7359,6 +8142,10 @@
             "type": "integer",
             "format": "int32",
             "nullable": true
+          },
+          "roundInvoiceTotal": {
+            "type": "boolean",
+            "nullable": true
           }
         },
         "additionalProperties": false
@@ -7455,6 +8242,30 @@
           }
         },
         "additionalProperties": false
+      },
+      "WriteOffInvoiceRequest": {
+        "type": "object",
+        "properties": {
+          "amount": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "reason": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "WriteOffPermissionRequest": {
+        "type": "object",
+        "properties": {
+          "allowed": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
       }
     },
     "securitySchemes": {
@@ -7468,7 +8279,7 @@
   },
   "security": [
     {
-      "Bearer": [ ]
+      "Bearer": []
     }
   ],
   "tags": [
@@ -7519,6 +8330,9 @@
     },
     {
       "name": "Room groups"
+    },
+    {
+      "name": "RoomCharges"
     },
     {
       "name": "Rooms"

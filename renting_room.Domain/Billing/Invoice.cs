@@ -74,8 +74,9 @@ public sealed record CalculatedLine(
 public sealed record CalculatedSegment(
     Guid FeeTypeId, Guid MeterId, string? MeterSerial, Guid StartReadingId, Guid EndReadingId, decimal StartValue, decimal EndValue);
 
+/// <param name="RoundTotal">Khu bật làm tròn tổng phiếu (BL-BR-29) — phiếu ghi lại để sửa tay / thêm dòng sau vẫn làm tròn đúng.</param>
 public sealed record InvoiceCalculation(
-    IReadOnlyList<CalculatedLine> Lines, IReadOnlyList<CalculatedSegment> Segments, IReadOnlyList<InvoiceIssue> Issues);
+    IReadOnlyList<CalculatedLine> Lines, IReadOnlyList<CalculatedSegment> Segments, IReadOnlyList<InvoiceIssue> Issues, bool RoundTotal = false);
 
 /// <summary>
 /// Phiếu báo tiền phòng (M07) — không phải hóa đơn GTGT (LEG-08). Nháp sửa được (sửa tay, phụ thu, tính lại);
@@ -107,7 +108,19 @@ public sealed class Invoice : TenantEntity
     /// <summary>Σ dòng hoàn trả (≤ 0) — tách khỏi giảm trừ vì được làm tổng phiếu âm (BL-BR-27).</summary>
     public decimal RefundTotal { get; private set; }
 
-    /// <summary>Subtotal + DiscountTotal + RefundTotal; âm ⇒ chủ trọ phải trả lại người thuê.</summary>
+    /// <summary>
+    /// BL-BR-29 (H1): "Làm tròn" — bỏ phần lẻ dưới 1.000đ của tổng (về 0: 523.560 ⇒ −560; −12.400 ⇒ +400). Không phải dòng phiếu
+    /// (không bị tính lại / sửa tay riêng) — hiển thị thành dòng "Làm tròn" cuối phiếu.
+    /// </summary>
+    public decimal RoundingAmount { get; private set; }
+
+    /// <summary>Khu bật làm tròn lúc tính phiếu gần nhất — giữ để sửa tay / thêm dòng sau đó vẫn làm tròn.</summary>
+    public bool RoundTotal { get; private set; }
+
+    /// <summary>BL-BR-20 (I1): "Cần tính lại" — dữ liệu nguồn đổi sau khi tính nháp; tính lại thì hết. Chỉ gợi ý, chốt vẫn kiểm (BL-BR-12).</summary>
+    public bool IsStale { get; private set; }
+
+    /// <summary>Subtotal + DiscountTotal + RefundTotal + RoundingAmount; âm ⇒ chủ trọ phải trả lại người thuê.</summary>
     public decimal TotalAmount { get; private set; }
 
     /// <summary>Tổng đã thu — M08 cập nhật trong cùng transaction với phân bổ (PM-BR-05).</summary>
@@ -220,6 +233,8 @@ public sealed class Invoice : TenantEntity
         _segments.Clear();
         _segments.AddRange(calculation.Segments.Select(s => new InvoiceMeterSegment(Id, s)));
         Issues = issues;
+        RoundTotal = calculation.RoundTotal;
+        IsStale = false;
         Recompute();
         if (NetCharges < 0)
             Issues = [.. Issues, new InvoiceIssue("NEGATIVE_TOTAL", InvoiceIssue.Error, "Giảm trừ lớn hơn phần thu — giảm bớt dòng giảm trừ.")];
@@ -288,8 +303,13 @@ public sealed class Invoice : TenantEntity
     /// BL-BR-23 / BL-BR-27: phụ thu, giảm tay, hoàn trả — lý do bắt buộc, nhập số dương; giảm trừ và hoàn trả lưu số âm.
     /// Giảm trừ không vượt phần thu; hoàn trả được làm tổng phiếu âm (chủ trọ trả lại người thuê).
     /// </summary>
+    /// <param name="sourceInvoiceId">BL-BR-27 (E): phiếu đã chốt bị tính sai mà người thuê đã trả — bắt buộc với dòng hoàn trả; số tiền tối đa
+    /// (đã thu thật − các lần hoàn trước) do Application kiểm vì cần dữ liệu phiếu khác.</param>
+    /// <param name="roomChargeId">Khoản phát sinh của phòng mà dòng này thể hiện (BL-BR-33).</param>
+    /// <param name="isSettled">Khoản đã thanh toán / đã hoàn ngay ⇒ dòng hiện trên phiếu nhưng không tính vào tổng.</param>
     public Result<InvoiceLine> AddManualLine(
-        InvoiceLineType type, string description, decimal? quantity, decimal? unitPrice, decimal amount, string? note, Guid? feeTypeId)
+        InvoiceLineType type, string description, decimal? quantity, decimal? unitPrice, decimal amount, string? note, Guid? feeTypeId,
+        Guid? sourceInvoiceId = null, Guid? roomChargeId = null, bool isSettled = false)
     {
         if (Status != InvoiceStatus.Draft)
             return Result.Failure<InvoiceLine>(BillingErrors.NotDraft);
@@ -297,13 +317,16 @@ public sealed class Invoice : TenantEntity
             throw new ArgumentException("Manual lines are surcharges, discounts or refunds.", nameof(type));
         if (string.IsNullOrWhiteSpace(note))
             return Result.Failure<InvoiceLine>(BillingErrors.NoteRequired);
+        if (type == InvoiceLineType.Refund && (sourceInvoiceId is null || sourceInvoiceId == Id))
+            return Result.Failure<InvoiceLine>(BillingErrors.RefundSourceRequired);
 
         var signed = Signed(type, amount);
-        if (type != InvoiceLineType.Refund && NetCharges + signed < 0)
+        if (type != InvoiceLineType.Refund && !isSettled && NetCharges + signed < 0)
             return Result.Failure<InvoiceLine>(BillingErrors.NegativeTotal);
 
         var line = InvoiceLine.Manual(Id, type, description, quantity, unitPrice, signed, note, feeTypeId,
-            PeriodStart, PeriodEnd, 1000 + _lines.Count(l => !l.IsSystem));
+            PeriodStart, PeriodEnd, 1000 + _lines.Count(l => !l.IsSystem), type == InvoiceLineType.Refund ? sourceInvoiceId : null);
+        line.LinkCharge(roomChargeId, isSettled && type != InvoiceLineType.Refund);
         _lines.Add(line);
         Recompute();
         return line;
@@ -320,7 +343,7 @@ public sealed class Invoice : TenantEntity
             return Result.Failure(BillingErrors.NoteRequired);
 
         var signed = Signed(line.Type, amount);
-        if (line.Type != InvoiceLineType.Refund && NetCharges - line.Amount + signed < 0)
+        if (line.Type != InvoiceLineType.Refund && !line.IsSettled && NetCharges - line.Amount + signed < 0)
             return Result.Failure(BillingErrors.NegativeTotal);
         line.UpdateManual(description, quantity, unitPrice, signed, note);
         Recompute();
@@ -334,12 +357,47 @@ public sealed class Invoice : TenantEntity
         var line = _lines.FirstOrDefault(l => l.Id == lineId && !l.IsSystem);
         if (line is null)
             return Result.Failure(BillingErrors.LineNotFound);
-        if (line.Type != InvoiceLineType.Refund && NetCharges - line.Amount < 0)
+        if (line.Type != InvoiceLineType.Refund && !line.IsSettled && NetCharges - line.Amount < 0)
             return Result.Failure(BillingErrors.NegativeTotal);
 
         _lines.Remove(line);
         Recompute();
         return Result.Success();
+    }
+
+    public InvoiceLine? ChargeLine(Guid roomChargeId) => _lines.FirstOrDefault(l => l.RoomChargeId == roomChargeId);
+
+    /// <summary>BL-BR-31: đánh dấu / bỏ đánh dấu "đã thanh toán" của khoản phát sinh đang trên nháp ⇒ dòng ra / vào tổng.</summary>
+    public Result SetChargeSettled(Guid roomChargeId, bool settled)
+    {
+        if (Status != InvoiceStatus.Draft)
+            return Result.Failure(RoomChargeErrors.Locked);
+        var line = ChargeLine(roomChargeId);
+        if (line is null)
+            return Result.Failure(BillingErrors.LineNotFound);
+        if (line.IsSettled == settled)
+            return Result.Success();
+        // Bỏ đánh dấu một khoản bù / đánh dấu một khoản phụ thu đều có thể làm phần thu âm (BL-BR-10).
+        if (NetCharges + (settled ? -line.Amount : line.Amount) < 0)
+            return Result.Failure(BillingErrors.NegativeTotal);
+        line.LinkCharge(roomChargeId, settled);
+        Recompute();
+        return Result.Success();
+    }
+
+    /// <summary>Hủy khoản phát sinh đang trên nháp ⇒ xóa dòng (BL-BR-35).</summary>
+    public Result RemoveChargeLine(Guid roomChargeId)
+    {
+        if (Status != InvoiceStatus.Draft)
+            return Result.Failure(RoomChargeErrors.Locked);
+        return ChargeLine(roomChargeId) is { } line ? RemoveManualLine(line.Id) : Result.Success();
+    }
+
+    /// <summary>Cảnh báo thêm sau khi tính (VD khoản bù chưa gắn được — BL-BR-33); không trùng theo mã + tham chiếu.</summary>
+    public void AddIssue(InvoiceIssue issue)
+    {
+        if (!Issues.Any(i => i.Code == issue.Code && i.Ref == issue.Ref))
+            Issues = [.. Issues, issue];
     }
 
     /// <summary>BL-BR-11/13: chốt — hết vấn đề chặn; cấp số, ngày phát hành, hạn thanh toán.</summary>
@@ -433,11 +491,17 @@ public sealed class Invoice : TenantEntity
 
     private void Recompute()
     {
-        Subtotal = _lines.Where(l => l.Amount > 0).Sum(l => l.Amount);
-        DiscountTotal = _lines.Where(l => l.Amount < 0 && l.Type != InvoiceLineType.Refund).Sum(l => l.Amount);
+        // BL-BR-33: dòng khoản phát sinh đã thanh toán / đã hoàn ngay hiện trên phiếu nhưng không tính vào tổng.
+        Subtotal = _lines.Where(l => l.Amount > 0 && !l.IsSettled).Sum(l => l.Amount);
+        DiscountTotal = _lines.Where(l => l.Amount < 0 && l.Type != InvoiceLineType.Refund && !l.IsSettled).Sum(l => l.Amount);
         RefundTotal = _lines.Where(l => l.Type == InvoiceLineType.Refund).Sum(l => l.Amount);
-        TotalAmount = Subtotal + DiscountTotal + RefundTotal;
+        var total = Subtotal + DiscountTotal + RefundTotal;
+        RoundingAmount = RoundTotal ? -(total % RoundingUnit) : 0;
+        TotalAmount = total + RoundingAmount;
     }
+
+    /// <summary>BL-BR-29: làm tròn tổng phiếu tới nghìn đồng.</summary>
+    public const decimal RoundingUnit = 1000;
 
     /// <summary>C-03: làm tròn ở cấp dòng, về đồng.</summary>
     public static decimal Money(decimal value) => decimal.Round(value, 0, MidpointRounding.AwayFromZero);
@@ -468,6 +532,21 @@ public sealed class InvoiceLine : TenantEntity
     public string? Note { get; private set; }
     public int SortOrder { get; private set; }
 
+    /// <summary>BL-BR-27 (E): phiếu nguồn của dòng hoàn trả (dòng cũ trước 09/10/2026 có thể trống).</summary>
+    public Guid? SourceInvoiceId { get; private set; }
+
+    /// <summary>BL-BR-33: khoản phát sinh của phòng mà dòng này thể hiện.</summary>
+    public Guid? RoomChargeId { get; private set; }
+
+    /// <summary>Khoản đã thanh toán / đã hoàn ngay — hiện trên phiếu, không tính vào tổng.</summary>
+    public bool IsSettled { get; private set; }
+
+    internal void LinkCharge(Guid? roomChargeId, bool isSettled)
+    {
+        RoomChargeId = roomChargeId;
+        IsSettled = isSettled;
+    }
+
     public (InvoiceLineType, Guid?) Key => (Type, FeeTypeId);
 
     internal static InvoiceLine FromCalculation(Guid invoiceId, CalculatedLine line)
@@ -479,8 +558,9 @@ public sealed class InvoiceLine : TenantEntity
 
     internal static InvoiceLine Manual(
         Guid invoiceId, InvoiceLineType type, string description, decimal? quantity, decimal? unitPrice, decimal amount,
-        string note, Guid? feeTypeId, DateOnly from, DateOnly to, int sortOrder) => new()
+        string note, Guid? feeTypeId, DateOnly from, DateOnly to, int sortOrder, Guid? sourceInvoiceId) => new()
     {
+        SourceInvoiceId = sourceInvoiceId,
         Id = Guid.CreateVersion7(),
         InvoiceId = invoiceId,
         Type = type,
@@ -602,6 +682,14 @@ public static class BillingErrors
     public static readonly Error NotDraft = Error.BusinessRule("INVOICE_NOT_DRAFT", "Phiếu đã chốt / đã hủy — không sửa được.");
     public static readonly Error NotFinalized = Error.BusinessRule("INVOICE_NOT_FINALIZED", "Phiếu chưa chốt.");
     public static readonly Error NoteRequired = Error.Validation("NOTE_REQUIRED", "Nhập lý do / ghi chú.");
+    public static readonly Error RefundSourceRequired = Error.Validation("REFUND_SOURCE_REQUIRED",
+        "Hoàn trả chỉ dùng khi phiếu đã chốt bị tính sai mà người thuê đã trả — chọn phiếu đó.");
+    public static readonly Error RefundSourceInvalid = Error.BusinessRule("REFUND_SOURCE_INVALID",
+        "Phiếu nguồn phải là phiếu đã chốt của cùng hợp đồng.");
+
+    public static Error RefundExceedsPaid(decimal available) =>
+        Error.BusinessRule("REFUND_EXCEEDS_PAID", $"Chỉ hoàn được tối đa {available:N0}đ — số người thuê đã trả thật cho phiếu nguồn trừ các lần hoàn trước.")
+            .WithDetail("available", available);
     public static readonly Error NegativeTotal = Error.BusinessRule("NEGATIVE_TOTAL",
         "Giảm trừ không được lớn hơn phần thu — muốn trả lại tiền cho người thuê thì dùng dòng Hoàn trả.");
     public static readonly Error NothingToRefund = Error.BusinessRule("NOTHING_TO_REFUND", "Phiếu không có khoản phải trả lại người thuê.");

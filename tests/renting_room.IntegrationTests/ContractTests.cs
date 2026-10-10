@@ -309,7 +309,7 @@ public sealed class ContractTests(ApiFactory factory)
 
         await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/liquidation/start", new { actualEndDate = today.AddDays(20), reason = "MutualAgreement" }, token);
         (await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/assets/{assetId}/return",
-            new { conditionAtReturn = "Hỏng remote", compensationValue = 200_000 }, token)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+            new { conditionAtReturn = "Hỏng remote" }, token)).StatusCode.Should().Be(HttpStatusCode.NoContent);
     }
 
     [Fact]

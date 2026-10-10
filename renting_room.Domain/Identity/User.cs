@@ -38,6 +38,11 @@ public sealed class User : AuditableEntity
 
     public bool HasSensitiveDataAccess => Role == UserRole.OrgOwner || (Role == UserRole.OrgManager && CanViewSensitiveData);
 
+    /// <summary>PM-BR-16 (10/10/2026): chủ trọ cho riêng từng phó quản lý quyền bỏ nợ — mặc định không.</summary>
+    public bool CanWriteOff { get; private set; }
+
+    public bool HasWriteOffAccess => Role == UserRole.OrgOwner || (Role == UserRole.OrgManager && Status == UserStatus.Active && CanWriteOff);
+
     /// <summary>Tên đăng nhập hiển thị: ưu tiên SĐT, sau đó email.</summary>
     public string Username => PhoneNormalized ?? EmailNormalized!;
 
@@ -164,6 +169,7 @@ public sealed class User : AuditableEntity
 
         Status = UserStatus.Removed;
         CanViewSensitiveData = false;
+        CanWriteOff = false;
         RemovedAt = now;
         RemovedBy = removedBy;
         PhoneNormalized = null;
@@ -181,6 +187,18 @@ public sealed class User : AuditableEntity
             return Result.Failure(IdentityErrors.UserRemoved);
 
         CanViewSensitiveData = allowed;
+        return Result.Success();
+    }
+
+    /// <summary>Chủ trọ cấp / thu hồi quyền bỏ nợ cho từng phó quản lý (PM-BR-16) — người tin tưởng thì bật, người mới thì không.</summary>
+    public Result SetWriteOffPermission(bool allowed)
+    {
+        if (Role != UserRole.OrgManager)
+            return Result.Failure(IdentityErrors.CannotModifyOwner);
+        if (Status == UserStatus.Removed)
+            return Result.Failure(IdentityErrors.UserRemoved);
+
+        CanWriteOff = allowed;
         return Result.Success();
     }
 

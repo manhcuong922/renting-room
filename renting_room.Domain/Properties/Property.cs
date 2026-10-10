@@ -23,6 +23,9 @@ public sealed class Property : TenantEntity
     public ChargeMode ChargeMode { get; private set; }
     public int PaymentDueDays { get; private set; }
     public ProrationMode ProrationMode { get; private set; }
+
+    /// <summary>BL-BR-29 (H1): bỏ phần lẻ dưới 1.000đ của tổng phiếu (dòng "Làm tròn").</summary>
+    public bool RoundInvoiceTotal { get; private set; } = true;
     /// <summary>Số ngày báo trước khi trả phòng — giá trị gợi ý khi tạo HĐ (HĐ giữ riêng).</summary>
     public int DefaultNoticeDays { get; private set; }
     /// <summary>Lịch kỳ thu (jsonb): các mốc đổi ngày chốt / thu trước–thu sau, giữ để tính đúng kỳ cũ (K4 — BL-BR-28).</summary>
@@ -59,7 +62,7 @@ public sealed class Property : TenantEntity
 
     public bool IsArchived => ArchivedAt is not null;
 
-    public BillingSettings BillingSettings => new(BillingAnchorDay, ChargeMode, PaymentDueDays, ProrationMode, DefaultNoticeDays);
+    public BillingSettings BillingSettings => new(BillingAnchorDay, ChargeMode, PaymentDueDays, ProrationMode, DefaultNoticeDays, RoundInvoiceTotal);
 
     public BillingSchedule BillingSchedule => new(BillingScheduleEntries);
 
@@ -83,7 +86,7 @@ public sealed class Property : TenantEntity
         property.UpdateInfo(name, address, description: null, evnCustomerCode: null, new LandParcel(null, null, null));
         billing.EnsureValid();
         property.SetSchedule(BillingSchedule.Single(billing.AnchorDay, billing.ChargeMode));
-        property.UpdateBillingTerms(billing.PaymentDueDays, billing.ProrationMode, billing.NoticeDays);
+        property.UpdateBillingTerms(billing.PaymentDueDays, billing.ProrationMode, billing.NoticeDays, billing.RoundInvoiceTotal);
         return property;
     }
 
@@ -105,13 +108,17 @@ public sealed class Property : TenantEntity
         OwnershipCertificateNo = TextNormalizer.TrimToNull(land.OwnershipCertificateNo);
     }
 
-    /// <summary>Hạn thanh toán, cách tính tiền phòng kỳ lẻ, số ngày báo trước gợi ý — áp ngay (phiếu đã chốt giữ số tiền cũ).</summary>
-    public void UpdateBillingTerms(int paymentDueDays, ProrationMode prorationMode, int noticeDays)
+    /// <summary>
+    /// Hạn thanh toán, cách tính tiền phòng kỳ lẻ, số ngày báo trước gợi ý, làm tròn tổng phiếu — áp ngay (phiếu đã chốt giữ số tiền cũ;
+    /// nháp được đánh dấu "Cần tính lại" — BL-BR-20).
+    /// </summary>
+    public void UpdateBillingTerms(int paymentDueDays, ProrationMode prorationMode, int noticeDays, bool roundInvoiceTotal)
     {
         new BillingSettings(BillingSchedule.MinAnchorDay, ChargeMode, paymentDueDays, prorationMode, noticeDays).EnsureValid();
         PaymentDueDays = paymentDueDays;
         ProrationMode = prorationMode;
         DefaultNoticeDays = noticeDays;
+        RoundInvoiceTotal = roundInvoiceTotal;
     }
 
     /// <summary>

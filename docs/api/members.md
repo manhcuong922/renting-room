@@ -30,6 +30,7 @@ Chủ trọ (`OrgOwner`) thêm **một hoặc nhiều phó quản lý** (`OrgMan
 | POST | `/org/members/{id}/remove` | Chủ trọ | Gỡ vĩnh viễn (không khôi phục) |
 | POST | `/org/members/{id}/reset-password` | Chủ trọ | Cấp lại mật khẩu tạm |
 | PUT | `/org/members/{id}/sensitive-data-access` | Chủ trọ | `{ "allowed": true }` cấp / `false` thu hồi quyền xem số giấy tờ đầy đủ → 200 thành viên |
+| PUT | `/org/members/{id}/write-off-permission` | Chủ trọ | `{ "allowed": true }` cấp / `false` thu hồi quyền **bỏ nợ** cho riêng phó quản lý này → 200 thành viên (`canWriteOff`) |
 
 ### Danh sách
 
@@ -62,6 +63,13 @@ Nhãn phụ gợi ý:
 
 - Mặc định phó quản lý **không** có quyền: vẫn làm mọi nghiệp vụ, nhưng số giấy tờ luôn che, không xuất Excel / in hợp đồng có số đầy đủ.
 - Thu hồi có hiệu lực **ngay** (không cần phó quản lý đăng nhập lại). Mỗi lần cấp / thu hồi được ghi log kiểm toán.
+
+### Quyền bỏ nợ
+
+`PUT /org/members/{id}/write-off-permission` — `{ "allowed": true }` → **200** (thành viên, `canWriteOff`).
+Bật **riêng từng người** (người tin tưởng bật, người mới thuê để quản lý thì không) — mặc định tắt. Áp cho bỏ nợ riêng,
+"Thanh toán + bỏ phần còn lại", "Bỏ nợ" khi hoàn tất thanh lý ([payments.md](payments.md)); chưa có quyền → 403 `WRITE_OFF_NOT_ALLOWED`.
+`GET /me` có `canWriteOff` để FE ẩn / hiện nút.
 - Dòng chủ trọ luôn `canViewSensitiveData = true`, không có công tắc (gọi với id chủ trọ → 422 `CANNOT_MODIFY_OWNER`).
 
 ### Thêm phó quản lý

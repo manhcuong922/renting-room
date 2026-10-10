@@ -10,6 +10,7 @@ using renting_room.Application.Properties;
 using renting_room.Domain.Billing;
 using renting_room.Domain.Common;
 using renting_room.Domain.Contracts;
+using renting_room.Domain.Identity;
 using renting_room.Domain.Meters;
 using renting_room.Domain.Payments;
 using renting_room.Domain.Properties;
@@ -152,7 +153,9 @@ public sealed class StartHoldoverHandler(IAppDbContext db, TimeProvider clock) :
 /// CT-UC-21: ký lại cho người còn ở — trong 1 transaction: HĐ cũ bắt đầu thanh lý tại ngày bàn giao X, tạo HĐ nháp mới từ X+1
 /// (chép điều khoản, dịch vụ, người ở còn lại, xe của họ). Chủ trọ xem lại nháp rồi kích hoạt như bình thường.
 /// </summary>
-public sealed record ResignContractCommand(Guid ContractId, DateOnly HandoverDate, Guid RepresentativeRenterId, DateOnly? EndDate)
+/// <param name="TransferDeposit">PM-BR-34: cọc của HĐ cũ ghi "Đã chuyển sang HĐ mới" (mặc định); false ⇒ HĐ cũ vẫn "Đang giữ cọc" để hoàn sau.</param>
+public sealed record ResignContractCommand(
+    Guid ContractId, DateOnly HandoverDate, Guid RepresentativeRenterId, DateOnly? EndDate, bool TransferDeposit = true)
     : IRequest<Result<CreatedWithWarnings>>;
 
 public sealed class ResignContractCommandValidator : AbstractValidator<ResignContractCommand>
@@ -197,6 +200,8 @@ public sealed class ResignContractHandler(
             }
 
             db.Contracts.Add(next);
+            if (request.TransferDeposit)
+                old.MarkDepositTransferred(contractNo);
             return new CreatedWithWarnings(next.Id, ContractWarnings.For(next));
         }, cancellationToken));
 }
@@ -312,8 +317,8 @@ public sealed class CompleteLiquidationCommandValidator : AbstractValidator<Comp
 }
 
 /// <summary>
-/// CT-BR-12 (đợt 1 hoàn thiện): có chỉ số cuối mọi công tơ → không còn phiếu nháp → phiếu quyết toán đã chốt → còn nợ thì
-/// "Đã thu toàn bộ" / "Bỏ nợ" theo lựa chọn của chủ trọ → kết thúc HĐ, đóng người ở và xe. Cọc, hoàn tiền: để sau.
+/// CT-BR-12: có chỉ số cuối mọi công tơ → không còn phiếu nháp → phiếu quyết toán đã chốt → không còn phiếu chờ hoàn → còn nợ thì
+/// "Đã thu toàn bộ" / "Bỏ nợ" theo lựa chọn của chủ trọ → kết thúc HĐ, đóng người ở và xe. Cọc không chặn (chỉ nhắc — PM-BR-35).
 /// </summary>
 public sealed class CompleteLiquidationHandler(IAppDbContext db, IDocumentNumberGenerator numbers, ICurrentUser currentUser, TimeProvider clock)
     : IRequestHandler<CompleteLiquidationCommand, Result>
@@ -345,6 +350,8 @@ public sealed class CompleteLiquidationHandler(IAppDbContext db, IDocumentNumber
                 if (request.Settlement is null)
                     return Result.Failure(BillingErrors.HasDebt(outstanding));
                 var writeOff = request.Settlement == DebtSettlement.WriteOff;
+                if (writeOff && !await WriteOffGuard.IsAllowedAsync(db, currentUser, cancellationToken))
+                    return Result.Failure(WriteOffErrors.NotAllowed);
                 var posted = await PaymentPosting.PostAsync(db, numbers, currentUser, clock, contract, null,
                     request.Method ?? PaymentMethod.Cash, request.PaidAt ?? now.ToBusinessDate(), null, null, null,
                     writeOff ? request.Reason : request.Reason ?? "Thu toàn bộ khi trả phòng",
@@ -423,15 +430,14 @@ public sealed class RemoveAssetHandler(IAppDbContext db) : IRequestHandler<Remov
             contract => Task.FromResult(contract.RemoveAsset(request.AssetId)), cancellationToken));
 }
 
-public sealed record RecordAssetReturnCommand(Guid ContractId, Guid AssetId, string? ConditionAtReturn, decimal? CompensationValue)
-    : IRequest<Result>;
+/// <summary>CT-BR-23: ghi tình trạng tài sản lúc trả phòng — bồi thường (nếu có) thêm phụ thu trên phiếu quyết toán.</summary>
+public sealed record RecordAssetReturnCommand(Guid ContractId, Guid AssetId, string? ConditionAtReturn) : IRequest<Result>;
 
 public sealed class RecordAssetReturnCommandValidator : AbstractValidator<RecordAssetReturnCommand>
 {
     public RecordAssetReturnCommandValidator()
     {
         RuleFor(x => x.ConditionAtReturn).OptionalText(500);
-        RuleFor(x => x.CompensationValue).OptionalMoney();
     }
 }
 
@@ -439,7 +445,7 @@ public sealed class RecordAssetReturnHandler(IAppDbContext db) : IRequestHandler
 {
     public ValueTask<Result> Handle(RecordAssetReturnCommand request, CancellationToken cancellationToken) =>
         new(ContractMutation.RunAsync(db, request.ContractId, contract => Task.FromResult(
-            contract.RecordAssetReturn(request.AssetId, request.ConditionAtReturn, request.CompensationValue)), cancellationToken));
+            contract.RecordAssetReturn(request.AssetId, request.ConditionAtReturn)), cancellationToken));
 }
 
 // ============================================================ Xe gửi

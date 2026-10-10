@@ -12,6 +12,8 @@ public sealed record RemoveMeterRequest(DateOnly Date, decimal FinalValue, strin
 
 public sealed record CorrectReadingRequest(decimal Value, string? Note);
 
+public sealed record BulkReplaceMetersRequest(Guid FeeTypeId, DateOnly ReplacedOn, IReadOnlyList<BulkReplaceRow> Rows, string? Note);
+
 /// <summary>Công tơ của phòng & chỉ số (M06 đợt 1): lắp, thay (phiên bản), tháo, lịch sử, sửa chỉ số.</summary>
 public static class MeterEndpoints
 {
@@ -28,6 +30,16 @@ public static class MeterEndpoints
                 .ToCreated(MetersRoute))
             .WithIdempotency(required: true)
             .WithSummary("Lắp công tơ cho phòng (điện / nước theo công tơ) kèm chỉ số ban đầu");
+
+        // MT-UC-08 (M2): thay công tơ hàng loạt giữa tháng (điện lực thay cả khu).
+        var properties = app.MapGroup($"{EndpointHelpers.ApiPrefix}/properties/{{propertyId:guid}}/meters").WithTags("Meters");
+        properties.MapGet("/replace-sheet", async (Guid propertyId, Guid feeTypeId, ISender sender, CancellationToken ct) =>
+                (await sender.Send(new GetReplaceSheetQuery(propertyId, feeTypeId), ct)).ToHttp())
+            .WithSummary("Lưới thay công tơ hàng loạt: công tơ đang hoạt động của khoản thu trong khu, chỉ số gần nhất");
+        properties.MapPost("/bulk-replace", async (Guid propertyId, BulkReplaceMetersRequest b, ISender sender, CancellationToken ct) =>
+                (await sender.Send(new BulkReplaceMetersCommand(propertyId, b.FeeTypeId, b.ReplacedOn, b.Rows, b.Note), ct)).ToHttp())
+            .WithIdempotency(required: true)
+            .WithSummary("Thay công tơ hàng loạt cùng 1 ngày — lỗi 1 dòng ⇒ không lưu dòng nào (rowErrors)");
 
         var meters = app.MapGroup(MetersRoute).WithTags("Meters");
         meters.MapPost("/{id:guid}/replace", async (Guid id, ReplaceMeterRequest b, ISender sender, CancellationToken ct) =>

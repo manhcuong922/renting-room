@@ -18,7 +18,8 @@ public sealed record UpdatePropertyRequest(
 
 /// <param name="TransitionAdjustDays">K4: số ngày tiền phòng cộng (+) / trừ (−) ở kỳ chuyển tiếp — null = theo gợi ý.</param>
 public sealed record UpdatePropertyBillingRequest(
-    int AnchorDay, ChargeMode ChargeMode, int PaymentDueDays, ProrationMode ProrationMode, int NoticeDays, int? TransitionAdjustDays);
+    int AnchorDay, ChargeMode ChargeMode, int PaymentDueDays, ProrationMode ProrationMode, int NoticeDays, int? TransitionAdjustDays,
+    bool? RoundInvoiceTotal = null);
 
 public sealed record UpdateLessorRequest(
     LessorType Type,
@@ -77,7 +78,8 @@ public static class PropertyEndpoints
 
         group.MapPut("/{id:guid}/billing", async (Guid id, UpdatePropertyBillingRequest b, ISender sender, CancellationToken ct) =>
                 (await sender.Send(new UpdatePropertyBillingCommand(id,
-                    new PropertyBillingInput(b.AnchorDay, b.ChargeMode, b.PaymentDueDays, b.ProrationMode, b.NoticeDays), b.TransitionAdjustDays), ct)).ToHttp())
+                    new PropertyBillingInput(b.AnchorDay, b.ChargeMode, b.PaymentDueDays, b.ProrationMode, b.NoticeDays, b.RoundInvoiceTotal),
+                    b.TransitionAdjustDays), ct)).ToHttp())
             .WithSummary("Cài đặt kỳ thu của khu — mọi HĐ dùng chung (PR-BR-09); khu đã có phiếu ⇒ có kỳ chuyển tiếp (K4)");
 
         group.MapPost("/{id:guid}/archive", async (Guid id, ISender sender, CancellationToken ct) =>
