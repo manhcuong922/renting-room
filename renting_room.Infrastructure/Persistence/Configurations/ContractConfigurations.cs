@@ -132,11 +132,14 @@ internal sealed class ContractConfiguration : IEntityTypeConfiguration<Contract>
         builder.HasMany(c => c.RoomMoves).WithOne()
             .HasForeignKey(m => new { m.OrganizationId, m.ContractId }).HasPrincipalKey(c => new { c.OrganizationId, c.Id })
             .OnDelete(DeleteBehavior.Cascade);
+        builder.HasMany(c => c.RepresentativeHistory).WithOne()
+            .HasForeignKey(h => new { h.OrganizationId, h.ContractId }).HasPrincipalKey(c => new { c.OrganizationId, c.Id })
+            .OnDelete(DeleteBehavior.Cascade);
 
         foreach (var navigation in new[]
                  {
                      nameof(Contract.RentTerms), nameof(Contract.Occupants), nameof(Contract.Assets), nameof(Contract.Vehicles), nameof(Contract.Fees),
-                     nameof(Contract.RoomMoves)
+                     nameof(Contract.RoomMoves), nameof(Contract.RepresentativeHistory)
                  })
             builder.Navigation(navigation).UsePropertyAccessMode(PropertyAccessMode.Field);
     }
@@ -173,6 +176,7 @@ internal sealed class ContractOccupantConfiguration : IEntityTypeConfiguration<C
 
         builder.Property(o => o.Relationship).HasMaxLength(50);
         builder.Property(o => o.RelationshipType).HasConversion<string>().HasMaxLength(24);
+        builder.Property(o => o.Role).HasConversion<string>().HasMaxLength(10).HasDefaultValue(OccupantRole.Resident);
         builder.Property(o => o.Note).HasMaxLength(500);
         builder.HasIndex(o => new { o.OrganizationId, o.RenterId }).HasDatabaseName("ix_contract_occupants_renter");
     }
@@ -195,6 +199,23 @@ internal sealed class ContractAssetConfiguration : IEntityTypeConfiguration<Cont
         builder.Property(a => a.ConditionAtReturn).HasMaxLength(500);
         builder.Property(a => a.ValueEstimate).HasColumnType("numeric(18,0)");
         builder.Property(a => a.Note).HasMaxLength(500);
+    }
+}
+
+/// <summary>CT-BR-51: lịch sử người đứng tên HĐ.</summary>
+internal sealed class ContractRepresentativeConfiguration : IEntityTypeConfiguration<ContractRepresentative>
+{
+    public void Configure(EntityTypeBuilder<ContractRepresentative> builder)
+    {
+        builder.ToTable("contract_representatives", t => t.HasCheckConstraint("ck_contract_representatives_dates", "to_date >= from_date"));
+        builder.HasKey(h => h.Id);
+        builder.ConfigureAuditable();
+        builder.HasOne<Renter>()
+            .WithMany()
+            .HasForeignKey(h => new { h.OrganizationId, h.RenterId })
+            .HasPrincipalKey(r => new { r.OrganizationId, r.Id })
+            .OnDelete(DeleteBehavior.Restrict);
+        builder.HasIndex(h => new { h.OrganizationId, h.RenterId }).HasDatabaseName("ix_contract_representatives_renter");
     }
 }
 

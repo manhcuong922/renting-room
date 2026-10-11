@@ -40,6 +40,20 @@ public sealed class RoomCharge : TenantEntity
     public DateTimeOffset? CancelledAt { get; private set; }
     public string? CancelReason { get; private set; }
 
+    /// <summary>
+    /// BL-BR-38: khoản chốt điện nước khi chuyển phòng (M05 CT-BR-47) — hệ thống tạo từ công tơ phòng cũ: chỉ số đầu / cuối, sản lượng,
+    /// đơn giá tại ngày chuyển. Null với khoản nhập tay.
+    /// </summary>
+    public Guid? MeterId { get; private set; }
+    public Guid? StartReadingId { get; private set; }
+    public Guid? EndReadingId { get; private set; }
+    public Guid? FeeTypeId { get; private set; }
+    public decimal? Quantity { get; private set; }
+    public decimal? UnitPrice { get; private set; }
+
+    /// <summary>Khoản hệ thống: không sửa / hủy tay — chỉ đánh dấu đã thanh toán, hoặc hủy cùng lần chuyển phòng.</summary>
+    public bool IsSystem => MeterId is not null;
+
     public bool IsCancelled => CancelledAt is not null;
     public bool IsPending => InvoiceId is null && !IsCancelled;
 
@@ -66,6 +80,20 @@ public sealed class RoomCharge : TenantEntity
             IncurredOn = incurredOn,
             Reason = reason.Trim()
         };
+    }
+
+    /// <summary>BL-BR-38: phụ thu điện nước phòng cũ chốt tại ngày chuyển phòng.</summary>
+    public static RoomCharge CreateMeterClosing(
+        Guid propertyId, Guid roomId, Guid contractId, string description, decimal amount, DateOnly incurredOn, string reason, MeterClosing closing)
+    {
+        var charge = Create(propertyId, roomId, contractId, RoomChargeKind.Surcharge, description, amount, incurredOn, reason);
+        charge.MeterId = closing.MeterId;
+        charge.StartReadingId = closing.StartReadingId;
+        charge.EndReadingId = closing.EndReadingId;
+        charge.FeeTypeId = closing.FeeTypeId;
+        charge.Quantity = closing.Quantity;
+        charge.UnitPrice = closing.UnitPrice;
+        return charge;
     }
 
     public Result Settle(DateOnly settledOn, PaymentMethod method, DateOnly today)
@@ -117,6 +145,9 @@ public sealed class RoomCharge : TenantEntity
     public void Detach() => InvoiceId = null;
 }
 
+/// <summary>Đoạn đo của khoản chốt điện nước khi chuyển phòng (BL-BR-38).</summary>
+public sealed record MeterClosing(Guid MeterId, Guid StartReadingId, Guid EndReadingId, Guid FeeTypeId, decimal Quantity, decimal UnitPrice);
+
 public static class RoomChargeErrors
 {
     public static readonly Error NotFound = Error.NotFound("ROOM_CHARGE_NOT_FOUND", "Không tìm thấy khoản phát sinh.");
@@ -127,6 +158,8 @@ public static class RoomChargeErrors
     public static readonly Error Locked = Error.BusinessRule("ROOM_CHARGE_LOCKED",
         "Khoản đã nằm trên phiếu đã chốt — không sửa / hủy được (hủy phiếu trước nếu cần).");
     public static readonly Error Cancelled = Error.BusinessRule("ROOM_CHARGE_CANCELLED", "Khoản phát sinh đã hủy.");
+    public static readonly Error System = Error.BusinessRule("ROOM_CHARGE_SYSTEM",
+        "Khoản chốt điện nước khi chuyển phòng do hệ thống tạo — không sửa / hủy tay; muốn đổi thì hủy chuyển phòng rồi chuyển lại.");
     public static readonly Error NotSettled = Error.BusinessRule("ROOM_CHARGE_NOT_SETTLED", "Khoản chưa đánh dấu đã thanh toán.");
     public static readonly Error InvalidSettledDate = Error.Validation("INVALID_SETTLED_DATE", "Ngày thanh toán không được ở tương lai.");
     public static readonly Error InvalidIncurredDate = Error.Validation("INVALID_INCURRED_DATE", "Ngày phát sinh không được ở tương lai.");

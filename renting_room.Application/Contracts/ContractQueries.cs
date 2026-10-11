@@ -136,13 +136,14 @@ public sealed class GetContractHandler(IAppDbContext db, TimeProvider clock) : I
     {
         var contract = await db.Contracts.AsNoTracking()
             .Include(c => c.RentTerms).Include(c => c.Occupants).Include(c => c.Assets).Include(c => c.Vehicles).Include(c => c.Fees)
-            .Include(c => c.RoomMoves)
+            .Include(c => c.RoomMoves).Include(c => c.RepresentativeHistory)
             .AsSplitQuery()
             .FirstOrDefaultAsync(c => c.Id == request.Id, cancellationToken);
         if (contract is null)
             return ContractErrors.NotFound;
 
-        var renterIds = contract.Occupants.Select(o => o.RenterId).Append(contract.RepresentativeRenterId).Distinct().ToList();
+        var renterIds = contract.Occupants.Select(o => o.RenterId).Append(contract.RepresentativeRenterId)
+            .Concat(contract.RepresentativeHistory.Select(h => h.RenterId)).Distinct().ToList();
         var names = await db.Renters.AsNoTracking().Where(r => renterIds.Contains(r.Id))
             .ToDictionaryAsync(r => r.Id, r => r.FullName, cancellationToken);
         var property = await db.Properties.AsNoTracking().Where(p => p.Id == contract.PropertyId)
@@ -170,7 +171,7 @@ public sealed class GetContractHandler(IAppDbContext db, TimeProvider clock) : I
             contract.Occupants.OrderBy(o => o.MoveInDate)
                 .Select(o => new OccupantDto(o.Id, o.RenterId, names.GetValueOrDefault(o.RenterId, string.Empty), o.MoveInDate, o.MoveOutDate,
                     o.ExpectedEndDate, o.Relationship, o.Note, o.RenterId == contract.RepresentativeRenterId, o.RelationshipType,
-                    o.GuardianConsent, o.RenterId == contract.ReferenceRenterId)).ToList(),
+                    o.GuardianConsent, o.RenterId == contract.ReferenceRenterId, o.Role)).ToList(),
             contract.Assets.OrderBy(a => a.Name)
                 .Select(a => new AssetDto(a.Id, a.Name, a.Quantity, a.ConditionAtHandover, a.ConditionAtReturn, a.ValueEstimate, a.Note))
                 .ToList(),
@@ -198,7 +199,10 @@ public sealed class GetContractHandler(IAppDbContext db, TimeProvider clock) : I
                 contract.Status == ContractStatus.Ended && contract.HasDeposit && contract.DepositStatus == DepositStatus.Holding),
             contract.RoomSince,
             contract.RoomMoves.OrderBy(m => m.FromDate)
-                .Select(m => new RoomMoveDto(m.RoomId, movedCodes.GetValueOrDefault(m.RoomId, ""), m.FromDate, m.ToDate)).ToList());
+                .Select(m => new RoomMoveDto(m.RoomId, movedCodes.GetValueOrDefault(m.RoomId, ""), m.FromDate, m.ToDate)).ToList(),
+            contract.RepresentativeSince ?? contract.StartDate,
+            contract.RepresentativeHistory.OrderBy(h => h.FromDate)
+                .Select(h => new RepresentativeHistoryDto(h.RenterId, names.GetValueOrDefault(h.RenterId, string.Empty), h.FromDate, h.ToDate)).ToList());
     }
 }
 

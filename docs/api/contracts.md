@@ -513,7 +513,7 @@ UI: radio "Chủ hộ" trên danh sách người ở ở bước 2 wizard; đổ
 
 | Thao tác | Request | Ghi chú |
 |----------|---------|---------|
-| Thêm | `POST /contracts/{id}/occupants` `{ "renterId": "…", "moveInDate": "2026-11-01", "expectedEndDate": null, "relationshipType": "Sibling", "relationship": "Em gái", "guardianConsent": false, "note": null, "overrideCapacity": false }` | `moveInDate` trong thời hạn HĐ. Vượt sức chứa → 422 `ROOM_CAPACITY_EXCEEDED`; người dùng xác nhận "vẫn thêm" → gửi lại với `overrideCapacity: true`. Người đang ở rồi → 409 `OCCUPANCY_OVERLAP`. Ngày vào sau `endDate` (HĐ quá hạn) → 422 `CONTRACT_EXPIRED_EXTEND_FIRST` → gợi ý nút **Gia hạn** |
+| Thêm | `POST /contracts/{id}/occupants` `{ "renterId": "…", "moveInDate": "2026-11-01", "expectedEndDate": null, "relationshipType": "Sibling", "relationship": "Em gái", "guardianConsent": false, "note": null }` | `moveInDate` ≥ ngày bắt đầu HĐ; HĐ đang hiệu lực đã quá `endDate` vẫn thêm được (coi như không thời hạn — CT-BR-37). Không giới hạn theo sức chứa phòng (PR-BR-06). Người đang ở rồi → 409 `OCCUPANCY_OVERLAP`. |
 | Chuyển đi | `POST /contracts/{id}/occupants/{occupantId}/end` `{ "moveOutDate": "2026-12-15" }` | ≥ ngày vào ở; ≤ ngày trả phòng nếu đang thanh lý. Đã chuyển đi rồi → 409 `OCCUPANT_ALREADY_MOVED_OUT` (ẩn nút với người có `moveOutDate`) |
 
 `occupantId` là `occupants[].id` (không phải `renterId`). Ở Draft, nên sửa người ở qua `PUT`.
@@ -608,24 +608,62 @@ Chi tiết HĐ có `deposit`:
 | 422 `DEPOSIT_ALREADY_REFUNDED` | Đã hoàn / đã chuyển — bỏ đánh dấu trước |
 | 422 `DEPOSIT_NOT_REFUNDED` | Bỏ đánh dấu khi chưa đánh dấu |
 
+## Đồng thuê, đổi người đứng tên, chuyển người (11/10/2026)
+
+- **Vai trò người ở**: `occupants[].role` = `Resident` (mặc định) | `CoTenant` — gửi khi tạo / sửa nháp và `POST /contracts/{id}/occupants`;
+  chi tiết HĐ trả `occupants[].role`. Đồng thuê **chỉ mang tính giấy tờ** (có tên trên HĐ, không chia tiền) và phải có số giấy tờ → 422
+  `CO_TENANT_ID_REQUIRED`. `PUT /contracts/{id}/occupants/{occupantId}/role` `{ "role": "CoTenant" }` → 204; người đứng tên → 422
+  `OCCUPANT_IS_REPRESENTATIVE`; người đã chuyển đi → 409 `OCCUPANT_ALREADY_MOVED_OUT`.
+- **Một người không vừa là người ở thường của HĐ này vừa đứng tên HĐ khác** (đứng tên nhiều phòng, hoặc là đồng thuê, thì được): kiểm khi
+  kích hoạt, thêm người ở, đổi vai trò, đổi người đứng tên, chuyển người → 409 `REPRESENTATIVE_IS_RESIDENT_ELSEWHERE`.
+- **Đổi người đứng tên trên cùng HĐ** — `POST /contracts/{id}/representative`
+  `{ "renterId": "…", "date": "2026-10-11", "householdHeadRenterId": null, "oldRepresentativeMovesOut": true }` → 204. HĐ `Active`;
+  người mới có giấy tờ (422 `REPRESENTATIVE_ID_REQUIRED`), khác người hiện tại (422 `REPRESENTATIVE_UNCHANGED`); `date` ≤ hôm nay và ≥
+  `representativeSince` (400 `REPRESENTATIVE_INVALID_DATE`). Số HĐ, nợ, cọc, khoản phát sinh giữ nguyên; `hasSignedDocument` về `false`;
+  quan hệ người ở bị xóa để khai lại khi người làm mốc đổi; `oldRepresentativeMovesOut` ghi người cũ chuyển đi + kết thúc xe của họ.
+  Chi tiết HĐ có `representativeSince`, `representativeHistory[]` (`renterId`, `fullName`, `fromDate`, `toDate`).
+- **Chuyển người** — `POST /contracts/{id}/occupants/{occupantId}/move`
+  `{ "toContractId": "…", "date": "2026-10-11", "role": "Resident", "relationshipType": "CoTenant", "relationship": null, "guardianConsent": null, "note": null }`
+  → 204: ghi chuyển đi ở HĐ này, vào HĐ đích cùng ngày, xe đang đăng ký của người đó chuyển theo. HĐ đích phải đang hiệu lực (422
+  `CONTRACT_NOT_ACTIVE`) và khác HĐ nguồn (400 `MOVE_SAME_CONTRACT`); phòng trống thì tạo HĐ mới. Khoản thu chi không đi theo người.
+
 ## Chuyển phòng
 
 `POST /contracts/{id}/transfer-room` — **Idempotency-Key**
 
 ```json
 { "toRoomId": "…", "date": "2026-11-12",
-  "oldRoomReadings": [ { "meterId": "…", "value": 4250 } ], "newRoomReadings": null, "monthlyRent": 3200000, "note": null }
+  "oldRoomReadings": [ { "meterId": "…", "value": 4250 } ], "newRoomReadings": null,
+  "monthlyRent": 3200000, "rentFrom": null, "removeFeeTypeIds": [ "…phí điều hòa" ], "note": null }
 ```
 
 → **200** `{ "warnings": [ { "code": "RESIDENCE_ROOM_CHANGED", … } ] }`. HĐ **đi theo người thuê**: giữ nguyên số HĐ, người ở, xe, dịch vụ, cọc;
 chỉ đổi phòng từ `date` (D):
 - `oldRoomReadings`: chỉ số cuối **mọi** công tơ phòng cũ tại D — thiếu → 422 `FINAL_READING_REQUIRED`.
 - `newRoomReadings`: chỉ số nhận phòng phòng mới tại D — null / `value` null = số mới nhất.
-- `monthlyRent` (tùy chọn): giá mới từ **kỳ chưa chốt đầu tiên** (như sửa giá) — kỳ chứa D chưa có phiếu thì áp luôn kỳ đó.
+- `monthlyRent`: giá thuê sau khi chuyển; bỏ trống = giữ giá đang áp — khi đó nếu giá niêm yết phòng mới khác giá đang áp thì có cảnh báo
+  `ROOM_TRANSFER_RENT_UNCHANGED` (UI nên bắt chọn: giữ giá cũ / giá niêm yết phòng mới / giá khác).
+- `rentFrom`: `CurrentPeriod` | `NextPeriod` — giá mới áp cho **cả kỳ**, không chia ngày theo từng phòng. Bỏ trống = tự chọn: đã ở phòng cũ
+  **quá nửa kỳ** chứa D ⇒ `NextPeriod` (kỳ này vẫn giá cũ), **không quá nửa** ⇒ `CurrentPeriod`. Kỳ được chọn đã chốt tiền phòng (thu trước) ⇒
+  mốc giá ghi từ kỳ chưa chốt đầu tiên và, với `CurrentPeriod`, sinh khoản phát sinh **chênh lệch cả kỳ** (phụ thu hoặc bù, sửa / hủy được).
+- `removeFeeTypeIds`: dịch vụ không dùng ở phòng mới ⇒ thôi tính từ kỳ chưa chốt đầu tiên; dịch vụ khác giữ nguyên.
+- Cảnh báo thêm: `METER_MISSING_IN_NEW_ROOM` / `METER_ONLY_IN_NEW_ROOM` khi 2 phòng khác nhau về công tơ của một khoản (nhắc thêm / bỏ
+  dịch vụ tính theo đầu người tương ứng).
 - Ngày D tính là còn ở **cả 2 phòng**; phòng cũ trống từ D+1. Chi tiết HĐ: `roomId` = phòng hiện tại, `roomSince`, `roomMoves[]`
   (`roomId`, `roomCode`, `fromDate`, `toDate`). Bản HĐ đã ký giữ phòng lúc ký.
-- **Phiếu kỳ chứa D**: điện nước cộng 2 phòng (công tơ phòng cũ tới chỉ số tại D + công tơ phòng mới từ chỉ số nhận phòng); phiếu thuộc
-  phòng hiện tại. Lưới ghi chỉ số chỉ còn công tơ phòng mới (chỉ số cũ = chỉ số nhận phòng).
+- **Điện nước phòng cũ chốt ngay tại D** (đổi 11/10/2026): mỗi công tơ phòng cũ sinh 1 **khoản phát sinh hệ thống** của HĐ
+  (`GET /room-charges?roomId=<phòng cũ>`): sản lượng = chỉ số cuối tại D − chỉ số cuối kỳ gần nhất HĐ đã ghi (không có thì chỉ số nhận
+  phòng), đơn giá = giá hiệu lực **tại D** (giá đổi sau D không tính lại). Khoản vào phiếu như khoản phát sinh khác (dòng `Surcharge` có
+  `feeTypeId`, `quantity`, `unitPrice`), đánh dấu "đã thu ngay" được; **không sửa / hủy tay** → 422 `ROOM_CHARGE_SYSTEM`; 2 chỉ số của
+  khoản bị khóa (`READING_LOCKED`).
+- **Phiếu** chỉ tính công tơ phòng HĐ đang ở, từ chỉ số nhận phòng của lần ở đó. Lưới ghi chỉ số chỉ còn công tơ phòng mới.
+- **Chuyển về phòng đã từng ở** (A → B → A) được.
+
+`POST /contracts/{id}/transfer-room/cancel` — hủy **lần chuyển gần nhất** (nhập nhầm phòng / ngày / chỉ số) → **200**
+`{ "warnings": [ RESIDENCE_ROOM_CHANGED, ROOM_TRANSFER_CANCELLED_CHECK_RENT ] }`: HĐ về phòng cũ như chưa chuyển, khoản chốt điện nước
+bị hủy, chỉ số cuối phòng cũ và các chỉ số của HĐ trên công tơ phòng mới bị hủy. Giá thuê / dịch vụ đã đổi lúc chuyển **không** tự đổi lại.
+Lỗi: 422 `ROOM_TRANSFER_NOTHING_TO_CANCEL` (chưa chuyển lần nào), `ROOM_TRANSFER_ROOM_UNAVAILABLE` (phòng cũ đã có HĐ khác),
+`ROOM_TRANSFER_CANCEL_BILLED` (khoản chốt đã vào phiếu đã chốt, hoặc đã lập phiếu ở phòng mới — hủy / xóa phiếu đó trước).
 
 | Lỗi | Khi nào |
 |-----|---------|

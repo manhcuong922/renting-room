@@ -11,12 +11,15 @@
 
 **Phase**: P1.
 
+**Trạng thái (10/10/2026)**: **chưa code gì** — toàn bộ file này là thiết kế. Các module khác đang chờ M09: ảnh giấy tờ người thuê (M03),
+file scan HĐ / giấy ủy quyền / ảnh tài sản (M02, M05 — tạm dùng cờ "đã có bản ký", CT-UC-23), ảnh công tơ (M06), ảnh phòng (M02), chứng từ chuyển khoản (M08).
+
 ## 2. Thuật ngữ
 
 | Thuật ngữ | Code | Định nghĩa |
 |-----------|------|-----------|
 | Tệp đính kèm | `Attachment` | Metadata 1 file + vị trí lưu |
-| Chủ sở hữu | `OwnerType` + `OwnerId` | `Property`, `Room`, `Renter`, `Contract`, `ResidenceRecord` (P2), `MeterReading`, `Invoice`, `Payment`, `DepositTransaction`, `ContractAsset` |
+| Chủ sở hữu | `OwnerType` + `OwnerId` | `Property`, `Room`, `Renter`, `Contract`, `ResidenceRecord` (P2), `MeterReading`, `Invoice`, `Payment`, `ContractAsset` |
 | Danh mục | `Category` | `ContractScan`, `ContractAddendum`, `HandoverMinutes`, `IdCardFront`, `IdCardBack`, `Portrait`, `ResidenceConfirmation`, `MeterPhoto`, `RoomPhoto`, `PaymentProof`, `ComplianceDoc`, `AuthorizationDoc` (giấy ủy quyền cho thuê — M02 PR-BR-13), `LessorIdCard` (giấy tờ bên cho thuê), `AssetPhoto` (tài sản bàn giao — M05 CT-UC-13), `Other` |
 | Nhạy cảm | `IsSensitive` | Suy từ category (IdCard*, LessorIdCard, Portrait, ResidenceConfirmation, ContractScan, AuthorizationDoc) |
 

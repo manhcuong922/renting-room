@@ -21,6 +21,7 @@ Seed lỗi giữa chừng ⇒ app dừng với thông báo `Demo seed failed at 
 |---------|-----------|----------|
 | Chủ trọ | `0900000009` | `ChuTroDemo2026` |
 | Phó quản lý | `0900000008` | `PhoQuanLy2026` — **chưa có quyền bỏ nợ** (chủ trọ bật / tắt riêng tại màn thành viên) |
+| Phó quản lý được bỏ nợ | `0900000009` (`Seed:DemoData:WriteOffManagerPhone`) | cùng mật khẩu phó quản lý — **đã được cấp quyền bỏ nợ** (PM-BR-16) |
 | SystemAdmin | theo `Bootstrap:Admin` (user-secrets) | |
 
 ## Tình huống

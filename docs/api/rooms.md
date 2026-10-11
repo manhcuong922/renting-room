@@ -13,7 +13,7 @@
 | 5 | `Vacant` — Trống | Còn lại | Xanh lá |
 
 Khi `Occupied`, `currentContract` chứa tóm tắt hợp đồng (người đại diện, số người đang ở, ngày hết hạn) và `flags` — nhãn cần xử lý trên ô
-phòng: `RepresentativeMovedOut` "Người ký đã rời đi", `NoOccupantLeft` "Không còn người ở", `ExpiredAwaitingDecision` "Quá hạn — chờ quyết định",
+phòng: `RepresentativeMovedOut` "Người ký đã rời đi", `NoOccupantLeft` "Không còn người ở", `ExpiredAwaitingDecision` "Quá hạn — đang ở tiếp, nên ký phụ lục",
 `Holdover` "Ở tiếp chưa ký lại" (chi tiết: [contracts.md](contracts.md#cần-xử-lý-flags)). Hợp đồng quá hạn **vẫn là `Occupied`**.
 
 ## Màn hình

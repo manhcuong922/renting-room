@@ -78,12 +78,17 @@ public sealed class Meter : TenantEntity
     public MeterReading? FindPeriodic(Guid contractId, DateOnly closingPeriodStart) =>
         Ordered.FirstOrDefault(r => r.Kind == ReadingKind.Periodic && r.ContractId == contractId && r.ClosingPeriodStart == closingPeriodStart);
 
-    public MeterReading? FindFinal(Guid contractId) =>
-        Ordered.FirstOrDefault(r => r.Kind == ReadingKind.Final && r.ContractId == contractId);
+    /// <summary>
+    /// Chỉ số cuối của HĐ trên công tơ này (MT-BR-04). HĐ có thể rời phòng rồi quay lại ⇒ <paramref name="since"/> = ngày vào phòng của lần ở
+    /// đang xét, để không lấy nhầm chỉ số cuối của lần ở trước.
+    /// </summary>
+    public MeterReading? FindFinal(Guid contractId, DateOnly? since = null) =>
+        Ordered.LastOrDefault(r => r.Kind == ReadingKind.Final && r.ContractId == contractId && (since is null || r.ReadingDate >= since));
 
-    /// <summary>Chỉ số nhận phòng của HĐ trên công tơ này (MT-BR-13; chuyển tới phòng giữa kỳ — CT-BR-47).</summary>
-    public MeterReading? FindHandover(Guid contractId) =>
-        Ordered.LastOrDefault(r => r.Kind == ReadingKind.Handover && r.ContractId == contractId);
+    /// <summary>Chỉ số nhận phòng của HĐ trên công tơ này trong lần ở [<paramref name="from"/>, <paramref name="to"/>] (MT-BR-13, MT-BR-04).</summary>
+    public MeterReading? FindHandover(Guid contractId, DateOnly? from = null, DateOnly? to = null) =>
+        Ordered.LastOrDefault(r => r.Kind == ReadingKind.Handover && r.ContractId == contractId
+            && (from is null || r.ReadingDate >= from) && (to is null || r.ReadingDate <= to));
 
     public MeterReading? Removal => Ordered.FirstOrDefault(r => r.Kind == ReadingKind.Removal);
 
@@ -246,6 +251,8 @@ public static class MeterErrors
         "Phòng đã có công tơ đang hoạt động cho khoản này — thay công tơ thay vì lắp thêm.");
     public static readonly Error FeeNotMetered = Error.BusinessRule("FEE_NOT_METERED", "Chỉ khoản điện nước theo công tơ mới lắp công tơ.");
     public static readonly Error Removed = Error.BusinessRule("METER_REMOVED", "Công tơ đã tháo.");
+    public static readonly Error ContractReadingExists = Error.Conflict("CONTRACT_READING_EXISTS",
+        "Hợp đồng đã có chỉ số nhận phòng / chỉ số cuối trên công tơ này trong ngày — tải lại.");
     public static readonly Error InvalidReadingDate = Error.BusinessRule("INVALID_READING_DATE",
         "Ngày ghi chỉ số phải trong thời gian công tơ hoạt động và không trước chỉ số đã ghi.");
 

@@ -105,7 +105,11 @@ Quyền: chủ trọ và phó quản lý.
 
 **Nợ các kỳ trước** (`previousDebts`, F1 — chỉ có ở chi tiết): phiếu kỳ trước của cùng HĐ đã chốt còn nợ — **chỉ hiển thị**, không cộng vào
 phiếu này. **Tổng cần thanh toán** (`totalDue`) = còn phải trả của phiếu này (nháp: tổng phiếu) + nợ các kỳ trước. Thu theo tổng
-(`POST /contracts/{id}/payments` không `invoiceId`) trừ phiếu cũ nhất trước. Gửi thông báo (P2) kèm cả phiếu mới và các phiếu còn nợ.
+(`POST /contracts/{id}/payments` không `invoiceId`) trừ phiếu cũ nhất trước.
+
+**Nợ HĐ trước** (`previousContractDebts`, `previousContractDue` — 11/10/2026): HĐ này là HĐ ký lại ⇒ phiếu đã chốt còn nợ của các HĐ đứng trước
+(`contractId`, `contractNo`, `invoiceId`, `invoiceNo`, `billingMonth`, `dueDate`, `outstanding`). Danh sách **riêng**, **không** cộng vào
+`totalDue`; thu tiền vẫn ghi trên HĐ cũ. Gửi thông báo (P2) kèm cả phiếu mới và các phiếu còn nợ.
 
 UI: ô có `isManuallyEdited` hiện nhãn **"Sửa tay"** và số hệ thống (`systemAmount`) bên cạnh, nút "Bỏ sửa tay".
 

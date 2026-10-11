@@ -91,7 +91,18 @@ public sealed record OccupantInput(
     string? Relationship,
     string? Note,
     OccupantRelationship? RelationshipType = null,
-    bool GuardianConsent = false);
+    bool GuardianConsent = false,
+    OccupantRole Role = OccupantRole.Resident);
+
+/// <summary>
+/// CT-BR-49: vai trò của người ở trên HĐ. Đồng thuê chỉ mang tính giấy tờ — có tên trên HĐ cùng người đứng tên, cùng chịu trách nhiệm khi
+/// tranh chấp; không chia tiền (vẫn 1 phiếu / phòng). Người đứng tên xác định bằng <c>Contract.RepresentativeRenterId</c>.
+/// </summary>
+public enum OccupantRole
+{
+    Resident,
+    CoTenant
+}
 
 /// <summary>Toàn bộ nội dung hợp đồng nháp (tạo mới hoặc sửa nháp).</summary>
 public sealed record ContractDraftData(

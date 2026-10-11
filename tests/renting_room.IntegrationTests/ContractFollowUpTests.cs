@@ -74,7 +74,7 @@ public sealed class ContractFollowUpTests(ApiFactory factory)
 
     // ---------------------------------------------------------------- C
     [Fact]
-    public async Task C_AddingOccupantAfterEndDate_AsksToExtendFirst()
+    public async Task C_ExpiredActiveContract_ActsAsIndefinite_AddOccupantAndChangeRentWork()
     {
         var owner = await _client.CreateActiveOwnerAsync();
         var token = owner.Tokens.AccessToken;
@@ -94,7 +94,11 @@ public sealed class ContractFollowUpTests(ApiFactory factory)
 
         var add = await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/occupants",
             new { renterId = await _client.CreateRenterAsync(token), moveInDate = today, relationshipType = "CoTenant" }, token);
-        (await add.ReadProblemCodeAsync()).Should().Be("CONTRACT_EXPIRED_EXTEND_FIRST");
+        add.StatusCode.Should().Be(HttpStatusCode.NoContent, await add.Content.ReadAsStringAsync());
+
+        // CT-BR-37 (11/10/2026): quá hạn mà vẫn ở = không thời hạn ⇒ đổi giá không cần gia hạn trước.
+        var rent = await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/rent-terms", new { monthlyRent = 3_200_000 }, token);
+        rent.IsSuccessStatusCode.Should().BeTrue(await rent.Content.ReadAsStringAsync());
     }
 
     // ---------------------------------------------------------------- D

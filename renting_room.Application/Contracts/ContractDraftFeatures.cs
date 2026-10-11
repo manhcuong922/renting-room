@@ -119,7 +119,8 @@ internal static class ContractDraftBuilder
 
         var occupants = (input.Occupants ?? [])
             .Select(o => new OccupantInput(o.RenterId, o.MoveInDate ?? input.StartDate, o.ExpectedEndDate, o.Relationship, o.Note,
-                o.RenterId == reference ? null : o.RelationshipType, o.GuardianConsent ?? false))
+                o.RenterId == reference ? null : o.RelationshipType, o.GuardianConsent ?? false,
+                o.RenterId == input.RepresentativeRenterId ? OccupantRole.Resident : o.Role ?? OccupantRole.Resident))
             .ToList();
         var people = await OccupantChecks.LoadPeopleAsync(db, occupants.Select(o => o.RenterId).Append(input.RepresentativeRenterId), ct);
         if (occupants.Any(o => !people.ContainsKey(o.RenterId)) || !people.ContainsKey(input.RepresentativeRenterId))
@@ -127,6 +128,10 @@ internal static class ContractDraftBuilder
         // RT-BR-01: người đứng tên phải có giấy tờ (người ở dưới 14 tuổi thì không bắt buộc).
         if (!await OccupantChecks.HasIdNumberAsync(db, input.RepresentativeRenterId, ct))
             return ContractErrors.RepresentativeIdRequired;
+        // CT-BR-49: đồng thuê có tên trên HĐ ⇒ cũng phải có giấy tờ.
+        if (!await OccupantChecks.AllHaveIdNumberAsync(
+                db, occupants.Where(o => o.Role == OccupantRole.CoTenant).Select(o => o.RenterId).ToList(), ct))
+            return ContractErrors.CoTenantIdRequired;
 
         // CT-BR-28..30: quan hệ người ở chỉ còn là cảnh báo (ContractPaperWarnings) — không chặn tạo / sửa nháp.
 
@@ -336,7 +341,8 @@ public sealed class ActivateContractHandler(
         var property = await db.Properties.FirstAsync(p => p.Id == contract.PropertyId, cancellationToken);
         var representative = await db.Renters.FirstAsync(r => r.Id == contract.RepresentativeRenterId, cancellationToken);
 
-        var occupantError = await CheckOccupantsAsync(contract, cancellationToken);
+        var occupantError = await CheckOccupantsAsync(contract, cancellationToken)
+            ?? await OccupantChecks.FindRoleConflictAsync(db, contract, cancellationToken);
         if (occupantError is not null)
             return Result.Failure(occupantError);
         // CT-BR-14: HĐ khác đã chuyển khỏi phòng này vẫn tính là ở tới ngày chuyển (lịch sử không nằm trong EXCLUDE của contracts).

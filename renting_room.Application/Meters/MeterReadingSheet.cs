@@ -48,7 +48,10 @@ public sealed record MeterReadingSheetDto(string BillingMonth, IReadOnlyList<Met
 
 internal static class ReadingLocks
 {
-    /// <summary>MT-BR-06: chỉ số là đầu / cuối của đoạn đo trên phiếu đã chốt (chưa hủy).</summary>
+    /// <summary>
+    /// MT-BR-06: chỉ số là đầu / cuối của đoạn đo trên phiếu đã chốt (chưa hủy), hoặc của khoản chốt điện nước khi chuyển phòng chưa hủy
+    /// (BL-BR-38).
+    /// </summary>
     public static async Task<HashSet<Guid>> LockedReadingIdsAsync(IAppDbContext db, IReadOnlyCollection<Guid> meterIds, CancellationToken ct)
     {
         var segments = await db.Invoices.Where(i => i.Status == InvoiceStatus.Finalized)
@@ -56,7 +59,12 @@ internal static class ReadingLocks
             .Where(s => meterIds.Contains(s.MeterId) && !s.Voided)
             .Select(s => new { s.StartReadingId, s.EndReadingId })
             .ToListAsync(ct);
-        return segments.SelectMany(s => new[] { s.StartReadingId, s.EndReadingId }).ToHashSet();
+        var closings = await db.RoomCharges.Where(c => c.MeterId != null && meterIds.Contains(c.MeterId.Value) && c.CancelledAt == null)
+            .Select(c => new { c.StartReadingId, c.EndReadingId })
+            .ToListAsync(ct);
+        return segments.SelectMany(s => new[] { s.StartReadingId, s.EndReadingId })
+            .Concat(closings.SelectMany(c => new[] { c.StartReadingId!.Value, c.EndReadingId!.Value }))
+            .ToHashSet();
     }
 }
 
@@ -124,6 +132,9 @@ public sealed class GetMeterReadingSheetHandler(IAppDbContext db) : IRequestHand
             var room = rooms[contract.RoomId];
             // CT-BR-47: chuyển tới phòng này giữa kỳ ⇒ chỉ số cũ = chỉ số nhận phòng của HĐ (công tơ phòng cũ đã có chỉ số cuối lúc chuyển).
             var stay = contract.RoomStays[^1];
+            // Chuyển tới phòng này sau khi kỳ sử dụng kết thúc (thu trước) ⇒ công tơ phòng này chưa có gì để tính cho kỳ đó.
+            if (stay.From > usage.End)
+                continue;
 
             foreach (var meter in meters.Where(m => m.RoomId == contract.RoomId && m.Overlaps(usage.Start, usage.End)
                          && !(m.RemovedDate <= usage.End)))

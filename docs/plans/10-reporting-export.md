@@ -7,8 +7,9 @@
 **Mục tiêu**: Xuất **Excel** cho 1 hoặc **nhiều khu**: danh sách người thuê, tiền phòng tháng, thông tin phòng;
 dashboard tổng quan; nhắc việc (HĐ sắp hết hạn, cư trú chưa đăng ký, công nợ quá hạn).
 
-**Trong phạm vi (P1)**: E1 Danh sách người thuê; E2 Tiền phòng tháng; E3 Thông tin phòng; E4 Công nợ; E5 Danh sách cọc.
-**P2**: dashboard, nhắc việc, đối chiếu hóa đơn điện EVN (LEG-05), báo cáo doanh thu năm (L12), export bất đồng bộ. **Để sau (04/10/2026)**: nhóm export doanh thu / tiền phòng / công nợ (E2, E4, E6) làm sau khi nghiệp vụ phiếu + thu tiền ổn định. Doanh thu **không tính** tiền bỏ nợ (`WriteOff`) — PM-BR-16.
+**Trạng thái (10/10/2026)**: ✅ chỉ mới code **E1 Danh sách người thuê** (+ khung xuất Excel dùng chung, RP-BR-01..03, 06..09 cho E1).
+**Chưa code**: E2 Tiền phòng tháng, E3 Thông tin phòng, E4 Công nợ, E5 Danh sách cọc (P1 — nghiệp vụ phiếu + thu tiền đã ổn định, làm được);
+E6 doanh thu, E7 đối chiếu hóa đơn điện EVN (LEG-05), dashboard, nhắc việc, export bất đồng bộ (P2). Doanh thu **không tính** tiền bỏ nợ (`WriteOff`) — PM-BR-16.
 **Ngoài phạm vi**: BI tùy biến, PDF phức tạp.
 
 ## 2. Danh mục export
@@ -16,12 +17,12 @@ dashboard tổng quan; nhắc việc (HĐ sắp hết hạn, cư trú chưa đă
 | Mã | Tên | Tham số | Nội dung (cột) | Ghi chú |
 |----|-----|---------|----------------|---------|
 | E1 ✅ | Danh sách người thuê | propertyIds[] (trống = tất cả), `floors[]`, `roomGroupIds[]`, `roomIds[]`, `fromDate`/`toDate` (mặc định hôm nay; người ở giao khoảng ngày — gồm cả đã chuyển đi), `layout` = `SheetPerProperty` \| `SheetPerFloor` \| `SingleSheet`, `includeSensitive` | STT, Khu, Tầng, Phòng, Số HĐ, Vai trò (Đại diện/Người ở), Họ tên, Ngày sinh, Giới tính, SĐT, Loại & **số giấy tờ (che)**, Ngày cấp, Nơi cấp, Quốc tịch, Địa chỉ thường trú, Nghề nghiệp, Nơi làm việc, **Quan hệ với người đứng tên (chủ hộ)**, **Người chưa thành niên** (đã/chưa có đồng ý của cha mẹ, giám hộ), Ngày vào, Ngày ra (HĐ đang thanh lý = ngày trả phòng), Trạng thái HĐ, Liên hệ khẩn cấp. P2: Tình trạng tạm trú, Hạn tạm trú (khi có bản ghi cư trú M03). Thứ tự trong phòng: người đứng tên → vợ/chồng → cha mẹ → con → … | Phục vụ đối chiếu với công an khu vực; `includeSensitive=true` mới hiện đầy đủ số giấy tờ (audit) |
-| E2 | Tiền phòng tháng | propertyIds[], billingMonth, `statuses` (mặc định Finalized), layout | Khu, Phòng, Số phiếu, Người đại diện, Kỳ, Tiền phòng (gốc / thực thu tháng), **một cột cho mỗi khoản thu** (động theo danh mục của các khu được chọn, gộp theo tên), Chỉ số điện cũ/mới/sản lượng, Chỉ số nước cũ/mới/sản lượng, Điều chỉnh, Tổng, Đã thu, Còn nợ, Hạn, Trạng thái | Hàng tổng cuối mỗi sheet bằng **công thức SUM**; số tiền định dạng `#,##0` |
-| E3 | Thông tin phòng | propertyIds[], asOfDate | Khu, Phòng, Tầng, Diện tích, Sức chứa, Giá niêm yết, Trạng thái (dẫn xuất), Nhóm phòng, Số HĐ hiện hành, Người đại diện, Giá thuê HĐ, Ngày bắt đầu/hết hạn, Số người ở, Tiền cọc đang giữ, Khoản thu đăng ký (giữ xe ×2…) | |
-| E4 | Công nợ | propertyIds[], asOfDate | Khu, Phòng, Người đại diện, SĐT, Số phiếu nợ, Tổng nợ, Nợ quá hạn, Ngày quá hạn lâu nhất | |
-| E5 ⏸ | Danh sách cọc | propertyIds[] | Theo HĐ: phòng, người đứng tên, cọc thỏa thuận, trạng thái (đang giữ / đã hoàn ngày … số tiền / đã chuyển) — M08 PM-BR-32 | |
-| E6 (P2) | Doanh thu năm / tháng | year, month, khu | **Định nghĩa (chốt 10/10/2026)** — 2 con số: (1) **Doanh thu** = tiền phòng + điện nước + dịch vụ + **phụ thu** − giảm trừ − **hoàn trả**, chỉ tính phần **đã thu** (phân bổ từ phiếu thu tiền thật `kind = Receipt`), **không** tính phần bỏ nợ (`WriteOff`). (2) **Tiền thực nhận trong kỳ** = phiếu thu `Receipt` theo ngày thu + **phụ thu đã thu ngay** (khoản phát sinh `is_settled`, theo `settled_on`) − tiền hoàn trả đã xác nhận (theo `refunded_on`) − **bù đã trả ngay** (M07 BL-BR-37). Doanh thu (1) cũng cộng phụ thu đã thu ngay và trừ bù đã trả ngay. Tiền cọc **không** vào doanh thu (chỉ theo dõi — M08 PM-BR-32); ghi chú ngưỡng 500 triệu (L12) | Không tính thuế; định nghĩa cần kế toán xác nhận |
-| E7 (P2) | Đối chiếu điện | propertyId, billingMonth, evnBillAmount, evnKwh | Σ kWh & Σ tiền điện thu các phòng vs hóa đơn EVN → cảnh báo nếu thu > hóa đơn (L9) | |
+| E2 (chưa code) | Tiền phòng tháng | propertyIds[], billingMonth, `statuses` (mặc định Finalized), layout | Khu, Phòng, Số phiếu, Người đại diện, Kỳ, Tiền phòng (gốc / thực thu tháng), **một cột cho mỗi khoản thu** (động theo danh mục của các khu được chọn, gộp theo tên), Chỉ số điện cũ/mới/sản lượng, Chỉ số nước cũ/mới/sản lượng, Phụ thu, Giảm trừ / bù, Hoàn trả, Làm tròn, Tổng, Đã thu, Bỏ nợ, Còn nợ, Hạn, Trạng thái; khoản phát sinh **đã thanh toán ngay** ghi cột riêng (không nằm trong Tổng — BL-BR-33) | Hàng tổng cuối mỗi sheet bằng **công thức SUM**; số tiền định dạng `#,##0` |
+| E3 (chưa code) | Thông tin phòng | propertyIds[], asOfDate | Khu, Phòng, Tầng, Diện tích, Sức chứa, Giá niêm yết, Trạng thái (dẫn xuất), Nhóm phòng, Số HĐ hiện hành, Người đại diện, Giá thuê HĐ, Ngày bắt đầu/hết hạn, Số người ở, Tiền cọc thỏa thuận + trạng thái cọc, Khoản dịch vụ đăng ký (giữ xe ×2…) | |
+| E4 (chưa code) | Công nợ | propertyIds[], asOfDate | Khu, Phòng, Người đại diện, SĐT, Số phiếu nợ, Tổng nợ, Nợ quá hạn, Ngày quá hạn lâu nhất | |
+| E5 (chưa code) | Danh sách cọc | propertyIds[] | Theo HĐ: phòng, người đứng tên, cọc thỏa thuận, trạng thái (đang giữ / đã hoàn ngày … số tiền / đã chuyển) — M08 PM-BR-32 | |
+| E6 (P2 — chưa code) | Doanh thu năm / tháng | year, month, khu | **Định nghĩa (chốt 10/10/2026)** — 2 con số: (1) **Doanh thu** = tiền phòng + điện nước + dịch vụ + **phụ thu** − giảm trừ − **hoàn trả**, chỉ tính phần **đã thu** (phân bổ từ phiếu thu tiền thật `kind = Receipt`), **không** tính phần bỏ nợ (`WriteOff`). (2) **Tiền thực nhận trong kỳ** = phiếu thu `Receipt` theo ngày thu + **phụ thu đã thu ngay** (khoản phát sinh `is_settled`, theo `settled_on`) − tiền hoàn trả đã xác nhận (theo `refunded_on`) − **bù đã trả ngay** (M07 BL-BR-37). Doanh thu (1) cũng cộng phụ thu đã thu ngay và trừ bù đã trả ngay. Tiền cọc **không** vào doanh thu (chỉ theo dõi — M08 PM-BR-32); ghi chú ngưỡng 500 triệu (L12) | Không tính thuế; định nghĩa cần kế toán xác nhận |
+| E7 (P2 — chưa code) | Đối chiếu điện | propertyId, billingMonth, evnBillAmount, evnKwh | Σ kWh & Σ tiền điện thu các phòng vs hóa đơn EVN → cảnh báo nếu thu > hóa đơn (L9) | |
 
 ## 3. Quy tắc nghiệp vụ
 
@@ -50,7 +51,7 @@ Application/Reporting/
 ```
 | Use case | Loại |
 |----------|------|
-| `ExportRentersQuery` (E1), `ExportMonthlyInvoicesQuery` (E2), `ExportRoomsQuery` (E3), `ExportDebtsQuery` (E4), `ExportDepositLedgerQuery` (E5) | Qry → Stream |
+| `ExportRentersQuery` (E1), `ExportMonthlyInvoicesQuery` (E2), `ExportRoomsQuery` (E3), `ExportDebtsQuery` (E4), `ExportDepositsQuery` (E5) | Qry → Stream |
 | `GetDashboardQuery` (P2): tỷ lệ lấp đầy, phải thu/đã thu tháng, nợ quá hạn, HĐ sắp hết hạn, cư trú cần xử lý | Qry |
 | `ListRemindersQuery` (P2) | Qry |
 
@@ -58,11 +59,11 @@ Application/Reporting/
 
 | Method | Route | Response |
 |--------|-------|----------|
-| POST | `/exports/renters` | `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet` |
-| POST | `/exports/monthly-invoices` | xlsx |
-| POST | `/exports/rooms` | xlsx |
-| POST | `/exports/debts` | xlsx |
-| POST | `/exports/deposit-ledger` | xlsx |
+| POST | `/exports/renters` ✅ | `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet` |
+| POST | `/exports/monthly-invoices` (chưa code) | xlsx |
+| POST | `/exports/rooms` (chưa code) | xlsx |
+| POST | `/exports/debts` (chưa code) | xlsx |
+| POST | `/exports/deposits` (chưa code) | xlsx |
 | GET | `/dashboard?propertyIds=` (P2) | JSON |
 | GET | `/reminders?propertyIds=&types=` (P2) | JSON |
 
@@ -87,17 +88,6 @@ Số liệu nhất quán (RP-BR-09); dùng snapshot phiếu (RP-BR-04); cột kh
 - Formula injection: tên người thuê `=HYPERLINK(...)` → ô là text.
 - Nhiều khu, khoản thu khác nhau → cột động đúng; khu org khác → 404; che số giấy tờ mặc định; audit khi includeSensitive.
 - Hiệu năng: 5.000 phòng / 20.000 dòng < 10s, bộ nhớ < 300MB.
-
-## 14. Task
-
-| ID | Task | Ước lượng |
-|----|------|-----------|
-| RP-01 ✅ | `ISpreadsheetWriter` (ClosedXML 0.105) + chống công thức + tên sheet + style chung | 1d |
-| RP-02 | E1 ✅ (lọc khu / tầng / nhóm phòng / phòng / khoảng ngày; chia sheet theo khu / tầng), E3 | 1.5d |
-| RP-03 | E2 (cột động) | 1.5d |
-| RP-04 | E4, E5 | 1d |
-| RP-05 | Tests | 1d |
-| RP-06 (P2) | Dashboard, reminders, E6, E7, export job | 4d |
 
 ## 15. Câu hỏi mở
 | # | Câu hỏi | Đề xuất |

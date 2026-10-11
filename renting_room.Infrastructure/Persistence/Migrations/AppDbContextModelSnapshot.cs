@@ -538,6 +538,14 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(200)")
                         .HasColumnName("description");
 
+                    b.Property<Guid?>("EndReadingId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("end_reading_id");
+
+                    b.Property<Guid?>("FeeTypeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("fee_type_id");
+
                     b.Property<DateOnly>("IncurredOn")
                         .HasColumnType("date")
                         .HasColumnName("incurred_on");
@@ -556,6 +564,10 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(10)")
                         .HasColumnName("kind");
 
+                    b.Property<Guid?>("MeterId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("meter_id");
+
                     b.Property<Guid>("OrganizationId")
                         .HasColumnType("uuid")
                         .HasColumnName("organization_id");
@@ -563,6 +575,10 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("PropertyId")
                         .HasColumnType("uuid")
                         .HasColumnName("property_id");
+
+                    b.Property<decimal?>("Quantity")
+                        .HasColumnType("numeric(12,2)")
+                        .HasColumnName("quantity");
 
                     b.Property<string>("Reason")
                         .IsRequired()
@@ -582,6 +598,14 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                     b.Property<DateOnly?>("SettledOn")
                         .HasColumnType("date")
                         .HasColumnName("settled_on");
+
+                    b.Property<Guid?>("StartReadingId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("start_reading_id");
+
+                    b.Property<decimal?>("UnitPrice")
+                        .HasColumnType("numeric(18,2)")
+                        .HasColumnName("unit_price");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
@@ -603,6 +627,10 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                     b.HasIndex("InvoiceId")
                         .HasDatabaseName("ix_room_charges_invoice_id");
 
+                    b.HasIndex("MeterId")
+                        .HasDatabaseName("ix_room_charges_meter_closing")
+                        .HasFilter("meter_id IS NOT NULL AND cancelled_at IS NULL");
+
                     b.HasIndex("RoomId")
                         .HasDatabaseName("ix_room_charges_room_id");
 
@@ -621,6 +649,8 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                             t.HasCheckConstraint("ck_room_charges_amount", "amount > 0");
 
                             t.HasCheckConstraint("ck_room_charges_cancelled", "cancelled_at IS NULL OR (cancel_reason IS NOT NULL AND invoice_id IS NULL)");
+
+                            t.HasCheckConstraint("ck_room_charges_meter_closing", "meter_id IS NULL OR (start_reading_id IS NOT NULL AND end_reading_id IS NOT NULL AND fee_type_id IS NOT NULL AND quantity IS NOT NULL AND unit_price IS NOT NULL)");
 
                             t.HasCheckConstraint("ck_room_charges_settled", "NOT is_settled OR (settled_on IS NOT NULL AND settled_method IS NOT NULL)");
                         });
@@ -794,6 +824,10 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("RepresentativeRenterId")
                         .HasColumnType("uuid")
                         .HasColumnName("representative_renter_id");
+
+                    b.Property<DateOnly?>("RepresentativeSince")
+                        .HasColumnType("date")
+                        .HasColumnName("representative_since");
 
                     b.Property<Guid>("RoomId")
                         .HasColumnType("uuid")
@@ -1147,6 +1181,14 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("renter_id");
 
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasDefaultValue("Resident")
+                        .HasColumnName("role");
+
                     b.Property<DateTimeOffset?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");
@@ -1243,6 +1285,69 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                     b.ToTable("contract_rent_terms", null, t =>
                         {
                             t.HasCheckConstraint("ck_contract_rent_terms_positive", "monthly_rent > 0");
+                        });
+                });
+
+            modelBuilder.Entity("renting_room.Domain.Contracts.ContractRepresentative", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("ContractId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("contract_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<DateOnly>("FromDate")
+                        .HasColumnType("date")
+                        .HasColumnName("from_date");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("organization_id");
+
+                    b.Property<Guid>("RenterId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("renter_id");
+
+                    b.Property<DateOnly>("ToDate")
+                        .HasColumnType("date")
+                        .HasColumnName("to_date");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_contract_representatives");
+
+                    b.HasIndex("OrganizationId", "ContractId")
+                        .HasDatabaseName("ix_contract_representatives_organization_id_contract_id");
+
+                    b.HasIndex("OrganizationId", "RenterId")
+                        .HasDatabaseName("ix_contract_representatives_renter");
+
+                    b.ToTable("contract_representatives", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_contract_representatives_dates", "to_date >= from_date");
                         });
                 });
 
@@ -2189,12 +2294,12 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("ix_meter_readings_order")
                         .HasFilter("voided_at IS NULL");
 
-                    b.HasIndex(new[] { "MeterId", "ContractId" }, "ux_meter_readings_final")
+                    b.HasIndex(new[] { "MeterId", "ContractId", "ReadingDate" }, "ux_meter_readings_final")
                         .IsUnique()
                         .HasDatabaseName("ux_meter_readings_final")
                         .HasFilter("kind = 'Final' AND voided_at IS NULL");
 
-                    b.HasIndex(new[] { "MeterId", "ContractId" }, "ux_meter_readings_handover")
+                    b.HasIndex(new[] { "MeterId", "ContractId", "ReadingDate" }, "ux_meter_readings_handover")
                         .IsUnique()
                         .HasDatabaseName("ux_meter_readings_handover")
                         .HasFilter("kind = 'Handover' AND voided_at IS NULL");
@@ -3382,6 +3487,25 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                         .HasConstraintName("fk_contract_rent_terms_contracts_organization_id_contract_id");
                 });
 
+            modelBuilder.Entity("renting_room.Domain.Contracts.ContractRepresentative", b =>
+                {
+                    b.HasOne("renting_room.Domain.Contracts.Contract", null)
+                        .WithMany("RepresentativeHistory")
+                        .HasForeignKey("OrganizationId", "ContractId")
+                        .HasPrincipalKey("OrganizationId", "Id")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_contract_representatives_contracts_organization_id_contract");
+
+                    b.HasOne("renting_room.Domain.Renters.Renter", null)
+                        .WithMany()
+                        .HasForeignKey("OrganizationId", "RenterId")
+                        .HasPrincipalKey("OrganizationId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_contract_representatives_renters_organization_id_renter_id");
+                });
+
             modelBuilder.Entity("renting_room.Domain.Contracts.ContractRoomMove", b =>
                 {
                     b.HasOne("renting_room.Domain.Properties.Room", null)
@@ -3596,6 +3720,8 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                     b.Navigation("Occupants");
 
                     b.Navigation("RentTerms");
+
+                    b.Navigation("RepresentativeHistory");
 
                     b.Navigation("RoomMoves");
 

@@ -158,7 +158,7 @@ Vượt giới hạn → **429 `TOO_MANY_REQUESTS`** + header `Retry-After` (gi�
 | `PaymentKind` | `Receipt` Tiền thu · `WriteOff` Bỏ nợ |
 | `DebtSettlement` | `CollectAll` Đã thu toàn bộ · `WriteOff` Bỏ nợ |
 | `ReadingKind` | `Initial` Lắp công tơ · `Handover` Nhận phòng · `Periodic` Cuối kỳ · `Adhoc` Kiểm tra · `Final` Cuối hợp đồng · `Removal` Tháo công tơ |
-| `ContractFlag` | `RepresentativeMovedOut` Người ký đã rời đi · `NoOccupantLeft` Không còn người ở · `ExpiredAwaitingDecision` Quá hạn — chờ quyết định · `Holdover` Ở tiếp chưa ký lại |
+| `ContractFlag` | `RepresentativeMovedOut` Người ký đã rời đi · `NoOccupantLeft` Không còn người ở · `ExpiredAwaitingDecision` Quá hạn — đang ở tiếp, nên ký phụ lục · `Holdover` Ở tiếp chưa ký lại |
 
 ## Dữ liệu cá nhân
 

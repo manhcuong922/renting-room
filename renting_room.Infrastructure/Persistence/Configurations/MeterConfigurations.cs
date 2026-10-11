@@ -73,13 +73,14 @@ internal sealed class MeterReadingConfiguration : IEntityTypeConfiguration<Meter
         builder.Property(r => r.Note).HasMaxLength(300);
         builder.Property(r => r.VoidReason).HasMaxLength(300);
 
-        // MT-BR-04: mỗi công tơ 1 chỉ số lắp / tháo; mỗi (công tơ, HĐ) 1 chỉ số nhận phòng / cuối; mỗi kỳ 1 chỉ số định kỳ.
+        // MT-BR-04: mỗi công tơ 1 chỉ số lắp / tháo; mỗi (công tơ, HĐ, ngày ghi) 1 chỉ số nhận phòng / cuối — HĐ rời phòng rồi quay lại
+        // có thêm chỉ số của lần ở mới; mỗi kỳ 1 chỉ số định kỳ.
         // Nhiều index cùng cột ⇒ phải đặt tên ngay khi khai báo (EF gộp index trùng cột nếu không đặt tên).
         builder.HasIndex(r => r.MeterId, "ux_meter_readings_initial").HasDatabaseName("ux_meter_readings_initial").IsUnique().HasFilter("kind = 'Initial' AND voided_at IS NULL");
         builder.HasIndex(r => r.MeterId, "ux_meter_readings_removal").HasDatabaseName("ux_meter_readings_removal").IsUnique().HasFilter("kind = 'Removal' AND voided_at IS NULL");
-        builder.HasIndex(r => new { r.MeterId, r.ContractId }, DbConstraints.HandoverReadingUnique).HasDatabaseName(DbConstraints.HandoverReadingUnique).IsUnique()
+        builder.HasIndex(r => new { r.MeterId, r.ContractId, r.ReadingDate }, DbConstraints.HandoverReadingUnique).HasDatabaseName(DbConstraints.HandoverReadingUnique).IsUnique()
             .HasFilter("kind = 'Handover' AND voided_at IS NULL");
-        builder.HasIndex(r => new { r.MeterId, r.ContractId }, "ux_meter_readings_final").HasDatabaseName("ux_meter_readings_final").IsUnique()
+        builder.HasIndex(r => new { r.MeterId, r.ContractId, r.ReadingDate }, DbConstraints.FinalReadingUnique).HasDatabaseName(DbConstraints.FinalReadingUnique).IsUnique()
             .HasFilter("kind = 'Final' AND voided_at IS NULL");
         builder.HasIndex(r => new { r.MeterId, r.ContractId, r.ClosingPeriodStart }, "ux_meter_readings_periodic").HasDatabaseName("ux_meter_readings_periodic").IsUnique()
             .HasFilter("kind = 'Periodic' AND voided_at IS NULL");

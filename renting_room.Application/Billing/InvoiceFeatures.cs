@@ -68,10 +68,15 @@ public sealed record InvoiceLineDto(
 /// <summary>F1 (PM-UC-18): phiếu kỳ trước của cùng HĐ còn nợ — chỉ hiển thị, không cộng vào phiếu.</summary>
 public sealed record PreviousDebtDto(Guid InvoiceId, string? InvoiceNo, string BillingMonth, DateOnly? DueDate, decimal Outstanding);
 
+/// <summary>PM-BR-31: phiếu còn nợ của HĐ đứng trước trong chuỗi ký lại — chỉ hiển thị, thu tiền ghi trên HĐ đó.</summary>
+public sealed record PreviousContractDebtDto(
+    Guid ContractId, string ContractNo, Guid InvoiceId, string? InvoiceNo, string BillingMonth, DateOnly? DueDate, decimal Outstanding);
+
 /// <param name="RefundTotal">Σ dòng hoàn trả (≤ 0).</param>
 /// <param name="RefundedOn">Ngày chủ trọ xác nhận đã trả lại người thuê phần tổng âm (BL-BR-27).</param>
 /// <param name="PreviousDebts">F1: "Nợ các kỳ trước" — chỉ có ở <c>GET /invoices/{id}</c>.</param>
 /// <param name="TotalDue">F1: "Tổng cần thanh toán" = còn phải trả của phiếu này (nháp: tổng phiếu) + nợ các kỳ trước.</param>
+/// <param name="PreviousContractDebts">Nợ của HĐ trước khi ký lại (PM-BR-31) — danh sách riêng, <b>không</b> cộng vào <paramref name="TotalDue"/>.</param>
 public sealed record InvoiceDetailDto(
     InvoiceSummaryDto Summary,
     decimal Subtotal,
@@ -88,7 +93,9 @@ public sealed record InvoiceDetailDto(
     DateTimeOffset? VoidedAt,
     string? VoidReason,
     IReadOnlyList<PreviousDebtDto>? PreviousDebts = null,
-    decimal? TotalDue = null);
+    decimal? TotalDue = null,
+    IReadOnlyList<PreviousContractDebtDto>? PreviousContractDebts = null,
+    decimal PreviousContractDue = 0);
 
 internal static class InvoiceMapping
 {
@@ -212,10 +219,40 @@ public sealed class GetInvoiceHandler(IAppDbContext db, TimeProvider clock) : IR
             .ToListAsync(cancellationToken);
         var previous = debts.Select(d => new PreviousDebtDto(d.Id, d.InvoiceNo, $"{d.BillingMonth:yyyy-MM}", d.DueDate, d.Outstanding)).ToList();
         var own = invoice.Status == InvoiceStatus.Draft ? Math.Max(invoice.TotalAmount, 0) : invoice.Outstanding;
+        var earlier = await PreviousContractDebtsAsync(invoice.ContractId, cancellationToken);
         return invoice.ToDetail(clock.GetUtcNow().ToBusinessDate()) with
         {
-            PreviousDebts = previous, TotalDue = own + previous.Sum(d => d.Outstanding)
+            PreviousDebts = previous, TotalDue = own + previous.Sum(d => d.Outstanding),
+            PreviousContractDebts = earlier, PreviousContractDue = earlier.Sum(d => d.Outstanding)
         };
+    }
+
+    private const int MaxContractChain = 10;
+
+    /// <summary>PM-BR-31: đi ngược chuỗi <c>previous_contract_id</c> (ký lại — CT-UC-21), lấy phiếu đã chốt còn nợ của các HĐ đó.</summary>
+    private async Task<IReadOnlyList<PreviousContractDebtDto>> PreviousContractDebtsAsync(Guid contractId, CancellationToken ct)
+    {
+        var numbers = new Dictionary<Guid, string>();
+        var cursor = await db.Contracts.Where(c => c.Id == contractId).Select(c => c.PreviousContractId).FirstOrDefaultAsync(ct);
+        while (cursor is { } id && numbers.Count < MaxContractChain && !numbers.ContainsKey(id))
+        {
+            var earlier = await db.Contracts.Where(c => c.Id == id).Select(c => new { c.ContractNo, c.PreviousContractId }).FirstOrDefaultAsync(ct);
+            if (earlier is null)
+                break;
+            numbers[id] = earlier.ContractNo;
+            cursor = earlier.PreviousContractId;
+        }
+        if (numbers.Count == 0)
+            return [];
+
+        var ids = numbers.Keys.ToList();
+        var debts = await db.Invoices.AsNoTracking()
+            .Where(i => ids.Contains(i.ContractId) && i.Status == InvoiceStatus.Finalized && i.PaidAmount < i.TotalAmount)
+            .OrderBy(i => i.DueDate).ThenBy(i => i.PeriodStart)
+            .Select(i => new { i.ContractId, i.Id, i.InvoiceNo, i.BillingMonth, i.DueDate, Outstanding = i.TotalAmount - i.PaidAmount })
+            .ToListAsync(ct);
+        return debts.Select(d => new PreviousContractDebtDto(
+            d.ContractId, numbers[d.ContractId], d.Id, d.InvoiceNo, $"{d.BillingMonth:yyyy-MM}", d.DueDate, d.Outstanding)).ToList();
     }
 }
 
@@ -243,12 +280,19 @@ public sealed class EditInvoiceLineHandler(IAppDbContext db, TimeProvider clock)
     public async ValueTask<Result<InvoiceDetailDto>> Handle(EditInvoiceLineCommand request, CancellationToken cancellationToken) =>
         await InvoiceAccess.MutateAsync(db, request.InvoiceId, clock.GetUtcNow().ToBusinessDate(), async invoice =>
         {
+            if (await IsSystemChargeLineAsync(db, invoice, request.LineId, cancellationToken))
+                return Result.Failure(RoomChargeErrors.System);
             var edited = invoice.EditLine(request.LineId, request.Quantity, request.UnitPrice, request.Amount, request.Note);
             // BL-BR-34: sửa dòng phụ thu / giảm trừ trên nháp ⇒ sửa khoản phát sinh của phòng.
             if (edited.IsSuccess && invoice.Lines.First(l => l.Id == request.LineId) is { RoomChargeId: { } chargeId } line)
                 (await db.RoomCharges.FirstAsync(c => c.Id == chargeId, cancellationToken)).Update(Math.Abs(line.Amount), line.Note!);
             return edited;
         }, cancellationToken);
+
+    /// <summary>BL-BR-38: dòng của khoản chốt điện nước khi chuyển phòng — không sửa / xóa tay.</summary>
+    internal static async Task<bool> IsSystemChargeLineAsync(IAppDbContext db, Invoice invoice, Guid lineId, CancellationToken ct) =>
+        invoice.Lines.FirstOrDefault(l => l.Id == lineId)?.RoomChargeId is { } chargeId
+        && await db.RoomCharges.AnyAsync(c => c.Id == chargeId && c.MeterId != null, ct);
 }
 
 /// <summary>Dòng hệ thống ⇒ bỏ sửa tay (về số hệ thống); phụ thu / giảm tay ⇒ xóa dòng.</summary>
@@ -259,6 +303,8 @@ public sealed class ResetInvoiceLineHandler(IAppDbContext db, TimeProvider clock
     public async ValueTask<Result<InvoiceDetailDto>> Handle(ResetInvoiceLineCommand request, CancellationToken cancellationToken) =>
         await InvoiceAccess.MutateAsync(db, request.InvoiceId, clock.GetUtcNow().ToBusinessDate(), async invoice =>
         {
+            if (await EditInvoiceLineHandler.IsSystemChargeLineAsync(db, invoice, request.LineId, cancellationToken))
+                return Result.Failure(RoomChargeErrors.System);
             var chargeId = invoice.Lines.FirstOrDefault(l => l.Id == request.LineId)?.RoomChargeId;
             var reset = invoice.ResetLine(request.LineId);
             // BL-BR-34: xóa dòng phụ thu / giảm trừ trên nháp = hủy khoản phát sinh của phòng.

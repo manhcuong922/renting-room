@@ -25,7 +25,15 @@ public static class ContractErrors
     public static readonly Error TransferInvalidDate = Error.Validation("ROOM_TRANSFER_INVALID_DATE",
         "Ngày chuyển phải sau ngày vào phòng hiện tại và không ở tương lai.");
     public static readonly Error TransferAlreadyBilled = Error.BusinessRule("ROOM_TRANSFER_ALREADY_BILLED",
-        "Điện nước phòng cũ đã lập phiếu tới sau ngày chuyển — hủy phiếu đó trước.");
+        "Điện nước phòng cũ đã ghi chỉ số / lập phiếu tới sau ngày chuyển — hủy phiếu đó trước hoặc chọn ngày chuyển muộn hơn.");
+    public static readonly Error TransferPriceMissing = Error.BusinessRule("ROOM_TRANSFER_PRICE_MISSING",
+        "Khoản điện nước của phòng cũ chưa có giá tại ngày chuyển — thêm giá trước khi chuyển phòng.");
+    public static readonly Error TransferUsageTooLarge = Error.Validation("ROOM_TRANSFER_USAGE_TOO_LARGE",
+        "Tiền điện nước phòng cũ tính ra quá lớn — kiểm tra lại chỉ số cuối.");
+    public static readonly Error TransferNothingToCancel = Error.BusinessRule("ROOM_TRANSFER_NOTHING_TO_CANCEL",
+        "Hợp đồng chưa chuyển phòng lần nào.");
+    public static readonly Error TransferCancelBilled = Error.BusinessRule("ROOM_TRANSFER_CANCEL_BILLED",
+        "Lần chuyển phòng đã có phiếu (khoản chốt điện nước đã vào phiếu đã chốt, hoặc đã lập phiếu ở phòng mới) — hủy / xóa phiếu đó trước.");
 
     public static readonly Error RoomUnavailable = Error.BusinessRule("ROOM_UNAVAILABLE", "Phòng đã ngừng sử dụng hoặc đang bảo trì.");
     public static readonly Error RoomPeriodOverlap = Error.Conflict("ROOM_PERIOD_OVERLAP",
@@ -59,8 +67,6 @@ public static class ContractErrors
         "Người này đã được ghi nhận chuyển đi — muốn ở lại thì thêm lại như người ở mới.");
     public static readonly Error DepositTooHigh = Error.Validation("DEPOSIT_TOO_HIGH",
         "Tiền cọc tối đa 12 tháng tiền thuê — kiểm tra lại số tiền (có thể thừa số 0).");
-    public static readonly Error ExpiredExtendFirst = Error.BusinessRule("CONTRACT_EXPIRED_EXTEND_FIRST",
-        "Ngày vào ở sau ngày hết hạn hợp đồng — gia hạn hợp đồng (phụ lục) trước khi thêm người ở.");
     public static readonly Error VehicleOwnerNotInContract = Error.BusinessRule("VEHICLE_OWNER_NOT_IN_CONTRACT",
         "Có xe đăng ký cho người không còn thuộc hợp đồng — kết thúc đăng ký xe đó trước.");
     public static readonly Error HouseholdHeadNotOccupant = Error.Validation("HOUSEHOLD_HEAD_NOT_OCCUPANT",
@@ -70,6 +76,20 @@ public static class ContractErrors
     public static readonly Error FeeLaterChangeExists = Error.Conflict("CONTRACT_FEE_LATER_CHANGE_EXISTS",
         "Khoản thu đã có thay đổi từ kỳ sau — sửa / gỡ thay đổi đó trước.");
     public static readonly Error OccupantNotFound = Error.NotFound("OCCUPANT_NOT_FOUND", "Không tìm thấy người ở trong hợp đồng.");
+    public static readonly Error CoTenantIdRequired = Error.BusinessRule("CO_TENANT_ID_REQUIRED",
+        "Người đồng thuê có tên trên hợp đồng nên phải có số giấy tờ — bổ sung ở hồ sơ người thuê.");
+    public static readonly Error OccupantIsRepresentative = Error.BusinessRule("OCCUPANT_IS_REPRESENTATIVE",
+        "Người này đang đứng tên hợp đồng — không đặt vai trò người ở / đồng thuê.");
+    public static readonly Error RepresentativeUnchanged = Error.BusinessRule("REPRESENTATIVE_UNCHANGED",
+        "Người này đang là người đứng tên hợp đồng.");
+    public static readonly Error RepresentativeInvalidDate = Error.Validation("REPRESENTATIVE_INVALID_DATE",
+        "Ngày đổi người đứng tên không ở tương lai và không trước ngày người hiện tại bắt đầu đứng tên.");
+    public static readonly Error MoveSameContract = Error.Validation("MOVE_SAME_CONTRACT", "Hợp đồng đích trùng hợp đồng hiện tại.");
+
+    public static Error RepresentativeIsResidentElsewhere(string name, string roomCode, string contractNo) =>
+        Error.Conflict("REPRESENTATIVE_IS_RESIDENT_ELSEWHERE",
+            $"{name} đang là người ở (không đứng tên) của phòng {roomCode} (hợp đồng {contractNo}) nên không đứng tên hợp đồng khác cùng lúc — "
+            + "đổi thành đồng thuê / người đứng tên ở hợp đồng đó, hoặc ghi nhận chuyển đi trước.");
     public static readonly Error DateOutsideContract = Error.BusinessRule("DATE_OUTSIDE_CONTRACT", "Ngày nằm ngoài thời gian hợp đồng.");
 
     public static readonly Error NotPeriodStart = Error.BusinessRule("NOT_PERIOD_START",

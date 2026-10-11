@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Common.Models;
 using renting_room.Application.Common.Validation;
+using renting_room.Application.Rooms;
 using renting_room.Domain.Billing;
 using renting_room.Domain.Common;
 using renting_room.Domain.Contracts;
@@ -226,6 +227,8 @@ public sealed class ListPropertiesHandler(IAppDbContext db, TimeProvider clock)
         }
 
         var total = await query.CountAsync(cancellationToken);
+        // PR-BR-02: số phòng đang thuê đếm cùng điều kiện với trạng thái phòng (ngày chuyển phòng, ngày trả phòng vẫn tính).
+        var occupied = db.OccupiedRoomIds(today);
         var rows = await query
             .OrderBy(p => p.Code)
             .Skip((request.Page - 1) * request.PageSize)
@@ -234,11 +237,7 @@ public sealed class ListPropertiesHandler(IAppDbContext db, TimeProvider clock)
             {
                 Property = p,
                 RoomCount = db.Rooms.Count(r => r.PropertyId == p.Id && r.ArchivedAt == null),
-                OccupiedRoomCount = db.Contracts
-                    .Where(c => c.PropertyId == p.Id
-                        && (c.Status == ContractStatus.Active || c.Status == ContractStatus.Liquidating)
-                        && c.StartDate <= today && (c.ActualEndDate == null || c.ActualEndDate >= today))
-                    .Select(c => c.RoomId).Distinct().Count()
+                OccupiedRoomCount = db.Rooms.Count(r => r.PropertyId == p.Id && occupied.Contains(r.Id))
             })
             .ToListAsync(cancellationToken);
 

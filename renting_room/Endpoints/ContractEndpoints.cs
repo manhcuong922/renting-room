@@ -23,7 +23,15 @@ public sealed record ChangeContractFeeRequest(decimal? Quantity, decimal? UnitPr
 
 public sealed record AddOccupantRequest(
     Guid RenterId, DateOnly MoveInDate, DateOnly? ExpectedEndDate, string? Relationship, string? Note,
-    OccupantRelationship? RelationshipType = null, bool? GuardianConsent = null);
+    OccupantRelationship? RelationshipType = null, bool? GuardianConsent = null, OccupantRole? Role = null);
+
+public sealed record ChangeOccupantRoleRequest(OccupantRole Role);
+
+public sealed record ChangeRepresentativeRequest(Guid RenterId, DateOnly Date, Guid? HouseholdHeadRenterId = null, bool? OldRepresentativeMovesOut = null);
+
+public sealed record MoveOccupantRequest(
+    Guid ToContractId, DateOnly Date, OccupantRole? Role = null, OccupantRelationship? RelationshipType = null, string? Relationship = null,
+    bool? GuardianConsent = null, string? Note = null);
 
 public sealed record EndOccupancyRequest(DateOnly MoveOutDate);
 
@@ -44,7 +52,7 @@ public sealed record RefundDepositRequest(DateOnly RefundedOn, decimal? Amount, 
 
 public sealed record TransferRoomRequest(
     Guid ToRoomId, DateOnly Date, IReadOnlyList<MeterReadingInput>? OldRoomReadings, IReadOnlyList<MeterReadingInput>? NewRoomReadings,
-    decimal? MonthlyRent, string? Note);
+    decimal? MonthlyRent, string? Note, TransferRentFrom? RentFrom = null, IReadOnlyList<Guid>? RemoveFeeTypeIds = null);
 
 public sealed record ResignContractRequest(DateOnly HandoverDate, Guid RepresentativeRenterId, DateOnly? EndDate, bool? TransferDeposit);
 
@@ -135,8 +143,19 @@ public static class ContractEndpoints
         // ---- Người ở
         group.MapPost("/{id:guid}/occupants", async (Guid id, AddOccupantRequest b, ISender sender, CancellationToken ct) =>
                 (await sender.Send(new AddOccupantCommand(id, b.RenterId, b.MoveInDate, b.ExpectedEndDate, b.Relationship, b.Note,
-                    b.RelationshipType, b.GuardianConsent ?? false), ct)).ToHttp())
-            .WithSummary("Thêm người ở");
+                    b.RelationshipType, b.GuardianConsent ?? false, b.Role ?? OccupantRole.Resident), ct)).ToHttp())
+            .WithSummary("Thêm người ở (vai trò: người ở / đồng thuê)");
+        group.MapPut("/{id:guid}/occupants/{occupantId:guid}/role", async (Guid id, Guid occupantId, ChangeOccupantRoleRequest b, ISender sender, CancellationToken ct) =>
+                (await sender.Send(new ChangeOccupantRoleCommand(id, occupantId, b.Role), ct)).ToHttp())
+            .WithSummary("Đổi vai trò người ở ↔ đồng thuê (đồng thuê chỉ mang tính giấy tờ, phải có giấy tờ)");
+        group.MapPost("/{id:guid}/occupants/{occupantId:guid}/move", async (Guid id, Guid occupantId, MoveOccupantRequest b, ISender sender, CancellationToken ct) =>
+                (await sender.Send(new MoveOccupantCommand(id, occupantId, b.ToContractId, b.Date, b.Role ?? OccupantRole.Resident, b.RelationshipType,
+                    b.Relationship, b.GuardianConsent ?? false, b.Note), ct)).ToHttp())
+            .WithSummary("Chuyển người sang hợp đồng đang hiệu lực của phòng khác (xe của người đó chuyển theo)");
+        group.MapPost("/{id:guid}/representative", async (Guid id, ChangeRepresentativeRequest b, ISender sender, CancellationToken ct) =>
+                (await sender.Send(new ChangeRepresentativeCommand(id, b.RenterId, b.Date, b.HouseholdHeadRenterId, b.OldRepresentativeMovesOut ?? false), ct))
+                .ToHttp())
+            .WithSummary("Đổi người đứng tên trên cùng hợp đồng (nợ, cọc giữ nguyên; bản ký về Thiếu tài liệu)");
         group.MapPost("/{id:guid}/occupants/{occupantId:guid}/end", async (Guid id, Guid occupantId, EndOccupancyRequest b, ISender sender, CancellationToken ct) =>
                 (await sender.Send(new EndOccupancyCommand(id, occupantId, b.MoveOutDate), ct)).ToHttp())
             .WithSummary("Ghi nhận người ở rời đi");
@@ -159,11 +178,18 @@ public static class ContractEndpoints
             .WithSummary("Bỏ đánh dấu hoàn trả / chuyển cọc (nhập nhầm)");
         group.MapPost("/{id:guid}/transfer-room", async (Guid id, TransferRoomRequest b, ISender sender, CancellationToken ct) =>
             {
-                var result = await sender.Send(new TransferRoomCommand(id, b.ToRoomId, b.Date, b.OldRoomReadings, b.NewRoomReadings, b.MonthlyRent, b.Note), ct);
+                var result = await sender.Send(new TransferRoomCommand(id, b.ToRoomId, b.Date, b.OldRoomReadings, b.NewRoomReadings, b.MonthlyRent, b.Note, b.RentFrom,
+                    b.RemoveFeeTypeIds), ct);
                 return result.IsSuccess ? Results.Ok(new { warnings = result.Value }) : result.ToHttp();
             })
             .WithIdempotency(required: true)
-            .WithSummary("Chuyển phòng (cùng khu): HĐ giữ nguyên, chỉ số cuối phòng cũ + nhận phòng mới tại ngày chuyển, giá mới tùy chọn");
+            .WithSummary("Chuyển phòng (cùng khu): HĐ giữ nguyên, chỉ số cuối phòng cũ (chốt điện nước thành khoản phát sinh) + nhận phòng mới tại ngày chuyển; giá mới theo quy tắc nửa kỳ, bỏ dịch vụ không dùng ở phòng mới");
+        group.MapPost("/{id:guid}/transfer-room/cancel", async (Guid id, ISender sender, CancellationToken ct) =>
+            {
+                var result = await sender.Send(new CancelRoomTransferCommand(id), ct);
+                return result.IsSuccess ? Results.Ok(new { warnings = result.Value }) : result.ToHttp();
+            })
+            .WithSummary("Hủy lần chuyển phòng gần nhất: trả HĐ về phòng cũ, hủy khoản chốt điện nước và các chỉ số của lần chuyển");
         group.MapPost("/{id:guid}/re-sign", async (Guid id, ResignContractRequest b, ISender sender, CancellationToken ct) =>
                 (await sender.Send(new ResignContractCommand(id, b.HandoverDate, b.RepresentativeRenterId, b.EndDate, b.TransferDeposit ?? true), ct)).ToCreated(Route))
             .WithIdempotency(required: true)
@@ -202,7 +228,7 @@ public static class ContractEndpoints
             .WithSummary("Xóa tài sản bàn giao");
         group.MapPost("/{id:guid}/assets/{assetId:guid}/return", async (Guid id, Guid assetId, AssetReturnRequest b, ISender sender, CancellationToken ct) =>
                 (await sender.Send(new RecordAssetReturnCommand(id, assetId, b.ConditionAtReturn), ct)).ToHttp())
-            .WithSummary("Ghi tình trạng tài sản khi trả phòng + giá trị bồi thường");
+            .WithSummary("Ghi tình trạng tài sản khi trả phòng (bồi thường: thêm phụ thu trên phiếu quyết toán)");
 
         // ---- Xe gửi
         group.MapPost("/{id:guid}/vehicles", async (Guid id, RegisterVehicleRequest b, ISender sender, CancellationToken ct) =>

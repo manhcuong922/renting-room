@@ -189,6 +189,35 @@ public sealed class ImportTests(ApiFactory factory)
         again.GetProperty("saved").GetInt32().Should().Be(0);
     }
 
+    /// <summary>RT-UC-10: xem trước kiểm như lúc lưu — phòng đã có HĐ khác ở (đã chuyển đi) sau ngày vào ở khai trong file ⇒ báo ngay.</summary>
+    [Fact]
+    public async Task TenancyImport_Preview_FlagsRoomOccupiedByMovedOutContract_AfterImportedMoveInDate()
+    {
+        var owner = await _client.CreateActiveOwnerAsync();
+        var token = owner.Tokens.AccessToken;
+        var today = TestData.Today(factory);
+        var propertyId = await _client.CreatePropertyAsync(token, anchorDay: 1);
+        var room201 = await _client.CreateRoomAsync(token, propertyId, "201");
+        var room202 = await _client.CreateRoomAsync(token, propertyId, "202");
+        var contractId = await _client.CreateContractAsync(token, room201, await _client.CreateRenterAsync(token), today.AddDays(-60));
+        (await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/activate", null, token)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+        var moved = await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/transfer-room",
+            new { toRoomId = room202, date = today.AddDays(-5), oldRoomReadings = (object?)null, newRoomReadings = (object?)null }, token);
+        moved.StatusCode.Should().Be(HttpStatusCode.OK, await moved.Content.ReadAsStringAsync());
+        var url = $"/api/v1/properties/{propertyId}/tenancies/import/preview";
+
+        Task<JsonElement> PreviewWithMoveInAsync(DateOnly moveIn) => PreviewAsync(url, Workbook("Người thuê",
+            TenancyHeader,
+            ["201", "Đứng tên", "Lý Văn Mạnh", new DateOnly(1995, 3, 3), "Nam", null, "CCCD", TestData.NewCitizenId(), "VN", null, null, null,
+                moveIn, 2_000_000, 0]), token);
+
+        var overlapping = await PreviewWithMoveInAsync(today.AddDays(-30));
+        overlapping.GetProperty("validRooms").GetInt32().Should().Be(0);
+        Codes(overlapping.GetProperty("rooms")[0].GetProperty("errors")).Should().Contain("ROOM_PERIOD_OVERLAP");
+
+        (await PreviewWithMoveInAsync(today.AddDays(-2))).GetProperty("validRooms").GetInt32().Should().Be(1, "vào ở sau ngày HĐ kia chuyển đi là hợp lệ");
+    }
+
     [Fact]
     public async Task Import_RejectsNonXlsx_ZipBomb_AndFormulaCells()
     {

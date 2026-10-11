@@ -7,21 +7,23 @@
 
 ## 1. Tầm nhìn & phạm vi
 
-Phần mềm SaaS giúp **chủ trọ** quản lý nhiều khu trọ: phòng, người thuê, hợp đồng, cư trú,
-chỉ số điện nước, tính tiền phòng hàng tháng, thu tiền, cọc, lưu trữ giấy tờ, xuất Excel.
-Định hướng **B2B**: quản trị viên nền tảng cấp tài khoản cho chủ trọ (tổ chức); sau này chủ trọ
-có thể tạo tài khoản nhân viên quản lý.
+Phần mềm SaaS giúp **chủ trọ** quản lý nhiều khu trọ: phòng, người thuê, hợp đồng, người ở,
+chỉ số điện nước, tính tiền phòng hàng tháng, thu tiền, theo dõi cọc, xuất Excel.
+Định hướng **B2B**: quản trị viên nền tảng cấp tài khoản cho chủ trọ (tổ chức); chủ trọ tạo tài khoản
+**phó quản lý**.
 
 **Trong phạm vi**
 - Quản lý tổ chức (chủ trọ) & tài khoản do Admin cấp.
 - Khu trọ, phòng, nhóm phòng.
 - Hồ sơ người thuê, người ở cùng (P1); theo dõi thủ tục tạm trú / lưu trú / tạm vắng (P2).
-- Hợp đồng (lưu trữ thông tin + file scan), phụ lục giá, thanh lý.
+- Hợp đồng (thông tin, in từ mẫu, cờ "đã có bản ký"), đổi giá, chuyển phòng, ký lại, thanh lý. File scan: chờ M09.
 - Danh mục khoản thu 3 nhóm: **Theo chỉ số** (điện, nước, …), **Dịch vụ cố định** (rác, wifi…),
   **Dịch vụ theo số lượng** (giữ xe ×N…).
 - Màn hình ghi chỉ số cuối kỳ; tính tiền phòng; sửa tay trên phiếu nháp; phụ thu / giảm trừ / hoàn trả cho 1 hoặc nhiều phòng;
-  chốt phiếu; thu tiền, bỏ nợ; theo dõi cọc (có cọc / đã hoàn trả).
-- Upload ảnh/file lưu trữ; xuất Excel (người thuê, tiền phòng tháng, thông tin phòng) cho 1 hoặc nhiều khu.
+  **khoản phát sinh theo phòng** (phụ thu / bù tạo giữa tháng, đã thanh toán hay chưa); chốt phiếu; thu tiền, bỏ nợ;
+  theo dõi cọc (có cọc / đã hoàn trả).
+- Nhập Excel (phòng, người đang thuê); xuất Excel danh sách người thuê. **Chưa làm**: upload ảnh / file (M09),
+  xuất Excel tiền phòng tháng / thông tin phòng / công nợ (M10).
 
 **Ngoài phạm vi** (ghi rõ để không bị "trôi" yêu cầu)
 - Người thuê **không** đăng nhập, không tương tác hệ thống (chỉ là dữ liệu).
@@ -43,10 +45,10 @@ Căn cứ pháp lý & quy tắc LEG-xx: [00-legal-basis.md](00-legal-basis.md).
 
 - **Modular monolith** trên Clean Architecture hiện có: `renting_room.Domain` / `.Application` /
   `.Infrastructure` / `renting_room` (API, Minimal API endpoints).
-- Application tổ chức **theo feature/module**: `Application/{Module}/Commands|Queries/{UseCase}/`.
+- Application tổ chức **theo module**, mỗi nhóm tính năng một file (`Application/{Module}/{Feature}.cs` gồm command / query / handler / validator).
 - Mediator (`Mediator.Abstractions` source-gen) + FluentValidation pipeline (đã có `ValidationBehavior`).
 - EF Core + **PostgreSQL** (Npgsql). Một DB, một schema `public` (module tách bằng tiền tố bảng không cần thiết — dùng tên rõ nghĩa).
-- Xuất Excel: **ClosedXML** (MIT). Lưu file: abstraction `IFileStorage` (Local disk → S3/MinIO).
+- Xuất / nhập Excel: **ClosedXML** (MIT). Lưu file (`IFileStorage`, Local disk → S3/MinIO): **chưa làm** (M09).
 - ✅ Đã nâng lên **net10.0** (LTS, SDK 10.0.4xx) — EF Core 10 / Npgsql 10, Swashbuckle 10 (Microsoft.OpenApi v2). .NET 8 hết hỗ trợ 10/11/2026.
 
 ## 4. Bản đồ module
@@ -98,22 +100,30 @@ Tạo khu trọ (địa chỉ 2 cấp, **cài đặt kỳ thu của khu** — á
 
 ### F3. Cho thuê phòng (M03, M05, M06, M08)
 Tạo/tìm người thuê (theo số giấy tờ) → chọn **mẫu hợp đồng** (thuê trọ / không cọc / thuê nhà) → tạo hợp đồng nháp
-(giá thuê, cọc, ngày chốt kỳ, khoản thu đăng ký, trường tùy biến của mẫu, người ở cùng + **quan hệ với người đứng tên**,
-đồng ý của người giám hộ nếu < 18 tuổi) → upload scan → **kích hoạt** (ghi chỉ số bàn giao, ghi nhận tiền cọc) → hệ thống tạo nhắc
-**đăng ký tạm trú/lưu trú** cho từng người ở.
+(giá thuê, tiền cọc thỏa thuận, khoản thu đăng ký, trường tùy biến của mẫu, người ở cùng + **quan hệ với người đứng tên**,
+đồng ý của người giám hộ nếu < 18 tuổi) → **kích hoạt** (ghi chỉ số nhận phòng) → in HĐ, đánh dấu "đã có bản ký".
+Kỳ thu theo cài đặt của khu. Cọc chỉ là thông tin theo dõi (không ghi nhận tiền). Nhắc đăng ký tạm trú / lưu trú: P2.
+Chuyển dữ liệu từ sổ cũ: **nhập Excel** phòng + người đang thuê (tạo hồ sơ, HĐ, chỉ số đầu).
 
 ### F4. Chu kỳ hàng tháng (M06 → M07 → M08 → M10)
 1. Màn hình **ghi chỉ số**: chọn khu + tháng thu → lưới phòng có chỉ số cũ, nhập chỉ số mới.
 2. **Tạo phiếu nháp** hàng loạt cho khu (idempotent).
 3. Chủ trọ rà soát phiếu nháp: **sửa tay** mọi ô, thêm phụ thu / giảm trừ, tính lại theo phòng / tầng / khu
    (không có quy tắc giảm/tăng tự động — dùng phụ thu / giảm trừ / hoàn trả cho nhiều phòng một lúc).
+   Khoản phát sinh của phòng tạo giữa tháng **tự có trên nháp**; nháp có dữ liệu nguồn đổi được gắn cờ **"Cần tính lại"**.
 4. **Chốt phiếu** (Finalize) → phiếu bất biến, có số phiếu.
 5. **Thu tiền** (toàn phần / một phần / thanh toán + bỏ phần còn lại). Cọc chỉ theo dõi, không trừ vào phiếu.
-6. **Xuất Excel** tiền phòng tháng cho 1/nhiều khu.
+6. **Xuất Excel** tiền phòng tháng cho 1/nhiều khu — chưa làm (M10 E2).
 
 ### F5. Trả phòng / thanh lý (M05, M06, M07, M08)
 Báo trả phòng (ngày dự kiến) → bắt đầu thanh lý → ghi chỉ số cuối → phiếu **quyết toán** (thu phần còn thiếu; đã thu thừa tiền phòng ⇒ cảnh báo, chủ trọ thêm dòng **Hoàn trả**) →
-hoàn tất thanh lý: còn nợ ⇒ "Đã thu toàn bộ" / "Bỏ nợ"; còn phiếu Chờ hoàn ⇒ xác nhận đã hoàn trước (hợp đồng `Ended`). Cọc, cư trú: để sau.
+hoàn tất thanh lý: còn nợ ⇒ "Đã thu toàn bộ" / "Bỏ nợ"; còn phiếu Chờ hoàn ⇒ xác nhận đã hoàn trước (hợp đồng `Ended`).
+Trả lại cọc ⇒ bấm **"Đã hoàn trả cọc"** (không bắt buộc trước khi hoàn tất; HĐ đã kết thúc còn giữ cọc ⇒ nhãn "Chưa hoàn cọc").
+
+### F6. Giữa kỳ (M05, M07)
+- **Chuyển phòng** cùng khu: HĐ giữ nguyên, ghi chỉ số cuối phòng cũ + chỉ số nhận phòng mới; điện nước kỳ đó cộng cả 2 phòng.
+- **Ký lại** HĐ (đổi người đứng tên / điều khoản): HĐ cũ kết thúc, HĐ mới nối tiếp, cọc HĐ cũ ghi "đã chuyển".
+- **Khoản phát sinh theo phòng**: phụ thu / bù tạo ngay lúc xảy ra, đánh dấu đã thanh toán hay chưa.
 
 ## 6. Quy ước dùng chung (cross-cutting) — BẮT BUỘC
 
@@ -136,7 +146,8 @@ hoàn tất thanh lý: còn nợ ⇒ "Đã thu toàn bộ" / "Bỏ nợ"; còn p
 - Tiền tệ duy nhất **VND**. Số tiền (`amount`): `numeric(18,0)` (đồng, không lẻ). Đơn giá: `numeric(18,2)`.
   Số lượng / chỉ số: `numeric(12,2)`. C#: `decimal`. **Cấm** `double/float`.
 - Làm tròn **ở cấp dòng phiếu** (`MidpointRounding.AwayFromZero`, về 0 chữ số thập phân);
-  tổng phiếu = tổng các dòng đã làm tròn (không làm tròn lại tổng).
+  tổng phiếu = tổng các dòng đã làm tròn. Khu bật `round_invoice_total` (mặc định bật) ⇒ tổng phiếu **cắt xuống chẵn nghìn**,
+  phần cắt hiện thành dòng "Làm tròn" (`invoices.rounding_amount` — M07 BL-BR-29).
 - Phần trăm: `numeric(5,2)` trong khoảng (0, 100].
 
 ### C-04 Thời gian
@@ -181,13 +192,13 @@ hoàn tất thanh lý: còn nợ ⇒ "Đã thu toàn bộ" / "Bỏ nợ"; còn p
 ### C-07 Concurrency
 - Optimistic concurrency bằng cột hệ thống `xmin` của PostgreSQL (`UseXminAsConcurrencyToken` / `IsRowVersion`).
 - API trả `version` (string) trong response; lệnh cập nhật nhận `version` → lệch trả **409 `CONCURRENCY_CONFLICT`**.
-- Thao tác tài chính (chốt phiếu, phân bổ thanh toán, giao dịch cọc, cấp số phiếu) chạy trong **transaction** và khóa hàng cha (`SELECT … FOR UPDATE`) khi cần tính số dư.
+- Thao tác tài chính (chốt phiếu, phân bổ thanh toán, bỏ nợ, cấp số phiếu) chạy trong **transaction** và khóa hàng cha (`SELECT … FOR UPDATE`) khi cần tính số dư.
 - **Thứ tự khóa toàn cục** (chống deadlock — mọi module phải tuân theo, cùng loại thì theo `id` tăng dần):
   `organizations → properties → rooms → contracts → renters → fee_types → meters → invoices → payments → sequences`.
 
 ### C-08 Idempotency
 - Header `Idempotency-Key` (8–64 ký tự `[A-Za-z0-9_-]`, khuyến nghị UUID) — **bắt buộc** cho thao tác tạo mới / tài chính
-  (tạo tổ chức, tạo phòng; sau này: thanh toán, giao dịch cọc, tạo phiếu hàng loạt, lưu chỉ số hàng loạt), tùy chọn cho thao tác đổi trạng thái.
+  (tạo tổ chức, tạo phòng, HĐ, thanh toán, bỏ nợ, tạo phiếu hàng loạt, khoản phát sinh, thay công tơ hàng loạt, nhập Excel), tùy chọn cho thao tác đổi trạng thái.
   Khai báo trên endpoint: `.WithIdempotency(required: true|false)`.
 - Phạm vi key: **theo user** — bảng `idempotency_keys(user_id, key, request_hash, status, response_*, created_at, expires_at)`, PK `(user_id, key)`, giữ 24h, job dọn mỗi giờ.
 - Hành vi (đã hiện thực — `IdempotencyMiddleware`):
@@ -233,7 +244,7 @@ hoàn tất thanh lý: còn nợ ⇒ "Đã thu toàn bộ" / "Bỏ nợ"; còn p
 - ✅ Xem nhật ký (ID-BR-19, 08/10/2026): `GET /audit-logs?entityType=&entityId=&userId=&action=&from=&to=&page=` — **chỉ chủ trọ**, luôn lọc theo tổ chức của người gọi (bảng không có global filter), mới nhất trước, kèm tên người làm; `no-store` vì có dữ liệu cá nhân.
 - ✅ Ẩn danh (RT-BR-06): xóa giá trị cá nhân trong `changes` của người được ẩn danh, cùng transaction với lệnh ẩn danh.
 - Job nền chạy trên dữ liệu tổ chức qua `CurrentUserOverride` (người dùng hệ thống của tổ chức, `user_id` rỗng trên audit) — vẫn bị lọc và kiểm tổ chức như request.
-- Chưa làm: chính sách lưu giữ / partition theo tháng khi bảng lớn.
+- Chưa làm: partition theo tháng khi bảng lớn.
 
 ### C-11 Bảo mật & dữ liệu cá nhân
 - JWT access 15 phút + refresh token xoay vòng (chi tiết M01). Rate limit đăng nhập & API.
@@ -242,39 +253,20 @@ hoàn tất thanh lý: còn nợ ⇒ "Đã thu toàn bộ" / "Bỏ nợ"; còn p
 - ✅ Secrets qua biến môi trường / User Secrets; app dừng ngay khi thiếu chuỗi kết nối (`ConnectionStrings__DefaultConnection`). `appsettings.Development.json` chỉ có mật khẩu mặc định `postgres/postgres` của container Postgres dev (`docker-compose.yml`, đổi qua `.env`) — không phải bí mật thật; môi trường thật bắt buộc lấy từ env / secret manager (P0-02).
 
 ### C-12 Địa chỉ
-- Bảng tham chiếu `provinces(code, name)`, `communes(code, province_code, name, type)` seed từ QĐ 19/2025/QĐ-TTg.
-- Địa chỉ có cấu trúc: `province_code`, `commune_code`, `street_address`; kèm `address_text` tự do cho địa chỉ cũ (LEG-07).
+- Địa chỉ 2 cấp (LEG-07): `street_address`, `commune_name`, `province_name` (bắt buộc, nhập chữ) + `commune_code`, `province_code` (tùy chọn).
+- **Chưa làm**: bảng tham chiếu `provinces` / `communes` seed từ QĐ 19/2025/QĐ-TTg để chọn từ danh sách và kiểm mã.
 
 ### C-13 Kiểm thử
 - Unit test domain (xUnit + FluentAssertions), integration test API (WebApplicationFactory + **Testcontainers PostgreSQL** — vì dùng partial index, exclusion constraint, xmin; không dùng InMemory/SQLite).
 - Mỗi module có: test cô lập tổ chức (C-01), test concurrency cho lệnh tài chính, coverage ≥ 80%.
 
-## 7. Lộ trình (phase) & tiêu chí hoàn thành
+## 7. Lộ trình & trạng thái (cập nhật 10/10/2026)
 
-| Phase | Nội dung | Exit criteria |
-|-------|----------|---------------|
-| **P0 Foundation** | **Nâng net10.0 ✅**; secrets; multi-tenant infra (C-01), audit (C-10 ✅ — ghi cùng SaveChanges + ghi nền theo lô cho thao tác đọc), ProblemDetails (C-09), idempotency (C-08), TimeProvider (C-04), BillingPeriodCalculator (C-05), Testcontainers; M01 auth | Đăng nhập được; test cô lập tổ chức chạy xanh trên CI |
-| **P1 MVP** | M01–M09 đầy đủ; M10 các export chính | Chạy trọn F1→F5 trên 1 khu 20 phòng trong integration/E2E test |
-| **P2** | **Gửi phiếu tiền phòng qua Zalo kèm mã VietQR** (BL-UC-13), in hợp đồng / phụ lục / biên bản bàn giao từ mẫu (CT-UC-15), nhắc việc (hợp đồng sắp hết hạn, tạm trú chưa đăng ký, giấy tờ PCCC hết hạn), đối chiếu hóa đơn điện EVN, dashboard, báo cáo doanh thu năm, export bất đồng bộ | — |
-| **P3 B2B** | Thanh toán online / đối soát ngân hàng (sau gửi Zalo), giới hạn `OrgManager` theo khu, gói dịch vụ & giới hạn (số khu/phòng), RLS, admin impersonation có audit | — |
+| Phase | Nội dung | Trạng thái |
+|-------|----------|------------|
+| **P0 Foundation** | net10.0, secrets, multi-tenant (C-01), audit (C-10), ProblemDetails (C-09), idempotency (C-08), TimeProvider (C-04), kỳ thu (C-05), Testcontainers, M01 auth | ✅ xong. Còn thiếu: bảng ĐVHC (C-12) |
+| **P1 MVP** | M01–M08; M09 file; M10 export | M01–M08 ✅ (phần ghi "chưa code" trong từng plan là ngoại lệ). **M09 chưa làm**. M10: mới có E1 |
+| **P2** | Gửi phiếu qua Zalo kèm mã VietQR (BL-UC-13), in / xuất phiếu (BL-UC-12), thủ tục cư trú (M03), nhắc việc, đối chiếu hóa đơn điện EVN, dashboard, báo cáo doanh thu, export bất đồng bộ | Chưa làm |
+| **P3 B2B** | Thanh toán online / đối soát ngân hàng, số dư có, giới hạn `OrgManager` theo khu, gói dịch vụ & giới hạn (số khu / phòng), RLS, admin impersonation có audit | Chưa làm |
 
-## 8. Thay đổi so với plan cũ (room/tenant/lease/payment)
-
-Plan cũ giả định 1 chủ trọ, `Room.Status` lưu cứng, hợp đồng 1 người, thanh toán không có phiếu báo tiền.
-Đã thay bằng bộ plan này; lý do chi tiết ở [99-self-review.md](99-self-review.md) (mục R-01…R-04).
-Code hiện có (`Room` + CRUD) sẽ được **viết lại** theo M02 (thêm `organization_id`, `property_id`, bỏ `Status`
-lưu cứng). Vì chưa có dữ liệu thật → **xóa migration `InitialCreate` và tạo lại** (task P0-05).
-
-## 9. Task Phase 0
-
-| ID | Task | Ước lượng |
-|----|------|-----------|
-| P0-01 ✅ | Nâng 4 project lên `net10.0`, cập nhật package (EF Core 10, Npgsql 10) | 0.5d |
-| P0-02 ✅ | Chuyển connection string sang User Secrets / env; validate secrets khi khởi động (dev: mật khẩu mặc định container, xem C-11) | 0.25d |
-| P0-03 | `ICurrentUser`, `TimeProvider` VN, base entity `TenantEntity` (Id, OrganizationId, CreatedAt/By, UpdatedAt/By) | 0.5d |
-| P0-04 ✅ | Global query filter + SaveChanges guard + audit (C-10: cùng SaveChanges cho lệnh ghi, `AuditLogWriter` gom lô cho thao tác đọc) | 1d |
-| P0-05 | Xóa migration cũ, cấu hình xmin, composite FK helper, tạo migration mới | 0.5d |
-| P0-06 | ProblemDetails + mapping `Result`/`DomainException` → mã lỗi; idempotency middleware | 1d |
-| P0-07 | `BillingPeriodCalculator` + bộ test bảng | 0.5d |
-| P0-08 | Test infra: WebApplicationFactory + Testcontainers + helper tạo 2 tổ chức | 1d |
-| P0-09 | Seed ĐVHC (34 tỉnh + xã/phường) | 0.5d |
+**Việc đã chốt nhưng chưa code** (chi tiết ở [99-self-review.md](99-self-review.md) mục C): xem danh sách tại đó — không ghi lặp ở đây.

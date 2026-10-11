@@ -48,21 +48,27 @@ public sealed record UsagePeriod(DateOnly Start, DateOnly End, DateOnly ClosingP
     /// M06 §3.3 — chỉ số đầu: số cuối của đoạn đo gần nhất trên phiếu chưa hủy của HĐ (MT-BR-12); chưa có phiếu nào ⇒ chỉ số lắp
     /// (công tơ lắp trong kỳ) hoặc chỉ số gần nhất ≤ đầu kỳ (nhận phòng / tháng trước — phiếu đầu tiên của HĐ nhập từ trước).
     /// </summary>
-    /// <param name="stay">Khoảng HĐ ở phòng của công tơ — chuyển tới phòng giữa kỳ (CT-BR-47) ⇒ bắt đầu từ chỉ số nhận phòng của HĐ.</param>
-    public MeterReading? StartReading(Meter meter, Guid? lastSegmentEndReadingId, Guid contractId, RoomStay? stay = null) =>
-        lastSegmentEndReadingId is { } id ? meter.Find(id)
-        : stay is not null && stay.From > Start ? meter.FindHandover(contractId)
-        : meter.InstalledDate > Start ? meter.Ordered.FirstOrDefault(r => r.Kind == ReadingKind.Initial)
-        : meter.LatestOnOrBefore(Start);
+    /// <param name="stay">Lần HĐ ở phòng của công tơ: vào phòng giữa kỳ ⇒ bắt đầu từ chỉ số nhận phòng của lần ở; số cuối của đoạn đo trước
+    /// chỉ nối tiếp khi ghi trong lần ở này — HĐ rời phòng rồi quay lại không bị tính phần phòng trống (MT-BR-12).</param>
+    public MeterReading? StartReading(Meter meter, Guid? lastSegmentEndReadingId, Guid contractId, RoomStay? stay = null)
+    {
+        if (lastSegmentEndReadingId is { } id)
+        {
+            var chained = meter.Find(id);
+            if (stay is null || chained is null || chained.ReadingDate >= stay.From)
+                return chained;
+        }
+        return stay is not null && stay.From > Start ? meter.FindHandover(contractId, stay.From, stay.To)
+            : meter.InstalledDate > Start ? meter.Ordered.FirstOrDefault(r => r.Kind == ReadingKind.Initial)
+            : meter.LatestOnOrBefore(Start);
+    }
 
     /// <summary>
-    /// Chỉ số cuối: tháo công tơ trong kỳ ⇒ số tháo (MT-BR-15); kỳ cuối hoặc HĐ chuyển khỏi phòng trong kỳ (CT-BR-47) ⇒ chỉ số cuối HĐ;
-    /// còn lại ⇒ chỉ số cuối kỳ.
+    /// Chỉ số cuối: tháo công tơ trong kỳ ⇒ số tháo (MT-BR-15); kỳ cuối ⇒ chỉ số cuối HĐ của lần ở hiện tại; còn lại ⇒ chỉ số cuối kỳ.
     /// </summary>
     public MeterReading? EndReading(Meter meter, Guid contractId, RoomStay? stay = null) =>
         meter.RemovedDate is { } removed && removed <= End ? meter.Removal
-        : stay is { To: { } left } && left < End && !EndsWithFinal ? meter.FindFinal(contractId)
-        : EndsWithFinal ? meter.FindFinal(contractId) ?? meter.FindPeriodic(contractId, ClosingPeriodStart)
+        : EndsWithFinal ? meter.FindFinal(contractId, stay?.From) ?? meter.FindPeriodic(contractId, ClosingPeriodStart)
         : meter.FindPeriodic(contractId, ClosingPeriodStart);
 }
 
@@ -206,12 +212,16 @@ public static class InvoiceCalculator
         if (usage is null)
             return;
 
-        // CT-BR-47: công tơ của mọi phòng HĐ đã ở trong kỳ sử dụng (chuyển phòng giữa kỳ ⇒ 2 phòng).
-        var stays = input.Contract.RoomStays.Where(s => s.Overlaps(usage.Start, usage.End)).ToList();
+        // CT-BR-47: phòng HĐ đang ở tính bình thường; phòng đã rời (chuyển phòng) chỉ tính ở kỳ đã có chỉ số cuối kỳ — phần sau đó
+        // đã chốt thành khoản phát sinh tại ngày chuyển.
+        var allStays = input.Contract.RoomStays;
+        var current = allStays[^1];
+        var stays = allStays.Where(s => s.Overlaps(usage.Start, usage.End)).ToList();
         RoomStay? StayOf(Meter m) => stays.LastOrDefault(s => s.RoomId == m.RoomId);
+        bool IsBillable(Meter m, RoomStay stay) => stay == current || m.FindPeriodic(input.Contract.Id, usage.ClosingPeriodStart) is not null;
         var groups = input.RoomMeters
             .Where(m => StayOf(m) is { } stay && m.Overlaps(Max(usage.Start, stay.From), Min(usage.End, stay.To ?? usage.End))
-                && input.FeeTypes.TryGetValue(m.FeeTypeId, out var t) && t.Group == FeeGroup.Metered)
+                && input.FeeTypes.TryGetValue(m.FeeTypeId, out var t) && t.Group == FeeGroup.Metered && IsBillable(m, stay))
             .GroupBy(m => m.FeeTypeId);
         foreach (var group in groups)
         {
@@ -219,10 +229,12 @@ public static class InvoiceCalculator
             var parts = new List<CalculatedSegment>();
             foreach (var meter in group.OrderBy(m => m.InstalledDate))
             {
-                var stay = stays.Count > 1 ? StayOf(meter) : null;
+                var stay = allStays.Count > 1 ? StayOf(meter) : null;
                 var start = usage.StartReading(meter, input.LastSegmentEndReadings.TryGetValue(meter.Id, out var last) ? last : null,
                     input.Contract.Id, stay);
-                var end = usage.EndReading(meter, input.Contract.Id, stay);
+                var end = stay is not null && stay != current
+                    ? meter.FindPeriodic(input.Contract.Id, usage.ClosingPeriodStart)
+                    : usage.EndReading(meter, input.Contract.Id, stay);
                 var name = meter.SerialNo is null ? type.Name : $"{type.Name} ({meter.SerialNo})";
                 if (start is null || end is null)
                 {

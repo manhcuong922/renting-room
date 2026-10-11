@@ -14,7 +14,12 @@ internal static class OccupantChecks
     public static Task<bool> HasIdNumberAsync(IAppDbContext db, Guid renterId, CancellationToken ct) =>
         db.Renters.AnyAsync(r => r.Id == renterId && r.IdNumberHash != null, ct);
 
+    /// <summary>CT-BR-49: mọi người trong danh sách đều có số giấy tờ (đồng thuê có tên trên HĐ).</summary>
+    public static async Task<bool> AllHaveIdNumberAsync(IAppDbContext db, IReadOnlyCollection<Guid> renterIds, CancellationToken ct) =>
+        renterIds.Count == 0 || await db.Renters.CountAsync(r => renterIds.Contains(r.Id) && r.IdNumberHash != null, ct) == renterIds.Count;
+
     private static readonly ContractStatus[] LivedStatuses = [ContractStatus.Active, ContractStatus.Liquidating, ContractStatus.Ended];
+    private static readonly ContractStatus[] RunningStatuses = [ContractStatus.Active, ContractStatus.Liquidating];
 
     public static async Task<Dictionary<Guid, (PersonFacts Facts, string Name)>> LoadPeopleAsync(
         IAppDbContext db, IEnumerable<Guid> renterIds, CancellationToken ct)
@@ -71,5 +76,50 @@ internal static class OccupantChecks
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// CT-BR-50: người đứng tên không đồng thời là người ở thường (không đứng tên, không đồng thuê) của HĐ khác đang chạy — xét cả hai chiều
+    /// trên trạng thái hiện có của <paramref name="contract"/> (gọi sau khi đã đổi người ở / vai trò / người đứng tên trong bộ nhớ).
+    /// </summary>
+    public static async Task<Error?> FindRoleConflictAsync(IAppDbContext db, Contract contract, CancellationToken ct)
+    {
+        var (representativeId, contractId, start) = (contract.RepresentativeRenterId, contract.Id, contract.StartDate);
+        // Người đứng tên HĐ này đang là người ở thường của HĐ khác.
+        var elsewhere = await (
+                from c in db.Contracts
+                where c.Id != contractId && RunningStatuses.Contains(c.Status) && c.RepresentativeRenterId != representativeId
+                from o in c.Occupants
+                where o.RenterId == representativeId && o.Role == OccupantRole.Resident
+                    && ((o.MoveOutDate ?? c.ActualEndDate) == null || (o.MoveOutDate ?? c.ActualEndDate) > start)
+                join room in db.Rooms on c.RoomId equals room.Id
+                select new { RenterId = representativeId, c.ContractNo, RoomCode = room.Code })
+            .FirstOrDefaultAsync(ct);
+
+        // Người ở thường của HĐ này đang đứng tên một HĐ khác.
+        if (elsewhere is null)
+        {
+            var residents = contract.Occupants
+                .Where(o => o.Role == OccupantRole.Resident && o.RenterId != representativeId && o.MoveOutDate is null)
+                .ToDictionary(o => o.RenterId, o => o.MoveInDate);
+            var residentIds = residents.Keys.ToList();
+            var signed = residents.Count == 0
+                ? []
+                : await db.Contracts.Where(c => c.Id != contractId && RunningStatuses.Contains(c.Status) && residentIds.Contains(c.RepresentativeRenterId))
+                    .Select(c => new { c.RepresentativeRenterId, c.ActualEndDate }).ToListAsync(ct);
+            // HĐ kia trả phòng đúng ngày người đó vào ở đây thì hợp lệ (như CT-BR-31).
+            var signer = signed.FirstOrDefault(c => c.ActualEndDate is null || c.ActualEndDate > residents[c.RepresentativeRenterId])?.RepresentativeRenterId;
+            if (signer is { } signerId)
+                elsewhere = new
+                {
+                    RenterId = signerId, contract.ContractNo,
+                    RoomCode = await db.Rooms.Where(r => r.Id == contract.RoomId).Select(r => r.Code).FirstAsync(ct)
+                };
+        }
+        if (elsewhere is null)
+            return null;
+
+        var name = await db.Renters.Where(r => r.Id == elsewhere.RenterId).Select(r => r.FullName).FirstOrDefaultAsync(ct) ?? "Người này";
+        return ContractErrors.RepresentativeIsResidentElsewhere(name, elsewhere.RoomCode, elsewhere.ContractNo);
     }
 }
