@@ -1,7 +1,7 @@
 # M08 — Payment & Deposit (Thu tiền, Bỏ nợ, Công nợ, Theo dõi cọc)
 
 > Theo khuôn [_TEMPLATE.md](_TEMPLATE.md). Pháp lý: L1 (đặt cọc — Điều 328 BLDS), LEG-02.
-> **Rà soát 10/10/2026**: file viết lại theo đúng phạm vi đã chốt — bỏ hẳn sổ cọc / trừ cọc / quyết toán cọc (thiết kế G1 cũ đã hủy).
+> **Trạng thái (10/10/2026)**: ✅ đã code toàn bộ phạm vi dưới đây. Hạn chế đã biết (không thu thừa, không ghi thu sau khi HĐ kết thúc, nợ HĐ cũ sau khi ký lại): [99-self-review.md](99-self-review.md) mục C.
 
 ## 1. Mục tiêu & phạm vi
 
@@ -36,7 +36,7 @@ không chặn được ⇒ lúc đó mới làm **số dư có** (trả thừa, 
 |----|-------|
 | PM-UC-01 ✅ | **Đã thu** bằng tay (tiền mặt / chuyển khoản tự kiểm): từ phiếu bấm "Đã thu" (mặc định đủ số còn nợ, sửa được nếu thu một phần — **trả dần**, phần còn lại vẫn là nợ), hoặc thu theo HĐ (tự trừ phiếu cũ nhất trước); phương thức, ngày thu, người nộp, mã giao dịch |
 | PM-UC-04 ✅ | Đảo phiếu thu nhập sai (lý do) — phiếu tiền phòng trở lại còn nợ |
-| PM-UC-12 ✅ | **Công nợ khi xem phòng**: nhãn "Còn nợ" + số tiền, nhãn đỏ "Quá hạn" (M02 PR-BR-16) |
+| PM-UC-12 ✅ | **Công nợ khi xem phòng**: nhãn "Còn nợ" + số tiền, nhãn đỏ "Quá hạn" (M02 PR-BR-16) — tính trên phiếu của HĐ đang gắn với phòng, chuyển phòng thì nợ đi theo (11/10/2026) |
 | PM-UC-14 ✅ | **"Đã thu toàn bộ"** khi hoàn tất thanh lý: 1 phiếu thu đúng tổng còn nợ (mặc định tiền mặt, hôm nay) |
 | PM-UC-16 ✅ | **"Thanh toán + bỏ phần còn lại"** trên 1 phiếu (VD nợ 3tr, trả 2tr, chủ trọ cho 1tr) và **bỏ nợ riêng** (một phần / toàn bộ) — bất kỳ lúc nào HĐ còn hiệu lực / đang thanh lý; lý do bắt buộc |
 | PM-UC-18 ✅ | **Nợ các kỳ trước trên phiếu**: chi tiết phiếu / nháp hiện danh sách phiếu cũ còn nợ + "Tổng cần thanh toán" — chỉ hiển thị, không cộng vào phiếu |
@@ -57,7 +57,7 @@ không chặn được ⇒ lúc đó mới làm **số dư có** (trả thừa, 
 | PM-BR-16 ✅ | **Bỏ nợ**: phiếu thu `kind = WriteOff`, lý do bắt buộc (`note`), phân bổ như tiền thật để đóng công nợ; phiếu tiền phòng hiện `WrittenOff`, `written_off_amount` ghi phần bỏ; **không** tính doanh thu / tiền thu (M10 lọc `kind = Receipt`); vẫn cấp số `PT`, đảo được. Làm được: bỏ nợ riêng, "Thanh toán + bỏ phần còn lại" (PM-BR-29), "Bỏ nợ" khi hoàn tất thanh lý. **Quyền**: chủ trọ, hoặc phó quản lý được chủ trọ cấp quyền **riêng từng người** (M01 ID-BR-23) → không có quyền 403 `WRITE_OFF_NOT_ALLOWED` | Domain + Application |
 | PM-BR-18 ✅ | `POST /contracts/{id}/payments` chỉ ghi tiền thật (`kind = Receipt`, `method` ∈ `Cash` / `BankTransfer` / `EWallet`) | Validator |
 | PM-BR-29 ✅ | **Thanh toán + bỏ phần còn lại**: 1 lệnh, 1 transaction trên 1 phiếu — phiếu thu `Receipt` số thực trả (> 0, < số còn nợ; bằng số còn nợ → 422 `NOTHING_TO_WRITE_OFF`) + phiếu thu `WriteOff` phần còn lại. Bỏ nợ riêng: ≤ số còn nợ của phiếu (mặc định toàn bộ) | Application |
-| PM-BR-31 ✅ | **Nợ các kỳ trước** (PM-UC-18): phiếu đã chốt của cùng HĐ, kỳ trước phiếu đang xem, còn nợ; "Tổng cần thanh toán" = còn phải trả của phiếu này (nháp: tổng phiếu) + nợ các kỳ trước | Query |
+| PM-BR-31 ✅ | **Nợ các kỳ trước** (PM-UC-18): phiếu đã chốt của cùng HĐ, kỳ trước phiếu đang xem, còn nợ; "Tổng cần thanh toán" = còn phải trả của phiếu này (nháp: tổng phiếu) + nợ các kỳ trước. **Nợ HĐ trước** (11/10/2026 — HĐ ký lại, CT-UC-21): phiếu đã chốt còn nợ của các HĐ đứng trước trong chuỗi `previous_contract_id` hiện ở **danh sách riêng** `previousContractDebts` (kèm số HĐ) + tổng `previousContractDue` — **không cộng** vào "Tổng cần thanh toán" (thu tiền vẫn ghi trên HĐ cũ, PM-BR-02; người đứng tên có thể đã đổi) | Query |
 | PM-BR-32 ✅ | **Cọc tối giản** (chốt 10/10/2026): cọc chỉ là thông tin theo dõi trên HĐ — **không** ghi nhận tiền cọc vào / ra, **không** trừ cọc vào phiếu, **không** chặn hủy / thanh lý vì cọc, **không** tính vào doanh thu. `deposit_amount = 0` ⇒ "Không cọc". `deposit_amount > 0` ⇒ trạng thái mặc định `Holding` ("Đang giữ cọc") | Domain |
 | PM-BR-33 ✅ | **"Đã hoàn trả cọc"** — `POST /contracts/{id}/deposit/refund { refundedOn, amount, note }`: HĐ có cọc, đang `Holding`; `refundedOn` ≤ hôm nay; `amount` 0…`deposit_amount` (mặc định = cọc); trả **ít hơn** cọc (chủ trọ giữ lại một phần / mất cọc) ⇒ `note` bắt buộc → 400. Được ở mọi trạng thái HĐ (kể cả đã kết thúc, đã hủy — khách không đến). `DELETE /contracts/{id}/deposit/refund` bỏ đánh dấu (nhập nhầm) ⇒ về `Holding` | Domain + Application |
 | PM-BR-34 ✅ | **Ký lại HĐ** (M05 CT-UC-21): HĐ mới chép cọc thỏa thuận; mặc định HĐ cũ ⇒ `Transferred` ("Đã chuyển sang HĐ …"); chọn không chuyển ⇒ HĐ cũ vẫn `Holding` để hoàn sau. **Chuyển phòng** (M05 CT-UC-12): HĐ giữ nguyên ⇒ cọc không đổi | Application |
@@ -179,4 +179,4 @@ Audit mọi phiếu thu, đảo, bỏ nợ, đánh dấu hoàn cọc. Không có
 | PM-01 | Phiếu thu, phân bổ tự động / chỉ định, đảo, "Đã thu toàn bộ" | ✅ |
 | PM-02 | Bỏ nợ riêng + thanh toán kèm bỏ nợ, quyền theo từng phó quản lý | ✅ |
 | PM-03 | Nợ các kỳ trước trên phiếu | ✅ |
-| PM-04 | Cọc tối giản: trạng thái cọc trên HĐ, "Đã hoàn trả cọc" / bỏ đánh dấu, ký lại ⇒ đã chuyển, lọc chưa hoàn cọc + test + seeder (thay sổ cọc G1 cũ) | ✅ |
+| PM-04 | Cọc tối giản: trạng thái cọc trên HĐ, "Đã hoàn trả cọc" / bỏ đánh dấu, ký lại ⇒ đã chuyển, lọc chưa hoàn cọc + test + seeder | ✅ |

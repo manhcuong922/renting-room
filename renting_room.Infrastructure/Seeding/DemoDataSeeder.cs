@@ -30,6 +30,9 @@ public sealed class DemoDataOptions
     public string? OwnerPassword { get; set; }
     public string ManagerPhone { get; set; } = "0900000008";
     public string? ManagerPassword { get; set; }
+
+    /// <summary>Phó quản lý thứ hai — được chủ trọ cấp quyền bỏ nợ (PM-BR-16); dùng chung <see cref="ManagerPassword"/>.</summary>
+    public string WriteOffManagerPhone { get; set; } = "0900000009";
 }
 
 /// <summary>Người thao tác khi seed — chủ trọ / phó quản lý demo hoặc SystemAdmin (tạo tổ chức).</summary>
@@ -99,6 +102,12 @@ public sealed partial class DemoDataSeeder(
         var manager = await Send(new Application.Identity.Members.CreateManagerCommand("Trần Phó Quản Lý", _options.ManagerPhone, null));
         await Send(new ChangePasswordCommand(manager.TemporaryPassword, _options.ManagerPassword!, null),
             new SeedUser(manager.UserId, organization.OrganizationId, UserRole.OrgManager));
+
+        // PM-BR-16: phó quản lý tin cậy được cấp quyền bỏ nợ riêng (phó quản lý đầu không có quyền này).
+        var trusted = await Send(new Application.Identity.Members.CreateManagerCommand("Lê Phó Quản Lý (được bỏ nợ)", _options.WriteOffManagerPhone, null));
+        await Send(new ChangePasswordCommand(trusted.TemporaryPassword, _options.ManagerPassword!, null),
+            new SeedUser(trusted.UserId, organization.OrganizationId, UserRole.OrgManager));
+        await Send(new Application.Identity.Members.SetWriteOffPermissionCommand(trusted.UserId, true));
     }
 
     // ------------------------------------------------------------------ gọi lệnh

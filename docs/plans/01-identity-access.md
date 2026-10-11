@@ -23,6 +23,9 @@ token) và phân quyền; cung cấp `ICurrentUser` (UserId, OrganizationId, Rol
 
 **Phase**: P0 (xác thực, ICurrentUser) + P1 (quản trị tổ chức).
 
+**Trạng thái (10/10/2026)**: đã code toàn bộ, **trừ** các dòng ghi "chưa code" bên dưới — sửa thông tin tổ chức (ID-UC-03),
+sửa hồ sơ cá nhân (`PUT /me`), số khu / số phòng trong danh sách tổ chức, bảng `login_events`, cột giới hạn gói (`max_properties`, `max_rooms` — P3).
+
 ## 2. Thuật ngữ
 
 | Thuật ngữ | Code | Định nghĩa |
@@ -41,17 +44,17 @@ token) và phân quyền; cung cấp `ICurrentUser` (UserId, OrganizationId, Rol
 | ID | Actor | Mô tả | Kết quả |
 |----|-------|-------|---------|
 | ID-UC-01 | SystemAdmin | Tạo tổ chức + tài khoản chủ trọ | Org `Active`, User `OrgOwner` `MustChangePassword=true`; trả mật khẩu tạm **một lần** |
-| ID-UC-02 | SystemAdmin | Xem danh sách / chi tiết tổ chức (tên, trạng thái, số khu, số phòng, ngày tạo) | Không kèm dữ liệu nghiệp vụ chi tiết |
-| ID-UC-03 | SystemAdmin | Cập nhật thông tin tổ chức (tên, liên hệ, ghi chú, giới hạn) | |
+| ID-UC-02 | SystemAdmin | Xem danh sách / chi tiết tổ chức (tên, trạng thái, ngày tạo, danh sách tài khoản) | Không kèm dữ liệu nghiệp vụ. **Chưa code**: số khu, số phòng |
+| ID-UC-03 | SystemAdmin | Cập nhật thông tin tổ chức (tên, liên hệ, ghi chú, giới hạn) | **Chưa code** |
 | ID-UC-04 | SystemAdmin | Tạm ngưng tổ chức (lý do) | Mọi user của tổ chức không đăng nhập/refresh được; token hiện tại bị từ chối ≤ 1 phút |
 | ID-UC-05 | SystemAdmin | Kích hoạt lại tổ chức | |
 | ID-UC-06 | SystemAdmin | Reset mật khẩu user | Mật khẩu tạm mới, `MustChangePassword=true`, thu hồi mọi refresh token, đổi SecurityStamp |
 | ID-UC-07 | SystemAdmin | Khóa / mở khóa user | |
 | ID-UC-08 | Mọi user | Đăng nhập | Access token + refresh token (+ cờ `mustChangePassword`) |
 | ID-UC-09 | Mọi user | Làm mới token | Cặp token mới; refresh cũ bị thu hồi |
-| ID-UC-10 | Mọi user | Đăng xuất | Thu hồi refresh token hiện tại |
+| ID-UC-10 | Mọi user | Đăng xuất (`/auth/logout`) / đăng xuất mọi thiết bị (`/auth/logout-all`) | Thu hồi refresh token hiện tại / mọi refresh token của user |
 | ID-UC-11 | Mọi user | Đổi mật khẩu | Thu hồi refresh token khác; đổi SecurityStamp |
-| ID-UC-12 | Mọi user | Xem/cập nhật hồ sơ (họ tên, email, SĐT) | Đổi email/SĐT phải còn unique |
+| ID-UC-12 | Mọi user | Xem hồ sơ (`GET /me`). **Chưa code**: tự cập nhật họ tên, email, SĐT (`PUT /me`) | Đổi email/SĐT phải còn unique |
 
 ### 3.2 Quy tắc nghiệp vụ
 
@@ -111,6 +114,10 @@ API (owner/manager — trong phạm vi tổ chức của mình):
 | POST | `/org/members/{id}/lock` · `/unlock` | OrgOwner | |
 | POST | `/org/members/{id}/reset-password` | OrgOwner | Trả mật khẩu tạm mới (no-store) |
 | POST | `/org/members/{id}/remove` | OrgOwner | Không đảo ngược |
+| PUT | `/org/members/{id}/sensitive-data-access` | OrgOwner | `{ allowed }` — ID-BR-22 |
+| PUT | `/org/members/{id}/write-off-permission` | OrgOwner | `{ allowed }` — ID-BR-23 |
+| GET · PUT | `/org/data-retention` | Xem: OrgMember · Sửa: OrgOwner | Thời gian giữ dữ liệu cá nhân + bật / tắt tự ẩn danh (M03 RT-BR-06) |
+| GET · PUT | `/org/lessor` | Xem: OrgMember · Sửa: OrgOwner | Bên cho thuê mặc định của chủ trọ (M02 PR-BR-17) |
 
 ### 3.4 Vòng đời trạng thái
 
@@ -152,8 +159,10 @@ stateDiagram-v2
 | tax_code | varchar(14) | Y | | MST 10 hoặc 13 số (dạng `xxxxxxxxxx-xxx`) |
 | status | varchar(16) | N | 'Active' | CHECK in (`Active`,`Suspended`) |
 | suspended_reason | varchar(500) | Y | | NOT NULL khi Suspended (CHECK) |
-| max_properties | int | Y | | null = không giới hạn (P3 dùng) |
-| max_rooms | int | Y | | |
+| max_properties / max_rooms | int | Y | | **Chưa có cột** — giới hạn gói (P3) |
+| personal_data_retention_months | int | N | 36 | 36–120 — thời gian giữ dữ liệu cá nhân người thuê trước khi tự ẩn danh (M03 RT-BR-06) |
+| auto_anonymize_enabled | bool | N | true | tắt ⇒ job không ẩn danh tổ chức này |
+| default_lessor_* | | Y | | bên cho thuê mặc định của chủ trọ (M02 PR-BR-17) |
 | max_managers | int | N | 10 | số phó quản lý tối đa (ID-BR-15), CHECK 0–100 |
 | address | varchar(500) | Y | | địa chỉ liên hệ của tổ chức |
 | note | text | Y | | |
@@ -203,7 +212,7 @@ CHECK: `(role = 'SystemAdmin') = (organization_id IS NULL)`.
 | revoked_reason | varchar(32) | Y | `Rotated`,`Logout`,`Reuse`,`PasswordChanged`,`AdminAction` |
 | replaced_by_id | uuid | Y | |
 
-Dọn rác: job xóa token hết hạn > 7 ngày (P2; P1 chấp nhận tăng dần).
+Dọn rác: job xóa token hết hạn > 7 ngày — **chưa code** (P2; P1 chấp nhận tăng dần).
 
 **(P3, chừa chỗ)** `user_property_access(organization_id, user_id, property_id)` cho `OrgManager`.
 
@@ -218,7 +227,7 @@ Dọn rác: job xóa token hết hạn > 7 ngày (P2; P1 chấp nhận tăng d�
 
 ### 4.3 Dữ liệu dẫn xuất
 - `User.IsLockedOut(now) = status = Locked || lockout_end > now`.
-- Số khu / số phòng của tổ chức (ID-UC-02): đếm on-demand từ M02, không lưu.
+- Số khu / số phòng của tổ chức (ID-UC-02): đếm on-demand từ M02, không lưu — **chưa code**.
 
 ## 5. Domain model
 
@@ -250,9 +259,9 @@ Domain không phụ thuộc ASP.NET Identity; băm mật khẩu qua interface `I
 | Use case | Loại | Input | Output | Lỗi nghiệp vụ |
 |----------|------|-------|--------|---------------|
 | `CreateOrganizationCommand` | Cmd | code, name, contact*, taxCode?, owner{fullName, phone?, email?} | orgId, ownerUserId, **temporaryPassword** | `ORG_CODE_TAKEN`, `PHONE_TAKEN`, `EMAIL_TAKEN` |
-| `ListOrganizationsQuery` | Qry | search?, status?, page | page of OrgSummary (kèm propertyCount, roomCount) | |
+| `ListOrganizationsQuery` | Qry | search?, status?, page | page of OrgSummary (propertyCount, roomCount: chưa code) | |
 | `GetOrganizationQuery` | Qry | id | OrgDetail + danh sách user (không password) | `NOT_FOUND` |
-| `UpdateOrganizationCommand` | Cmd | id, version, fields | OrgDetail | `CONCURRENCY_CONFLICT` |
+| `UpdateOrganizationCommand` (chưa code) | Cmd | id, version, fields | OrgDetail | `CONCURRENCY_CONFLICT` |
 | `SuspendOrganizationCommand` | Cmd | id, reason | — | `ORG_ALREADY_SUSPENDED` |
 | `ReactivateOrganizationCommand` | Cmd | id | — | `ORG_NOT_SUSPENDED` |
 | `ResetUserPasswordCommand` | Cmd | userId | temporaryPassword | `NOT_FOUND` |
@@ -262,7 +271,7 @@ Domain không phụ thuộc ASP.NET Identity; băm mật khẩu qua interface `I
 | `LogoutCommand` | Cmd | refreshToken | — | (luôn 204) |
 | `ChangePasswordCommand` | Cmd | currentPassword, newPassword | TokenPair mới | `INVALID_CURRENT_PASSWORD`, `PASSWORD_REUSED` |
 | `GetMeQuery` | Qry | — | MeDto (id, fullName, role, org{id,name}, mustChangePassword) | |
-| `UpdateMeCommand` | Cmd | fullName, phone?, email?, version | MeDto | `PHONE_TAKEN`, `EMAIL_TAKEN` |
+| `UpdateMeCommand` (chưa code) | Cmd | fullName, phone?, email?, version | MeDto | `PHONE_TAKEN`, `EMAIL_TAKEN` |
 
 `ICurrentUser` (Application/Common/Interfaces): `Guid UserId`, `Guid? OrganizationId`, `UserRole Role`, `bool IsSystemAdmin`.
 Hiện thực đọc claim `sub`, `org`, `role` từ `HttpContext.User`.
@@ -275,14 +284,14 @@ Tiền tố `/api/v1`. Lỗi theo C-09.
 |--------|-------|-------|----------|--------------|
 | POST | `/auth/login` | Anonymous, rate limit | 200 TokenResponse | 401 `INVALID_CREDENTIALS`, 403 `ORGANIZATION_SUSPENDED`, 429 |
 | POST | `/auth/refresh` | Anonymous, rate limit | 200 TokenResponse | 401 `INVALID_REFRESH_TOKEN` |
-| POST | `/auth/logout` | Authenticated | 204 | |
+| POST | `/auth/logout` · `/auth/logout-all` | Authenticated | 204 | |
 | POST | `/auth/change-password` | Authenticated (kể cả MustChange) | 200 TokenResponse | 400, 422 `INVALID_CURRENT_PASSWORD` |
 | GET | `/me` | Authenticated | 200 MeDto | |
-| PUT | `/me` | Authenticated | 200 MeDto | 409 `PHONE_TAKEN`/`EMAIL_TAKEN`/`CONCURRENCY_CONFLICT` |
+| PUT | `/me` (chưa code) | Authenticated | 200 MeDto | 409 `PHONE_TAKEN`/`EMAIL_TAKEN`/`CONCURRENCY_CONFLICT` |
 | GET | `/admin/organizations` | SystemAdmin | 200 Page | |
 | POST | `/admin/organizations` | SystemAdmin | 201 + Location | 409 `ORG_CODE_TAKEN`/`PHONE_TAKEN`/`EMAIL_TAKEN` |
 | GET | `/admin/organizations/{id}` | SystemAdmin | 200 | 404 |
-| PUT | `/admin/organizations/{id}` | SystemAdmin | 200 | 409 |
+| PUT | `/admin/organizations/{id}` (chưa code) | SystemAdmin | 200 | 409 |
 | POST | `/admin/organizations/{id}/suspend` | SystemAdmin | 204 | 409 `ORG_ALREADY_SUSPENDED` |
 | POST | `/admin/organizations/{id}/reactivate` | SystemAdmin | 204 | 409 `ORG_NOT_SUSPENDED` |
 | POST | `/admin/users/{id}/reset-password` | SystemAdmin | 200 `{ temporaryPassword }` | 404 |
@@ -374,7 +383,7 @@ Mặc định **mọi endpoint** yêu cầu `RequireOrgMember` (fallback policy)
 
 ## 11. Audit & bảo mật
 
-- Audit: tạo/sửa/tạm ngưng tổ chức, reset mật khẩu, khóa/mở, đăng nhập thành công/thất bại (bảng `login_events` riêng: user_id?, username_hash, ip, success, reason, at).
+- Audit: tạo / tạm ngưng tổ chức, reset mật khẩu, khóa / mở — qua `audit_logs` (C-10). **Chưa code**: bảng `login_events` (user_id?, username_hash, ip, success, reason, at) ghi đăng nhập thành công / thất bại.
 - Không log mật khẩu, token, mật khẩu tạm. Response chứa mật khẩu tạm có `Cache-Control: no-store`.
 - Rate limit ✅ (ASP.NET Core RateLimiter, cửa sổ trượt): `/auth/login` 5 req/phút theo IP+username (`LoginAttemptLimiter` trong endpoint — username lấy từ body, chuẩn hóa SĐT/email), 20 req/phút theo IP (policy `login`); `/auth/refresh` 30/phút/IP. Cấu hình section `RateLimiting`.
 - Chống timing attack: khi username không tồn tại vẫn chạy hash giả.
@@ -400,20 +409,16 @@ Mặc định **mọi endpoint** yêu cầu `RequireOrgMember` (fallback policy)
 
 ## 13. Phụ thuộc
 - Không phụ thuộc module nghiệp vụ. Mọi module phụ thuộc M01 qua `ICurrentUser` và policy `RequireOrgMember`.
-- M02 cung cấp `IOrganizationStatsQuery` (đếm khu/phòng) cho ID-UC-02 — gọi qua interface để tránh phụ thuộc vòng.
+- (Chưa code) M02 cung cấp `IOrganizationStatsQuery` (đếm khu/phòng) cho ID-UC-02 — gọi qua interface để tránh phụ thuộc vòng.
 
-## 14. Task breakdown
+## 14. Việc còn lại
 
-| ID | Task | Lớp | Ước lượng | Phụ thuộc |
-|----|------|-----|-----------|-----------|
-| ID-01 | Entity `Organization`, `User`, `RefreshToken` + unit test | Domain | 1d | P0-03 |
-| ID-02 | EF config + migration + index/CHECK | Infra | 0.5d | ID-01 |
-| ID-03 | `IPasswordHasher`, `ITokenService` (JWT), cấu hình JwtBearer, fallback policy | Infra/API | 1d | ID-01 |
-| ID-04 | Login / Refresh / Logout / ChangePassword + rate limit | App/API | 1.5d | ID-03 |
-| ID-05 | `ICurrentUser`, middleware kiểm stamp + org status (cache) | API | 0.5d | ID-03 |
-| ID-06 | Admin: CRUD tổ chức, suspend/reactivate, reset/lock/unlock | App/API | 1.5d | ID-02 |
-| ID-07 | Seed SystemAdmin | Infra | 0.25d | ID-02 |
-| ID-08 | Integration tests §12 | Test | 1.5d | ID-04, ID-06 |
+| Việc | Ghi chú |
+|------|---------|
+| `PUT /admin/organizations/{id}` — sửa thông tin tổ chức (ID-UC-03) | Hiện muốn đổi tên / liên hệ tổ chức phải sửa DB |
+| `PUT /me` — tự sửa họ tên, SĐT, email (ID-UC-12) | Phó quản lý: chủ trọ sửa hộ được; chủ trọ thì chưa có cách |
+| Số khu / số phòng trong danh sách tổ chức (ID-UC-02) | |
+| Bảng `login_events` + job dọn refresh token hết hạn | P2 |
 
 ## 15. Câu hỏi mở
 

@@ -22,6 +22,23 @@ public sealed class MeterTests
     }
 
     [Fact]
+    public void FindHandoverAndFinal_AreScopedToTheStay_WhenContractLeavesAndReturnsToTheRoom()
+    {
+        // MT-BR-04: HĐ ở phòng [1/10, 11/10], chuyển đi, quay lại từ 21/10 — mỗi lần ở có chỉ số nhận phòng / chỉ số cuối riêng.
+        var meter = NewMeter();
+        meter.Record(ReadingKind.Handover, Day, 100, Contract, null);
+        meter.Record(ReadingKind.Final, Day.AddDays(10), 130, Contract, null);
+        meter.Record(ReadingKind.Handover, Day.AddDays(20), 138, Contract, null);
+
+        meter.FindHandover(Contract, Day, Day.AddDays(10))!.Value.Should().Be(100);
+        meter.FindHandover(Contract, Day.AddDays(20))!.Value.Should().Be(138);
+        meter.FindFinal(Contract, Day.AddDays(20)).Should().BeNull("chỉ số cuối 130 thuộc lần ở trước");
+
+        meter.Record(ReadingKind.Final, Day.AddDays(40), 170, Contract, null).IsSuccess.Should().BeTrue();
+        meter.FindFinal(Contract, Day.AddDays(20))!.Value.Should().Be(170);
+    }
+
+    [Fact]
     public void Readings_MustNotDecrease_InTimeOrder()
     {
         var meter = NewMeter();

@@ -32,6 +32,7 @@ public static class DbConstraints
     public const string ContractFeePeriodExclusion = "ex_contract_fees_period";
     public const string MeterActiveUnique = "ux_meters_active";
     public const string HandoverReadingUnique = "ux_meter_readings_handover";
+    public const string FinalReadingUnique = "ux_meter_readings_final";
     public const string InvoicePeriodUnique = "ux_invoices_period";
     public const string SegmentEndReadingUnique = "ux_invoice_meter_segments_end";
 
@@ -57,6 +58,8 @@ public static class DbConstraints
         [FeePriceDateUnique] = FeeErrors.PriceDateExists,
         [ContractFeePeriodExclusion] = ContractErrors.FeeLaterChangeExists,
         [MeterActiveUnique] = MeterErrors.AlreadyActive,
+        [HandoverReadingUnique] = MeterErrors.ContractReadingExists,
+        [FinalReadingUnique] = MeterErrors.ContractReadingExists,
         [InvoicePeriodUnique] = Error.Conflict("INVOICE_EXISTS", "Kỳ này đã có phiếu — tải lại."),
         [SegmentEndReadingUnique] = BillingErrors.DraftStale,
         [ContractRoomPeriodExclusion] = ContractErrors.RoomPeriodOverlap,

@@ -56,4 +56,48 @@ public sealed class PreviousDebtTests(ApiFactory factory)
         after.GetProperty("previousDebts").GetArrayLength().Should().Be(0);
         after.GetProperty("totalDue").GetDecimal().Should().Be(2_000_000);
     }
+
+    /// <summary>PM-BR-31 (11/10/2026): ký lại ⇒ phiếu của HĐ mới hiện riêng nợ của HĐ trước, không cộng vào "Tổng cần thanh toán".</summary>
+    [Fact]
+    public async Task InvoiceOfReSignedContract_ShowsPreviousContractDebt_Separately()
+    {
+        var owner = await _client.CreateActiveOwnerAsync();
+        var token = owner.Tokens.AccessToken;
+        var today = TestData.Today(factory);
+        var start = new DateOnly(today.Year, today.Month, 1).AddMonths(-1);
+        var propertyId = await _client.CreatePropertyAsync(token, anchorDay: 1, chargeMode: "Prepaid");
+        var roomId = await _client.CreateRoomAsync(token, propertyId);
+        var signer = await _client.CreateRenterAsync(token);
+        var roommate = await _client.CreateRenterAsync(token);
+        var oldId = await _client.CreateContractAsync(token, roomId, signer, start, signer, roommate);
+        (await _client.PostJsonAsync($"/api/v1/contracts/{oldId}/activate", null, token)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        async Task<JsonElement> InvoiceAsync(Guid contractId, DateOnly billingMonth)
+        {
+            await _client.PostJsonAsync("/api/v1/invoices/generate", new { propertyId, billingMonth = $"{billingMonth:yyyy-MM}", roomIds = new[] { roomId } }, token);
+            var page = await (await _client.GetAsync($"/api/v1/invoices?contractId={contractId}&billingMonth={billingMonth:yyyy-MM}", token)).ReadAsync<JsonElement>();
+            return await (await _client.GetAsync($"/api/v1/invoices/{page.GetProperty("items")[0].GetProperty("id").GetGuid()}", token)).ReadAsync<JsonElement>();
+        }
+        var oldInvoice = await InvoiceAsync(oldId, start);
+        var oldInvoiceId = oldInvoice.GetProperty("summary").GetProperty("id").GetGuid();
+        (await _client.PostJsonAsync($"/api/v1/invoices/{oldInvoiceId}/finalize", null, token)).StatusCode.Should().Be(HttpStatusCode.OK);
+        var owed = oldInvoice.GetProperty("summary").GetProperty("totalAmount").GetDecimal();
+
+        // Ký lại cho người còn ở: HĐ cũ thanh lý tại hôm qua (còn nợ), HĐ mới bắt đầu hôm nay.
+        var resigned = await _client.PostJsonAsync($"/api/v1/contracts/{oldId}/re-sign", new { handoverDate = today.AddDays(-1), representativeRenterId = roommate }, token);
+        resigned.StatusCode.Should().Be(HttpStatusCode.Created, await resigned.Content.ReadAsStringAsync());
+        var newId = await resigned.ReadIdAsync();
+        var activated = await _client.PostJsonAsync($"/api/v1/contracts/{newId}/activate", null, token);
+        activated.StatusCode.Should().Be(HttpStatusCode.NoContent, await activated.Content.ReadAsStringAsync());
+
+        var invoice = await InvoiceAsync(newId, today);
+        var debt = invoice.GetProperty("previousContractDebts").EnumerateArray().Single();
+        debt.GetProperty("contractId").GetGuid().Should().Be(oldId);
+        debt.GetProperty("invoiceId").GetGuid().Should().Be(oldInvoiceId);
+        debt.GetProperty("outstanding").GetDecimal().Should().Be(owed);
+        invoice.GetProperty("previousContractDue").GetDecimal().Should().Be(owed);
+        invoice.GetProperty("previousDebts").GetArrayLength().Should().Be(0);
+        invoice.GetProperty("totalDue").GetDecimal().Should().Be(invoice.GetProperty("summary").GetProperty("totalAmount").GetDecimal(),
+            "nợ HĐ trước không cộng vào tổng cần thanh toán của HĐ mới");
+    }
 }

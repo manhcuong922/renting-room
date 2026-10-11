@@ -385,6 +385,85 @@ public sealed class ContractTests
     }
 
     [Fact]
+    public void OccupantRole_CoTenantIsPaperOnly_RepresentativeNeverCarriesIt()
+    {
+        var contract = Contract.CreateDraft(Guid.NewGuid(), Guid.NewGuid(), "hd2026-0009", Draft() with
+        {
+            Occupants =
+            [
+                new OccupantInput(Representative, Start, null, null, null, Role: OccupantRole.CoTenant),
+                new OccupantInput(OccupantA, Start, null, null, null, Role: OccupantRole.CoTenant)
+            ]
+        });
+        contract.Activate(Context());
+        var own = contract.Occupants.Single(o => o.RenterId == Representative);
+        var other = contract.Occupants.Single(o => o.RenterId == OccupantA);
+
+        own.Role.Should().Be(OccupantRole.Resident, "người đứng tên không mang vai trò đồng thuê");
+        other.Role.Should().Be(OccupantRole.CoTenant);
+        contract.ChangeOccupantRole(own.Id, OccupantRole.CoTenant).Error.Should().Be(ContractErrors.OccupantIsRepresentative);
+        contract.ChangeOccupantRole(other.Id, OccupantRole.Resident).IsSuccess.Should().BeTrue();
+        other.Role.Should().Be(OccupantRole.Resident);
+        contract.EndOccupancy(other.Id, Start.AddDays(3));
+        contract.ChangeOccupantRole(other.Id, OccupantRole.CoTenant).Error.Should().Be(ContractErrors.OccupantAlreadyMovedOut);
+    }
+
+    [Fact]
+    public void ChangeRepresentative_KeepsContract_RecordsHistory_ResetsSignedDocumentAndRelationships()
+    {
+        var contract = Contract.CreateDraft(Guid.NewGuid(), Guid.NewGuid(), "hd2026-0010", Draft() with
+        {
+            Occupants =
+            [
+                new OccupantInput(Representative, Start, null, null, null),
+                new OccupantInput(OccupantA, Start, null, null, null, OccupantRelationship.Wife, Role: OccupantRole.CoTenant),
+                new OccupantInput(OccupantB, Start, null, null, null, OccupantRelationship.Child)
+            ]
+        });
+        contract.Activate(Context());
+        contract.SetSignedDocument(true, "Tủ hồ sơ");
+        var today = Start.AddDays(30);
+
+        contract.ChangeRepresentative(Representative, today, today, null, false, null).Error.Should().Be(ContractErrors.RepresentativeUnchanged);
+        contract.ChangeRepresentative(OccupantA, today.AddDays(1), today, null, false, null).Error.Should().Be(ContractErrors.RepresentativeInvalidDate);
+        contract.ChangeRepresentative(OccupantA, Start.AddDays(-1), today, null, false, null).Error.Should().Be(ContractErrors.RepresentativeInvalidDate);
+        contract.ChangeRepresentative(OccupantA, today, today, Guid.NewGuid(), false, null).Error.Should().Be(ContractErrors.HouseholdHeadNotOccupant);
+
+        contract.ChangeRepresentative(OccupantA, today, today, null, oldRepresentativeMovesOut: true, "{\"new\":true}").IsSuccess.Should().BeTrue();
+
+        contract.RepresentativeRenterId.Should().Be(OccupantA);
+        contract.RepresentativeSince.Should().Be(today);
+        contract.RepresentativeHistory.Should().ContainSingle(h => h.RenterId == Representative && h.FromDate == Start && h.ToDate == today);
+        contract.HasSignedDocument.Should().BeFalse("bản ký cũ không còn đúng người đứng tên");
+        contract.SigningSnapshot.Should().Be("{\"new\":true}");
+        contract.Occupants.Single(o => o.RenterId == OccupantA).Role.Should().Be(OccupantRole.Resident);
+        contract.Occupants.Single(o => o.RenterId == OccupantB).RelationshipType.Should().BeNull("quan hệ khai theo người đứng tên cũ — khai lại");
+        contract.Occupants.Single(o => o.RenterId == Representative).MoveOutDate.Should().Be(today);
+        contract.Flags(today.AddDays(1)).Should().NotContain(ContractFlag.RepresentativeMovedOut);
+        contract.ChangeRepresentative(OccupantB, today.AddDays(-1), today, null, false, null).Error.Should().Be(ContractErrors.RepresentativeInvalidDate,
+            "không trước ngày người hiện tại bắt đầu đứng tên");
+    }
+
+    [Fact]
+    public void CancelLastTransfer_RestoresPreviousRoomAndStay_OneTransferAtATime()
+    {
+        var contract = NewActive();
+        var roomA = contract.RoomId;
+        var roomB = Guid.NewGuid();
+        var today = Start.AddDays(30);
+        contract.CancelLastTransfer().Error.Should().Be(ContractErrors.TransferNothingToCancel);
+
+        contract.TransferRoom(roomB, Start.AddDays(10), today);
+        contract.TransferRoom(roomA, Start.AddDays(20), today).IsSuccess.Should().BeTrue("chuyển về phòng đã từng ở");
+
+        contract.CancelLastTransfer().IsSuccess.Should().BeTrue();
+        contract.RoomStays.Should().Equal(new RoomStay(roomA, Start, Start.AddDays(10)), new RoomStay(roomB, Start.AddDays(10), null));
+        contract.CancelLastTransfer().IsSuccess.Should().BeTrue();
+        contract.RoomStays.Should().Equal(new RoomStay(roomA, Start, null));
+        contract.CancelLastTransfer().Error.Should().Be(ContractErrors.TransferNothingToCancel);
+    }
+
+    [Fact]
     public void Deposit_RefundFullOrPartialWithNote_Undo_TransferOnResign()
     {
         var contract = NewActive();

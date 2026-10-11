@@ -282,7 +282,7 @@ internal static class ContractMeterReadings
 
         var meters = await MeterMapping.LockAndLoadAsync(db, roomMeterIds, ct);
         var missing = meters.Where(m => kind == ReadingKind.Final
-                ? (!given.TryGetValue(m.Id, out var f) || f.Value is null) && m.FindFinal(contract.Id) is null
+                ? (!given.TryGetValue(m.Id, out var f) || f.Value is null) && m.FindFinal(contract.Id, contract.RoomSince) is null
                 : !given.ContainsKey(m.Id))
             .Select(m => m.Id).ToList();
         if (missing.Count > 0)
@@ -291,7 +291,7 @@ internal static class ContractMeterReadings
         foreach (var meter in meters)
         {
             var input = given.GetValueOrDefault(meter.Id);
-            var existingFinal = kind == ReadingKind.Final ? meter.FindFinal(contract.Id) : null;
+            var existingFinal = kind == ReadingKind.Final ? meter.FindFinal(contract.Id, contract.RoomSince) : null;
             if (existingFinal is not null)
             {
                 if (input?.Value is { } newValue && newValue != existingFinal.Value)
@@ -316,7 +316,7 @@ internal static class ContractMeterReadings
     {
         var ids = await ActiveMeterIdsAsync(db, contract.RoomId, date, ct);
         var meters = await db.Meters.AsNoTracking().Include(m => m.Readings).Where(m => ids.Contains(m.Id)).ToListAsync(ct);
-        return meters.Where(m => m.FindFinal(contract.Id) is null).Select(m => m.Id).ToList();
+        return meters.Where(m => m.FindFinal(contract.Id, contract.RoomSince) is null).Select(m => m.Id).ToList();
     }
 
     /// <summary>Hủy thanh lý ⇒ hủy chỉ số cuối đã ghi của HĐ (chưa bị khóa vì phiếu quyết toán chưa chốt).</summary>
@@ -324,7 +324,7 @@ internal static class ContractMeterReadings
     {
         var ids = await db.Meters.Where(m => m.RoomId == contract.RoomId).Select(m => m.Id).ToListAsync(ct);
         foreach (var meter in await MeterMapping.LockAndLoadAsync(db, ids, ct))
-            if (meter.FindFinal(contract.Id) is { } final)
+            if (meter.FindFinal(contract.Id, contract.RoomSince) is { } final)
                 meter.VoidReading(final.Id, "Hủy thanh lý", now);
     }
 }

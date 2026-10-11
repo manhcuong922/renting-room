@@ -45,7 +45,7 @@ public sealed record ContractInput(
 /// <param name="GuardianConsent">Người chưa thành niên: đã có đồng ý của cha, mẹ hoặc người giám hộ (CT-BR-30).</param>
 public sealed record OccupantRequest(
     Guid RenterId, DateOnly? MoveInDate, DateOnly? ExpectedEndDate, string? Relationship, string? Note,
-    OccupantRelationship? RelationshipType = null, bool? GuardianConsent = null);
+    OccupantRelationship? RelationshipType = null, bool? GuardianConsent = null, OccupantRole? Role = null);
 
 public sealed record ContractSummaryDto(
     Guid Id,
@@ -72,7 +72,7 @@ public sealed record RentTermDto(Guid Id, DateOnly EffectiveFrom, decimal Monthl
 public sealed record OccupantDto(
     Guid Id, Guid RenterId, string FullName, DateOnly MoveInDate, DateOnly? MoveOutDate, DateOnly? ExpectedEndDate,
     string? Relationship, string? Note, bool IsRepresentative, OccupantRelationship? RelationshipType, bool GuardianConsent,
-    bool IsHouseholdHead);
+    bool IsHouseholdHead, OccupantRole Role = OccupantRole.Resident);
 
 public sealed record AssetDto(
     Guid Id, string Name, int Quantity, string? ConditionAtHandover, string? ConditionAtReturn, decimal? ValueEstimate, string? Note);
@@ -139,7 +139,12 @@ public sealed record ContractDetailDto(
     DateOnly? BillingStartDate = null,
     ContractDepositDto? Deposit = null,
     DateOnly? RoomSince = null,
-    IReadOnlyList<RoomMoveDto>? RoomMoves = null);
+    IReadOnlyList<RoomMoveDto>? RoomMoves = null,
+    DateOnly? RepresentativeSince = null,
+    IReadOnlyList<RepresentativeHistoryDto>? RepresentativeHistory = null);
+
+/// <summary>CT-BR-51: người đã thôi đứng tên HĐ và khoảng thời gian họ đứng tên.</summary>
+public sealed record RepresentativeHistoryDto(Guid RenterId, string FullName, DateOnly FromDate, DateOnly ToDate);
 
 /// <summary>
 /// M08 PM-BR-32..35: cọc chỉ theo dõi. <paramref name="Status"/> null = HĐ không cọc; <paramref name="NotRefundedReminder"/> = HĐ đã kết thúc mà
@@ -188,16 +193,21 @@ public sealed record SigningSnapshot(
         Converters = { new JsonStringEnumConverter() }
     };
 
+    private static PartyPart PartyOf(Renter renter) => new(
+        renter.FullName, renter.DateOfBirth, renter.IdType,
+        renter.IdNumberEncrypted is null ? null : Convert.ToBase64String(renter.IdNumberEncrypted), renter.IdNumberLast4,
+        renter.IdIssueDate, renter.IdIssuePlace, renter.PermanentAddress, renter.Phone);
+
+    /// <summary>CT-BR-51: đổi người đứng tên ⇒ chụp lại phần bên thuê; bên cho thuê, phòng giữ nguyên như lúc ký.</summary>
+    public SigningSnapshot WithRepresentative(Renter representative) => this with { Representative = PartyOf(representative) };
+
     public static SigningSnapshot From(Property property, LessorDetails lessor, Room room, Renter representative, DateTimeOffset now) => new(
         new LessorPart(
             lessor.Type, lessor.Name, lessor.Address, lessor.Phone, lessor.Email, lessor.IdType,
             lessor.IdNumberEncrypted is null ? null : Convert.ToBase64String(lessor.IdNumberEncrypted),
             lessor.IdNumberLast4, lessor.IdIssueDate, lessor.IdIssuePlace, lessor.DateOfBirth, lessor.TaxCode,
             lessor.RepresentativeName, lessor.RepresentativeTitle, lessor.AuthorizationDocNo, lessor.AuthorizationDocDate),
-        new PartyPart(
-            representative.FullName, representative.DateOfBirth, representative.IdType,
-            representative.IdNumberEncrypted is null ? null : Convert.ToBase64String(representative.IdNumberEncrypted), representative.IdNumberLast4,
-            representative.IdIssueDate, representative.IdIssuePlace, representative.PermanentAddress, representative.Phone),
+        PartyOf(representative),
         new RoomPart(room.Code, room.Floor, room.AreaM2, room.MaxOccupants),
         property.BankAccount,
         property.Name,

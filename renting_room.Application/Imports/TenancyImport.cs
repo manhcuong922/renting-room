@@ -277,6 +277,13 @@ internal sealed class TenancyImportChecker(
                 .Select(c => new { c.RoomId, c.ContractNo, c.Status, Name = db.Renters.Where(r => r.Id == c.RepresentativeRenterId).Select(r => r.FullName).First() })
                 .ToListAsync(ct))
             .GroupBy(c => c.RoomId).ToDictionary(g => g.Key, g => g.First());
+        // Phòng đã có HĐ khác ở tới ngày nào: HĐ đã kết thúc (ngày trả phòng) / đã chuyển đi (ngày chuyển — CT-BR-14). Bước kích hoạt chặn nếu
+        // ngày đó ≥ ngày bắt đầu HĐ mới ⇒ xem trước phải báo cùng điều kiện.
+        var endedUntil = await db.Contracts.AsNoTracking().Where(c => roomIds.Contains(c.RoomId) && c.Status == ContractStatus.Ended)
+            .Select(c => new { c.RoomId, Until = c.ActualEndDate!.Value }).ToListAsync(ct);
+        var movedUntil = await db.Contracts.AsNoTracking().SelectMany(c => c.RoomMoves).Where(m => roomIds.Contains(m.RoomId))
+            .Select(m => new { m.RoomId, Until = m.ToDate }).ToListAsync(ct);
+        var occupiedUntil = endedUntil.Concat(movedUntil).GroupBy(x => x.RoomId).ToDictionary(g => g.Key, g => g.Max(x => x.Until));
         var lastReadings = (await db.Meters.AsNoTracking().Where(m => roomIds.Contains(m.RoomId) && m.RemovedDate == null)
                 .Select(m => new { m.RoomId, m.SerialNo, Last = m.Readings.Max(r => (DateOnly?)r.ReadingDate) }).ToListAsync(ct))
             .ToLookup(m => m.RoomId);
@@ -302,6 +309,9 @@ internal sealed class TenancyImportChecker(
                 roomErrors.Add(new("NO_OCCUPANT", "Phòng không có ai ở (vai trò \"Đứng tên\" hoặc \"Ở cùng\")."));
 
             DateOnly? start = living.Select(r => r.MoveInDate).Where(d => d is not null).Min();
+            if (room is not null && start is { } movedIn && occupiedUntil.TryGetValue(room.Id, out var until) && until >= movedIn)
+                roomErrors.Add(new(ContractErrors.RoomPeriodOverlap.Code,
+                    $"Phòng {group.Key} đã có hợp đồng khác ở tới {until:dd/MM/yyyy} — ngày vào ở phải sau ngày đó."));
             DateOnly? billingStart = start is { } s ? (s > periodStart ? s : periodStart) : null;
             if (room is not null && billingStart is { } from)
                 foreach (var meter in lastReadings[room.Id].Where(m => m.Last is null || m.Last < from.AddDays(-StaleReadingDays)))

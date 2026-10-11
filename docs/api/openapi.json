@@ -1788,7 +1788,7 @@
         "tags": [
           "Contracts"
         ],
-        "summary": "Ghi tình trạng tài sản khi trả phòng + giá trị bồi thường",
+        "summary": "Ghi tình trạng tài sản khi trả phòng (bồi thường: thêm phụ thu trên phiếu quyết toán)",
         "parameters": [
           {
             "name": "id",

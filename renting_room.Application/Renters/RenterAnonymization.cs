@@ -108,10 +108,10 @@ public sealed class AnonymizeExpiredRentersHandler(IAppDbContext db, ICurrentUse
                 r.Id,
                 r.CreatedAt,
                 LastEnded = db.Contracts
-                    .Where(c => (c.RepresentativeRenterId == r.Id || c.Occupants.Any(o => o.RenterId == r.Id)) && c.Status == ContractStatus.Ended)
+                    .Where(c => (c.RepresentativeRenterId == r.Id || c.Occupants.Any(o => o.RenterId == r.Id) || c.RepresentativeHistory.Any(h => h.RenterId == r.Id)) && c.Status == ContractStatus.Ended)
                     .Max(c => c.ActualEndDate),
                 LastCancelled = db.Contracts
-                    .Where(c => (c.RepresentativeRenterId == r.Id || c.Occupants.Any(o => o.RenterId == r.Id)) && c.Status == ContractStatus.Cancelled)
+                    .Where(c => (c.RepresentativeRenterId == r.Id || c.Occupants.Any(o => o.RenterId == r.Id) || c.RepresentativeHistory.Any(h => h.RenterId == r.Id)) && c.Status == ContractStatus.Cancelled)
                     .Max(c => c.CancelledAt)
             })
             .ToListAsync(ct);
@@ -163,7 +163,8 @@ public sealed class RenterAnonymizer(IAppDbContext db, IAuditTrail auditTrail, I
     private static readonly ContractStatus[] OpenStatuses = [ContractStatus.Draft, ContractStatus.Active, ContractStatus.Liquidating];
 
     public static Task<bool> HasOpenContractAsync(IAppDbContext db, Guid renterId, CancellationToken ct) =>
-        db.Contracts.AnyAsync(c => (c.RepresentativeRenterId == renterId || c.Occupants.Any(o => o.RenterId == renterId))
+        db.Contracts.AnyAsync(c => (c.RepresentativeRenterId == renterId || c.Occupants.Any(o => o.RenterId == renterId)
+                || c.RepresentativeHistory.Any(h => h.RenterId == renterId))
             && OpenStatuses.Contains(c.Status), ct);
 
     public static Task<bool> HasUnsettledInvoiceAsync(IAppDbContext db, Guid renterId, CancellationToken ct) =>
@@ -173,7 +174,7 @@ public sealed class RenterAnonymizer(IAppDbContext db, IAuditTrail auditTrail, I
 
     /// <summary>Lọc bỏ hồ sơ còn HĐ đang chạy hoặc còn phiếu nợ / chờ hoàn (cùng điều kiện với 2 hàm trên, dạng truy vấn tập hợp).</summary>
     public static IQueryable<Renter> WithoutBlockers(IAppDbContext db, IQueryable<Renter> renters) => renters
-        .Where(r => !db.Contracts.Any(c => (c.RepresentativeRenterId == r.Id || c.Occupants.Any(o => o.RenterId == r.Id))
+        .Where(r => !db.Contracts.Any(c => (c.RepresentativeRenterId == r.Id || c.Occupants.Any(o => o.RenterId == r.Id) || c.RepresentativeHistory.Any(h => h.RenterId == r.Id))
             && OpenStatuses.Contains(c.Status)))
         .Where(r => !db.Invoices.Any(i => i.Status == InvoiceStatus.Finalized
             && db.Contracts.Any(c => c.Id == i.ContractId && c.RepresentativeRenterId == r.Id)

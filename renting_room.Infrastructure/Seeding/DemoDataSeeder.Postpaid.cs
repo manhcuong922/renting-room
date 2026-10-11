@@ -172,11 +172,16 @@ public sealed partial class DemoDataSeeder
         var c202 = await ContractAsync(r202.Id, await RenterAsync("Trịnh Văn Long", new DateOnly(1987, 3, 9), Gender.Male, null),
             Month(-11), 3000000, r202.Meters, fees: standard, end: _today.AddDays(-5));
 
-        // 203 — Hết hạn nhưng vẫn ở tiếp, chưa ký lại (holdover).
+        // 203 — Hết hạn nhưng vẫn ở tiếp, chưa ký lại (holdover); phiếu tháng -2 chưa thu ⇒ còn nợ.
         var r203 = await Room("203");
         var c203 = await ContractAsync(r203.Id, await RenterAsync("Lý Thị Ngọc", new DateOnly(1993, 10, 21), Gender.Female, Phone(11)),
-            Month(-11), 3000000, r203.Meters, fees: standard, end: _today.AddDays(-20));
+            Month(-2), 3000000, r203.Meters, fees: standard, end: _today.AddDays(-20));
         await Send(new StartHoldoverCommand(c203, "Người thuê xin ở thêm 2 tháng, chưa ký phụ lục"));
+        // CT-BR-37: quá hạn mà vẫn ở = không thời hạn ⇒ thêm người ở sau ngày hết hạn không cần gia hạn trước.
+        await Send(new AddOccupantCommand(c203, await RenterAsync("Lý Văn Khôi", new DateOnly(1996, 5, 17), Gender.Male, Phone(16)),
+            _today, null, null, null, OccupantRelationship.Sibling));
+        await Close(r203, c203, Month(-2), Month(-2), 90);
+        await Bill(r203, c203, Month(-2), full: false);
 
         // 204 — HĐ nháp sắp vào ở + 1 HĐ nháp đã hủy: khách đổi ý ⇒ ghi "Đã hoàn trả cọc" 0đ kèm lý do (mất cọc giữ chỗ — PM-BR-33).
         var r204 = await Room("204");
@@ -191,9 +196,37 @@ public sealed partial class DemoDataSeeder
         var r205 = await Room("205");
         await Send(new ChangeRoomStateCommand(r205.Id, RoomAction.StartMaintenance, "Sơn lại tường, thay bình nóng lạnh"));
         // 206 — CT-UC-12: người ở 203 (đang ở tiếp sau hết hạn) chuyển sang 206 hôm nay, giá mới 3,2tr; HĐ, cọc, người ở giữ nguyên.
+        // PR-BR-16: nợ đi theo HĐ ⇒ nhãn "Còn nợ" sang 206, phòng 203 hết nhãn.
+        // CT-BR-47: điện 25 kWh + nước 2 m³ của 203 chốt ngay thành 2 khoản phát sinh hệ thống (giá hôm nay), chờ vào phiếu tháng này.
         var r206 = await Room("206");
         await Send(new TransferRoomCommand(c203, r206.Id, _today, [FinalReading(r203.Electricity, 25), FinalReading(r203.Water!.Value, 2)], null,
             3200000, "Chuyển sang phòng rộng hơn"));
+        // 207 ⇄ 208 — CT-BR-14: chuyển sang 208 (sửa trần) rồi chuyển về lại 207 — phòng đã từng ở; mỗi lần chuyển chốt điện nước
+        // phòng vừa rời thành khoản phát sinh (CT-BR-47), giá thuê giữ nguyên.
+        var r207 = await Room("207");
+        var r208 = await Room("208");
+        var c207 = await ContractAsync(r207.Id, await RenterAsync("Kiều Văn Sang", new DateOnly(1994, 8, 14), Gender.Male, Phone(17)),
+            Month(-1), 3000000, r207.Meters, fees: standard);
+        await Send(new TransferRoomCommand(c207, r208.Id, _today.AddDays(-12),
+            [FinalReading(r207.Electricity, 40), FinalReading(r207.Water!.Value, 3)], null, null, "Sửa trần phòng 207"));
+        await Send(new TransferRoomCommand(c207, r207.Id, _today.AddDays(-4),
+            [FinalReading(r208.Electricity, 18), FinalReading(r208.Water!.Value, 1)], null, null, "Sửa xong, chuyển về phòng cũ"));
+        // 208 (trống lại sau khi 207 chuyển về) — HĐ mới 3 người: người đứng tên, em gái, bạn đồng thuê (CT-BR-49: có tên trên HĐ, chỉ là giấy tờ).
+        // Hôm nay: bạn đồng thuê chuyển sang ở 207 (CT-BR-52 — người đi, HĐ ở lại); người đứng tên rời đi, em gái đứng tên thay trên cùng HĐ
+        // (CT-BR-51 — nợ, cọc giữ nguyên; HĐ về "Thiếu tài liệu", quan hệ khai lại).
+        var sister = await RenterAsync("Tô Thị Hạnh", new DateOnly(1998, 11, 2), Gender.Female, Phone(19));
+        var coTenant = await RenterAsync("Ngô Văn Nam", new DateOnly(1997, 6, 23), Gender.Male, Phone(20));
+        var start208 = _today.AddDays(-3);
+        var c208 = await ContractAsync(r208.Id, await RenterAsync("Tô Văn Bình", new DateOnly(1995, 2, 9), Gender.Male, Phone(18)),
+            start208, 3000000, r208.Meters,
+            [
+                new(sister, start208, null, null, null, OccupantRelationship.Sibling),
+                new(coTenant, start208, null, null, null, OccupantRelationship.CoTenant, null, OccupantRole.CoTenant)
+            ],
+            fees: standard);
+        var moving = (await Send(new GetContractQuery(c208))).Occupants.Single(o => o.RenterId == coTenant).Id;
+        await Send(new MoveOccupantCommand(c208, moving, c207, _today, OccupantRole.CoTenant, OccupantRelationship.CoTenant, null, false, null));
+        await Send(new ChangeRepresentativeCommand(c208, sister, _today, null, true));
         await RenterAsync("Phan Văn Rỗi", new DateOnly(2001, 4, 4), Gender.Male, Phone(14), occupation: "Sinh viên");
     }
 }

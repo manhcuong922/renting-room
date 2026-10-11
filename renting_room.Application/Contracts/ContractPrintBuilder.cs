@@ -156,6 +156,11 @@ internal static class ContractPrintBuilder
                 $"{IdLabel(r.IdType)} số: {d.RepresentativeIdNumber ?? Blank}, cấp ngày {DateOrBlank(r.IdIssueDate)} tại {r.IdIssuePlace ?? Blank}\n" +
                 $"Nơi thường trú: {r.PermanentAddress ?? Blank}\nĐiện thoại: {r.Phone ?? Blank}");
 
+        // CT-BR-49: đồng thuê có tên trên HĐ cùng người đứng tên.
+        var coTenants = d.Occupants.Where(o => o.Occupant.Role == OccupantRole.CoTenant && o.Renter.Id != d.Contract.RepresentativeRenterId).ToList();
+        if (coTenants.Count > 0)
+            yield return Text("Người đồng thuê: " + string.Join("; ", coTenants.Select(o => $"{o.Renter.FullName} ({o.IdNumber})")));
+
         var others = d.Occupants.Where(o => o.Renter.Id != d.Contract.RepresentativeRenterId).ToList();
         if (others.Count == 0)
             yield break;

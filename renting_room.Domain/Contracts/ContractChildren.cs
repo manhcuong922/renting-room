@@ -83,10 +83,14 @@ public sealed class ContractOccupant : TenantEntity
         RelationshipType = input.RelationshipType;
         GuardianConsent = input.GuardianConsent;
         Note = TextNormalizer.TrimToNull(input.Note);
+        Role = input.Role;
     }
 
     public Guid ContractId { get; private set; }
     public Guid RenterId { get; private set; }
+
+    /// <summary>CT-BR-49: người ở thường hoặc đồng thuê (có tên trên HĐ). Người đứng tên luôn lưu <see cref="OccupantRole.Resident"/>.</summary>
+    public OccupantRole Role { get; private set; }
     public DateOnly MoveInDate { get; private set; }
     public DateOnly? MoveOutDate { get; private set; }
     public DateOnly? ExpectedEndDate { get; private set; }
@@ -101,7 +105,7 @@ public sealed class ContractOccupant : TenantEntity
 
     /// <summary>Dạng <see cref="OccupantInput"/> để kiểm tra quan hệ cùng người mới (ngày ra thực tế thay cho dự kiến).</summary>
     public OccupantInput ToInput() =>
-        new(RenterId, MoveInDate, MoveOutDate ?? ExpectedEndDate, Relationship, Note, RelationshipType, GuardianConsent);
+        new(RenterId, MoveInDate, MoveOutDate ?? ExpectedEndDate, Relationship, Note, RelationshipType, GuardianConsent, Role);
 
     public bool IsStayingOn(DateOnly date) => MoveInDate <= date && (MoveOutDate is null || MoveOutDate >= date);
 
@@ -109,6 +113,40 @@ public sealed class ContractOccupant : TenantEntity
     public bool OverlapsFrom(DateOnly from) => MoveOutDate is null || MoveOutDate >= from;
 
     internal void MoveOut(DateOnly date) => MoveOutDate = date;
+
+    internal void SetRole(OccupantRole role) => Role = role;
+
+    /// <summary>CT-BR-51: người làm mốc khai quan hệ đổi ⇒ quan hệ cũ không còn đúng, khai lại.</summary>
+    internal void ClearRelationship()
+    {
+        RelationshipType = null;
+        Relationship = null;
+    }
+}
+
+/// <summary>
+/// CT-BR-51: lịch sử người đứng tên — <see cref="RenterId"/> đã đứng tên HĐ trong [<see cref="FromDate"/>, <see cref="ToDate"/>]. Người đứng tên
+/// hiện tại nằm trên HĐ (<c>representative_renter_id</c>, <c>representative_since</c>). Bất biến sau khi ghi.
+/// </summary>
+public sealed class ContractRepresentative : TenantEntity
+{
+    private ContractRepresentative() { } // EF Core
+
+    internal ContractRepresentative(Guid contractId, Guid renterId, DateOnly fromDate, DateOnly toDate)
+    {
+        if (toDate < fromDate)
+            throw new ArgumentOutOfRangeException(nameof(toDate));
+        Id = Guid.CreateVersion7();
+        ContractId = contractId;
+        RenterId = renterId;
+        FromDate = fromDate;
+        ToDate = toDate;
+    }
+
+    public Guid ContractId { get; private set; }
+    public Guid RenterId { get; private set; }
+    public DateOnly FromDate { get; private set; }
+    public DateOnly ToDate { get; private set; }
 }
 
 /// <summary>Tài sản bàn giao kèm phòng (CT-UC-13) — căn cứ trừ cọc khi trả phòng.</summary>

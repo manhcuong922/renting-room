@@ -54,8 +54,8 @@ internal static class RoomChargeBilling
 
     public static Result Attach(Invoice draft, RoomCharge charge)
     {
-        var added = draft.AddManualLine(charge.LineType, charge.Description, null, null, charge.Amount, charge.Reason, null,
-            roomChargeId: charge.Id, isSettled: charge.IsSettled);
+        var added = draft.AddManualLine(charge.LineType, charge.Description, charge.Quantity, charge.UnitPrice, charge.Amount, charge.Reason,
+            charge.FeeTypeId, roomChargeId: charge.Id, isSettled: charge.IsSettled);
         if (added.IsSuccess)
         {
             charge.AttachTo(draft.Id);
@@ -286,6 +286,8 @@ public sealed class CancelRoomChargeHandler(IAppDbContext db, TimeProvider clock
     public async ValueTask<Result<RoomChargeDto>> Handle(CancelRoomChargeCommand request, CancellationToken cancellationToken) =>
         await RoomChargeMutation.RunAsync(db, request.Id, (charge, draft) =>
         {
+            if (charge.IsSystem)
+                return Result.Failure(RoomChargeErrors.System);
             var removed = draft?.RemoveChargeLine(charge.Id) ?? Result.Success();
             return removed.IsFailure ? removed : charge.Cancel(request.Reason, clock.GetUtcNow());
         }, cancellationToken);

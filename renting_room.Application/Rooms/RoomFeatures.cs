@@ -85,7 +85,7 @@ internal sealed class RoomRow
     public CurrentContractDto? Current { get; init; }
     public RoomDisplayStatus Status { get; init; }
 
-    /// <summary>PR-BR-16 / PM-UC-12: tổng phiếu đã chốt chưa thu đủ của phòng (mọi HĐ) ⇒ nhãn "Còn nợ".</summary>
+    /// <summary>PR-BR-16 / PM-UC-12: tổng phiếu đã chốt chưa thu đủ của các HĐ đang gắn với phòng ⇒ nhãn "Còn nợ".</summary>
     public decimal OutstandingAmount { get; init; }
 
     /// <summary>PR-BR-16 (K3): phần còn nợ của phiếu đã quá hạn thanh toán (ngày chốt phiếu + số ngày hạn của khu) ⇒ nhãn đỏ "Quá hạn".</summary>
@@ -124,9 +124,12 @@ internal static class RoomStatusQuery
                     c.Occupants.Count(o => o.MoveInDate <= today && (o.MoveOutDate == null || o.MoveOutDate >= today)),
                     null))
                 .FirstOrDefault(),
-            Outstanding = db.Invoices.Where(i => i.RoomId == r.Id && i.Status == InvoiceStatus.Finalized && i.PaidAmount < i.TotalAmount)
+            // PR-BR-16: nợ đi theo HĐ — phiếu của các HĐ đang gắn với phòng (chuyển phòng ⇒ nợ sang phòng mới), không theo phòng ghi trên phiếu.
+            Outstanding = db.Invoices.Where(i => db.Contracts.Any(c => c.Id == i.ContractId && c.RoomId == r.Id)
+                    && i.Status == InvoiceStatus.Finalized && i.PaidAmount < i.TotalAmount)
                 .Sum(i => (decimal?)(i.TotalAmount - i.PaidAmount)) ?? 0,
-            Overdue = db.Invoices.Where(i => i.RoomId == r.Id && i.Status == InvoiceStatus.Finalized && i.PaidAmount < i.TotalAmount
+            Overdue = db.Invoices.Where(i => db.Contracts.Any(c => c.Id == i.ContractId && c.RoomId == r.Id)
+                    && i.Status == InvoiceStatus.Finalized && i.PaidAmount < i.TotalAmount
                     && i.DueDate < today)
                 .Sum(i => (decimal?)(i.TotalAmount - i.PaidAmount)) ?? 0,
             DepositHeld = db.Contracts
@@ -158,6 +161,17 @@ internal static class RoomStatusQuery
         var flags = await ContractFlagReader.LoadAsync(db, rows.Where(r => r.Current is not null).Select(r => r.Current!.Id), today, ct);
         return rows.Select(r => r.ToDto(flags)).ToList();
     }
+
+    /// <summary>
+    /// PR-BR-02: phòng có HĐ đã bàn giao chiếm tại ngày <paramref name="date"/> — phòng hiện tại của HĐ (ngày trả phòng vẫn tính — CT-BR-33),
+    /// hoặc phòng HĐ đã chuyển đi mà còn tính tới ngày chuyển (CT-BR-14).
+    /// </summary>
+    public static IQueryable<Guid> OccupiedRoomIds(this IAppDbContext db, DateOnly date) =>
+        db.Contracts
+            .Where(c => (c.Status == ContractStatus.Active || c.Status == ContractStatus.Liquidating || c.Status == ContractStatus.Ended)
+                && c.RoomSince <= date && (c.ActualEndDate == null || c.ActualEndDate >= date))
+            .Select(c => c.RoomId)
+            .Union(db.Contracts.SelectMany(c => c.RoomMoves).Where(m => m.FromDate <= date && m.ToDate >= date).Select(m => m.RoomId));
 
     /// <summary>
     /// Phòng còn HĐ đang chiếm: hiệu lực / đang thanh lý / (tùy chọn) nháp, và HĐ đã kết thúc mà hôm nay vẫn là ngày trả phòng

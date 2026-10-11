@@ -19,7 +19,7 @@ public sealed class DemoDataSeederTests(ApiFactory factory)
         var options = new DemoDataOptions
         {
             Enabled = true, OrganizationCode = TestApi.NewOrganizationCode(), OwnerPhone = TestApi.NewPhone(), OwnerPassword = "ChuTroDemo2026",
-            ManagerPhone = TestApi.NewPhone(), ManagerPassword = "PhoQuanLy2026"
+            ManagerPhone = TestApi.NewPhone(), ManagerPassword = "PhoQuanLy2026", WriteOffManagerPhone = TestApi.NewPhone()
         };
         var seeder = ActivatorUtilities.CreateInstance<DemoDataSeeder>(factory.Services, Options.Create(options));
 
@@ -30,6 +30,11 @@ public sealed class DemoDataSeederTests(ApiFactory factory)
         var owner = await _client.LoginAsync(options.OwnerPhone, options.OwnerPassword);
         var manager = await _client.LoginAsync(options.ManagerPhone, options.ManagerPassword);
         manager.AccessToken.Should().NotBeNullOrEmpty();
+        (await (await _client.GetAsync("/api/v1/me", manager.AccessToken)).ReadAsync<JsonElement>()).GetProperty("canWriteOff").GetBoolean()
+            .Should().BeFalse("phó quản lý thường không được bỏ nợ");
+        var trusted = await _client.LoginAsync(options.WriteOffManagerPhone, options.ManagerPassword);
+        (await (await _client.GetAsync("/api/v1/me", trusted.AccessToken)).ReadAsync<JsonElement>()).GetProperty("canWriteOff").GetBoolean()
+            .Should().BeTrue("phó quản lý thứ hai được chủ trọ cấp quyền bỏ nợ (PM-BR-16)");
         var token = owner.AccessToken;
 
         var contracts = await (await _client.GetAsync("/api/v1/contracts?pageSize=100", token)).ReadAsync<JsonElement>();
@@ -98,6 +103,12 @@ public sealed class DemoDataSeederTests(ApiFactory factory)
         var moved203 = await DetailAsync("206", "Active");
         Deposit(moved203).GetProperty("status").GetString().Should().Be("Holding", "chuyển phòng ⇒ cọc giữ nguyên theo HĐ");
         moved203.GetProperty("roomMoves")[0].GetProperty("roomCode").GetString().Should().Be("203", "203 chuyển sang 206");
+        moved203.GetProperty("occupants").GetArrayLength().Should().Be(2, "HĐ quá hạn vẫn thêm được người ở (CT-BR-37)");
+        var khuA = await (await _client.GetAsync("/api/v1/rooms?pageSize=100", token)).ReadAsync<JsonElement>();
+        decimal Outstanding(string code) => khuA.GetProperty("items").EnumerateArray().Single(r => r.GetProperty("code").GetString() == code)
+            .GetProperty("outstandingAmount").GetDecimal();
+        Outstanding("206").Should().BeGreaterThan(0, "nợ đi theo HĐ sang phòng mới (PR-BR-16)");
+        Outstanding("203").Should().Be(0, "phòng cũ hết nhãn Còn nợ");
         var refunded201 = Deposit(await DetailAsync("201", "Ended"));
         refunded201.GetProperty("status").GetString().Should().Be("Refunded");
         refunded201.GetProperty("refundedAmount").GetDecimal().Should().Be(2_500_000);
@@ -117,7 +128,17 @@ public sealed class DemoDataSeederTests(ApiFactory factory)
         var charges = await (await _client.GetAsync("/api/v1/room-charges", token)).ReadAsync<JsonElement>();
         charges.EnumerateArray().Select(c => c.GetProperty("status").GetString()).Should().Contain(["Pending", "OnDraft", "Billed"]);
         charges.EnumerateArray().Where(c => c.GetProperty("status").GetString() == "Pending").Select(c => c.GetProperty("roomCode").GetString())
-            .Should().BeEquivalentTo(["101", "102"]);
+            .Should().BeEquivalentTo(["101", "102", "203", "203", "207", "207", "208", "208"],
+                "203 → 206 và 207 → 208 → 207: mỗi lần chuyển, điện + nước phòng vừa rời chốt thành 2 khoản (CT-BR-47)");
+        var returned = await DetailAsync("207", "Active");
+        returned.GetProperty("roomMoves").EnumerateArray().Select(m => m.GetProperty("roomCode").GetString())
+            .Should().Equal(["207", "208"], "chuyển đi rồi chuyển về phòng đã từng ở (CT-BR-14)");
+        returned.GetProperty("occupants").EnumerateArray().Should().Contain(o => o.GetProperty("role").GetString() == "CoTenant"
+            && o.GetProperty("fullName").GetString() == "Ngô Văn Nam", "chuyển người từ 208 sang 207 với vai trò đồng thuê (CT-BR-52, 49)");
+        var handedOver = await DetailAsync("208", "Active");
+        handedOver.GetProperty("representativeName").GetString().Should().Be("Tô Thị Hạnh", "đổi người đứng tên trên cùng HĐ (CT-BR-51)");
+        handedOver.GetProperty("representativeHistory").EnumerateArray().Single().GetProperty("fullName").GetString().Should().Be("Tô Văn Bình");
+        handedOver.GetProperty("hasSignedDocument").GetBoolean().Should().BeFalse();
         var draft103Detail = await (await _client.GetAsync(
             $"/api/v1/invoices/{items.Single(i => i.GetProperty("roomCode").GetString() == "103" && i.GetProperty("status").GetString() == "Draft").GetProperty("id").GetGuid()}",
             token)).ReadAsync<JsonElement>();

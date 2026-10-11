@@ -58,7 +58,7 @@ public static partial class ContractWarnings
         ContractFlag.MissingSignedDocument => new Warning("SIGNED_DOCUMENT_MISSING",
             "Chưa có bản hợp đồng đã ký (giấy / ảnh / PDF) — đánh dấu khi đã có. Không ảnh hưởng thu tiền."),
         ContractFlag.ExpiredAwaitingDecision => new Warning("CONTRACT_EXPIRED_DECISION_NEEDED",
-            $"Hợp đồng đã hết hạn ngày {contract.EndDate:dd/MM/yyyy} mà người thuê vẫn ở — chọn: gia hạn, cho ở tiếp chưa ký lại, hoặc thu lại phòng."),
+            $"Hợp đồng đã hết hạn ngày {contract.EndDate:dd/MM/yyyy} mà người thuê vẫn ở — đang tính như hợp đồng không thời hạn; nên ký phụ lục gia hạn (hoặc ghi nhận ở tiếp / thu lại phòng)."),
         _ => new Warning("HOLDOVER_SIGN_ADDENDUM",
             $"Đang ở tiếp từ {contract.HoldoverSince:dd/MM/yyyy} khi hợp đồng đã hết hạn, chưa ký lại — nên ký phụ lục gia hạn.")
     };
