@@ -34,6 +34,8 @@ public static class ContractErrors
         "Hợp đồng chưa chuyển phòng lần nào.");
     public static readonly Error TransferCancelBilled = Error.BusinessRule("ROOM_TRANSFER_CANCEL_BILLED",
         "Lần chuyển phòng đã có phiếu (khoản chốt điện nước đã vào phiếu đã chốt, hoặc đã lập phiếu ở phòng mới) — hủy / xóa phiếu đó trước.");
+    public static Error TransferCancelExpired(int days) => Error.BusinessRule("ROOM_TRANSFER_CANCEL_EXPIRED",
+        $"Chỉ hủy chuyển phòng được trong {days} ngày kể từ ngày chuyển — muốn quay về phòng cũ thì chuyển phòng lại.");
 
     public static readonly Error RoomUnavailable = Error.BusinessRule("ROOM_UNAVAILABLE", "Phòng đã ngừng sử dụng hoặc đang bảo trì.");
     public static readonly Error RoomPeriodOverlap = Error.Conflict("ROOM_PERIOD_OVERLAP",

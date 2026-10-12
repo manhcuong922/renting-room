@@ -1,3 +1,4 @@
+using System.Text.Json;
 using FluentValidation;
 using Mediator;
 using Microsoft.EntityFrameworkCore;
@@ -29,7 +30,7 @@ public static class RoomTransferWarnings
         $"Phòng mới có công tơ \"{feeName}\" mà phòng cũ không có — nếu hợp đồng đang có dịch vụ tính theo đầu người cho khoản này thì bỏ để không tính 2 lần.");
 
     public static readonly Warning CancelledCheckRent = new("ROOM_TRANSFER_CANCELLED_CHECK_RENT",
-        "Đã hủy chuyển phòng — giá thuê / dịch vụ đã đổi lúc chuyển không tự đổi lại, kiểm tra và sửa nếu cần.");
+        "Đã hủy chuyển phòng — có giá thuê / dịch vụ đổi lúc chuyển chưa tự trả lại được, kiểm tra và sửa nếu cần.");
 }
 
 /// <summary>
@@ -93,6 +94,33 @@ internal static class RoomTransferClosing
 }
 
 /// <summary>CT-BR-48: kỳ áp giá thuê mới khi chuyển phòng — bỏ trống ⇒ theo số ngày đã ở phòng cũ trong kỳ (quá nửa kỳ ⇒ kỳ sau).</summary>
+/// <summary>CT-BR-14: những gì một lần chuyển phòng đã đổi ngoài phòng + chỉ số — lưu kèm lần chuyển để hủy chuyển phòng hoàn nguyên.</summary>
+internal sealed record TransferUndo(
+    DateOnly? RentFrom, decimal? RentAfter, decimal? RentBefore, bool RentTermAdded, Guid? RentChargeId, IReadOnlyList<TransferUndoFee> Fees)
+{
+    public string ToJson() => JsonSerializer.Serialize(this);
+
+    public static TransferUndo? Parse(string? json) => string.IsNullOrEmpty(json) ? null : JsonSerializer.Deserialize<TransferUndo>(json);
+}
+
+internal sealed record TransferUndoFee(Guid FeeTypeId, decimal Quantity, decimal? UnitPriceOverride, DateOnly From);
+
+/// <summary>Mốc giá thuê lần chuyển phòng ghi (nếu có) — gom dần trong lúc áp giá.</summary>
+internal sealed class TransferRentChange
+{
+    public DateOnly? From { get; private set; }
+    public decimal? After { get; private set; }
+    public decimal? Before { get; private set; }
+    public bool TermAdded { get; private set; }
+    public Guid? ChargeId { get; set; }
+
+    public void Capture(Contract contract, DateOnly from, decimal rent)
+    {
+        (From, After, Before) = (from, rent, contract.CurrentRent(from));
+        TermAdded = contract.RentTerms.All(t => t.EffectiveFrom != from);
+    }
+}
+
 public enum TransferRentFrom
 {
     CurrentPeriod,
@@ -168,15 +196,26 @@ public sealed class TransferRoomHandler(IAppDbContext db, ISender sender, IInvoi
 
         var warnings = new List<Warning> { RoomTransferWarnings.ResidenceRoomChanged };
         warnings.AddRange(await MeterWarningsAsync(fromRoomId.Value, request.ToRoomId, request.Date, cancellationToken));
-        var rented = await ApplyRentAsync(contract, request, warnings, cancellationToken);
+        var rentChange = new TransferRentChange();
+        var rented = await ApplyRentAsync(contract, request, warnings, rentChange, cancellationToken);
         if (rented.IsFailure)
             return rented.Error!;
+        var feesFrom = await invoiceLocks.GetFirstOpenPeriodStartAsync(contract.Id, cancellationToken) ?? contract.StartDate;
+        var removedFees = new List<TransferUndoFee>();
         foreach (var feeTypeId in (request.RemoveFeeTypeIds ?? []).Distinct())
         {
+            if (contract.Fees.FirstOrDefault(f => f.FeeTypeId == feeTypeId && f.Covers(feesFrom)) is { } current)
+                removedFees.Add(new TransferUndoFee(feeTypeId, current.Quantity, current.UnitPriceOverride, feesFrom));
             var removed = await sender.Send(new RemoveContractFeeCommand(contract.Id, feeTypeId, null), cancellationToken);
             if (removed.IsFailure)
                 return removed.Error!;
         }
+        // CT-BR-14: ghi lại những gì lần chuyển đã đổi để hủy chuyển phòng (trong hạn) hoàn nguyên được.
+        var recorded = contract.RecordTransferUndo(new TransferUndo(
+            rentChange.From, rentChange.After, rentChange.Before, rentChange.TermAdded, rentChange.ChargeId, removedFees).ToJson());
+        if (recorded.IsFailure)
+            return recorded.Error!;
+        await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return warnings;
     }
@@ -185,7 +224,8 @@ public sealed class TransferRoomHandler(IAppDbContext db, ISender sender, IInvoi
     /// CT-BR-48: giá mới áp cho <b>cả kỳ</b> — kỳ chứa ngày chuyển nếu ở phòng cũ không quá nửa kỳ, ngược lại từ kỳ sau (chủ trọ chọn khác được).
     /// Kỳ được chọn đã chốt tiền phòng ⇒ mốc giá ghi từ kỳ chưa chốt đầu tiên + khoản phát sinh chênh lệch cả kỳ.
     /// </summary>
-    private async Task<Result> ApplyRentAsync(Contract contract, TransferRoomCommand request, List<Warning> warnings, CancellationToken ct)
+    private async Task<Result> ApplyRentAsync(
+        Contract contract, TransferRoomCommand request, List<Warning> warnings, TransferRentChange change, CancellationToken ct)
     {
         var room = await db.Rooms.Where(r => r.Id == request.ToRoomId).Select(r => new { r.Code, r.ListedRent }).FirstAsync(ct);
         // Không gửi giá ⇒ lấy giá niêm yết phòng mới (phòng chưa có giá niêm yết thì giữ giá đang áp).
@@ -198,7 +238,13 @@ public sealed class TransferRoomHandler(IAppDbContext db, ISender sender, IInvoi
         var schedule = (await PropertyBilling.LoadAsync(db, contract.PropertyId, ct)).Schedule;
         var period = contract.BillingPeriods(schedule, request.Date).LastOrDefault(p => p.Start <= request.Date && request.Date <= p.End);
         if (period is null)
-            return rent == contract.CurrentRent(request.Date) ? Result.Success() : await sender.Send(new ChangeRentCommand(contract.Id, null, rent, null, note), ct);
+        {
+            if (rent == contract.CurrentRent(request.Date))
+                return Result.Success();
+            var from = await invoiceLocks.GetFirstOpenPeriodStartAsync(contract.Id, ct) ?? contract.StartDate;
+            change.Capture(contract, from, rent);
+            return await sender.Send(new ChangeRentCommand(contract.Id, from, rent, null, note), ct);
+        }
 
         var daysInOldRoom = request.Date.DayNumber - period.Start.DayNumber;
         var periodDays = period.End.DayNumber - period.Start.DayNumber + 1;
@@ -210,6 +256,7 @@ public sealed class TransferRoomHandler(IAppDbContext db, ISender sender, IInvoi
 
         if (rent != contract.CurrentRent(effectiveFrom))
         {
+            change.Capture(contract, effectiveFrom, rent);
             var changed = await sender.Send(new ChangeRentCommand(contract.Id, effectiveFrom, rent, null, note), ct);
             if (changed.IsFailure)
                 return changed;
@@ -223,6 +270,7 @@ public sealed class TransferRoomHandler(IAppDbContext db, ISender sender, IInvoi
             $"Chênh lệch tiền phòng kỳ {period.Start:dd/MM}–{period.End:dd/MM} (chuyển phòng)", Math.Abs(rent - billed), request.Date,
             "Giá phòng mới áp cho cả kỳ chuyển phòng");
         db.RoomCharges.Add(charge);
+        change.ChargeId = charge.Id;
         if (await RoomChargeBilling.DraftForAsync(db, contract.Id, request.Date, ct) is { } draft)
             RoomChargeBilling.Attach(draft, charge);
         await db.SaveChangesAsync(ct);
@@ -283,12 +331,14 @@ public sealed record CancelRoomTransferCommand(Guid ContractId) : IRequest<Resul
 /// <summary>
 /// CT-BR-14: hủy lần chuyển phòng gần nhất (nhập nhầm phòng / ngày / chỉ số). 1 transaction, khóa phòng (theo id) → HĐ → phiếu nháp (C-07):
 /// hủy khoản chốt điện nước, hủy chỉ số cuối phòng cũ và các chỉ số của HĐ trên công tơ phòng mới, trả HĐ về phòng cũ.
-/// Giá thuê / dịch vụ đã đổi lúc chuyển không tự đổi lại — trả cảnh báo.
+/// Chỉ trong <see cref="CancelWindowDays"/> ngày kể từ ngày chuyển (quá hạn ⇒ quay về = một lần chuyển phòng mới). Giá thuê, dịch vụ, khoản chênh
+/// lệch tiền phòng lần chuyển đã đổi được hoàn nguyên theo dữ liệu lưu kèm lần chuyển; phần không hoàn được ⇒ cảnh báo.
 /// </summary>
 public sealed class CancelRoomTransferHandler(IAppDbContext db, TimeProvider clock)
     : IRequestHandler<CancelRoomTransferCommand, Result<IReadOnlyList<Warning>>>
 {
     private const string VoidReason = "Hủy chuyển phòng";
+    public const int CancelWindowDays = 3;
 
     public async ValueTask<Result<IReadOnlyList<Warning>>> Handle(CancelRoomTransferCommand request, CancellationToken cancellationToken)
     {
@@ -311,6 +361,9 @@ public sealed class CancelRoomTransferHandler(IAppDbContext db, TimeProvider clo
             return ContractErrors.TransferNothingToCancel;
 
         var (oldRoomId, newRoomId, date) = (last.RoomId, contract.RoomId, contract.RoomSince);
+        if (clock.GetUtcNow().ToBusinessDate() > date.AddDays(CancelWindowDays))
+            return ContractErrors.TransferCancelExpired(CancelWindowDays);
+        var undo = TransferUndo.Parse(last.UndoSnapshot);
         if (await OldRoomTakenAsync(contract.Id, oldRoomId, date, cancellationToken))
             return ContractErrors.TransferRoomUnavailable;
         // Đã lập phiếu (nháp / đã chốt) cho phòng mới từ ngày chuyển ⇒ xóa nháp / hủy phiếu đó trước.
@@ -319,19 +372,33 @@ public sealed class CancelRoomTransferHandler(IAppDbContext db, TimeProvider clo
             return ContractErrors.TransferCancelBilled;
 
         var now = clock.GetUtcNow();
-        var charges = await CancelClosingChargesAsync(contract.Id, oldRoomId, date, now, cancellationToken);
+        var charges = await CancelClosingChargesAsync(contract.Id, oldRoomId, date, undo?.RentChargeId, now, cancellationToken);
         if (charges.IsFailure)
             return charges.Error!;
         var readings = await VoidReadingsAsync(contract.Id, oldRoomId, newRoomId, date, now, cancellationToken);
         if (readings.IsFailure)
             return readings.Error!;
+        var reverted = undo is not null && Revert(contract, undo);
         var restored = contract.CancelLastTransfer();
         if (restored.IsFailure)
             return restored.Error!;
 
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
-        return Result.Success<IReadOnlyList<Warning>>([RoomTransferWarnings.ResidenceRoomChanged, RoomTransferWarnings.CancelledCheckRent]);
+        return Result.Success<IReadOnlyList<Warning>>(reverted
+            ? [RoomTransferWarnings.ResidenceRoomChanged]
+            : [RoomTransferWarnings.ResidenceRoomChanged, RoomTransferWarnings.CancelledCheckRent]);
+    }
+
+    /// <summary>Trả lại giá thuê + dịch vụ lần chuyển đã đổi; false = có phần đã bị đổi tiếp sau lần chuyển nên giữ nguyên.</summary>
+    private static bool Revert(Contract contract, TransferUndo undo)
+    {
+        var complete = true;
+        if (undo is { RentFrom: { } from, RentAfter: { } after })
+            complete &= contract.RevertTransferRent(from, after, undo.RentBefore, undo.RentTermAdded);
+        foreach (var fee in undo.Fees)
+            complete &= contract.RestoreTransferFee(new ContractFeeInput(fee.FeeTypeId, fee.Quantity, fee.UnitPriceOverride), fee.From);
+        return complete;
     }
 
     /// <summary>Phòng cũ từ ngày chuyển đã có HĐ khác (hiệu lực / giữ chỗ / lịch sử chuyển phòng) ⇒ không trả HĐ về được.</summary>
@@ -342,11 +409,15 @@ public sealed class CancelRoomTransferHandler(IAppDbContext db, TimeProvider clo
                     && (c.ActualEndDate == null || c.ActualEndDate >= date))), ct)
         || await db.Contracts.AnyAsync(c => c.Id != contractId && c.RoomMoves.Any(m => m.RoomId == roomId && m.ToDate >= date), ct);
 
-    /// <summary>Khoản chốt điện nước của lần chuyển: đã vào phiếu đã chốt ⇒ chặn; đang trên nháp ⇒ xóa dòng; rồi hủy khoản.</summary>
-    private async Task<Result> CancelClosingChargesAsync(Guid contractId, Guid oldRoomId, DateOnly date, DateTimeOffset now, CancellationToken ct)
+    /// <summary>
+    /// Khoản chốt điện nước + khoản chênh lệch tiền phòng của lần chuyển: đã vào phiếu đã chốt ⇒ chặn; đang trên nháp ⇒ xóa dòng; rồi hủy khoản.
+    /// </summary>
+    private async Task<Result> CancelClosingChargesAsync(
+        Guid contractId, Guid oldRoomId, DateOnly date, Guid? rentChargeId, DateTimeOffset now, CancellationToken ct)
     {
         var charges = await db.RoomCharges
-            .Where(c => c.ContractId == contractId && c.MeterId != null && c.RoomId == oldRoomId && c.IncurredOn == date && c.CancelledAt == null)
+            .Where(c => c.ContractId == contractId && c.CancelledAt == null
+                && ((c.MeterId != null && c.RoomId == oldRoomId && c.IncurredOn == date) || c.Id == rentChargeId))
             .ToListAsync(ct);
         foreach (var charge in charges)
         {

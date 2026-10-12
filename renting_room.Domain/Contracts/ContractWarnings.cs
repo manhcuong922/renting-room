@@ -57,10 +57,8 @@ public static partial class ContractWarnings
             "Hợp đồng còn hiệu lực nhưng không còn ai ở — thanh lý để trả phòng?"),
         ContractFlag.MissingSignedDocument => new Warning("SIGNED_DOCUMENT_MISSING",
             "Chưa có bản hợp đồng đã ký (giấy / ảnh / PDF) — đánh dấu khi đã có. Không ảnh hưởng thu tiền."),
-        ContractFlag.ExpiredAwaitingDecision => new Warning("CONTRACT_EXPIRED_DECISION_NEEDED",
-            $"Hợp đồng đã hết hạn ngày {contract.EndDate:dd/MM/yyyy} mà người thuê vẫn ở — đang tính như hợp đồng không thời hạn; nên ký phụ lục gia hạn (hoặc ghi nhận ở tiếp / thu lại phòng)."),
-        _ => new Warning("HOLDOVER_SIGN_ADDENDUM",
-            $"Đang ở tiếp từ {contract.HoldoverSince:dd/MM/yyyy} khi hợp đồng đã hết hạn, chưa ký lại — nên ký phụ lục gia hạn.")
+        _ => new Warning("CONTRACT_EXPIRED_DECISION_NEEDED",
+            $"Hợp đồng đã hết hạn ngày {contract.EndDate:dd/MM/yyyy} mà người thuê vẫn ở — đang tính như hợp đồng không thời hạn; nên ký phụ lục gia hạn (hoặc ghi nhận ở tiếp / thu lại phòng).")
     };
 
     /// <summary>CT-BR-21, CT-BR-41, CT-BR-42: báo trước không đủ / bỏ đi không báo — chỉ cảnh báo, không chặn.</summary>

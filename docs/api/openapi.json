@@ -379,7 +379,7 @@
         "tags": [
           "Auth"
         ],
-        "summary": "Tự sửa họ tên, SĐT, email — đổi SĐT / email (tên đăng nhập) thì phải đăng nhập lại",
+        "summary": "Chủ trọ tự sửa họ tên, SĐT, email — đổi SĐT / email phải gửi currentPassword và đăng nhập lại; phó quản lý: 403 (chủ trọ sửa)",
         "requestBody": {
           "content": {
             "application/json": {
@@ -9055,6 +9055,10 @@
             "nullable": true
           },
           "email": {
+            "type": "string",
+            "nullable": true
+          },
+          "currentPassword": {
             "type": "string",
             "nullable": true
           }

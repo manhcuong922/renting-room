@@ -333,11 +333,17 @@ public sealed class ContractTests
         contract.Flags(end.AddDays(1)).Should().Equal(ContractFlag.ExpiredAwaitingDecision);
 
         contract.StartHoldover(end.AddDays(3), "Chưa kịp ký lại").IsSuccess.Should().BeTrue();
-        contract.Flags(end.AddDays(10)).Should().Equal(ContractFlag.Holdover);
+        // CT-BR-45 (13/10/2026): ở tiếp = chuyển hẳn sang không thời hạn, hết nhãn; hạn cũ giữ lại để gia hạn sau này.
+        contract.EndDate.Should().BeNull();
+        contract.PreviousEndDate.Should().Be(end);
+        contract.Flags(end.AddDays(10)).Should().BeEmpty();
         contract.StartHoldover(end.AddDays(4), null).Error.Should().Be(ContractErrors.HoldoverAlready);
 
+        contract.Extend(end).Error.Should().Be(ContractErrors.InvalidEndDate, "hạn mới phải sau hạn cũ");
         contract.Extend(end.AddYears(1)).IsSuccess.Should().BeTrue();
+        contract.EndDate.Should().Be(end.AddYears(1));
         contract.HoldoverSince.Should().BeNull();
+        contract.PreviousEndDate.Should().BeNull();
         contract.Flags(end.AddDays(10)).Should().BeEmpty();
     }
 

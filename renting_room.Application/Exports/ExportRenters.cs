@@ -156,6 +156,7 @@ internal sealed class RenterExportRow
     public string ContractNo { get; init; } = null!;
     public ContractStatus ContractStatus { get; init; }
     public bool IsRepresentative { get; init; }
+    public bool IsCoTenant { get; init; }
     public bool IsHouseholdHead { get; init; }
     public string FullName { get; init; } = null!;
     public DateOnly DateOfBirth { get; init; }
@@ -201,6 +202,7 @@ internal static class RenterExportQuery
                 PropertyId = p.Id, PropertyCode = p.Code, PropertyName = p.Name,
                 RoomId = room.Id, RoomCode = room.Code, Floor = room.Floor,
                 ContractNo = c.ContractNo, ContractStatus = c.Status, IsRepresentative = c.RepresentativeRenterId == r.Id,
+                IsCoTenant = o.Role == OccupantRole.CoTenant,
                 IsHouseholdHead = (c.HouseholdHeadRenterId ?? c.RepresentativeRenterId) == r.Id,
                 FullName = r.FullName, DateOfBirth = r.DateOfBirth, Gender = r.Gender, Phone = r.Phone,
                 IdType = r.IdType, IdNumberLast4 = r.IdNumberLast4, IdNumberEncrypted = r.IdNumberEncrypted,

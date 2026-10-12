@@ -21,10 +21,14 @@ public enum TenancyRole
 /// <param name="ToDate">Ngày cuối ở phòng; null = đang ở.</param>
 public sealed record TenancyOccupantDto(Guid RenterId, string FullName, TenancyRole Role, DateOnly FromDate, DateOnly? ToDate);
 
+/// <summary>Một người đứng tên HĐ trong một lần ở phòng (đổi người đứng tên giữa chừng ⇒ nhiều dòng).</summary>
+public sealed record TenancyRepresentativeDto(Guid RenterId, string FullName, DateOnly FromDate, DateOnly? ToDate);
+
 /// <summary>Một lần một HĐ ở phòng (HĐ chuyển đi rồi quay lại ⇒ 2 dòng).</summary>
+/// <param name="RepresentativeName">Người đứng tên cuối lần ở đó.</param>
 public sealed record RoomTenancyDto(
     Guid ContractId, string ContractNo, ContractStatus Status, DateOnly FromDate, DateOnly? ToDate, bool IsCurrent, string RepresentativeName,
-    IReadOnlyList<TenancyOccupantDto> Occupants);
+    IReadOnlyList<TenancyOccupantDto> Occupants, IReadOnlyList<TenancyRepresentativeDto> Representatives);
 
 public sealed record PersonTenancyDto(
     Guid RenterId, string FullName, Guid RoomId, string RoomCode, Guid ContractId, string ContractNo, TenancyRole Role, DateOnly FromDate,
@@ -46,8 +50,22 @@ internal static class TenancyHistoryRules
 {
     public static readonly ContractStatus[] LivedStatuses = [ContractStatus.Active, ContractStatus.Liquidating, ContractStatus.Ended];
 
-    public static TenancyRole RoleOf(Contract contract, ContractOccupant occupant) =>
-        occupant.RenterId == contract.RepresentativeRenterId ? TenancyRole.Representative
+    /// <summary>Ai đứng tên HĐ theo thời gian (CT-BR-51): những người đứng tên trước, rồi người hiện tại.</summary>
+    public static IEnumerable<(Guid RenterId, DateOnly From, DateOnly? To)> Representatives(Contract contract) =>
+        contract.RepresentativeHistory.OrderBy(h => h.FromDate)
+            .Select(h => (h.RenterId, h.FromDate, (DateOnly?)(h.ToDate > h.FromDate ? h.ToDate.AddDays(-1) : h.ToDate)))
+            .Append((contract.RepresentativeRenterId, contract.RepresentativeSince ?? contract.StartDate, contract.ActualEndDate));
+
+    /// <summary>Những người đứng tên trong lần ở phòng đó, kèm khoảng ngày đứng tên nằm trong lần ở.</summary>
+    public static IEnumerable<(Guid RenterId, DateOnly From, DateOnly? To)> RepresentativesIn(Contract contract, RoomStay stay) =>
+        from representative in Representatives(contract)
+        let period = Within(stay, representative.From, representative.To)
+        where period is not null
+        select (representative.RenterId, period.Value.From, period.Value.To);
+
+    /// <summary>Vai trò trong lần ở đó: "đứng tên" nếu người này từng đứng tên trong lần ở (không lấy người đứng tên hiện tại cho giai đoạn cũ).</summary>
+    public static TenancyRole RoleOf(Contract contract, RoomStay stay, ContractOccupant occupant) =>
+        RepresentativesIn(contract, stay).Any(r => r.RenterId == occupant.RenterId) ? TenancyRole.Representative
         : occupant.Role == OccupantRole.CoTenant ? TenancyRole.CoTenant
         : TenancyRole.Resident;
 
@@ -76,21 +94,27 @@ public sealed class GetRoomTenancyHistoryHandler(IAppDbContext db, TimeProvider 
         if (!await db.Rooms.AnyAsync(r => r.Id == request.RoomId, cancellationToken))
             return PropertyErrors.RoomNotFound;
 
-        var contracts = await db.Contracts.AsNoTracking().Include(c => c.Occupants).Include(c => c.RoomMoves).AsSplitQuery()
+        var contracts = await db.Contracts.AsNoTracking().Include(c => c.Occupants).Include(c => c.RoomMoves).Include(c => c.RepresentativeHistory).AsSplitQuery()
             .Where(c => TenancyHistoryRules.LivedStatuses.Contains(c.Status)
                 && (c.RoomId == request.RoomId || c.RoomMoves.Any(m => m.RoomId == request.RoomId)))
             .ToListAsync(cancellationToken);
-        var renterIds = contracts.SelectMany(c => c.Occupants.Select(o => o.RenterId).Append(c.RepresentativeRenterId)).Distinct().ToList();
+        var renterIds = contracts
+            .SelectMany(c => c.Occupants.Select(o => o.RenterId).Append(c.RepresentativeRenterId).Concat(c.RepresentativeHistory.Select(h => h.RenterId)))
+            .Distinct().ToList();
         var names = await db.Renters.AsNoTracking().Where(r => renterIds.Contains(r.Id)).ToDictionaryAsync(r => r.Id, r => r.FullName, cancellationToken);
         var today = clock.GetUtcNow().ToBusinessDate();
 
         return contracts
             .SelectMany(c => c.RoomStays.Where(s => s.RoomId == request.RoomId).Select(stay => new RoomTenancyDto(
                 c.Id, c.ContractNo, c.Status, stay.From, stay.To, stay.From <= today && (stay.To is null || stay.To >= today),
-                names.GetValueOrDefault(c.RepresentativeRenterId, string.Empty),
+                names.GetValueOrDefault(
+                    TenancyHistoryRules.RepresentativesIn(c, stay).Select(r => (Guid?)r.RenterId).LastOrDefault() ?? c.RepresentativeRenterId, string.Empty),
                 TenancyHistoryRules.OccupantsIn(c, stay).OrderBy(x => x.From)
                     .Select(x => new TenancyOccupantDto(x.Occupant.RenterId, names.GetValueOrDefault(x.Occupant.RenterId, string.Empty),
-                        TenancyHistoryRules.RoleOf(c, x.Occupant), x.From, x.To))
+                        TenancyHistoryRules.RoleOf(c, stay, x.Occupant), x.From, x.To))
+                    .ToList(),
+                TenancyHistoryRules.RepresentativesIn(c, stay)
+                    .Select(r => new TenancyRepresentativeDto(r.RenterId, names.GetValueOrDefault(r.RenterId, string.Empty), r.From, r.To))
                     .ToList())))
             .OrderByDescending(t => t.FromDate)
             .ToList();
@@ -112,10 +136,11 @@ public sealed class SearchTenancyHistoryHandler(IAppDbContext db) : IRequestHand
             return [];
 
         var ids = people.Keys.ToList();
-        var contracts = await db.Contracts.AsNoTracking().Include(c => c.Occupants).Include(c => c.RoomMoves).AsSplitQuery()
+        var contracts = await db.Contracts.AsNoTracking().Include(c => c.Occupants).Include(c => c.RoomMoves).Include(c => c.RepresentativeHistory).AsSplitQuery()
             .Where(c => TenancyHistoryRules.LivedStatuses.Contains(c.Status)
                 && (request.PropertyId == null || c.PropertyId == request.PropertyId)
-                && (ids.Contains(c.RepresentativeRenterId) || c.Occupants.Any(o => ids.Contains(o.RenterId))))
+                && (ids.Contains(c.RepresentativeRenterId) || c.Occupants.Any(o => ids.Contains(o.RenterId))
+                    || c.RepresentativeHistory.Any(h => ids.Contains(h.RenterId))))
             .ToListAsync(cancellationToken);
         var roomIds = contracts.SelectMany(c => c.RoomStays.Select(s => s.RoomId)).Distinct().ToList();
         var roomCodes = await db.Rooms.AsNoTracking().Where(r => roomIds.Contains(r.Id)).ToDictionaryAsync(r => r.Id, r => r.Code, cancellationToken);
@@ -127,12 +152,12 @@ public sealed class SearchTenancyHistoryHandler(IAppDbContext db) : IRequestHand
                 var roomCode = roomCodes.GetValueOrDefault(stay.RoomId, string.Empty);
                 rows.AddRange(TenancyHistoryRules.OccupantsIn(contract, stay).Where(x => people.ContainsKey(x.Occupant.RenterId))
                     .Select(x => new PersonTenancyDto(x.Occupant.RenterId, people[x.Occupant.RenterId], stay.RoomId, roomCode, contract.Id,
-                        contract.ContractNo, TenancyHistoryRules.RoleOf(contract, x.Occupant), x.From, x.To)));
+                        contract.ContractNo, TenancyHistoryRules.RoleOf(contract, stay, x.Occupant), x.From, x.To)));
                 // Người đứng tên không ở trong phòng (VD bố mẹ ký cho con) vẫn là người thuê của phòng.
-                var representative = contract.RepresentativeRenterId;
-                if (people.TryGetValue(representative, out var name) && contract.Occupants.All(o => o.RenterId != representative))
-                    rows.Add(new PersonTenancyDto(representative, name, stay.RoomId, roomCode, contract.Id, contract.ContractNo,
-                        TenancyRole.Representative, stay.From, stay.To));
+                foreach (var representative in TenancyHistoryRules.RepresentativesIn(contract, stay))
+                    if (people.TryGetValue(representative.RenterId, out var name) && contract.Occupants.All(o => o.RenterId != representative.RenterId))
+                        rows.Add(new PersonTenancyDto(representative.RenterId, name, stay.RoomId, roomCode, contract.Id, contract.ContractNo,
+                            TenancyRole.Representative, representative.From, representative.To));
             }
         return rows.OrderBy(r => r.FullName).ThenByDescending(r => r.FromDate).Take(MaxRows).ToList();
     }

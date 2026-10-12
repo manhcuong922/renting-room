@@ -83,7 +83,7 @@ internal static class RenterExportSheets
         r.Floor,
         r.RoomCode,
         r.ContractNo,
-        r.IsRepresentative ? "Đại diện" : "Người ở",
+        r.IsRepresentative ? "Đại diện" : r.IsCoTenant ? "Đồng thuê" : "Người ở",
         r.FullName,
         r.DateOfBirth,
         GenderLabel(r.Gender),

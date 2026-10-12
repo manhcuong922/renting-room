@@ -161,4 +161,40 @@ public sealed class ExportRentersTests(ApiFactory factory)
         var badRange = await _client.PostJsonAsync(ExportUrl, new { fromDate = yesterday, toDate = yesterday.AddDays(-1) }, f.Token, idempotencyKey: null);
         (await badRange.ReadProblemCodeAsync()).Should().Be("VALIDATION_FAILED");
     }
+
+    /// <summary>E1 (13/10/2026): cột vai trò phân biệt Đại diện / Đồng thuê / Người ở.</summary>
+    [Fact]
+    public async Task RoleColumn_DistinguishesRepresentativeCoTenantAndResident()
+    {
+        var owner = await _client.CreateActiveOwnerAsync();
+        var token = owner.Tokens.AccessToken;
+        var today = TestData.Today(factory);
+        var propertyId = await CreatePropertyAsync(token, "Khu Vai Trò");
+        var roomId = await CreateRoomAsync(token, propertyId, "301", "3");
+        var representative = await CreateRenterAsync(token, "Tô Văn Bình", TestData.NewCitizenId());
+        var coTenant = await CreateRenterAsync(token, "Ngô Văn Nam", TestData.NewCitizenId());
+        var resident = await CreateRenterAsync(token, "Tô Thị Hạnh", TestData.NewCitizenId());
+        var contractId = await (await _client.PostJsonAsync("/api/v1/contracts", new
+        {
+            roomId,
+            contract = new
+            {
+                representativeRenterId = representative, startDate = today, monthlyRent = 1_000_000, depositAmount = 0,
+                occupants = new object[]
+                {
+                    new { renterId = representative },
+                    new { renterId = coTenant, relationshipType = "CoTenant", role = "CoTenant" },
+                    new { renterId = resident, relationshipType = "Sibling" }
+                }
+            }
+        }, token)).ReadIdAsync();
+        (await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/activate", null, token)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        using var book = await ExportAsync(token, new { });
+        book.Worksheets.Single().RowsUsed().Where(r => r.RowNumber() > HeaderRow).ToDictionary(r => r.Cell(7).GetString(), r => r.Cell(6).GetString())
+            .Should().BeEquivalentTo(new Dictionary<string, string>
+            {
+                ["Tô Văn Bình"] = "Đại diện", ["Ngô Văn Nam"] = "Đồng thuê", ["Tô Thị Hạnh"] = "Người ở"
+            });
+    }
 }

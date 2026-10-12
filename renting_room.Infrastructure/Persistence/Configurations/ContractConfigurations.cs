@@ -228,6 +228,7 @@ internal sealed class ContractRoomMoveConfiguration : IEntityTypeConfiguration<C
         builder.HasKey(m => m.Id);
         builder.ConfigureAuditable();
         builder.HasOne<Room>().WithMany().HasForeignKey(m => m.RoomId).OnDelete(DeleteBehavior.Restrict);
+        builder.Property(m => m.UndoSnapshot).HasColumnType("jsonb");
         builder.HasIndex(m => new { m.OrganizationId, m.RoomId, m.ToDate }).HasDatabaseName("ix_contract_room_moves_room");
     }
 }

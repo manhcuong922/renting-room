@@ -17,7 +17,7 @@ public sealed record RefreshTokenRequest(string RefreshToken);
 
 public sealed record ChangePasswordRequest(string CurrentPassword, string NewPassword);
 
-public sealed record UpdateMeRequest(string FullName, string? Phone, string? Email);
+public sealed record UpdateMeRequest(string FullName, string? Phone, string? Email, string? CurrentPassword = null);
 
 public static class AuthEndpoints
 {
@@ -60,10 +60,10 @@ public static class AuthEndpoints
             .WithSummary("Thông tin tài khoản đang đăng nhập");
 
         app.MapPut($"{EndpointHelpers.ApiPrefix}/me", async (UpdateMeRequest b, ISender sender, CancellationToken ct) =>
-                (await sender.Send(new UpdateMeCommand(b.FullName, b.Phone, b.Email), ct)).ToHttp())
+                (await sender.Send(new UpdateMeCommand(b.FullName, b.Phone, b.Email, b.CurrentPassword), ct)).ToHttp())
             .WithTags("Auth")
             .RequireAuthorization(AuthPolicies.AnyUser)
-            .WithSummary("Tự sửa họ tên, SĐT, email — đổi SĐT / email (tên đăng nhập) thì phải đăng nhập lại");
+            .WithSummary("Chủ trọ tự sửa họ tên, SĐT, email — đổi SĐT / email phải gửi currentPassword và đăng nhập lại; phó quản lý: 403 (chủ trọ sửa)");
     }
 
     private static async Task<Results<Ok<AuthTokens>, ProblemHttpResult>> Login(

@@ -104,6 +104,10 @@ public sealed class DemoDataSeederTests(ApiFactory factory)
         Deposit(moved203).GetProperty("status").GetString().Should().Be("Holding", "chuyển phòng ⇒ cọc giữ nguyên theo HĐ");
         moved203.GetProperty("roomMoves")[0].GetProperty("roomCode").GetString().Should().Be("203", "203 chuyển sang 206");
         moved203.GetProperty("occupants").GetArrayLength().Should().Be(2, "HĐ quá hạn vẫn thêm được người ở (CT-BR-37)");
+        // CT-BR-45 (13/10/2026): "Ở tiếp" ⇒ không thời hạn, giữ hạn cũ, hết nhãn thời hạn.
+        moved203.GetProperty("endDate").ValueKind.Should().Be(JsonValueKind.Null);
+        moved203.GetProperty("previousEndDate").ValueKind.Should().NotBe(JsonValueKind.Null);
+        moved203.GetProperty("flags").EnumerateArray().Select(f => f.GetString()).Should().NotContain("ExpiredAwaitingDecision");
         var khuA = await (await _client.GetAsync("/api/v1/rooms?pageSize=100", token)).ReadAsync<JsonElement>();
         decimal Outstanding(string code) => khuA.GetProperty("items").EnumerateArray().Single(r => r.GetProperty("code").GetString() == code)
             .GetProperty("outstandingAmount").GetDecimal();

@@ -817,6 +817,10 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("previous_contract_id");
 
+                    b.Property<DateOnly?>("PreviousEndDate")
+                        .HasColumnType("date")
+                        .HasColumnName("previous_end_date");
+
                     b.Property<Guid>("PropertyId")
                         .HasColumnType("uuid")
                         .HasColumnName("property_id");
@@ -1384,6 +1388,10 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                     b.Property<DateOnly>("ToDate")
                         .HasColumnType("date")
                         .HasColumnName("to_date");
+
+                    b.Property<string>("UndoSnapshot")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("undo_snapshot");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")

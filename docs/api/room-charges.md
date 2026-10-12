@@ -59,7 +59,7 @@ Quyền: chủ trọ và phó quản lý.
 | Danh sách của phòng | `GET /rooms/{roomId}/charges?status=` |
 | Danh sách theo khu / khoảng ngày | `GET /room-charges?propertyId=&roomId=&status=&from=&to=` |
 | Đánh dấu đã thanh toán / đã hoàn | `POST /room-charges/{id}/settle` `{ "settledOn": "2026-03-05", "method": "Cash" }` |
-| Bỏ đánh dấu (nhập nhầm) | `DELETE /room-charges/{id}/settle` |
+| Bỏ đánh dấu (nhập nhầm) | `DELETE /room-charges/{id}/settle` — khoản **bù** bỏ đánh dấu sẽ quay lại chờ trừ vào phiếu nên cũng phải trong giới hạn 1 tháng tiền phòng: vượt → 422 `ROOM_CHARGE_CREDIT_TOO_HIGH`, khoản giữ nguyên "đã thanh toán" (13/10/2026) |
 | Hủy khoản | `POST /room-charges/{id}/cancel` `{ "reason": "Ghi nhầm phòng" }` |
 
 Đánh dấu / bỏ đánh dấu / hủy khoản đang trên nháp ⇒ dòng trên nháp và tổng nháp đổi theo ngay.

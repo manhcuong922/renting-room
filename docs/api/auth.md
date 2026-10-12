@@ -161,13 +161,18 @@ async function ensureFreshToken() {
 - Header app: hiện `organization.name` + `fullName` + nhãn vai trò.
 - Hiện chưa có API tự sửa họ tên/SĐT — chủ trọ sửa cho phó quản lý ([members.md](members.md)), admin sửa chủ trọ (P2).
 
-## Tự sửa hồ sơ của mình (11/10/2026)
+## Tự sửa hồ sơ của mình (11/10/2026, đổi 13/10/2026)
 
-`PUT /me` — mọi người dùng đã đăng nhập.
+`PUT /me` — **chủ trọ và SystemAdmin**. **Phó quản lý không tự sửa hồ sơ** → 403 `PROFILE_MANAGED_BY_OWNER`
+(ẩn nút sửa khi `role = OrgManager`; chủ trọ sửa hộ ở [members.md](members.md)).
 
 ```json
-{ "fullName": "Nguyễn Văn Chủ", "phone": "0912345678", "email": null }
+{ "fullName": "Nguyễn Văn Chủ", "phone": "0912345678", "email": null, "currentPassword": "…" }
 ```
+
+`currentPassword` **bắt buộc khi đổi `phone` hoặc `email`** (tên đăng nhập): thiếu → 400 `CURRENT_PASSWORD_REQUIRED`, sai → 422
+`INVALID_CURRENT_PASSWORD` (sai nhiều lần ⇒ khóa tạm như đăng nhập sai, `ACCOUNT_LOCKED`). Chỉ đổi họ tên thì không cần gửi.
+UI: khi người dùng sửa ô SĐT / email thì hiện thêm ô "Mật khẩu hiện tại".
 
 → **204**. Phải còn ít nhất `phone` hoặc `email` (400 `USERNAME_REQUIRED`). SĐT / email là **tên đăng nhập**, không trùng với tài khoản khác
 (409 `PHONE_TAKEN` / `EMAIL_TAKEN`). **Đổi SĐT hoặc email ⇒ mọi phiên bị vô hiệu** (request kế tiếp nhận 401) — UI đưa người dùng về màn đăng

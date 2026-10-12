@@ -55,7 +55,7 @@ tổ chức, nhật ký đăng nhập (`login_events`), dọn refresh token hế
 | ID-UC-09 | Mọi user | Làm mới token | Cặp token mới; refresh cũ bị thu hồi |
 | ID-UC-10 | Mọi user | Đăng xuất (`/auth/logout`) / đăng xuất mọi thiết bị (`/auth/logout-all`) | Thu hồi refresh token hiện tại / mọi refresh token của user |
 | ID-UC-11 | Mọi user | Đổi mật khẩu | Thu hồi refresh token khác; đổi SecurityStamp |
-| ID-UC-12 | Mọi user | Xem hồ sơ (`GET /me`). ✅ 11/10/2026 **tự cập nhật** họ tên, SĐT, email (`PUT /me`) — phải còn ít nhất SĐT hoặc email; đổi SĐT / email (tên đăng nhập) ⇒ **phải đăng nhập lại** (mọi phiên bị vô hiệu); trùng → 409 `PHONE_TAKEN` / `EMAIL_TAKEN` | Đổi email/SĐT phải còn unique |
+| ID-UC-12 | Mọi user | **Đổi 13/10/2026**: (a) **phó quản lý không tự sửa hồ sơ** — `PUT /me` → 403 `PROFILE_MANAGED_BY_OWNER`; chỉ chủ trọ sửa hồ sơ phó quản lý (`PUT /org/members/{id}`). (b) Chủ trọ / SystemAdmin đổi **SĐT hoặc email** (tên đăng nhập) phải gửi `currentPassword`: thiếu → 400 `CURRENT_PASSWORD_REQUIRED`, sai → `INVALID_CURRENT_PASSWORD` (tính vào bộ đếm khóa tài khoản như đăng nhập sai); chỉ đổi họ tên thì không cần. Lý do: phiên bỏ quên trên máy dùng chung không được dùng để đổi tên đăng nhập (sau này quên mật khẩu gửi mã về SĐT ⇒ mất tài khoản). Xem hồ sơ (`GET /me`). ✅ 11/10/2026 **tự cập nhật** họ tên, SĐT, email (`PUT /me`) — phải còn ít nhất SĐT hoặc email; đổi SĐT / email (tên đăng nhập) ⇒ **phải đăng nhập lại** (mọi phiên bị vô hiệu); trùng → 409 `PHONE_TAKEN` / `EMAIL_TAKEN` | Đổi email/SĐT phải còn unique |
 
 ### 3.2 Quy tắc nghiệp vụ
 

@@ -97,7 +97,11 @@ internal sealed class RoomRow
     public RoomDto ToDto(IReadOnlyDictionary<Guid, IReadOnlyList<ContractFlag>> flags) => new(
         Room.Id, Room.PropertyId, PropertyCode, Room.Code, Room.Floor, Room.AreaM2, Room.MaxOccupants, Room.ListedRent,
         Room.DefaultDeposit, Room.Amenities, Room.Description, Status, Room.MaintenanceNote,
-        Current is null ? null : Current with { Flags = flags.GetValueOrDefault(Current.Id, []) }, Room.Version.ToString(), OutstandingAmount,
+        // PR-BR-16: nhãn về thời hạn hợp đồng chỉ hiện ở hợp đồng, không đưa lên thẻ phòng.
+        Current is null
+            ? null
+            : Current with { Flags = flags.GetValueOrDefault(Current.Id, []).Where(f => f != ContractFlag.ExpiredAwaitingDecision).ToList() },
+        Room.Version.ToString(), OutstandingAmount,
         OverdueAmount, DepositHeld);
 }
 

@@ -20,6 +20,12 @@ public static class IdentityErrors
     public static readonly Error InvalidCurrentPassword =
         Error.BusinessRule("INVALID_CURRENT_PASSWORD", "Mật khẩu hiện tại không đúng.");
 
+    public static readonly Error CurrentPasswordRequired =
+        Error.Validation("CURRENT_PASSWORD_REQUIRED", "Nhập mật khẩu hiện tại để đổi số điện thoại / email đăng nhập.");
+
+    public static readonly Error ProfileManagedByOwner =
+        Error.Forbidden("PROFILE_MANAGED_BY_OWNER", "Hồ sơ phó quản lý do chủ trọ sửa — liên hệ chủ trọ để đổi thông tin.");
+
     public static readonly Error PasswordContainsUsername =
         Error.Validation("WEAK_PASSWORD", "Mật khẩu không được chứa tên đăng nhập.");
 

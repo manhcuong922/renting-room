@@ -13,8 +13,9 @@
 | 5 | `Vacant` — Trống | Còn lại | Xanh lá |
 
 Khi `Occupied`, `currentContract` chứa tóm tắt hợp đồng (người đại diện, số người đang ở, ngày hết hạn) và `flags` — nhãn cần xử lý trên ô
-phòng: `RepresentativeMovedOut` "Người ký đã rời đi", `NoOccupantLeft` "Không còn người ở", `ExpiredAwaitingDecision` "Quá hạn — đang ở tiếp, nên ký phụ lục",
-`Holdover` "Ở tiếp chưa ký lại" (chi tiết: [contracts.md](contracts.md#cần-xử-lý-flags)). Hợp đồng quá hạn **vẫn là `Occupied`**.
+phòng: `RepresentativeMovedOut` "Người ký đã rời đi", `NoOccupantLeft` "Không còn người ở", `MissingSignedDocument` "Thiếu tài liệu"
+(chi tiết: [contracts.md](contracts.md#cần-xử-lý-flags)). **13/10/2026:** nhãn về **thời hạn hợp đồng** không đưa lên phòng — hợp đồng hết hạn chỉ
+mang nhãn ở danh sách / chi tiết hợp đồng. Hợp đồng quá hạn **vẫn là `Occupied`**.
 
 ## Màn hình
 
@@ -204,7 +205,10 @@ khác rồi quay lại thì có 2 phần tử.
 
 ```json
 [ { "contractId": "…", "contractNo": "HD2026-0007", "status": "Active", "fromDate": "2026-09-01", "toDate": "2026-10-01", "isCurrent": false,
-    "representativeName": "Tô Văn Bình",
+    "representativeName": "Tô Thị Hạnh",
+    "representatives": [
+      { "renterId": "…", "fullName": "Tô Văn Bình", "fromDate": "2026-09-01", "toDate": "2026-09-19" },
+      { "renterId": "…", "fullName": "Tô Thị Hạnh", "fromDate": "2026-09-20", "toDate": "2026-10-01" } ],
     "occupants": [
       { "renterId": "…", "fullName": "Tô Văn Bình", "role": "Representative", "fromDate": "2026-09-01", "toDate": "2026-10-01" },
       { "renterId": "…", "fullName": "Tô Thị Hạnh", "role": "CoTenant", "fromDate": "2026-09-01", "toDate": "2026-10-01" } ] } ]
@@ -212,6 +216,9 @@ khác rồi quay lại thì có 2 phần tử.
 
 - `toDate` null = đang ở; `isCurrent` = hôm nay nằm trong lần ở đó. `role`: `Representative` (đứng tên) · `CoTenant` (đồng thuê) · `Resident` (người ở).
 - `occupants[].fromDate / toDate` là khoảng người đó thực ở **trong lần ở này** (đã cắt theo ngày vào / rời phòng của HĐ).
+- **13/10/2026 — người đứng tên theo thời điểm:** `representatives[]` = ai đứng tên trong lần ở này, từ ngày nào tới ngày nào (HĐ đổi người đứng tên
+  giữa chừng ⇒ nhiều dòng); `representativeName` = người đứng tên **cuối lần ở**. `occupants[].role` là `Representative` nếu người đó từng đứng
+  tên trong lần ở này. Tìm theo tên cũng ra người **từng** đứng tên, với khoảng ngày họ đứng tên.
 - Chỉ trả họ tên. Hồ sơ hết thời gian lưu vẫn còn họ tên nên vẫn hiện; hồ sơ bị xóa theo yêu cầu của người thuê hiện "Đã ẩn danh #XXXX".
 
 **Tìm theo tên** — `GET /tenancy-history?search=hanh&propertyId=` (`propertyId` tùy chọn): người khớp tên đã ở / đứng tên phòng nào.
