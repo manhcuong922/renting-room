@@ -82,6 +82,9 @@ public static class DependencyInjection
         // S2: xóa nhật ký cũ hơn Audit:RetentionYears (mặc định 5 năm).
         services.AddSingleton<AuditRetentionService>();
         services.AddHostedService(sp => sp.GetRequiredService<AuditRetentionService>());
+        // M01: dọn refresh token hết hạn và nhật ký đăng nhập cũ.
+        services.AddSingleton<AccountCleanupService>();
+        services.AddHostedService(sp => sp.GetRequiredService<AccountCleanupService>());
 
         // Dữ liệu demo cho dev / server test — chỉ chạy khi bật Seed:DemoData:Enabled (DatabaseInitializer).
         services.AddOptions<DemoDataOptions>().Bind(configuration.GetSection(DemoDataOptions.SectionName));

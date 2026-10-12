@@ -250,7 +250,7 @@ public sealed class RoomTransferTests(ApiFactory factory)
             .Select(t => (t.GetProperty("effectiveFrom").GetString()!, t.GetProperty("monthlyRent").GetDecimal())).OrderBy(t => t.Item1).ToList();
         var lateInPeriod = month.AddDays(20); // đã ở phòng cũ 20 ngày — quá nửa kỳ
 
-        // (1) Không gửi giá: giữ giá cũ nhưng cảnh báo vì giá niêm yết phòng mới khác; bỏ phí điều hòa; phòng mới không có công tơ điện.
+        // (1) Không gửi giá: lấy giá niêm yết phòng mới (4,0tr) — đã quá nửa kỳ nên áp từ kỳ sau; bỏ phí điều hòa; phòng mới không có công tơ điện.
         var roomA = await _client.CreateRoomAsync(token, propertyId, "A1");
         var meterA = await _client.InstallMeterAsync(token, roomA, electricity, month.AddDays(-1), 100);
         var first = await _client.CreateContractAsync(token, roomA, await _client.CreateRenterAsync(token), month);
@@ -263,8 +263,8 @@ public sealed class RoomTransferTests(ApiFactory factory)
             oldRoomReadings = new[] { new { meterId = meterA, value = (decimal?)130 } }, removeFeeTypeIds = new[] { airCon }
         });
         kept.GetProperty("warnings").EnumerateArray().Select(w => w.GetProperty("code").GetString())
-            .Should().Contain(["RESIDENCE_ROOM_CHANGED", "ROOM_TRANSFER_RENT_UNCHANGED", "METER_MISSING_IN_NEW_ROOM"]);
-        (await RentTermsAsync(first)).Should().Equal(($"{month:yyyy-MM-dd}", 3_500_000m));
+            .Should().Contain(["RESIDENCE_ROOM_CHANGED", "ROOM_TRANSFER_LISTED_RENT_APPLIED", "METER_MISSING_IN_NEW_ROOM"]);
+        (await RentTermsAsync(first)).Should().Equal(($"{month:yyyy-MM-dd}", 3_500_000m), ($"{month.AddMonths(1):yyyy-MM-dd}", 4_000_000m));
         (await (await _client.GetAsync($"/api/v1/contracts/{first}", token)).ReadAsync<JsonElement>()).GetProperty("fees").EnumerateArray()
             .Should().NotContain(f => f.GetProperty("feeTypeId").GetGuid() == airCon, "dịch vụ theo phòng không mang sang phòng mới");
 
@@ -313,6 +313,135 @@ public sealed class RoomTransferTests(ApiFactory factory)
         var terms = (await (await _client.GetAsync($"/api/v1/contracts/{contractId}", token)).ReadAsync<JsonElement>()).GetProperty("rentTerms");
         terms.EnumerateArray().Should().Contain(t => t.GetProperty("effectiveFrom").GetString() == $"{month.AddMonths(1):yyyy-MM-dd}"
             && t.GetProperty("monthlyRent").GetDecimal() == 4_000_000);
+    }
+
+    /// <summary>CT-BR-47 với giá bậc: bậc tính riêng trên sản lượng của khoản chốt (70 kWh = 50 × 2.000 + 20 × 3.000).</summary>
+    [Fact]
+    public async Task Transfer_WithTieredPrice_ClosingChargeUsesTiersOnItsOwnUsage()
+    {
+        var owner = await _client.CreateActiveOwnerAsync();
+        var token = owner.Tokens.AccessToken;
+        var today = TestData.Today(factory);
+        var start = today.AddDays(-20);
+        var propertyId = await _client.CreatePropertyAsync(token, anchorDay: 1, chargeMode: "Postpaid");
+        var electricity = await _client.FeeIdAsync(token, propertyId, "Điện");
+        (await _client.PostJsonAsync($"/api/v1/fee-types/{electricity}/prices", new
+        {
+            effectiveFrom = start.AddDays(-30), tiers = new object[] { new { upTo = 50, price = 2000 }, new { upTo = (int?)null, price = 3000 } }
+        }, token)).StatusCode.Should().Be(HttpStatusCode.Created);
+        var roomA = await _client.CreateRoomAsync(token, propertyId, "A1");
+        var roomB = await _client.CreateRoomAsync(token, propertyId, "A2");
+        var meterA = await _client.InstallMeterAsync(token, roomA, electricity, start.AddDays(-1), 100);
+        var contractId = await _client.CreateContractAsync(token, roomA, await _client.CreateRenterAsync(token), start);
+        (await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/activate",
+            new { handoverReadings = new[] { new { meterId = meterA, value = (decimal?)null } } }, token)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        (await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/transfer-room",
+            new { toRoomId = roomB, date = today, oldRoomReadings = new[] { new { meterId = meterA, value = (decimal?)170 } } }, token))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var charge = (await (await _client.GetAsync($"/api/v1/room-charges?roomId={roomA}", token)).ReadAsync<List<JsonElement>>()).Single();
+        charge.GetProperty("amount").GetDecimal().Should().Be(160_000);
+        charge.GetProperty("isSystem").GetBoolean().Should().BeTrue();
+        charge.GetProperty("quantity").GetDecimal().Should().Be(70);
+        charge.GetProperty("feeTypeId").GetGuid().Should().Be(electricity);
+    }
+
+    /// <summary>MT-BR-04: chuyển đi rồi về phòng cũ, sau đó trả phòng — chỉ số cuối khi trả là bản mới của lần ở này; hủy thanh lý chỉ hủy đúng bản đó.</summary>
+    [Fact]
+    public async Task LiquidationAfterReturningToOldRoom_RecordsItsOwnFinalReading_AndCancelVoidsOnlyThatOne()
+    {
+        var owner = await _client.CreateActiveOwnerAsync();
+        var token = owner.Tokens.AccessToken;
+        var today = TestData.Today(factory);
+        var month = new DateOnly(today.Year, today.Month, 1).AddMonths(-1);
+        var propertyId = await _client.CreatePropertyAsync(token, anchorDay: 1, chargeMode: "Postpaid");
+        var electricity = await _client.FeeIdAsync(token, propertyId, "Điện");
+        await _client.PostJsonAsync($"/api/v1/fee-types/{electricity}/prices", new { effectiveFrom = month.AddDays(-30), unitPrice = 3500 }, token);
+        var roomA = await _client.CreateRoomAsync(token, propertyId, "A1");
+        var roomB = await _client.CreateRoomAsync(token, propertyId, "A2");
+        var meterA = await _client.InstallMeterAsync(token, roomA, electricity, month.AddDays(-1), 100);
+        var meterB = await _client.InstallMeterAsync(token, roomB, electricity, month.AddDays(-1), 500);
+        var contractId = await _client.CreateContractAsync(token, roomA, await _client.CreateRenterAsync(token), month);
+        (await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/activate",
+            new { handoverReadings = new[] { new { meterId = meterA, value = (decimal?)null } } }, token)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+        (await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/transfer-room", new
+        {
+            toRoomId = roomB, date = month.AddDays(10), oldRoomReadings = new[] { new { meterId = meterA, value = (decimal?)130 } }
+        }, token)).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/transfer-room", new
+        {
+            toRoomId = roomA, date = month.AddDays(20), oldRoomReadings = new[] { new { meterId = meterB, value = (decimal?)515 } },
+            newRoomReadings = new[] { new { meterId = meterA, value = (decimal?)138 } }
+        }, token)).StatusCode.Should().Be(HttpStatusCode.OK);
+
+        // Tháng trước: chốt 160 và chốt phiếu; tháng này trả phòng hôm nay ở 175.
+        (await _client.PutJsonAsync($"/api/v1/properties/{propertyId}/meter-readings", new
+        {
+            readings = new[] { new { meterId = meterA, contractId, closingPeriodStart = month, readingDate = month.AddMonths(1), value = 160m } }
+        }, token)).StatusCode.Should().Be(HttpStatusCode.OK);
+        await _client.PostJsonAsync("/api/v1/invoices/generate", new { propertyId, billingMonth = $"{month:yyyy-MM}", roomIds = new[] { roomA } }, token);
+        var page = await (await _client.GetAsync($"/api/v1/invoices?contractId={contractId}", token)).ReadAsync<JsonElement>();
+        (await _client.PostJsonAsync($"/api/v1/invoices/{page.GetProperty("items")[0].GetProperty("id").GetGuid()}/finalize", null, token))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+        (await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/liquidation/start", new { actualEndDate = today, reason = "MutualAgreement" }, token))
+            .StatusCode.Should().Be(HttpStatusCode.NoContent);
+        var created = await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/final-invoice",
+            new { finalReadings = new[] { new { meterId = meterA, value = (decimal?)175 } } }, token);
+        created.StatusCode.Should().Be(HttpStatusCode.Created, await created.Content.ReadAsStringAsync());
+        var final = await created.ReadAsync<JsonElement>();
+        final.GetProperty("lines").EnumerateArray().Single(l => l.GetProperty("type").GetString() == "Metered").GetProperty("quantity").GetDecimal()
+            .Should().Be(15, "160 → 175: chỉ số cuối của lần ở hiện tại, không lấy 130 của lần chuyển đi trước");
+
+        async Task<List<decimal>> FinalValuesAsync() =>
+            (await (await _client.GetAsync($"/api/v1/meters/{meterA}/readings", token)).ReadAsync<List<JsonElement>>())
+            .Where(r => r.GetProperty("kind").GetString() == "Final").Select(r => r.GetProperty("value").GetDecimal()).Order().ToList();
+        (await FinalValuesAsync()).Should().Equal(130, 175);
+
+        var finalId = final.GetProperty("summary").GetProperty("id").GetGuid();
+        await _client.DeleteAsync($"/api/v1/invoices/{finalId}", token);
+        var cancelled = await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/liquidation/cancel", null, token);
+        cancelled.StatusCode.Should().Be(HttpStatusCode.NoContent, await cancelled.Content.ReadAsStringAsync());
+        (await FinalValuesAsync()).Should().Equal([130m], "hủy thanh lý chỉ hủy chỉ số cuối của lần thanh lý, giữ chỉ số chốt lúc chuyển phòng");
+    }
+
+    /// <summary>CT-BR-14: khoản chốt đang nằm trên phiếu nháp ⇒ hủy chuyển phòng xóa dòng đó khỏi nháp và hủy khoản.</summary>
+    [Fact]
+    public async Task CancelTransfer_WhenClosingChargeIsOnDraftInvoice_RemovesTheLine()
+    {
+        var owner = await _client.CreateActiveOwnerAsync();
+        var token = owner.Tokens.AccessToken;
+        var today = TestData.Today(factory);
+        var month = new DateOnly(today.Year, today.Month, 1).AddMonths(-1);
+        var propertyId = await _client.CreatePropertyAsync(token, anchorDay: 1, chargeMode: "Postpaid");
+        var electricity = await _client.FeeIdAsync(token, propertyId, "Điện");
+        await _client.PostJsonAsync($"/api/v1/fee-types/{electricity}/prices", new { effectiveFrom = month.AddDays(-30), unitPrice = 3500 }, token);
+        var roomA = await _client.CreateRoomAsync(token, propertyId, "A1");
+        var roomB = await _client.CreateRoomAsync(token, propertyId, "A2");
+        var meterA = await _client.InstallMeterAsync(token, roomA, electricity, month.AddDays(-1), 100);
+        var contractId = await _client.CreateContractAsync(token, roomA, await _client.CreateRenterAsync(token), month);
+        (await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/activate",
+            new { handoverReadings = new[] { new { meterId = meterA, value = (decimal?)null } } }, token)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+        // Nháp tháng trước lập trước khi chuyển (chưa có chỉ số cuối kỳ) ⇒ khoản chốt gắn ngay vào nháp này.
+        await _client.PostJsonAsync("/api/v1/invoices/generate", new { propertyId, billingMonth = $"{month:yyyy-MM}", roomIds = new[] { roomA } }, token);
+        var draftId = (await (await _client.GetAsync($"/api/v1/invoices?contractId={contractId}", token)).ReadAsync<JsonElement>())
+            .GetProperty("items")[0].GetProperty("id").GetGuid();
+        (await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/transfer-room",
+            new { toRoomId = roomB, date = month.AddDays(10), oldRoomReadings = new[] { new { meterId = meterA, value = (decimal?)130 } } }, token))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+
+        async Task<int> SurchargeLinesAsync() =>
+            (await (await _client.GetAsync($"/api/v1/invoices/{draftId}", token)).ReadAsync<JsonElement>()).GetProperty("lines").EnumerateArray()
+            .Count(l => l.GetProperty("type").GetString() == "Surcharge");
+        (await SurchargeLinesAsync()).Should().Be(1);
+        (await (await _client.GetAsync($"/api/v1/room-charges?roomId={roomA}", token)).ReadAsync<List<JsonElement>>())
+            .Single().GetProperty("status").GetString().Should().Be("OnDraft");
+
+        var cancelled = await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/transfer-room/cancel", null, token);
+        cancelled.StatusCode.Should().Be(HttpStatusCode.OK, await cancelled.Content.ReadAsStringAsync());
+        (await SurchargeLinesAsync()).Should().Be(0);
+        (await (await _client.GetAsync($"/api/v1/room-charges?roomId={roomA}", token)).ReadAsync<List<JsonElement>>())
+            .Single().GetProperty("status").GetString().Should().Be("Cancelled");
     }
 
     /// <summary>CT-BR-14: hủy lần chuyển gần nhất — trả lại phòng, hủy khoản chốt và chỉ số; chuyển lại được với số khác.</summary>

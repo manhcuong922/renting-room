@@ -1775,6 +1775,57 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("renting_room.Domain.Identity.LoginEvent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("IpAddress")
+                        .HasMaxLength(45)
+                        .HasColumnType("character varying(45)")
+                        .HasColumnName("ip_address");
+
+                    b.Property<DateTimeOffset>("OccurredAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("occurred_at");
+
+                    b.Property<Guid?>("OrganizationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("organization_id");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("reason");
+
+                    b.Property<bool>("Success")
+                        .HasColumnType("boolean")
+                        .HasColumnName("success");
+
+                    b.Property<Guid?>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.Property<string>("UsernameHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("username_hash");
+
+                    b.HasKey("Id")
+                        .HasName("pk_login_events");
+
+                    b.HasIndex("OccurredAt")
+                        .HasDatabaseName("ix_login_events_occurred_at");
+
+                    b.HasIndex("OrganizationId", "OccurredAt")
+                        .HasDatabaseName("ix_login_events_organization");
+
+                    b.ToTable("login_events", (string)null);
+                });
+
             modelBuilder.Entity("renting_room.Domain.Identity.Organization", b =>
                 {
                     b.Property<Guid>("Id")
@@ -3151,6 +3202,79 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("renting_room.Domain.Renters.RenterConsent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<DateOnly>("GivenAt")
+                        .HasColumnType("date")
+                        .HasColumnName("given_at");
+
+                    b.Property<string>("Method")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("method");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("note");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("organization_id");
+
+                    b.Property<string>("Purpose")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("purpose");
+
+                    b.Property<Guid>("RenterId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("renter_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.Property<DateOnly?>("WithdrawnAt")
+                        .HasColumnType("date")
+                        .HasColumnName("withdrawn_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_renter_consents");
+
+                    b.HasIndex("OrganizationId", "RenterId")
+                        .HasDatabaseName("ix_renter_consents_renter");
+
+                    b.ToTable("renter_consents", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_renter_consents_dates", "withdrawn_at IS NULL OR withdrawn_at >= given_at");
+                        });
+                });
+
             modelBuilder.Entity("renting_room.Infrastructure.Auditing.AuditLog", b =>
                 {
                     b.Property<Guid>("Id")
@@ -3702,6 +3826,17 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_renters_organizations_organization_id");
+                });
+
+            modelBuilder.Entity("renting_room.Domain.Renters.RenterConsent", b =>
+                {
+                    b.HasOne("renting_room.Domain.Renters.Renter", null)
+                        .WithMany()
+                        .HasForeignKey("OrganizationId", "RenterId")
+                        .HasPrincipalKey("OrganizationId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_renter_consents_renters_organization_id_renter_id");
                 });
 
             modelBuilder.Entity("renting_room.Domain.Billing.Invoice", b =>

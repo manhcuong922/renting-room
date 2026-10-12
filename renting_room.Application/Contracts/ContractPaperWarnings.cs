@@ -24,6 +24,9 @@ internal static class ContractPaperWarnings
             return [];
 
         var warnings = new List<Warning>();
+        // CT-BR-50: HĐ nháp chưa bị chặn — báo trước điều sẽ chặn khi kích hoạt.
+        if (contract.Status == ContractStatus.Draft && await OccupantChecks.FindRoleConflictAsync(db, contract, ct) is { } conflict)
+            warnings.Add(new Warning(conflict.Code, conflict.Message));
         var property = await db.Properties.AsNoTracking().FirstAsync(p => p.Id == contract.PropertyId, ct);
         if ((await LessorSource.EffectiveAsync(db, property, ct)).Lessor?.IsComplete(today) != true)
             warnings.Add(new Warning("LESSOR_INFO_INCOMPLETE",

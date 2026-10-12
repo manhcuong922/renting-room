@@ -179,8 +179,13 @@ public sealed class RoomChargeTests(ApiFactory factory)
         charges.EnumerateArray().Select(c => (c.GetProperty("kind").GetString(), c.GetProperty("isSettled").GetBoolean(), c.GetProperty("status").GetString()))
             .Should().BeEquivalentTo([("Surcharge", true, "OnDraft"), ("Credit", false, "OnDraft")]);
 
-        // 8. Bù lớn hơn phần thu ⇒ chưa vào phiếu, khoản vẫn chờ, nháp có cảnh báo.
-        var huge = (await CreatedAsync(s, "Credit", 5_000_000, s.FirstMonth.AddDays(5))).GetProperty("id").GetGuid();
+        // 8. Bù (trong giới hạn 1 tháng tiền phòng) nhưng lớn hơn phần thu của phiếu này — tiền phòng kỳ này được giảm tay còn 500k —
+        //    ⇒ chưa vào phiếu, khoản vẫn chờ, nháp có cảnh báo.
+        var rentLine = (await InvoiceAsync(s, invoiceId)).GetProperty("lines").EnumerateArray()
+            .Single(l => l.GetProperty("type").GetString() == "Rent").GetProperty("id").GetGuid();
+        (await _client.PutJsonAsync($"/api/v1/invoices/{invoiceId}/lines/{rentLine}", new { amount = 500_000, note = "Ở nhờ nửa tháng" }, s.Token))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+        var huge = (await CreatedAsync(s, "Credit", 1_000_000, s.FirstMonth.AddDays(5))).GetProperty("id").GetGuid();
         (await StatusAsync(s, huge)).Should().Be("Pending");
         var invoice = await InvoiceAsync(s, invoiceId);
         ChargeLine(invoice, huge).Should().BeNull();
@@ -217,5 +222,21 @@ public sealed class RoomChargeTests(ApiFactory factory)
             .Should().Be("ROOM_CHARGE_NO_TENANT", "phòng cũ đã trống sau ngày chuyển");
         var invoiceId = await GenerateAsync(t, t.FirstMonth);
         ChargeLine(await InvoiceAsync(t, invoiceId), before.GetProperty("id").GetGuid()).Should().NotBeNull("vào phiếu của HĐ đã chuyển sang phòng mới");
+    }
+
+    /// <summary>BL-BR-30 (G-01): khoản bù chưa trả không vượt một tháng tiền phòng; khoản bù đã trả ngay không bị giới hạn.</summary>
+    [Fact]
+    public async Task UnpaidCredits_AreCappedAtOneMonthRent_SettledCreditsAreNot()
+    {
+        var s = await ArrangeAsync();
+
+        var tooHigh = await CreateAsync(s, "Credit", Rent + 1_000, s.Today, description: "Bù quá tay");
+        (await tooHigh.ReadProblemCodeAsync()).Should().Be("ROOM_CHARGE_CREDIT_TOO_HIGH");
+        (await CreateAsync(s, "Credit", 2_000_000, s.Today, description: "Bù mất nước")).StatusCode.Should().Be(HttpStatusCode.Created);
+        (await (await CreateAsync(s, "Credit", 1_500_000, s.Today, description: "Bù thêm")).ReadProblemCodeAsync())
+            .Should().Be("ROOM_CHARGE_CREDIT_TOO_HIGH", "2,0tr đang chờ + 1,5tr > 3,0tr tiền phòng");
+        (await CreateAsync(s, "Credit", 1_000_000, s.Today, description: "Bù vừa đủ")).StatusCode.Should().Be(HttpStatusCode.Created);
+        (await CreateAsync(s, "Credit", 5_000_000, s.Today, settled: true, description: "Đã trả tay")).StatusCode.Should().Be(HttpStatusCode.Created);
+        (await CreateAsync(s, "Surcharge", 9_000_000, s.Today)).StatusCode.Should().Be(HttpStatusCode.Created, "phụ thu không bị giới hạn này");
     }
 }

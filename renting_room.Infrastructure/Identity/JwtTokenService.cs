@@ -20,7 +20,7 @@ public sealed class JwtTokenService(IOptions<JwtOptions> options, JwtSigningKeyP
 
     public TimeSpan RefreshTokenAbsoluteLifetime => TimeSpan.FromDays(_options.SessionAbsoluteDays);
 
-    public AccessToken CreateAccessToken(User user, DateTimeOffset now)
+    public AccessToken CreateAccessToken(User user, DateTimeOffset now, Guid? sessionId = null)
     {
         var expiresAt = now.AddMinutes(_options.AccessTokenMinutes);
 
@@ -37,6 +37,9 @@ public sealed class JwtTokenService(IOptions<JwtOptions> options, JwtSigningKeyP
 
         if (user.MustChangePassword)
             claims[AppClaimTypes.MustChangePassword] = "true";
+
+        if (sessionId is { } session)
+            claims[AppClaimTypes.SessionId] = session.ToString();
 
         var descriptor = new SecurityTokenDescriptor
         {

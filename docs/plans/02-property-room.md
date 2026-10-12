@@ -94,6 +94,8 @@ cài đặt kỳ thu của khu; bên cho thuê; tài khoản ngân hàng, nội 
 | payment_due_days | smallint | N | 0–60, mặc định 5 — hạn = ngày chốt phiếu + số ngày; quá hạn ⇒ nhãn đỏ (PR-BR-16) |
 | proration_mode | varchar(16) | N | `Daily` / `FullPeriod` — tiền phòng kỳ lẻ, chung cả khu |
 | round_invoice_total | bool | N | true — cắt tổng phiếu xuống chẵn nghìn (M07 BL-BR-29) |
+| notify_on_finalize | bool | N | false — chốt phiếu thì tự gửi phiếu cho người đứng tên HĐ (M11 NT-BR-04). **Chưa code** |
+| overdue_reminder_days | smallint[] | N | `{}` — số ngày sau hạn thì nhắc nợ, tối đa 3 giá trị 1–60 tăng dần (M11 NT-BR-06, NT-BR-19). **Chưa code** |
 | default_notice_days | smallint | N | 0–180, mặc định 30 (L4) — gợi ý khi tạo HĐ (HĐ giữ riêng) |
 | billing_schedule | jsonb | N | K4: `[{effectiveFrom, anchorDay, chargeMode, adjustDays}]` — mốc đầu `0001-01-01`; mỗi lần đổi khi khu đã có phiếu thêm 1 mốc (kỳ chuyển tiếp) |
 | evn_customer_code | varchar(20) | Y | mã khách hàng điện, tham chiếu đối chiếu |

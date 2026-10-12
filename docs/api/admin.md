@@ -32,14 +32,18 @@ Admin **không** thấy khu trọ / phòng / người thuê / hợp đồng (API
       "status": "Active",
       "contactName": null,
       "contactPhone": null,
-      "createdAt": "2026-10-02T13:19:04.940602+00:00"
+      "createdAt": "2026-10-02T13:19:04.940602+00:00",
+      "propertyCount": 2,
+      "roomCount": 37
     }
   ],
   "page": 1, "pageSize": 20, "totalCount": 7, "totalPages": 1
 }
 ```
 
-Cột gợi ý: Mã · Tên · Liên hệ · Trạng thái (badge xanh/xám) · Ngày tạo.
+`propertyCount`, `roomCount` (12/10/2026): số khu / phòng của tổ chức, **không tính** khu, phòng đã xóa.
+
+Cột gợi ý: Mã · Tên · Liên hệ · Số khu / phòng · Trạng thái (badge xanh/xám) · Ngày tạo.
 
 ## Tạo tổ chức
 

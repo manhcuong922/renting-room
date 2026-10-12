@@ -7,7 +7,10 @@ using renting_room.Domain.Identity;
 
 namespace renting_room.Application.Identity.Auth.Logout;
 
-/// <summary>Đăng xuất phiên hiện tại: thu hồi cả family của refresh token. Luôn thành công (không lộ token có tồn tại hay không).</summary>
+/// <summary>
+/// Đăng xuất phiên hiện tại: thu hồi cả family của refresh token ⇒ access token của phiên (claim <c>sid</c>) cũng hết hiệu lực ngay.
+/// Luôn thành công (không lộ token có tồn tại hay không).
+/// </summary>
 public sealed record LogoutCommand(string RefreshToken) : IRequest<Result>;
 
 public sealed class LogoutCommandValidator : AbstractValidator<LogoutCommand>
@@ -20,7 +23,7 @@ public sealed class LogoutCommandValidator : AbstractValidator<LogoutCommand>
     }
 }
 
-public sealed class LogoutHandler(IAppDbContext db, ITokenService tokenService, TimeProvider clock)
+public sealed class LogoutHandler(IAppDbContext db, ITokenService tokenService, IUserSessionStore sessionStore, TimeProvider clock)
     : IRequestHandler<LogoutCommand, Result>
 {
     public async ValueTask<Result> Handle(LogoutCommand request, CancellationToken cancellationToken)
@@ -36,6 +39,7 @@ public sealed class LogoutHandler(IAppDbContext db, ITokenService tokenService, 
         {
             await RefreshTokenRevoker.RevokeFamilyAsync(
                 db, familyId.Value, RefreshTokenRevokeReason.Logout, clock.GetUtcNow(), cancellationToken);
+            sessionStore.InvalidateSession(familyId.Value);
         }
 
         return Result.Success();

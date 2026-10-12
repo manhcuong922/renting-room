@@ -32,7 +32,7 @@ public sealed class DemoDataOptions
     public string? ManagerPassword { get; set; }
 
     /// <summary>Phó quản lý thứ hai — được chủ trọ cấp quyền bỏ nợ (PM-BR-16); dùng chung <see cref="ManagerPassword"/>.</summary>
-    public string WriteOffManagerPhone { get; set; } = "0900000009";
+    public string WriteOffManagerPhone { get; set; } = "0900000007";
 }
 
 /// <summary>Người thao tác khi seed — chủ trọ / phó quản lý demo hoặc SystemAdmin (tạo tổ chức).</summary>

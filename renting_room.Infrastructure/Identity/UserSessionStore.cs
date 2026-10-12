@@ -31,6 +31,23 @@ public sealed class UserSessionStore(IAppDbContext db, IMemoryCache cache, IOpti
 
     public void Invalidate(Guid userId) => cache.Remove(CacheKey(userId));
 
+    public async ValueTask<bool> IsSessionActiveAsync(Guid sessionId, CancellationToken cancellationToken)
+    {
+        var key = SessionKey(sessionId);
+        if (cache.TryGetValue(key, out bool active))
+            return active;
+
+        active = await db.RefreshTokens.AsNoTracking().AnyAsync(t => t.FamilyId == sessionId && t.RevokedAt == null, cancellationToken);
+        var ttl = TimeSpan.FromSeconds(options.Value.SessionCacheSeconds);
+        if (ttl > TimeSpan.Zero)
+            cache.Set(key, active, ttl);
+        return active;
+    }
+
+    public void InvalidateSession(Guid sessionId) => cache.Remove(SessionKey(sessionId));
+
+    private static string SessionKey(Guid sessionId) => $"session-family:{sessionId:N}";
+
     private async Task<SessionSnapshot> LoadAsync(Guid userId, CancellationToken cancellationToken)
     {
         var state = await db.Users

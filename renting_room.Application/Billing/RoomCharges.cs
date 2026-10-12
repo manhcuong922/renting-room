@@ -24,10 +24,12 @@ public enum RoomChargeStatus
     Cancelled
 }
 
+/// <param name="IsSystem">BL-BR-38: khoản chốt điện nước khi chuyển phòng — không sửa / hủy tay; kèm khoản thu, sản lượng, đơn giá.</param>
 public sealed record RoomChargeDto(
     Guid Id, Guid RoomId, string RoomCode, Guid ContractId, RoomChargeKind Kind, string Description, decimal Amount, DateOnly IncurredOn,
     string Reason, bool IsSettled, DateOnly? SettledOn, PaymentMethod? SettledMethod, RoomChargeStatus Status, Guid? InvoiceId,
-    string? InvoiceNo, string? BillingMonth, string? CancelReason, DateTimeOffset CreatedAt);
+    string? InvoiceNo, string? BillingMonth, string? CancelReason, DateTimeOffset CreatedAt, bool IsSystem = false, Guid? FeeTypeId = null,
+    decimal? Quantity = null, decimal? UnitPrice = null);
 
 /// <summary>"Đã thanh toán / đã hoàn ngay" khi tạo khoản hoặc thêm dòng tay trên nháp (BL-BR-31).</summary>
 public sealed record ChargeSettlement(DateOnly SettledOn, PaymentMethod Method);
@@ -134,7 +136,8 @@ internal static class RoomChargeBilling
                 : RoomChargeStatus.Billed;
             return new RoomChargeDto(c.Id, c.RoomId, rooms.GetValueOrDefault(c.RoomId, ""), c.ContractId, c.Kind, c.Description, c.Amount,
                 c.IncurredOn, c.Reason, c.IsSettled, c.SettledOn, c.SettledMethod, status, c.InvoiceId, invoice?.InvoiceNo,
-                invoice is null ? null : $"{invoice.BillingMonth:yyyy-MM}", c.CancelReason, c.CreatedAt);
+                invoice is null ? null : $"{invoice.BillingMonth:yyyy-MM}", c.CancelReason, c.CreatedAt, c.IsSystem, c.FeeTypeId, c.Quantity,
+                c.UnitPrice);
         }).ToList();
     }
 }
@@ -190,6 +193,11 @@ public sealed class CreateRoomChargeHandler(IAppDbContext db, TimeProvider clock
         if (status == ContractStatus.Ended || (status == ContractStatus.Liquidating && finalClosed))
             return RoomChargeErrors.NoOpenInvoice;
 
+        // BL-BR-30 (G-01): khoản bù chưa trả không vượt một tháng tiền phòng ⇒ phiếu tháng luôn trừ được hết, không còn khoản bù treo.
+        if (request.Kind == RoomChargeKind.Credit && request.Settlement is null
+            && await CreditLimitExceededAsync(tenancy.Id, date, request.Amount, cancellationToken) is { } limit)
+            return RoomChargeErrors.CreditTooHigh(limit);
+
         var charge = RoomCharge.Create(room.PropertyId, room.Id, tenancy.Id, request.Kind, request.Description, request.Amount, date, request.Reason);
         if (request.Settlement is { } settlement)
         {
@@ -204,6 +212,19 @@ public sealed class CreateRoomChargeHandler(IAppDbContext db, TimeProvider clock
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return (await RoomChargeBilling.ToDtosAsync(db, [charge], cancellationToken))[0];
+    }
+
+    /// <summary>Trả giới hạn (1 tháng tiền phòng) nếu khoản bù mới + các khoản bù chưa trả chưa vào phiếu đã chốt vượt giới hạn; null = hợp lệ.</summary>
+    private async Task<decimal?> CreditLimitExceededAsync(Guid contractId, DateOnly date, decimal amount, CancellationToken ct)
+    {
+        var contract = await db.Contracts.AsNoTracking().Include(c => c.RentTerms).FirstAsync(c => c.Id == contractId, ct);
+        if (contract.CurrentRent(date) is not { } rent)
+            return null;
+        var waiting = await db.RoomCharges
+            .Where(c => c.ContractId == contractId && c.Kind == RoomChargeKind.Credit && c.CancelledAt == null && !c.IsSettled
+                && (c.InvoiceId == null || db.Invoices.Any(i => i.Id == c.InvoiceId && i.Status == InvoiceStatus.Draft)))
+            .SumAsync(c => (decimal?)c.Amount, ct) ?? 0;
+        return waiting + amount > rent ? rent : null;
     }
 }
 

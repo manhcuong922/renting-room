@@ -45,6 +45,13 @@ public static class RoomEndpoints
                     propertyId, status, floor, groupId, search, page ?? 1, pageSize ?? Paging.DefaultPageSize, overdue), ct)))
             .WithSummary("Danh sách phòng — lọc theo khu, trạng thái (Vacant/Reserved/Occupied/Maintenance/Archived), tầng, nhóm, quá hạn thanh toán");
 
+        rooms.MapGet("/{id:guid}/tenancy-history", async (Guid id, ISender sender, CancellationToken ct) =>
+                (await sender.Send(new GetRoomTenancyHistoryQuery(id), ct)).ToHttp())
+            .WithSummary("Lịch sử thuê của phòng: từng lần một HĐ ở phòng, người đứng tên, người ở và vai trò (mới nhất trước)");
+        app.MapGroup($"{EndpointHelpers.ApiPrefix}/tenancy-history").WithTags("Rooms").RequireAuthorization(AuthPolicies.OrgMember)
+            .MapGet("/", async (string? search, Guid? propertyId, ISender sender, CancellationToken ct) =>
+                Results.Ok(await sender.Send(new SearchTenancyHistoryQuery(search ?? string.Empty, propertyId), ct)))
+            .WithSummary("Tìm theo họ tên: người đó đã ở / đứng tên phòng nào, HĐ nào, từ – đến");
         rooms.MapGet("/{id:guid}", async (Guid id, ISender sender, CancellationToken ct) =>
                 (await sender.Send(new GetRoomQuery(id), ct)).ToHttp())
             .WithSummary("Chi tiết phòng + hợp đồng hiện hành");

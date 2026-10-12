@@ -114,3 +114,12 @@ Cảnh báo: `RENTER_EXISTS`, `RENTER_DATA_DIFFERS`, `RELATIONSHIP_REQUIRED`, `I
 trước kỳ tính tiền > 31 ngày — cập nhật chỉ số trước, nếu không phiếu đầu gộp điện nước nhiều tháng).
 
 **Không nhập**: người đã rời đi (lịch sử), nợ cũ, cọc đã thu.
+
+## Nhiều người "Đứng tên" trong một phòng (11/10/2026)
+
+File người thuê có **2 dòng trở lên vai trò "Đứng tên" cùng mã phòng** ⇒ dòng **đầu tiên** là người đứng tên hợp đồng, các dòng sau được nhập
+là **đồng thuê** (có tên trên hợp đồng, `role = CoTenant`) — dòng đó có cảnh báo `IMPORTED_AS_CO_TENANT`. Giá thuê / tiền cọc chỉ đọc ở dòng
+đầu; đồng thuê phải có số giấy tờ. "Đứng tên (không ở)" thứ hai trong cùng phòng vẫn lỗi `REPRESENTATIVE_COUNT`.
+
+Xem trước cũng báo `ROOM_PERIOD_OVERLAP` khi phòng còn hợp đồng khác (đã kết thúc hoặc đã chuyển đi) ở tới sau ngày vào ở khai trong file —
+import chỉ nhận phòng trống.

@@ -90,6 +90,8 @@ public sealed class ContractPartiesTests(ApiFactory factory)
         // Người ở thường của phòng 1 đứng tên phòng 2 (cho người khác ở) ⇒ chặn khi kích hoạt; đổi thành đồng thuê ở phòng 1 thì được.
         var second = await (await PostContractAsync(token, await _client.CreateRoomAsync(token, propertyId), resident, today,
             Occupant(await _client.CreateRenterAsync(token), relationshipType: "CoTenant"))).ReadIdAsync();
+        (await DetailAsync(token, second)).GetProperty("warnings").EnumerateArray().Select(w => w.GetProperty("code").GetString())
+            .Should().Contain("REPRESENTATIVE_IS_RESIDENT_ELSEWHERE", "HĐ nháp chỉ cảnh báo — kích hoạt mới chặn");
         (await (await _client.PostJsonAsync($"/api/v1/contracts/{second}/activate", null, token)).ReadProblemCodeAsync())
             .Should().Be("REPRESENTATIVE_IS_RESIDENT_ELSEWHERE");
         var residentOccupancy = OccupantOf(await DetailAsync(token, hostContract), resident).GetProperty("id").GetGuid();

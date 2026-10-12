@@ -128,8 +128,16 @@ public sealed class DemoDataSeederTests(ApiFactory factory)
         var charges = await (await _client.GetAsync("/api/v1/room-charges", token)).ReadAsync<JsonElement>();
         charges.EnumerateArray().Select(c => c.GetProperty("status").GetString()).Should().Contain(["Pending", "OnDraft", "Billed"]);
         charges.EnumerateArray().Where(c => c.GetProperty("status").GetString() == "Pending").Select(c => c.GetProperty("roomCode").GetString())
-            .Should().BeEquivalentTo(["101", "102", "203", "203", "207", "207", "208", "208"],
-                "203 → 206 và 207 → 208 → 207: mỗi lần chuyển, điện + nước phòng vừa rời chốt thành 2 khoản (CT-BR-47)");
+            .Should().BeEquivalentTo(["101", "102", "203", "203", "207", "207", "208", "208", "B07", "B07", "B08"],
+                "mỗi lần chuyển phòng, điện + nước phòng vừa rời chốt thành 2 khoản (CT-BR-47); B08 có khoản chênh lệch tiền phòng (CT-BR-48)");
+        charges.EnumerateArray().Where(c => c.GetProperty("roomCode").GetString() == "B07").Select(c => c.GetProperty("amount").GetDecimal())
+            .Should().BeEquivalentTo([59_520m, 30_000m], "điện 30 kWh ở bậc 1 (1.984đ) + nước 2 m³ × 15.000đ");
+        charges.EnumerateArray().Single(c => c.GetProperty("roomCode").GetString() == "B08").GetProperty("amount").GetDecimal().Should().Be(300_000);
+        (await DetailAsync("209", "Draft")).GetProperty("warnings").EnumerateArray().Select(w => w.GetProperty("code").GetString())
+            .Should().Contain("REPRESENTATIVE_IS_RESIDENT_ELSEWHERE", "người đứng tên HĐ nháp đang là người ở thường của phòng 102 (CT-BR-50)");
+        (await DetailAsync("C06", "Active")).GetProperty("occupants").EnumerateArray()
+            .Should().ContainSingle(o => o.GetProperty("role").GetString() == "CoTenant" && o.GetProperty("fullName").GetString() == "Bùi Văn Lực",
+                "nhập Excel 2 dòng Đứng tên cùng phòng ⇒ dòng sau là đồng thuê");
         var returned = await DetailAsync("207", "Active");
         returned.GetProperty("roomMoves").EnumerateArray().Select(m => m.GetProperty("roomCode").GetString())
             .Should().Equal(["207", "208"], "chuyển đi rồi chuyển về phòng đã từng ở (CT-BR-14)");
@@ -166,6 +174,22 @@ public sealed class DemoDataSeederTests(ApiFactory factory)
         var replaceSheet = await (await _client.GetAsync($"/api/v1/properties/{khuC}/meters/replace-sheet?feeTypeId={electricityC}", token))
             .ReadAsync<JsonElement>();
         replaceSheet.EnumerateArray().Should().OnlyContain(r => r.GetProperty("serialNo").GetString()!.StartsWith("EVN-"));
+
+        // 12/10/2026 — 210: lắp công tơ hàng loạt, 14 kWh lúc phòng trống; 101: ghi nhận đồng ý; hồ sơ đã ẩn; xem trước thanh lý 105.
+        var khuAId = properties.GetProperty("items").EnumerateArray().Single(p => p.GetProperty("code").GetString() == "A").GetProperty("id").GetGuid();
+        var vacant = await (await _client.GetAsync($"/api/v1/properties/{khuAId}/meters/vacant-usage", token)).ReadAsync<JsonElement>();
+        vacant.GetProperty("rows").EnumerateArray().Should().Contain(r => r.GetProperty("roomCode").GetString() == "210" && r.GetProperty("quantity").GetDecimal() == 14);
+        var withArchived = await (await _client.GetAsync("/api/v1/renters?pageSize=100&includeArchived=true&q=Vu Van Cu", token)).ReadAsync<JsonElement>();
+        withArchived.GetProperty("items").EnumerateArray().Single().GetProperty("archivedAt").ValueKind.Should().NotBe(JsonValueKind.Null);
+        renters.GetProperty("items").EnumerateArray().Should().NotContain(r => r.GetProperty("fullName").GetString() == "Vũ Văn Cũ", "hồ sơ đã ẩn");
+        var wife101 = (await (await _client.GetAsync("/api/v1/renters?q=Le Thi Mai", token)).ReadAsync<JsonElement>()).GetProperty("items")[0].GetProperty("id").GetGuid();
+        var consents = await (await _client.GetAsync($"/api/v1/renters/{wife101}/consents", token)).ReadAsync<List<JsonElement>>();
+        consents.Should().ContainSingle().Which.GetProperty("withdrawnAt").ValueKind.Should().NotBe(JsonValueKind.Null);
+        var preview105 = await (await _client.GetAsync(
+            $"/api/v1/contracts/{all.First(c => c.GetProperty("roomCode").GetString() == "105").GetProperty("id").GetGuid()}/liquidation/preview", token))
+            .ReadAsync<JsonElement>();
+        preview105.GetProperty("status").GetString().Should().Be("Liquidating");
+        preview105.GetProperty("canComplete").GetBoolean().Should().BeFalse("chưa tới ngày trả phòng, chưa có phiếu quyết toán");
 
         // F2 — 105: thanh toán + bỏ phần còn lại.
         var payments105 = await (await _client.GetAsync(

@@ -196,3 +196,29 @@ Hiện dùng để lọc; sau này dùng cho giảm giá theo nhóm.
 
 UI chọn phòng cho nhóm: danh sách checkbox phòng của khu (`GET /rooms?propertyId=`) → gửi mảng đã chọn.
 Lỗi: 409 `ROOM_GROUP_NAME_TAKEN` (tên ≤ 100, duy nhất trong khu), 422 `ROOM_NOT_IN_PROPERTY`, 404 `ROOM_GROUP_NOT_FOUND`.
+
+## Lịch sử thuê của phòng (11/10/2026)
+
+`GET /rooms/{id}/tenancy-history` → danh sách, **mới nhất trước**. Mỗi phần tử là **một lần một hợp đồng ở phòng** — HĐ chuyển sang phòng
+khác rồi quay lại thì có 2 phần tử.
+
+```json
+[ { "contractId": "…", "contractNo": "HD2026-0007", "status": "Active", "fromDate": "2026-09-01", "toDate": "2026-10-01", "isCurrent": false,
+    "representativeName": "Tô Văn Bình",
+    "occupants": [
+      { "renterId": "…", "fullName": "Tô Văn Bình", "role": "Representative", "fromDate": "2026-09-01", "toDate": "2026-10-01" },
+      { "renterId": "…", "fullName": "Tô Thị Hạnh", "role": "CoTenant", "fromDate": "2026-09-01", "toDate": "2026-10-01" } ] } ]
+```
+
+- `toDate` null = đang ở; `isCurrent` = hôm nay nằm trong lần ở đó. `role`: `Representative` (đứng tên) · `CoTenant` (đồng thuê) · `Resident` (người ở).
+- `occupants[].fromDate / toDate` là khoảng người đó thực ở **trong lần ở này** (đã cắt theo ngày vào / rời phòng của HĐ).
+- Chỉ trả họ tên. Hồ sơ hết thời gian lưu vẫn còn họ tên nên vẫn hiện; hồ sơ bị xóa theo yêu cầu của người thuê hiện "Đã ẩn danh #XXXX".
+
+**Tìm theo tên** — `GET /tenancy-history?search=hanh&propertyId=` (`propertyId` tùy chọn): người khớp tên đã ở / đứng tên phòng nào.
+
+```json
+[ { "renterId": "…", "fullName": "Tô Thị Hạnh", "roomId": "…", "roomCode": "A2", "contractId": "…", "contractNo": "HD2026-0007",
+    "role": "CoTenant", "fromDate": "2026-10-01", "toDate": null } ]
+```
+
+`search` không phân biệt dấu / hoa thường, tối thiểu 2 ký tự (400 `SEARCH_TOO_SHORT`); tối đa 50 người khớp, 200 dòng.

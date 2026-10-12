@@ -31,7 +31,8 @@ public sealed partial class DemoDataSeeder
             ["C02", "1", 18, 2, 2_600_000, null, "wifi", null, "E-C02", 812, null, null],
             ["C03", "2", 18, 2, 2_600_000, null, null, null, null, null, null, null],
             ["C04", "2", 18, 2, 2_600_000, null, null, "Đang trống", null, null, null, null],
-            ["C05", "2", 18, "hai", 2_600_000, null, null, "Gõ nhầm số người", null, null, null, null]
+            ["C05", "2", 18, "hai", 2_600_000, null, null, "Gõ nhầm số người", null, null, null, null],
+            ["C06", "3", 20, 2, 2_800_000, null, null, null, null, null, null, null]
         ]));
         var roomPreview = await Send(new PreviewRoomImportCommand(propertyId, rooms));
         await Send(new SaveRoomImportCommand(propertyId, roomPreview.Rows.Select(r => r.Row).ToList()));
@@ -54,7 +55,12 @@ public sealed partial class DemoDataSeeder
             ["C03", "Ở cùng", "Đào Thị Nga", new DateOnly(2004, 5, 5), "Nữ", Phone(33), "CCCD", CitizenId(303), "VN", "Nam Định", "Sinh viên", "Cùng ở thuê",
                 month0.AddMonths(-3), null, null],
             ["C09", "Đứng tên", "Lý Văn Mạnh", new DateOnly(1995, 3, 3), "Nam", Phone(34), "CCCD", CitizenId(304), "VN", null, null, null,
-                month0.AddMonths(-1), 2_000_000, 0]
+                month0.AddMonths(-1), 2_000_000, 0],
+            // C06 — 2 dòng "Đứng tên" cùng phòng ⇒ dòng đầu đứng tên HĐ, dòng sau nhập là đồng thuê (RT-UC-10, CT-BR-49).
+            ["C06", "Đứng tên", "Bùi Văn Đạt", new DateOnly(1996, 4, 12), "Nam", Phone(35), "CCCD", CitizenId(305), "VN", "Hải Dương", "Công nhân", null,
+                month0.AddMonths(-2), 2_800_000, 0],
+            ["C06", "Đứng tên", "Bùi Văn Lực", new DateOnly(1998, 9, 30), "Nam", Phone(36), "CCCD", CitizenId(306), "VN", "Hải Dương", "Công nhân", null,
+                month0.AddMonths(-2), null, null]
         ]));
         var tenancyPreview = await Send(new PreviewTenancyImportCommand(propertyId, tenancies));
         await Send(new SaveTenancyImportCommand(propertyId, tenancyPreview.Rows.Select(r => r.Row).ToList()));

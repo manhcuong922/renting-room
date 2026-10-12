@@ -16,6 +16,14 @@ Hồ sơ người thuê dùng chung trong tổ chức: một người có thể 
 
 **Theo tên / SĐT:** `GET /renters?q=lan&page=1&pageSize=20`
 
+Lọc thêm (12/10/2026, chỉ ở `GET /renters`):
+
+| Query | Ý nghĩa |
+|-------|---------|
+| `propertyId` | Chỉ người **đang ở** một phòng của khu này (HĐ đang hiệu lực / đang thanh lý) |
+| `staying` | `true` = đang ở phòng nào đó · `false` = không còn ở đâu (hồ sơ cũ) · bỏ trống = tất cả |
+| `includeArchived` | `true` = hiện cả hồ sơ đã ẩn (mặc định ẩn) |
+
 **Theo số giấy tờ:** `POST /renters/search` — số giấy tờ đi trong **body**, không đặt trên URL (URL bị ghi vào log proxy,
 lịch sử trình duyệt, header `Referer`). Không cần `Idempotency-Key` (chỉ đọc).
 
@@ -143,3 +151,45 @@ Tab "Lịch sử thuê" trong chi tiết: `GET /contracts?renterId={id}` — cá
 `POST /renters/{id}/reveal-id-number` → `{ "idNumber": "036202012345" }`. Không có quyền dữ liệu nhạy cảm → 403 `SENSITIVE_DATA_FORBIDDEN` (ẩn nút khi `canViewSensitiveData = false`).
 Mỗi lần gọi được ghi log kiểm toán. Không cache, không tự gọi; ẩn lại sau ~30 giây.
 Giới hạn **5 lần/phút mỗi tài khoản**, dùng chung với xem số giấy tờ bên cho thuê, xuất Excel và đổi mật khẩu → 429 `TOO_MANY_REQUESTS` (khóa nút theo `Retry-After`).
+
+## Ẩn danh: hai mức (11/10/2026)
+
+- **Tự động khi hết thời gian lưu**: **giữ họ tên**; xóa ngày sinh, số giấy tờ, SĐT, email, địa chỉ, nghề nghiệp, ghi chú. Tên trên phiếu,
+  phiếu thu và lịch sử phòng giữ nguyên ⇒ vẫn tra được "ai từng ở phòng nào".
+- **Bằng tay theo yêu cầu của người thuê** (`POST /renters/{id}/anonymize`): xóa cả họ tên — hồ sơ, bản chụp hợp đồng, phiếu (kể cả phiếu thời
+  người đó từng đứng tên), phiếu thu hiện "Đã ẩn danh #XXXX".
+
+Cả hai mức đều đặt `anonymizedAt` và không đảo ngược được.
+
+## Ẩn hồ sơ (12/10/2026)
+
+Người đã đi lâu, không muốn hiện trong danh sách / ô chọn — **không xóa dữ liệu**, khác với ẩn danh.
+
+| Endpoint | Kết quả |
+|----------|---------|
+| `POST /renters/{id}/archive` | 204 — hồ sơ ẩn khỏi `GET /renters` (trừ khi `includeArchived=true`). Người đang có HĐ chưa kết thúc → 422 `RENTER_HAS_ACTIVE_CONTRACT` |
+| `POST /renters/{id}/restore` | 204 — hiện lại |
+
+`RenterDto.archivedAt` khác `null` ⇒ hồ sơ đang ẩn: hiện nhãn "Đã ẩn" và nút "Hiện lại".
+
+## Ghi nhận đồng ý xử lý dữ liệu cá nhân (12/10/2026)
+
+Sổ ghi lại việc người thuê đã đồng ý cho chủ trọ dùng dữ liệu cá nhân vào mục đích gì, bằng cách nào — để xuất trình khi cần. Hệ thống **không** chặn
+nghiệp vụ nào khi thiếu ghi nhận.
+
+| Endpoint | Body | Kết quả |
+|----------|------|---------|
+| `GET /renters/{id}/consents` | | 200 mảng, mới nhất trước |
+| `POST /renters/{id}/consents` | `{ "purpose": "Quản lý hợp đồng thuê", "method": "ContractClause", "givenAt": "2026-10-01", "note": "Điều 9 HĐ" }` | 200 dòng vừa ghi |
+| `POST /renters/{id}/consents/{consentId}/withdraw` | `{ "withdrawnOn": "2026-10-12" }` | 204 — giữ dòng, ghi ngày rút |
+
+```json
+{ "id": "…", "renterId": "…", "purpose": "Quản lý hợp đồng thuê", "method": "ContractClause", "givenAt": "2026-10-01", "withdrawnAt": null,
+  "note": "Điều 9 HĐ", "createdAt": "2026-10-12T03:00:00+00:00" }
+```
+
+- `method`: `PaperSigned` ký giấy · `ContractClause` điều khoản trong hợp đồng · `Verbal` xác nhận miệng.
+- `purpose` ≤ 100 ký tự (chữ tự do), `note` ≤ 500; `givenAt` không ở tương lai (400 `INVALID_DATE`).
+- Rút lại: 409 `CONSENT_ALREADY_WITHDRAWN`; ngày rút trước ngày đồng ý / ở tương lai → 400 `INVALID_WITHDRAW_DATE`; 404 `CONSENT_NOT_FOUND`.
+- Hồ sơ đã ẩn danh không ghi thêm được (lỗi như sửa hồ sơ đã ẩn danh).
+- Rút lại chỉ là **ghi nhận**: muốn xóa dữ liệu thì dùng [ẩn danh](#ẩn-danh-hai-mức-11102026).

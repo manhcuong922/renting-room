@@ -10,7 +10,10 @@ using renting_room.Idempotency;
 
 namespace renting_room.Endpoints;
 
-public sealed record GenerateInvoicesRequest(Guid PropertyId, string BillingMonth, IReadOnlyList<Guid>? RoomIds, string? Floor, bool? RecalculateExistingDrafts);
+public sealed record GenerateInvoicesRequest(
+    Guid PropertyId, string BillingMonth, IReadOnlyList<Guid>? RoomIds, string? Floor, bool? RecalculateExistingDrafts, Guid? ContractId = null);
+
+public sealed record GenerateInvoicesBulkRequest(IReadOnlyList<Guid>? PropertyIds, string BillingMonth, bool? RecalculateExistingDrafts);
 
 public sealed record RecalculateInvoicesRequest(
     IReadOnlyList<Guid>? InvoiceIds, Guid? PropertyId, string? BillingMonth, IReadOnlyList<Guid>? RoomIds, string? Floor, bool? KeepManualEdits,
@@ -63,9 +66,10 @@ public static class BillingEndpoints
     private static void MapReadingSheet(IEndpointRouteBuilder app)
     {
         var properties = app.MapGroup($"{EndpointHelpers.ApiPrefix}/properties/{{propertyId:guid}}").WithTags("Meters");
-        properties.MapGet("/meter-reading-sheet", async (Guid propertyId, string billingMonth, string? floor, ISender sender, CancellationToken ct) =>
-                (await sender.Send(new GetMeterReadingSheetQuery(propertyId, billingMonth, floor), ct)).ToHttp())
-            .WithSummary("Lưới ghi chỉ số cuối kỳ của khu theo tháng thu");
+        properties.MapGet("/meter-reading-sheet", async (Guid propertyId, string billingMonth, string? floor, Guid? feeTypeId, ISender sender,
+                    CancellationToken ct) =>
+                (await sender.Send(new GetMeterReadingSheetQuery(propertyId, billingMonth, floor, feeTypeId), ct)).ToHttp())
+            .WithSummary("Lưới ghi chỉ số cuối kỳ của khu theo tháng thu (lọc tầng, khoản thu)");
         properties.MapPut("/meter-readings", async (Guid propertyId, SaveMeterReadingsRequest b, ISender sender, CancellationToken ct) =>
                 (await sender.Send(new SaveMeterReadingsCommand(propertyId, b.Readings), ct)).ToHttp())
             .WithIdempotency(required: false)
@@ -76,9 +80,19 @@ public static class BillingEndpoints
     {
         var invoices = app.MapGroup(InvoicesRoute).WithTags("Invoices");
         invoices.MapPost("/generate", async (GenerateInvoicesRequest b, ISender sender, CancellationToken ct) =>
-                (await sender.Send(new GenerateInvoicesCommand(b.PropertyId, b.BillingMonth, b.RoomIds, b.Floor, b.RecalculateExistingDrafts ?? false), ct)).ToHttp())
+                (await sender.Send(new GenerateInvoicesCommand(b.PropertyId, b.BillingMonth, b.RoomIds, b.Floor, b.RecalculateExistingDrafts ?? false,
+                    b.ContractId), ct)).ToHttp())
             .WithIdempotency(required: false)
-            .WithSummary("Tạo phiếu nháp theo khu + tháng thu (lọc phòng / tầng)");
+            .WithSummary("Tạo phiếu nháp theo khu + tháng thu (lọc phòng / tầng / 1 hợp đồng)");
+        invoices.MapPost("/generate-bulk", async (GenerateInvoicesBulkRequest b, ISender sender, CancellationToken ct) =>
+                Results.Ok(await sender.Send(new GenerateInvoicesBulkCommand(b.PropertyIds, b.BillingMonth, b.RecalculateExistingDrafts ?? false), ct)))
+            .WithIdempotency(required: false)
+            .WithSummary("Tạo phiếu nháp tháng thu cho nhiều khu một lệnh (bỏ trống propertyIds = mọi khu đang dùng) — kết quả từng khu");
+        invoices.MapGet("/totals", async (Guid? propertyId, string? billingMonth, InvoiceStatus? status, Guid? roomId, Guid? contractId, string? floor,
+                    bool? unpaidOnly, bool? stale, ISender sender, CancellationToken ct) =>
+                Results.Ok(await sender.Send(new GetInvoiceTotalsQuery(new ListInvoicesQuery(propertyId, billingMonth, status, roomId, contractId, floor,
+                    unpaidOnly, Stale: stale)), ct)))
+            .WithSummary("Số tổng hợp theo cùng bộ lọc với danh sách phiếu: phải thu, đã thu, còn nợ, quá hạn; số phiếu nháp và tổng tạm tính");
         invoices.MapPost("/recalculate", async (RecalculateInvoicesRequest b, ISender sender, CancellationToken ct) =>
                 (await sender.Send(new RecalculateInvoicesCommand(b.InvoiceIds, b.PropertyId, b.BillingMonth, b.RoomIds, b.Floor,
                     b.KeepManualEdits ?? true, b.StaleOnly ?? false), ct)).ToHttp())

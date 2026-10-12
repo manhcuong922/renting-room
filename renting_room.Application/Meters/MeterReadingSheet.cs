@@ -70,7 +70,9 @@ internal static class ReadingLocks
 
 // ============================================================ Lưới ghi chỉ số
 
-public sealed record GetMeterReadingSheetQuery(Guid PropertyId, string BillingMonth, string? Floor) : IRequest<Result<MeterReadingSheetDto>>;
+/// <param name="FeeTypeId">Chỉ các công tơ của khoản thu này (VD đi ghi riêng điện).</param>
+public sealed record GetMeterReadingSheetQuery(Guid PropertyId, string BillingMonth, string? Floor, Guid? FeeTypeId = null)
+    : IRequest<Result<MeterReadingSheetDto>>;
 
 public sealed class GetMeterReadingSheetQueryValidator : AbstractValidator<GetMeterReadingSheetQuery>
 {
@@ -137,7 +139,7 @@ public sealed class GetMeterReadingSheetHandler(IAppDbContext db) : IRequestHand
                 continue;
 
             foreach (var meter in meters.Where(m => m.RoomId == contract.RoomId && m.Overlaps(usage.Start, usage.End)
-                         && !(m.RemovedDate <= usage.End)))
+                         && !(m.RemovedDate <= usage.End) && (request.FeeTypeId is null || m.FeeTypeId == request.FeeTypeId)))
             {
                 var previous = usage.StartReading(meter, lastEnd.TryGetValue(meter.Id, out var id) ? id : null, contract.Id, stay);
                 var current = usage.EndReading(meter, contract.Id);
@@ -172,7 +174,10 @@ public sealed record PeriodicReadingInput(Guid MeterId, Guid ContractId, DateOnl
 
 public sealed record ReadingRowError(int Index, string Code, string Message);
 
-public sealed record SaveMeterReadingsResult(int Saved);
+/// <summary>MT-BR-05: ngày ghi lệch xa ngày cuối kỳ sử dụng — không chặn lưu.</summary>
+public sealed record ReadingRowWarning(int Index, string Code, string Message);
+
+public sealed record SaveMeterReadingsResult(int Saved, IReadOnlyList<ReadingRowWarning>? Warnings = null);
 
 public sealed record SaveMeterReadingsCommand(Guid PropertyId, IReadOnlyList<PeriodicReadingInput> Readings) : IRequest<Result<SaveMeterReadingsResult>>;
 
@@ -209,6 +214,7 @@ public sealed class SaveMeterReadingsHandler(IAppDbContext db) : IRequestHandler
         var billing = await PropertyBilling.LoadManyAsync(db, contracts.Values.Select(c => c.PropertyId), cancellationToken);
 
         var errors = new List<ReadingRowError>();
+        var warnings = new List<ReadingRowWarning>();
         for (var index = 0; index < request.Readings.Count; index++)
         {
             var row = request.Readings[index];
@@ -217,13 +223,28 @@ public sealed class SaveMeterReadingsHandler(IAppDbContext db) : IRequestHandler
                 contract is null ? null : billing[contract.PropertyId].Schedule, locked);
             if (error is not null)
                 errors.Add(new ReadingRowError(index, error.Code, error.Message));
+            else if (DateWarning(row, contract!, billing[contract!.PropertyId].Schedule) is { } warning)
+                warnings.Add(new ReadingRowWarning(index, DateFarFromPeriodEnd, warning));
         }
         if (errors.Count > 0)
             return Error.BusinessRule("READINGS_INVALID", "Có dòng chỉ số không hợp lệ — chưa lưu dòng nào.").WithDetail("rowErrors", errors);
 
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
-        return new SaveMeterReadingsResult(request.Readings.Count);
+        return new SaveMeterReadingsResult(request.Readings.Count, warnings);
+    }
+
+    public const string DateFarFromPeriodEnd = "READING_DATE_FAR_FROM_PERIOD_END";
+    private const int DaysBeforePeriodEnd = 7;
+    private const int DaysAfterPeriodEnd = 15;
+
+    /// <summary>MT-BR-05: chỉ số cuối kỳ nên ghi quanh ngày cuối kỳ (trước 7 ngày – sau 15 ngày); lệch xa thì nhắc kiểm lại kỳ.</summary>
+    private static string? DateWarning(PeriodicReadingInput row, Contract contract, BillingSchedule schedule)
+    {
+        var period = contract.BillingPeriods(schedule, row.ClosingPeriodStart).FirstOrDefault(p => p.Start == row.ClosingPeriodStart);
+        if (period is null || (row.ReadingDate >= period.End.AddDays(-DaysBeforePeriodEnd) && row.ReadingDate <= period.End.AddDays(DaysAfterPeriodEnd)))
+            return null;
+        return $"Ngày ghi {row.ReadingDate:dd/MM/yyyy} lệch xa ngày cuối kỳ {period.End:dd/MM/yyyy} — kiểm tra lại có ghi nhầm kỳ không.";
     }
 
     private static Error? Apply(PeriodicReadingInput row, Meter? meter, Contract? contract, BillingSchedule? schedule, HashSet<Guid> locked)

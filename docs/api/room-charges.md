@@ -9,6 +9,11 @@ Quyền: chủ trọ và phó quản lý.
 ## Quy tắc chính
 
 - **Chỉ tạo cho phòng đang có người thuê** tại ngày phát sinh (phòng trống → 422 `ROOM_CHARGE_NO_TENANT`). Khoản gắn với HĐ đang ở phòng ngày đó — kể cả HĐ sau đó đã chuyển sang phòng khác.
+- **Giới hạn khoản bù** (11/10/2026): khoản bù **chưa trả** cộng các khoản bù chưa trả khác của HĐ (chưa nằm trên phiếu đã chốt) không vượt
+  **một tháng tiền phòng** → 422 `ROOM_CHARGE_CREDIT_TOO_HIGH` (`limit` = tiền phòng). Bù nhiều hơn thì trả trực tiếp rồi tạo khoản với
+  "đã trả ngay" — khoản đã trả không bị giới hạn. Phụ thu không bị giới hạn này.
+- **Khoản hệ thống** (`isSystem = true`, 11/10/2026): khoản chốt điện nước của phòng cũ khi chuyển phòng — kèm `feeTypeId`, `quantity`,
+  `unitPrice`. Chỉ đánh dấu / bỏ đánh dấu "đã thu ngay"; sửa / hủy → 422 `ROOM_CHARGE_SYSTEM` (hủy chuyển phòng thì khoản tự hủy).
 - **Trạng thái thanh toán** (`isSettled`):
   - `false` — chưa thanh toán: phụ thu cộng vào phiếu, bù trừ vào phiếu.
   - `true` — phụ thu người thuê **đã trả ngay** / bù chủ trọ **đã trả ngay**: vẫn hiện trên phiếu cho đầy đủ nhưng **không tính vào tổng**.
@@ -43,7 +48,8 @@ Quyền: chủ trọ và phó quản lý.
 ```json
 { "id": "…", "roomId": "…", "roomCode": "301", "contractId": "…", "kind": "Surcharge", "description": "Thay khóa cửa", "amount": 250000,
   "incurredOn": "2026-03-03", "reason": "Người thuê làm hỏng khóa", "isSettled": false, "settledOn": null, "settledMethod": null,
-  "status": "Pending", "invoiceId": null, "invoiceNo": null, "billingMonth": null, "cancelReason": null, "createdAt": "…" }
+  "status": "Pending", "invoiceId": null, "invoiceNo": null, "billingMonth": null, "cancelReason": null, "createdAt": "…",
+  "isSystem": false, "feeTypeId": null, "quantity": null, "unitPrice": null }
 ```
 
 ## Các thao tác khác

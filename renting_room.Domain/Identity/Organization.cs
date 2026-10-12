@@ -75,6 +75,20 @@ public sealed class Organization : AuditableEntity
 
     public static string NormalizeCode(string code) => code.Trim().ToUpperInvariant();
 
+    /// <summary>ID-UC-03: chủ trọ tự sửa thông tin tổ chức của mình — mã tổ chức không đổi.</summary>
+    public void UpdateInfo(string name, string? contactName, string? contactPhone, string? contactEmail, string? taxCode, string? address)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            throw new ArgumentException("Organization name is required.", nameof(name));
+
+        Name = name.Trim();
+        ContactName = TextNormalizer.TrimToNull(contactName);
+        ContactPhone = ContactNormalizer.NormalizePhone(contactPhone);
+        ContactEmail = ContactNormalizer.NormalizeEmail(contactEmail);
+        TaxCode = TextNormalizer.TrimToNull(taxCode);
+        Address = TextNormalizer.TrimToNull(address);
+    }
+
     /// <summary>Sửa không ảnh hưởng hợp đồng đã kích hoạt — hợp đồng giữ bản chụp (PR-BR-15).</summary>
     public void UpdateDefaultLessor(LessorDetails lessor) => DefaultLessor = lessor.Normalized();
 

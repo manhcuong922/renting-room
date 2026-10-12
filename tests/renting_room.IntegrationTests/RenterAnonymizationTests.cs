@@ -29,7 +29,7 @@ public sealed class RenterAnonymizationTests(ApiFactory factory)
         (await Job.RunAsync(today.AddMonths(37), [organization], CancellationToken.None)).Should().Be(1, "người đang ở HĐ hiệu lực không bị ẩn danh");
 
         var renter = await (await _client.GetAsync($"/api/v1/renters/{idle}", token)).ReadAsync<JsonElement>();
-        renter.GetProperty("fullName").GetString().Should().StartWith("Đã ẩn danh #");
+        renter.GetProperty("fullName").GetString().Should().Be("Trần Thị Lan", "hết thời gian giữ: giữ họ tên để tra lịch sử phòng, xóa phần còn lại");
         renter.GetProperty("phone").ValueKind.Should().Be(JsonValueKind.Null);
         renter.GetProperty("idNumberMasked").ValueKind.Should().Be(JsonValueKind.Null, "giấy tờ bị xóa hẳn");
         renter.GetProperty("anonymizedAt").ValueKind.Should().NotBe(JsonValueKind.Null);

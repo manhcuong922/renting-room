@@ -196,6 +196,7 @@ Cảnh báo mềm: `ROOM_WITHOUT_METER` (HĐ hiệu lực, phòng chưa có côn
 | `NOTE_REQUIRED` | 400 | Nhập lý do / ghi chú (phụ thu, sửa tiền phòng) |
 | `INVOICE_HAS_PAYMENTS` | 422 | Đảo phiếu thu trước khi hủy phiếu |
 | `ROOM_CHARGE_NO_TENANT` | 422 | Khoản phát sinh: phòng không có người thuê tại ngày phát sinh |
+| `ROOM_CHARGE_CREDIT_TOO_HIGH` | 422 | Khoản bù chưa trả (cộng các khoản bù chưa trả khác) vượt một tháng tiền phòng — kèm `limit` |
 | `ROOM_CHARGE_NO_OPEN_INVOICE` | 422 | Khoản phát sinh: HĐ đã chốt phiếu quyết toán / đã kết thúc |
 | `ROOM_CHARGE_LOCKED` | 422 | Khoản phát sinh đã nằm trên phiếu đã chốt — không đánh dấu / hủy |
 | `ROOM_CHARGE_SYSTEM` | 422 | Khoản chốt điện nước khi chuyển phòng — không sửa / hủy tay; hủy chuyển phòng rồi chuyển lại |
@@ -213,6 +214,9 @@ Cảnh báo mềm: `ROOM_WITHOUT_METER` (HĐ hiệu lực, phòng chưa có côn
 | `INVALID_BILLING_MONTH` | 400 | Tháng thu dạng yyyy-MM |
 | `READINGS_INVALID` | 422 | Lưu chỉ số: tô đỏ dòng theo `rowErrors[].index`, chưa lưu dòng nào |
 | `READING_LOCKED` | 422 | Chỉ số đã dùng cho phiếu đã chốt (hủy phiếu trước) hoặc cho khoản chốt điện nước khi chuyển phòng |
+| `READING_NOT_VOIDABLE` | 422 | Hủy chỉ số: chỉ hủy được chỉ số cuối kỳ / kiểm tra |
+| `SEARCH_TOO_SHORT` | 400 | Tìm lịch sử thuê theo tên: nhập ít nhất 2 ký tự |
+| `USERNAME_REQUIRED` | 400 | Tài khoản phải còn SĐT hoặc email để đăng nhập |
 | `CONTRACT_READING_EXISTS` | 409 | HĐ đã có chỉ số nhận phòng / chỉ số cuối trên công tơ trong ngày — tải lại |
 | `PAYMENT_EXCEEDS_DEBT` | 422 | Số tiền lớn hơn số còn nợ |
 | `WRITE_OFF_NOT_ALLOWED` | 403 | Bỏ nợ (riêng / kèm thanh toán / khi hoàn tất thanh lý) — phó quản lý chưa được chủ trọ cấp quyền |
@@ -273,3 +277,16 @@ Cảnh báo mềm: `ELECTRICITY_PRICE_ABOVE_THRESHOLD`, `PARKING_QUANTITY_MISMAT
 
 Cảnh báo phiếu (`issues`, `Warning`): `UNUSUAL_USAGE`, `TWO_RENT_PERIODS`. Cảnh báo HĐ: `OCCUPANT_ID_MISSING`.
 Lỗi / cảnh báo từng dòng import nằm trong kết quả xem trước / lưu — xem [imports.md](imports.md).
+
+## Bổ sung 12/10/2026
+
+| Code | HTTP | UI |
+|------|------|----|
+| `BULK_INSTALL_INVALID` | 422 | Lắp công tơ hàng loạt có dòng lỗi — tô đỏ theo `rowErrors[].index`, chưa lưu dòng nào |
+| `RENTER_HAS_ACTIVE_CONTRACT` | 422 | Không ẩn hồ sơ người đang có hợp đồng |
+| `CONSENT_NOT_FOUND` | 404 | |
+| `CONSENT_ALREADY_WITHDRAWN` | 409 | Tải lại danh sách ghi nhận đồng ý |
+| `INVALID_WITHDRAW_DATE` | 400 | Ngày rút lại trước ngày đồng ý / ở tương lai |
+
+Cảnh báo (không chặn): `READING_DATE_FAR_FROM_PERIOD_END` trong `warnings[]` của `PUT /properties/{id}/meter-readings`.
+401 sau khi đăng xuất: access token của phiên đã đăng xuất bị từ chối ngay — xóa token, về màn hình đăng nhập (không thử làm mới).

@@ -48,7 +48,7 @@ Quyền: chủ trọ và phó quản lý.
 `POST /invoices/generate` (nên gửi `Idempotency-Key`)
 
 ```json
-{ "propertyId": "…", "billingMonth": "2026-11", "roomIds": null, "floor": null, "recalculateExistingDrafts": false }
+{ "propertyId": "…", "billingMonth": "2026-11", "roomIds": null, "floor": null, "contractId": null, "recalculateExistingDrafts": false }
 ```
 
 → **200**
@@ -71,6 +71,44 @@ Quyền: chủ trọ và phó quản lý.
 `RENT_OVERPAID` (phiếu quyết toán: tiền phòng kỳ cuối đã thu nhiều hơn số ngày ở — message ghi số thừa; thêm dòng Hoàn trả nếu trả lại),
 `UNUSUAL_USAGE` (điện nước bất thường — gấp ≥ 3 lần trung bình 3 kỳ trước và tăng ≥ 50, hoặc = 0 khi có người ở: kiểm lại chỉ số),
 `TWO_RENT_PERIODS` (khu vừa đổi sang thu trước: người thuê trả 2 tháng tiền phòng gần nhau — nên báo trước).
+
+`contractId` (12/10/2026): chỉ lập cho **1 hợp đồng** của khu (VD phòng vừa bổ sung chỉ số) — các HĐ khác không bị đụng tới, không nằm trong `skipped`.
+
+### Tạo cho nhiều khu một lệnh (12/10/2026)
+
+`POST /invoices/generate-bulk` (nên gửi `Idempotency-Key`)
+
+```json
+{ "billingMonth": "2026-11", "propertyIds": null, "recalculateExistingDrafts": false }
+```
+
+`propertyIds` bỏ trống / `null` = **mọi khu đang dùng** của tổ chức. → **200** mảng, mỗi khu 1 phần tử, khu này lỗi không làm hỏng khu khác:
+
+```json
+[ { "propertyId": "…", "propertyCode": "K01", "result": { "created": 18, "recalculated": 0, "withIssues": 3, "skipped": [] }, "errorCode": null },
+  { "propertyId": "…", "propertyCode": null, "result": null, "errorCode": "PROPERTY_NOT_FOUND" } ]
+```
+
+`result` giống kết quả của `POST /invoices/generate`; `errorCode` khác `null` ⇒ khu đó không lập được (hiện lý do theo [errors.md](errors.md)).
+
+### Số tổng hợp (12/10/2026)
+
+`GET /invoices/totals?…` — **cùng bộ lọc** với `GET /invoices` (`propertyId`, `billingMonth`, `status`, `roomId`, `contractId`, `floor`, `unpaidOnly`,
+`stale`), tính trên **toàn bộ kết quả lọc** chứ không chỉ trang đang xem:
+
+```json
+{ "finalizedCount": 42, "totalAmount": 151200000, "paidAmount": 120000000, "outstandingAmount": 31200000, "overdueAmount": 8400000,
+  "draftCount": 3, "draftAmount": 10500000 }
+```
+
+| Trường | Ý nghĩa |
+|--------|---------|
+| `finalizedCount`, `totalAmount` | Số phiếu đã chốt và tổng phải thu |
+| `paidAmount`, `outstandingAmount` | Đã thu / còn nợ của các phiếu đã chốt |
+| `overdueAmount` | Phần còn nợ đã quá hạn thanh toán |
+| `draftCount`, `draftAmount` | Phiếu nháp và tổng **tạm tính** — không cộng vào phải thu |
+
+Hiện thành dải thẻ số phía trên danh sách phiếu; gọi lại mỗi khi đổi bộ lọc.
 
 ## Chi tiết phiếu
 

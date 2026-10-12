@@ -2,6 +2,7 @@ using renting_room.Application.Billing;
 using renting_room.Application.Contracts;
 using renting_room.Application.Meters;
 using renting_room.Application.Payments;
+using renting_room.Application.Renters;
 using renting_room.Application.Rooms;
 using renting_room.Domain.Billing;
 using renting_room.Domain.Common;
@@ -73,9 +74,10 @@ public sealed partial class DemoDataSeeder
         // 102 — Nợ: tháng -2 chưa thu (quá hạn); tháng -1 lập hôm nay (còn trong hạn), mới thu một phần.
         // Người ở ghép chưa khai quan hệ ⇒ cảnh báo RELATIONSHIP_REQUIRED (không chặn).
         var r102 = await Room("102");
+        var thao = await RenterAsync("Lưu Thị Thảo", new DateOnly(1996, 3, 3), Gender.Female, Phone(15));
         var c102 = await ContractAsync(r102.Id, await RenterAsync("Đỗ Thị Hoa", new DateOnly(1995, 1, 8), Gender.Female, Phone(3)),
             Month(-2), 3000000, r102.Meters,
-            [new(await RenterAsync("Lưu Thị Thảo", new DateOnly(1996, 3, 3), Gender.Female, Phone(15)), Month(-2), null, null, null)],
+            [new(thao, Month(-2), null, null, null)],
             fees: standard);
         await Close(r102, c102, Month(-2), Month(-2), 95);
         await Bill(r102, c102, Month(-2), full: false);
@@ -227,6 +229,31 @@ public sealed partial class DemoDataSeeder
         var moving = (await Send(new GetContractQuery(c208))).Occupants.Single(o => o.RenterId == coTenant).Id;
         await Send(new MoveOccupantCommand(c208, moving, c207, _today, OccupantRole.CoTenant, OccupantRelationship.CoTenant, null, false, null));
         await Send(new ChangeRepresentativeCommand(c208, sister, _today, null, true));
+        // 209 — HĐ nháp mà người đứng tên (Lưu Thị Thảo) đang là người ở thường của phòng 102 ⇒ chi tiết HĐ nháp cảnh báo
+        // REPRESENTATIVE_IS_RESIDENT_ELSEWHERE; kích hoạt bị chặn cho tới khi đổi Thảo thành đồng thuê ở 102 hoặc ghi chuyển đi (CT-BR-50).
+        var r209 = await Room("209");
+        await ContractAsync(r209.Id, thao, _today.AddDays(5), 3000000, r209.Meters, fees: standard, activate: false);
         await RenterAsync("Phan Văn Rỗi", new DateOnly(2001, 4, 4), Gender.Male, Phone(14), occupation: "Sinh viên");
+
+        // 210, 211 — MT-UC-01: hai phòng mới, lắp công tơ điện bằng 1 lệnh hàng loạt (chưa có công tơ nước).
+        // 210 — MT-BR-14: thợ sơn dùng 14 kWh lúc phòng trống ⇒ HĐ nhận phòng ở số 14, phần 0 → 14 hiện ở báo cáo sản lượng phòng trống.
+        async Task<Guid> BareRoom(string code) =>
+            await Send(new CreateRoomCommand(propertyId, code, new RoomSpecInput(code[..1], 20, 3, 3000000, 3000000, ["air_con", "wifi"], null)));
+        var r210 = await BareRoom("210");
+        var r211 = await BareRoom("211");
+        var bulk = await Send(new BulkInstallMetersCommand(propertyId, electricity, Month(-1),
+            [new BulkInstallRow(r210, "E-210", 0), new BulkInstallRow(r211, "E-211", 0)]));
+        const decimal vacantUsage = 14;
+        var c210 = await ContractAsync(r210, await RenterAsync("Mạc Văn Khôi", new DateOnly(1996, 3, 30), Gender.Male, Phone(21)),
+            _today.AddDays(-2), 3000000, [], fees: standard, activate: false);
+        await Send(new ActivateContractCommand(c210, [new MeterReadingInput(bulk.MeterIds[0], vacantUsage)]));
+
+        // RT-UC-05: 101 — chồng đồng ý theo điều khoản HĐ; vợ xác nhận miệng việc gửi thông báo rồi rút lại 10 ngày trước.
+        await Send(new AddRenterConsentCommand(husband, "Quản lý hợp đồng thuê, đăng ký tạm trú", ConsentMethod.ContractClause, Month(-3), "Điều 9 hợp đồng"));
+        var notify = await Send(new AddRenterConsentCommand(wife, "Nhận thông báo tiền phòng qua Zalo", ConsentMethod.Verbal, Month(-3), null));
+        await Send(new WithdrawRenterConsentCommand(wife, notify.Id, _today.AddDays(-10)));
+        // RT-BR-05: hồ sơ cũ đã ẩn khỏi danh sách (không xóa dữ liệu) — hiện lại bằng lọc "cả hồ sơ đã ẩn".
+        var archived = await RenterAsync("Vũ Văn Cũ", new DateOnly(1979, 12, 1), Gender.Male, Phone(22), occupation: "Lái xe");
+        await Send(new ArchiveRenterCommand(archived, true));
     }
 }
