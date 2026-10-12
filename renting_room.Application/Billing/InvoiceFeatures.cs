@@ -167,10 +167,10 @@ public sealed class ListInvoicesQueryValidator : AbstractValidator<ListInvoicesQ
     }
 }
 
-/// <summary>BL-UC-02 / BL-UC-14: danh sách phiếu theo khu / tháng / phòng / HĐ, mới nhất trước.</summary>
-public sealed class ListInvoicesHandler(IAppDbContext db, TimeProvider clock) : IRequestHandler<ListInvoicesQuery, PagedResult<InvoiceSummaryDto>>
+internal static class InvoiceFilters
 {
-    public async ValueTask<PagedResult<InvoiceSummaryDto>> Handle(ListInvoicesQuery request, CancellationToken cancellationToken)
+    /// <summary>Bộ lọc dùng chung cho danh sách phiếu và số tổng hợp (BL-UC-02).</summary>
+    public static IQueryable<Invoice> Apply(IAppDbContext db, ListInvoicesQuery request)
     {
         var query = db.Invoices.AsNoTracking();
         if (request.PropertyId is { } propertyId)
@@ -189,7 +189,47 @@ public sealed class ListInvoicesHandler(IAppDbContext db, TimeProvider clock) : 
             query = query.Where(i => i.Status == InvoiceStatus.Finalized && i.PaidAmount < i.TotalAmount);
         if (request.Stale == true)
             query = query.Where(i => i.Status == InvoiceStatus.Draft && i.IsStale);
+        return query;
+    }
+}
 
+/// <param name="TotalAmount">Tổng phải thu của phiếu đã chốt (phiếu tổng âm — chờ hoàn — không tính).</param>
+/// <param name="OverdueAmount">Phần còn nợ của phiếu đã quá hạn thanh toán.</param>
+/// <param name="DraftAmount">Tổng tạm tính của phiếu nháp — chưa phải số phải thu.</param>
+public sealed record InvoiceTotalsDto(
+    int FinalizedCount, decimal TotalAmount, decimal PaidAmount, decimal OutstandingAmount, decimal OverdueAmount, int DraftCount, decimal DraftAmount);
+
+/// <summary>BL-UC-02: số tổng hợp trên toàn bộ kết quả lọc (không riêng trang đang xem).</summary>
+public sealed record GetInvoiceTotalsQuery(ListInvoicesQuery Filter) : IRequest<InvoiceTotalsDto>;
+
+public sealed class GetInvoiceTotalsHandler(IAppDbContext db, TimeProvider clock) : IRequestHandler<GetInvoiceTotalsQuery, InvoiceTotalsDto>
+{
+    public async ValueTask<InvoiceTotalsDto> Handle(GetInvoiceTotalsQuery request, CancellationToken cancellationToken)
+    {
+        var today = clock.GetUtcNow().ToBusinessDate();
+        var query = InvoiceFilters.Apply(db, request.Filter);
+        var finalized = await query.Where(i => i.Status == InvoiceStatus.Finalized && i.TotalAmount > 0)
+            .GroupBy(_ => 1)
+            .Select(g => new
+            {
+                Count = g.Count(), Total = g.Sum(i => i.TotalAmount), Paid = g.Sum(i => i.PaidAmount),
+                Outstanding = g.Sum(i => i.PaidAmount < i.TotalAmount ? i.TotalAmount - i.PaidAmount : 0),
+                Overdue = g.Sum(i => i.PaidAmount < i.TotalAmount && i.DueDate < today ? i.TotalAmount - i.PaidAmount : 0)
+            })
+            .FirstOrDefaultAsync(cancellationToken);
+        var drafts = await query.Where(i => i.Status == InvoiceStatus.Draft).GroupBy(_ => 1)
+            .Select(g => new { Count = g.Count(), Total = g.Sum(i => i.TotalAmount) }).FirstOrDefaultAsync(cancellationToken);
+        return new InvoiceTotalsDto(finalized?.Count ?? 0, finalized?.Total ?? 0, finalized?.Paid ?? 0, finalized?.Outstanding ?? 0,
+            finalized?.Overdue ?? 0, drafts?.Count ?? 0, drafts?.Total ?? 0);
+    }
+}
+
+/// <summary>BL-UC-02 / BL-UC-14: danh sách phiếu theo khu / tháng / phòng / HĐ, mới nhất trước.</summary>
+public sealed class ListInvoicesHandler(IAppDbContext db, TimeProvider clock) : IRequestHandler<ListInvoicesQuery, PagedResult<InvoiceSummaryDto>>
+{
+    public async ValueTask<PagedResult<InvoiceSummaryDto>> Handle(ListInvoicesQuery request, CancellationToken cancellationToken)
+    {
+        var query = InvoiceFilters.Apply(db, request);
         var total = await query.CountAsync(cancellationToken);
         var items = await query.OrderByDescending(i => i.PeriodStart).ThenBy(i => i.SnapshotRoomCode)
             .Skip((request.Page - 1) * request.PageSize).Take(request.PageSize)

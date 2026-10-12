@@ -19,8 +19,8 @@ public static class RoomTransferWarnings
     public static readonly Warning ResidenceRoomChanged = new("RESIDENCE_ROOM_CHANGED",
         "Đã chuyển phòng — cập nhật số phòng trên đăng ký tạm trú của người ở nếu cần.");
 
-    public static Warning RentUnchanged(decimal current, decimal listed) => new("ROOM_TRANSFER_RENT_UNCHANGED",
-        $"Giá thuê vẫn giữ {current:N0}đ — giá niêm yết phòng mới là {listed:N0}đ. Đổi giá thuê trên hợp đồng nếu đã thỏa thuận giá mới.");
+    public static Warning ListedRentApplied(decimal rent) => new("ROOM_TRANSFER_LISTED_RENT_APPLIED",
+        $"Giá thuê đổi sang giá niêm yết của phòng mới: {rent:N0}đ — sửa giá thuê trên hợp đồng nếu thỏa thuận khác.");
 
     public static Warning MeterMissingInNewRoom(string feeName) => new("METER_MISSING_IN_NEW_ROOM",
         $"Phòng mới không có công tơ \"{feeName}\" — nếu phòng mới tính khoản này theo đầu người thì thêm dịch vụ tương ứng cho hợp đồng.");
@@ -101,7 +101,7 @@ public enum TransferRentFrom
 
 /// <param name="OldRoomReadings">Chỉ số cuối các công tơ phòng cũ tại ngày chuyển — bắt buộc.</param>
 /// <param name="NewRoomReadings">Chỉ số nhận phòng các công tơ phòng mới; null / value null = số mới nhất.</param>
-/// <param name="MonthlyRent">Giá thuê sau khi chuyển; null = giữ giá đang áp (CT-BR-48).</param>
+/// <param name="MonthlyRent">Giá thuê sau khi chuyển; null = giá niêm yết phòng mới, phòng chưa có giá niêm yết thì giữ giá đang áp (CT-BR-48).</param>
 /// <param name="RentFrom">Kỳ áp giá mới — cả kỳ, không chia ngày theo từng phòng; null = tự chọn theo quy tắc nửa kỳ.</param>
 /// <param name="RemoveFeeTypeIds">Dịch vụ không dùng ở phòng mới ⇒ thôi tính từ kỳ chưa chốt đầu tiên.</param>
 public sealed record TransferRoomCommand(
@@ -188,12 +188,11 @@ public sealed class TransferRoomHandler(IAppDbContext db, ISender sender, IInvoi
     private async Task<Result> ApplyRentAsync(Contract contract, TransferRoomCommand request, List<Warning> warnings, CancellationToken ct)
     {
         var room = await db.Rooms.Where(r => r.Id == request.ToRoomId).Select(r => new { r.Code, r.ListedRent }).FirstAsync(ct);
-        if (request.MonthlyRent is not { } rent)
-        {
-            if (room.ListedRent is { } listed && contract.CurrentRent(request.Date) is { } current && listed != current)
-                warnings.Add(RoomTransferWarnings.RentUnchanged(current, listed));
+        // Không gửi giá ⇒ lấy giá niêm yết phòng mới (phòng chưa có giá niêm yết thì giữ giá đang áp).
+        if ((request.MonthlyRent ?? room.ListedRent) is not { } rent)
             return Result.Success();
-        }
+        if (request.MonthlyRent is null && rent != contract.CurrentRent(request.Date))
+            warnings.Add(RoomTransferWarnings.ListedRentApplied(rent));
 
         var note = request.Note ?? $"Chuyển sang phòng {room.Code}";
         var schedule = (await PropertyBilling.LoadAsync(db, contract.PropertyId, ct)).Schedule;

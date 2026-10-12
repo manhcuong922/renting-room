@@ -1,14 +1,28 @@
 using Mediator;
+using renting_room.Application.Identity.Organizations;
 using renting_room.Application.Properties;
 using renting_room.Security;
 
 namespace renting_room.Endpoints;
+
+/// <summary>ID-UC-03: chủ trọ tự sửa thông tin tổ chức (mã tổ chức không đổi).</summary>
+public sealed record UpdateOrganizationInfoRequest(
+    string Name, string? ContactName, string? ContactPhone, string? ContactEmail, string? TaxCode, string? Address);
 
 /// <summary>PR-BR-17: bên cho thuê mặc định = thông tin chủ trọ, khai một lần cho mọi khu không khai riêng.</summary>
 public static class OrganizationLessorEndpoints
 {
     public static void MapOrganizationLessorEndpoints(this IEndpointRouteBuilder app)
     {
+        var organization = app.MapGroup($"{EndpointHelpers.ApiPrefix}/org").WithTags("Organization members");
+        organization.MapGet("/", async (ISender sender, CancellationToken ct) => Results.Ok(await sender.Send(new GetOrganizationInfoQuery(), ct)))
+            .RequireAuthorization(AuthPolicies.OrgMember)
+            .WithSummary("Thông tin tổ chức (tên, liên hệ, mã số thuế, địa chỉ)");
+        organization.MapPut("/", async (UpdateOrganizationInfoRequest b, ISender sender, CancellationToken ct) =>
+                Results.Ok(await sender.Send(new UpdateOrganizationInfoCommand(b.Name, b.ContactName, b.ContactPhone, b.ContactEmail, b.TaxCode, b.Address), ct)))
+            .RequireAuthorization(AuthPolicies.OrgOwner)
+            .WithSummary("Chủ trọ sửa thông tin tổ chức — mã tổ chức không đổi");
+
         var group = app.MapGroup($"{EndpointHelpers.ApiPrefix}/org/lessor").WithTags("Organization members");
 
         group.MapGet("/", async (ISender sender, CancellationToken ct) => Results.Ok(await sender.Send(new GetOrganizationLessorQuery(), ct)))

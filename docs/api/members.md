@@ -134,3 +134,41 @@ Lỗi chung: 404 `MEMBER_NOT_FOUND`, 422 `CANNOT_MODIFY_OWNER` (thao tác trên 
 `PUT /org/data-retention` `{ "retentionMonths": 60, "autoAnonymize": true }` — **chỉ chủ trọ**. `retentionMonths` 36–120 (400 nếu ngoài khoảng).
 Người thuê rời đi quá số tháng này (không còn HĐ đang chạy, không nợ) được ẩn danh tự động mỗi đêm ([renters.md](renters.md)).
 `autoAnonymize: false` ⇒ tắt hẳn; response có cảnh báo `AUTO_ANONYMIZE_DISABLED` — UI hiện hộp xác nhận "bạn tự chịu trách nhiệm lưu giữ dữ liệu cá nhân". Mọi thay đổi ghi nhật ký (ai, lúc nào).
+
+## Thông tin tổ chức (11/10/2026)
+
+| Method | Route | Ai | Ghi chú |
+|--------|-------|----|---------|
+| GET | `/org` | Chủ trọ, phó quản lý | `{ id, code, name, contactName, contactPhone, contactEmail, taxCode, address }` |
+| PUT | `/org` | **Chỉ chủ trọ** (phó quản lý → 403) | Body như dưới → 200 trả thông tin sau khi sửa. `code` (mã tổ chức) không đổi được |
+
+```json
+{ "name": "Nhà trọ Hoa Sữa", "contactName": "Chị Hoa", "contactPhone": "0912345678", "contactEmail": null, "taxCode": null, "address": "12 Tạ Quang Bửu" }
+```
+
+`name` bắt buộc (≤ 200); `contactPhone` đúng dạng SĐT Việt Nam; `taxCode` ≤ 14; `address` ≤ 500. Tên tổ chức mới hiện ngay ở `GET /me`
+(`organization.name`).
+
+## Nhật ký đăng nhập (12/10/2026)
+
+`GET /org/login-events?userId=&success=&page=1&pageSize=20` — **chỉ chủ trọ** (phó quản lý → 403). Mỗi lần đăng nhập thành công / thất bại vào một tài
+khoản của tổ chức là 1 dòng, mới nhất trước.
+
+```json
+{ "items": [ { "id": "…", "userId": "…", "fullName": "Phó Quản Lý", "success": false, "reason": "WrongPassword", "ipAddress": "113.190.1.2",
+               "occurredAt": "2026-10-12T02:15:00+00:00" } ],
+  "page": 1, "pageSize": 20, "totalCount": 1, "totalPages": 1 }
+```
+
+| `reason` | Nghĩa |
+|----------|-------|
+| `Success` | Đăng nhập thành công |
+| `WrongPassword` | Sai mật khẩu |
+| `LockedOut` | Tài khoản đang bị khóa / tạm khóa do thử sai nhiều lần |
+| `TemporaryPasswordExpired` | Mật khẩu tạm đã hết hạn |
+| `OrganizationSuspended` | Tổ chức đang tạm ngưng |
+
+- Lọc: `userId` (1 tài khoản), `success=true|false`.
+- Lần thử với tên đăng nhập **không tồn tại** không thuộc tổ chức nào nên không hiện ở đây. Hệ thống không lưu tên đăng nhập người ta gõ.
+- Nhật ký giữ **180 ngày**, sau đó tự xóa.
+- Gợi ý UI: tab "Nhật ký đăng nhập" trong màn hình Thành viên; dòng thất bại tô đỏ nhạt.

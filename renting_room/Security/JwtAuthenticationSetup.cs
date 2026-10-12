@@ -65,6 +65,14 @@ internal static class JwtAuthenticationSetup
 
         var sessionStore = context.HttpContext.RequestServices.GetRequiredService<IUserSessionStore>();
         if (!await sessionStore.IsValidAsync(userId, stamp, context.HttpContext.RequestAborted))
+        {
+            context.Fail(new SessionRevokedException());
+            return;
+        }
+
+        // Đăng xuất 1 thiết bị: phiên (sid) không còn refresh token hiệu lực ⇒ access token của phiên đó cũng hết hiệu lực.
+        if (Guid.TryParse(principal?.FindFirst(AppClaimTypes.SessionId)?.Value, out var sessionId)
+            && !await sessionStore.IsSessionActiveAsync(sessionId, context.HttpContext.RequestAborted))
             context.Fail(new SessionRevokedException());
     }
 

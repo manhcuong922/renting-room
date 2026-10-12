@@ -189,7 +189,10 @@ public sealed class RenterAnonymizer(IAppDbContext db, IAuditTrail auditTrail, I
         if (renter.IsAnonymized)
             return;
 
-        var name = Renter.AnonymizedName(renterId);
+        // RT-BR-06: hết thời gian giữ (job) ⇒ giữ họ tên; người thuê yêu cầu xóa (bằng tay) ⇒ xóa cả tên ở hồ sơ, phiếu, phiếu thu.
+        var keepName = reason is null;
+        var oldName = renter.FullName;
+        var name = keepName ? oldName : Renter.AnonymizedName(renterId);
         var contracts = await db.Contracts.Include(c => c.Vehicles)
             .Where(c => c.RepresentativeRenterId == renterId || c.Vehicles.Any(v => v.RenterId == renterId)).ToListAsync(ct);
         var vehicleIds = contracts.SelectMany(c => c.EraseEndedVehicleIdentity(c.RepresentativeRenterId == renterId ? null : renterId)).ToList();
@@ -197,14 +200,22 @@ public sealed class RenterAnonymizer(IAppDbContext db, IAuditTrail auditTrail, I
         var contractIds = contracts.Select(c => c.Id).ToList();
         var invoices = await db.Invoices.Where(i => contractIds.Contains(i.ContractId)).ToListAsync(ct);
         var payments = await db.Payments.Where(p => contractIds.Contains(p.ContractId)).ToListAsync(ct);
+        // CT-BR-51: phiếu chốt thời người này còn đứng tên (HĐ sau đó đã đổi người đứng tên).
+        var formerContractIds = await db.Contracts.Where(c => c.RepresentativeHistory.Any(h => h.RenterId == renterId)).Select(c => c.Id).ToListAsync(ct);
+        invoices.AddRange(await db.Invoices
+            .Where(i => formerContractIds.Contains(i.ContractId) && !contractIds.Contains(i.ContractId) && i.SnapshotRepresentativeName == oldName)
+            .ToListAsync(ct));
 
-        renter.Anonymize(clock.GetUtcNow());
+        renter.Anonymize(clock.GetUtcNow(), keepName);
         foreach (var contract in contracts)
             contract.ReplaceSigningSnapshot(SigningSnapshot.FromJson(contract.SigningSnapshot)?.WithAnonymizedRepresentative(name).ToJson());
-        foreach (var invoice in invoices)
-            invoice.AnonymizeRepresentative(name);
-        foreach (var payment in payments)
-            payment.ClearPayerName();
+        if (!keepName)
+        {
+            foreach (var invoice in invoices)
+                invoice.AnonymizeRepresentative(name);
+            foreach (var payment in payments)
+                payment.ClearPayerName();
+        }
         auditTrail.Record(AuditActions.Anonymized, nameof(Renter), renterId,
             new
             {

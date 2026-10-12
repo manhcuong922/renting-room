@@ -164,6 +164,22 @@ public sealed class Meter : TenantEntity
         return reading;
     }
 
+    /// <summary>
+    /// MT-UC-06: hủy chỉ số ghi nhầm / ghi thừa — chỉ chỉ số cuối kỳ và kiểm tra; chỉ số lắp / tháo, nhận phòng, cuối HĐ gắn với vòng đời
+    /// công tơ / HĐ nên chỉ hủy qua thao tác gốc (hủy thanh lý, hủy chuyển phòng).
+    /// </summary>
+    public Result VoidEntry(Guid readingId, string reason, DateTimeOffset now)
+    {
+        var reading = Find(readingId);
+        if (reading is null)
+            return Result.Failure(MeterErrors.ReadingNotFound);
+        if (reading.Kind is not (ReadingKind.Periodic or ReadingKind.Adhoc))
+            return Result.Failure(MeterErrors.ReadingNotVoidable);
+
+        reading.Void(reason.Trim(), now);
+        return Result.Success();
+    }
+
     /// <summary>Hủy chỉ số chưa khóa (VD chỉ số cuối khi hủy thanh lý) — giữ lịch sử, không xóa.</summary>
     public void VoidReading(Guid readingId, string reason, DateTimeOffset now) =>
         _readings.FirstOrDefault(r => r.Id == readingId && r.VoidedAt is null)?.Void(reason, now);
@@ -271,6 +287,9 @@ public static class MeterErrors
     public static Error FinalReadingRequired(IReadOnlyCollection<Guid> meterIds) =>
         Error.BusinessRule("FINAL_READING_REQUIRED", "Nhập chỉ số cuối cho từng công tơ của phòng tại ngày trả phòng.")
             .WithDetail("meterIds", meterIds);
+
+    public static readonly Error ReadingNotVoidable = Error.BusinessRule("READING_NOT_VOIDABLE",
+        "Chỉ hủy được chỉ số cuối kỳ / kiểm tra. Chỉ số lắp, tháo, nhận phòng, cuối hợp đồng: sửa giá trị hoặc hủy thao tác gốc.");
 
     public static readonly Error ReadingLocked = Error.BusinessRule("READING_LOCKED",
         "Chỉ số đã dùng cho phiếu đã chốt — hủy phiếu trước khi sửa.");

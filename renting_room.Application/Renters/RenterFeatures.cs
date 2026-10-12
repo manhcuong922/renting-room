@@ -6,6 +6,7 @@ using renting_room.Application.Common.Security;
 using renting_room.Application.Common.Models;
 using renting_room.Application.Common.Validation;
 using renting_room.Domain.Common;
+using renting_room.Domain.Contracts;
 using renting_room.Domain.Identity;
 using renting_room.Domain.Renters;
 
@@ -31,7 +32,8 @@ public sealed record RenterDto(
     string? Note,
     DateTimeOffset CreatedAt,
     string Version,
-    DateTimeOffset? AnonymizedAt = null);
+    DateTimeOffset? AnonymizedAt = null,
+    DateTimeOffset? ArchivedAt = null);
 
 internal static class RenterProjection
 {
@@ -40,7 +42,7 @@ internal static class RenterProjection
             r.Id, r.FullName, r.DateOfBirth, r.Gender, r.Phone, r.Email, r.Nationality, r.IdType,
             r.IdNumberLast4 == null ? null : "********" + r.IdNumberLast4,
             r.IdIssueDate, r.IdIssuePlace, r.PermanentAddress, r.Occupation, r.Workplace,
-            r.EmergencyContactName, r.EmergencyContactPhone, r.Note, r.CreatedAt, r.Version.ToString(), r.AnonymizedAt));
+            r.EmergencyContactName, r.EmergencyContactPhone, r.Note, r.CreatedAt, r.Version.ToString(), r.AnonymizedAt, r.ArchivedAt));
 
     /// <summary>SĐT người thuê: di động VN chuẩn hóa, hoặc số quốc tế dạng +[mã nước][số] cho người nước ngoài.</summary>
     public static string? NormalizePhone(string? phone)
@@ -202,7 +204,12 @@ public sealed class UpdateRenterHandler(IAppDbContext db, ICurrentUser currentUs
 
 // ============================================================ Queries
 
-public sealed record SearchRentersQuery(string? Q, string? IdNumber, IdDocumentType? IdType, int Page = 1, int PageSize = Paging.DefaultPageSize)
+/// <param name="PropertyId">Người từng đứng tên / ở trong HĐ của khu này.</param>
+/// <param name="Staying"><c>true</c> = đang ở trong HĐ hiệu lực / đang thanh lý; <c>false</c> = không còn ở.</param>
+/// <param name="IncludeArchived">Kèm hồ sơ đã ẩn (RT-BR-05).</param>
+public sealed record SearchRentersQuery(
+    string? Q, string? IdNumber, IdDocumentType? IdType, int Page = 1, int PageSize = Paging.DefaultPageSize, Guid? PropertyId = null,
+    bool? Staying = null, bool IncludeArchived = false)
     : IRequest<PagedResult<RenterDto>>;
 
 public sealed class SearchRentersQueryValidator : AbstractValidator<SearchRentersQuery>
@@ -217,12 +224,23 @@ public sealed class SearchRentersQueryValidator : AbstractValidator<SearchRenter
 }
 
 /// <summary>Tìm theo tên (không dấu) / SĐT; số giấy tờ tìm CHÍNH XÁC qua hash (không quét dữ liệu đã mã hóa).</summary>
-public sealed class SearchRentersHandler(IAppDbContext db, ICurrentUser currentUser, IPersonalDataProtector protector)
+public sealed class SearchRentersHandler(IAppDbContext db, ICurrentUser currentUser, IPersonalDataProtector protector, TimeProvider clock)
     : IRequestHandler<SearchRentersQuery, PagedResult<RenterDto>>
 {
     public async ValueTask<PagedResult<RenterDto>> Handle(SearchRentersQuery request, CancellationToken cancellationToken)
     {
-        var query = db.Renters.AsNoTracking().Where(r => r.ArchivedAt == null);
+        var query = db.Renters.AsNoTracking();
+        if (!request.IncludeArchived)
+            query = query.Where(r => r.ArchivedAt == null);
+        if (request.PropertyId is { } propertyId)
+            query = query.Where(r => db.Contracts.Any(c => c.PropertyId == propertyId && c.Status != ContractStatus.Cancelled
+                && (c.RepresentativeRenterId == r.Id || c.Occupants.Any(o => o.RenterId == r.Id))));
+        if (request.Staying is { } staying)
+        {
+            var today = clock.GetUtcNow().ToBusinessDate();
+            query = query.Where(r => db.Contracts.Any(c => (c.Status == ContractStatus.Active || c.Status == ContractStatus.Liquidating)
+                && c.Occupants.Any(o => o.RenterId == r.Id && o.MoveInDate <= today && (o.MoveOutDate == null || o.MoveOutDate >= today))) == staying);
+        }
 
         if (!string.IsNullOrWhiteSpace(request.IdNumber))
         {
@@ -250,6 +268,28 @@ public sealed class SearchRentersHandler(IAppDbContext db, ICurrentUser currentU
             .ToListAsync(cancellationToken);
 
         return new PagedResult<RenterDto>(items, request.Page, request.PageSize, total);
+    }
+}
+
+public sealed record ArchiveRenterCommand(Guid Id, bool Archived) : IRequest<Result>;
+
+/// <summary>RT-BR-05: ẩn / hiện lại hồ sơ. Người còn HĐ nháp / hiệu lực / thanh lý thì không ẩn được.</summary>
+public sealed class ArchiveRenterHandler(IAppDbContext db, TimeProvider clock) : IRequestHandler<ArchiveRenterCommand, Result>
+{
+    public async ValueTask<Result> Handle(ArchiveRenterCommand request, CancellationToken cancellationToken)
+    {
+        var renter = await db.Renters.FirstOrDefaultAsync(r => r.Id == request.Id, cancellationToken);
+        if (renter is null)
+            return Result.Failure(RenterErrors.RenterNotFound);
+        if (request.Archived && await RenterAnonymizer.HasOpenContractAsync(db, request.Id, cancellationToken))
+            return Result.Failure(RenterErrors.HasOpenContract);
+
+        if (request.Archived)
+            renter.Archive(clock.GetUtcNow());
+        else
+            renter.Restore();
+        await db.SaveChangesAsync(cancellationToken);
+        return Result.Success();
     }
 }
 

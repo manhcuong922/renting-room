@@ -158,6 +158,10 @@ public static class RoomChargeErrors
     public static readonly Error Locked = Error.BusinessRule("ROOM_CHARGE_LOCKED",
         "Khoản đã nằm trên phiếu đã chốt — không sửa / hủy được (hủy phiếu trước nếu cần).");
     public static readonly Error Cancelled = Error.BusinessRule("ROOM_CHARGE_CANCELLED", "Khoản phát sinh đã hủy.");
+
+    public static Error CreditTooHigh(decimal limit) => Error.BusinessRule("ROOM_CHARGE_CREDIT_TOO_HIGH",
+            $"Các khoản bù chưa trả của phòng không vượt một tháng tiền phòng ({limit:N0}đ) — bù nhiều hơn thì trả trực tiếp rồi đánh dấu đã trả.")
+        .WithDetail("limit", limit);
     public static readonly Error System = Error.BusinessRule("ROOM_CHARGE_SYSTEM",
         "Khoản chốt điện nước khi chuyển phòng do hệ thống tạo — không sửa / hủy tay; muốn đổi thì hủy chuyển phòng rồi chuyển lại.");
     public static readonly Error NotSettled = Error.BusinessRule("ROOM_CHARGE_NOT_SETTLED", "Khoản chưa đánh dấu đã thanh toán.");

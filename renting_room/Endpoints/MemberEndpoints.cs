@@ -1,4 +1,5 @@
 using Mediator;
+using renting_room.Application.Common.Models;
 using renting_room.Application.Identity.Members;
 using renting_room.Idempotency;
 using renting_room.Security;
@@ -31,6 +32,13 @@ public static class MemberEndpoints
                 (await sender.Send(new GetMemberQuery(id), ct)).ToHttp())
             .RequireAuthorization(AuthPolicies.OrgMember)
             .WithSummary("Chi tiết thành viên");
+
+        app.MapGet($"{EndpointHelpers.ApiPrefix}/org/login-events", async (Guid? userId, bool? success, int? page, int? pageSize, ISender sender,
+                    CancellationToken ct) =>
+                Results.Ok(await sender.Send(new ListLoginEventsQuery(userId, success, page ?? 1, pageSize ?? Paging.DefaultPageSize), ct)))
+            .WithTags("Organization members")
+            .RequireAuthorization(AuthPolicies.OrgOwner)
+            .WithSummary("Nhật ký đăng nhập của các tài khoản trong tổ chức (thành công / thất bại, lý do, IP) — chỉ chủ trọ, mới nhất trước");
 
         var ownerOnly = members.MapGroup("").RequireAuthorization(AuthPolicies.OrgOwner);
 

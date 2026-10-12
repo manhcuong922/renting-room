@@ -54,6 +54,21 @@ Quyền: chủ trọ và phó quản lý.
 | 422 `FEE_NOT_IN_PROPERTY` / `FEE_ARCHIVED` | Khoản khác khu / đã ngừng dùng |
 | 422 `ROOM_ARCHIVED` | Phòng đã ngừng dùng |
 
+## Lắp hàng loạt cho nhiều phòng (12/10/2026)
+
+`POST /properties/{propertyId}/meters/bulk` — **Idempotency-Key**
+
+```json
+{ "feeTypeId": "…", "installedDate": "2026-10-01",
+  "rows": [ { "roomId": "…", "serialNo": "E-101", "initialValue": 0 }, { "roomId": "…", "serialNo": null, "initialValue": 1250 } ] }
+```
+
+- Một khoản thu + một ngày lắp chung; mỗi dòng = 1 lệnh lắp đơn (phòng, serial, chỉ số đầu). Mỗi phòng 1 dòng, tối đa 500 dòng.
+- **Tất cả hoặc không**: dòng lỗi (`ROOM_NOT_FOUND` phòng không thuộc khu, `ROOM_ARCHIVED` phòng ngừng dùng, `METER_ALREADY_ACTIVE` phòng đã có công tơ của khoản
+  này) ⇒ 422 `BULK_INSTALL_INVALID` kèm `rowErrors: [ { "index", "roomId", "code", "message" } ]`, không lưu dòng nào — tô đỏ dòng theo `index`.
+- → **200** `{ "installed": 18, "meterIds": ["…"] }`.
+- Màn hình gợi ý: lưới các phòng chưa có công tơ của khoản thu (lấy từ danh sách phòng + `GET /rooms/{id}/meters`), nhập serial / chỉ số đầu rồi lưu 1 lần.
+
 ## Thay công tơ (phiên bản)
 
 `POST /meters/{id}/replace` — **Idempotency-Key**
@@ -102,7 +117,8 @@ VD: chỉ số nhận phòng tự lấy 100 (số cuối người cũ), thực t
 
 ## Lưới ghi chỉ số hằng tháng
 
-`GET /properties/{propertyId}/meter-reading-sheet?billingMonth=2026-11&floor=2` — mỗi dòng = (phòng, hợp đồng, công tơ) cần chỉ số cuối kỳ
+`GET /properties/{propertyId}/meter-reading-sheet?billingMonth=2026-11&floor=2&feeTypeId=…` (`floor`, `feeTypeId` tùy chọn — `feeTypeId` để đi ghi
+riêng điện hoặc riêng nước, 12/10/2026) — mỗi dòng = (phòng, hợp đồng, công tơ) cần chỉ số cuối kỳ
 cho phiếu tháng đó. Hợp đồng **trả sau** (`Postpaid`): kỳ của tháng; **trả trước** (`Prepaid`): kỳ liền trước (kỳ đầu không có dòng).
 
 ```json
@@ -133,6 +149,40 @@ cho phiếu tháng đó. Hợp đồng **trả sau** (`Postpaid`): kỳ của th
 { "readings": [ { "meterId": "…", "contractId": "…", "closingPeriodStart": "2026-11-01", "readingDate": "2026-11-30", "value": 188 } ] }
 ```
 
-→ **200** `{ "saved": 1 }`. **Cả lô hoặc không gì**: có dòng lỗi ⇒ 422 `READINGS_INVALID`, body có `rowErrors: [{ index, code, message }]`
+→ **200** `{ "saved": 1, "warnings": [] }`. **Cả lô hoặc không gì**: có dòng lỗi ⇒ 422 `READINGS_INVALID`, body có `rowErrors: [{ index, code, message }]`
 (`READING_NOT_MONOTONIC`, `READING_LOCKED`, `METER_NOT_IN_ROOM`, `NOT_PERIOD_START`…) — tô đỏ dòng theo `index`, chưa lưu dòng nào.
 Gửi lại dòng đã có số ⇒ sửa số đó (nếu chưa khóa). Lưu xong → **Tính lại** phiếu nháp của tháng ([invoices.md](invoices.md#tính-lại)).
+
+**Cảnh báo ngày ghi (12/10/2026, không chặn lưu):** `readingDate` nằm ngoài khoảng **7 ngày trước → 15 ngày sau ngày cuối kỳ** (`usageEnd`) ⇒
+kết quả lưu có `warnings: [ { "index": 0, "code": "READING_DATE_FAR_FROM_PERIOD_END", "message": "Ngày ghi 06/11/2026 lệch xa ngày cuối kỳ 30/11/2026 — …" } ]`.
+Số **đã được lưu**; UI hiện câu nhắc ở dòng `index` để người dùng kiểm tra có chọn nhầm tháng không.
+
+## Sản lượng phòng trống (12/10/2026)
+
+`GET /properties/{propertyId}/meters/vacant-usage?from=2026-01-01&to=2026-12-31` (bỏ trống: `to` = hôm nay, `from` = `to` − 1 năm)
+
+Điện nước công tơ chạy lúc phòng **không có người thuê** (sửa chữa, thử phòng, người cũ đi chưa chốt) — không nằm trên phiếu của ai. Hệ thống lấy
+mỗi **chỉ số nhận phòng** cao hơn chỉ số liền trước trên cùng công tơ, lọc theo **ngày nhận phòng**.
+
+```json
+{
+  "from": "2026-01-01", "to": "2026-12-31",
+  "rows": [ { "roomId": "…", "roomCode": "101", "meterId": "…", "serialNo": "E-101", "feeTypeId": "…", "feeTypeName": "Điện", "unit": "kWh",
+              "fromDate": "2026-09-20", "fromValue": 1320, "toDate": "2026-10-05", "toValue": 1328, "quantity": 8 } ],
+  "totals": [ { "feeTypeId": "…", "feeTypeName": "Điện", "unit": "kWh", "quantity": 8 } ]
+}
+```
+
+Dùng để đối chiếu hóa đơn điện nước cả khu: tổng trên các phiếu + `totals` ≈ số nhà cung cấp tính. Khu không tồn tại → 404 `PROPERTY_NOT_FOUND`.
+
+## Hủy chỉ số ghi nhầm (11/10/2026)
+
+`POST /meter-readings/{id}/void` `{ "reason": "Ghi nhầm phòng" }` → **204**. Dòng bị hủy không còn trong lịch sử chỉ số (vẫn lưu trong DB kèm
+lý do); phiếu nháp liên quan chuyển "Cần tính lại".
+
+| Lỗi | Khi nào |
+|-----|---------|
+| 422 `READING_NOT_VOIDABLE` | Chỉ hủy được chỉ số **cuối kỳ** (`Periodic`) và **kiểm tra** (`Adhoc`). Chỉ số lắp / tháo công tơ, nhận phòng, cuối hợp đồng: sửa giá trị (`PUT /meter-readings/{id}`) hoặc hủy thao tác gốc (hủy thanh lý, hủy chuyển phòng) |
+| 422 `READING_LOCKED` | Chỉ số đã dùng cho phiếu đã chốt, hoặc cho khoản chốt điện nước khi chuyển phòng |
+| 404 `READING_NOT_FOUND` | Không có / đã hủy |
+| 400 | Thiếu `reason` |

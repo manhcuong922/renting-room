@@ -26,7 +26,7 @@ chỉ số điện nước, tính tiền phòng hàng tháng, thu tiền, theo d
   xuất Excel tiền phòng tháng / thông tin phòng / công nợ (M10).
 
 **Ngoài phạm vi** (ghi rõ để không bị "trôi" yêu cầu)
-- Người thuê **không** đăng nhập, không tương tác hệ thống (chỉ là dữ liệu).
+- Người thuê **không** đăng nhập, không tương tác hệ thống (chỉ là dữ liệu). Ngoại lệ duy nhất: nhắn **mã liên kết** / `HUY` cho bot Zalo để nhận phiếu báo tiền (M11).
 - Không phải phần mềm pháp lý: không ký số, không nộp tạm trú thay, không xuất hóa đơn điện tử, không tính thuế.
 - Không tích hợp cổng thanh toán (MVP). Không công tơ dùng chung chia theo đầu người (MVP).
 
@@ -65,6 +65,7 @@ Căn cứ pháp lý & quy tắc LEG-xx: [00-legal-basis.md](00-legal-basis.md).
 | M08 | Payment & Deposit (thu tiền, bỏ nợ, theo dõi cọc) | [08-payment-deposit.md](08-payment-deposit.md) | P1 | M05, M07 |
 | M09 | File Storage (ảnh, tài liệu đính kèm) | [09-file-storage.md](09-file-storage.md) | P1 | M01 |
 | M10 | Reporting & Export (Excel, dashboard, nhắc việc) | [10-reporting-export.md](10-reporting-export.md) | P1–P2 | Tất cả |
+| M11 | Notification (gửi phiếu & nhắc nợ qua Zalo Bot / email) | [11-notification.md](11-notification.md) | P2 | M02, M03, M05, M07, M08 |
 | — | Self-review: lỗi tìm thấy & cách xử lý | [99-self-review.md](99-self-review.md) | — | — |
 
 ```mermaid
@@ -86,6 +87,9 @@ flowchart LR
   M07 --> M10[M10 Report/Export]
   M08 --> M10
   M03 --> M10
+  M07 --> M11[M11 Notification]
+  M08 --> M11
+  M03 --> M11
 ```
 
 ## 5. Luồng nghiệp vụ end-to-end
@@ -266,7 +270,7 @@ Trả lại cọc ⇒ bấm **"Đã hoàn trả cọc"** (không bắt buộc tr
 |-------|----------|------------|
 | **P0 Foundation** | net10.0, secrets, multi-tenant (C-01), audit (C-10), ProblemDetails (C-09), idempotency (C-08), TimeProvider (C-04), kỳ thu (C-05), Testcontainers, M01 auth | ✅ xong. Còn thiếu: bảng ĐVHC (C-12) |
 | **P1 MVP** | M01–M08; M09 file; M10 export | M01–M08 ✅ (phần ghi "chưa code" trong từng plan là ngoại lệ). **M09 chưa làm**. M10: mới có E1 |
-| **P2** | Gửi phiếu qua Zalo kèm mã VietQR (BL-UC-13), in / xuất phiếu (BL-UC-12), thủ tục cư trú (M03), nhắc việc, đối chiếu hóa đơn điện EVN, dashboard, báo cáo doanh thu, export bất đồng bộ | Chưa làm |
+| **P2** | Gửi phiếu & nhắc nợ qua Zalo Bot / email (**M11**, hiện thực BL-UC-13 — đã có thiết kế 12/10/2026; ảnh VietQR để sau), in / xuất phiếu (BL-UC-12), thủ tục cư trú (M03), nhắc việc, đối chiếu hóa đơn điện EVN, dashboard, báo cáo doanh thu, export bất đồng bộ | Chưa làm |
 | **P3 B2B** | Thanh toán online / đối soát ngân hàng, số dư có, giới hạn `OrgManager` theo khu, gói dịch vụ & giới hạn (số khu / phòng), RLS, admin impersonation có audit | Chưa làm |
 
 **Việc đã chốt nhưng chưa code** (chi tiết ở [99-self-review.md](99-self-review.md) mục C): xem danh sách tại đó — không ghi lặp ở đây.

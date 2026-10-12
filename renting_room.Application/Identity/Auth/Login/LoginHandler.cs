@@ -19,14 +19,24 @@ public sealed class LoginHandler(
     {
         var now = clock.GetUtcNow();
         var user = await FindUserAsync(request.Username, cancellationToken);
+        var (result, outcome) = await AttemptAsync(request, user, now, cancellationToken);
 
+        // M01 §11: mỗi lần đăng nhập thành công / thất bại ghi 1 dòng nhật ký (không lưu tên đăng nhập gõ vào).
+        db.LoginEvents.Add(LoginEvent.Record(user, request.Username, request.IpAddress, outcome, now));
+        await db.SaveChangesAsync(cancellationToken);
+        return result;
+    }
+
+    private async Task<(Result<AuthTokens> Result, LoginOutcome Outcome)> AttemptAsync(
+        LoginCommand request, User? user, DateTimeOffset now, CancellationToken cancellationToken)
+    {
         // Luôn băm mật khẩu (kể cả khi user không tồn tại) để thời gian phản hồi như nhau (ID-BR-13).
         var verification = passwordHasher.Verify(user?.PasswordHash, request.Password);
 
         if (user is null)
         {
             logger.LogInformation("Login failed: unknown username from {IpAddress}", request.IpAddress);
-            return IdentityErrors.InvalidCredentials;
+            return (IdentityErrors.InvalidCredentials, LoginOutcome.UnknownUser);
         }
 
         // Đang bị khóa: trả CÙNG lỗi với sai mật khẩu, dù mật khẩu đúng hay sai. Nếu trả lỗi khác khi mật khẩu đúng,
@@ -34,19 +44,19 @@ public sealed class LoginHandler(
         if (user.IsLockedOut(now))
         {
             logger.LogWarning("Login rejected: user {UserId} is locked out", user.Id);
-            return IdentityErrors.InvalidCredentials;
+            return (IdentityErrors.InvalidCredentials, LoginOutcome.LockedOut);
         }
 
         if (verification == PasswordCheckResult.Failed)
         {
             await FailedLoginTracker.RegisterFailureAsync(db, user.Id, now, cancellationToken);
             logger.LogInformation("Login failed: wrong password for user {UserId} from {IpAddress}", user.Id, request.IpAddress);
-            return IdentityErrors.InvalidCredentials;
+            return (IdentityErrors.InvalidCredentials, LoginOutcome.WrongPassword);
         }
 
         // ID-BR-20: chỉ báo hết hạn khi mật khẩu ĐÚNG — không giúp kẻ dò mật khẩu.
         if (user.IsTemporaryPasswordExpired(now))
-            return IdentityErrors.TemporaryPasswordExpired;
+            return (IdentityErrors.TemporaryPasswordExpired, LoginOutcome.TemporaryPasswordExpired);
 
         if (user.OrganizationId is { } organizationId)
         {
@@ -56,7 +66,7 @@ public sealed class LoginHandler(
                 .FirstAsync(cancellationToken);
 
             if (organizationStatus != OrganizationStatus.Active)
-                return IdentityErrors.OrganizationSuspended;
+                return (IdentityErrors.OrganizationSuspended, LoginOutcome.OrganizationSuspended);
         }
 
         if (verification == PasswordCheckResult.SuccessRehashNeeded)
@@ -71,10 +81,9 @@ public sealed class LoginHandler(
 
         var (tokens, refreshToken) = tokenIssuer.IssueNewSession(user, now, request.IpAddress);
         db.RefreshTokens.Add(refreshToken);
-        await db.SaveChangesAsync(cancellationToken);
 
         logger.LogInformation("User {UserId} logged in from {IpAddress}", user.Id, request.IpAddress);
-        return tokens;
+        return (tokens, LoginOutcome.Success);
     }
 
     /// <summary>

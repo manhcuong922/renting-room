@@ -87,6 +87,16 @@ public sealed class Renter : TenantEntity
     public int AgeOn(DateOnly date) => DateOfBirth.AgeOn(date);
 
     /// <summary>Tên thay thế sau khi ẩn danh — 4 ký tự cuối của id để chủ trọ còn phân biệt các hồ sơ đã ẩn danh.</summary>
+    /// <summary>RT-BR-05: ẩn hồ sơ khỏi danh sách / tìm kiếm mặc định (không xóa — HĐ, phiếu, lịch sử phòng vẫn nguyên).</summary>
+    public void Archive(DateTimeOffset now) => ArchivedAt ??= now;
+
+    /// <summary>Hiện lại hồ sơ đã ẩn. Hồ sơ đã ẩn danh thì giữ ẩn.</summary>
+    public void Restore()
+    {
+        if (!IsAnonymized)
+            ArchivedAt = null;
+    }
+
     public static string AnonymizedName(Guid renterId) => $"Đã ẩn danh #{renterId.ToString("N")[^4..].ToUpperInvariant()}";
 
     /// <summary>
@@ -94,13 +104,17 @@ public sealed class Renter : TenantEntity
     /// để liên kết tài chính và thống kê còn nguyên. Xóa cả giấy tờ ⇒ cùng CCCD đăng ký lại là hồ sơ mới.
     /// Không đảo ngược.
     /// </summary>
-    public void Anonymize(DateTimeOffset now)
+    /// <param name="keepName">Hết thời gian giữ (tự động): giữ họ tên để còn tra lịch sử phòng; theo yêu cầu của người thuê: xóa cả tên.</param>
+    public void Anonymize(DateTimeOffset now, bool keepName = false)
     {
         if (IsAnonymized)
             return;
 
-        FullName = AnonymizedName(Id);
-        FullNameSearch = TextNormalizer.ToSearchText(FullName);
+        if (!keepName)
+        {
+            FullName = AnonymizedName(Id);
+            FullNameSearch = TextNormalizer.ToSearchText(FullName);
+        }
         DateOfBirth = DateOnly.MinValue;
         Phone = Email = IdIssuePlace = PermanentAddress = Occupation = Workplace = EmergencyContactName = EmergencyContactPhone = Note = null;
         IdIssueDate = null;

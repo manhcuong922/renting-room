@@ -23,8 +23,9 @@ token) và phân quyền; cung cấp `ICurrentUser` (UserId, OrganizationId, Rol
 
 **Phase**: P0 (xác thực, ICurrentUser) + P1 (quản trị tổ chức).
 
-**Trạng thái (10/10/2026)**: đã code toàn bộ, **trừ** các dòng ghi "chưa code" bên dưới — sửa thông tin tổ chức (ID-UC-03),
-sửa hồ sơ cá nhân (`PUT /me`), số khu / số phòng trong danh sách tổ chức, bảng `login_events`, cột giới hạn gói (`max_properties`, `max_rooms` — P3).
+**Trạng thái (12/10/2026)**: đã code toàn bộ — kể cả sửa thông tin tổ chức (ID-UC-03), sửa hồ sơ cá nhân (`PUT /me`), số khu / số phòng trong danh sách
+tổ chức, nhật ký đăng nhập (`login_events`), dọn refresh token hết hạn, đăng xuất vô hiệu ngay access token của phiên (`sid`).
+**Chưa code**: quên mật khẩu (để sau — cân nhắc gửi mã qua Zalo), cột giới hạn gói (`max_properties`, `max_rooms` — P3).
 
 ## 2. Thuật ngữ
 
@@ -45,7 +46,7 @@ sửa hồ sơ cá nhân (`PUT /me`), số khu / số phòng trong danh sách t�
 |----|-------|-------|---------|
 | ID-UC-01 | SystemAdmin | Tạo tổ chức + tài khoản chủ trọ | Org `Active`, User `OrgOwner` `MustChangePassword=true`; trả mật khẩu tạm **một lần** |
 | ID-UC-02 | SystemAdmin | Xem danh sách / chi tiết tổ chức (tên, trạng thái, ngày tạo, danh sách tài khoản) | Không kèm dữ liệu nghiệp vụ. **Chưa code**: số khu, số phòng |
-| ID-UC-03 | SystemAdmin | Cập nhật thông tin tổ chức (tên, liên hệ, ghi chú, giới hạn) | **Chưa code** |
+| ID-UC-03 ✅ | OrgOwner | **Chủ trọ tự sửa thông tin tổ chức** (đổi 11/10/2026 — phần mềm để chủ trọ số hóa thông tin của mình): `GET /org` (mọi thành viên), `PUT /org` (chỉ chủ trọ) — tên, người liên hệ, SĐT, email, mã số thuế, địa chỉ; **mã tổ chức không đổi**. SystemAdmin sửa ghi chú / giới hạn gói: chưa code (để cùng hướng B2B) | Audit tự ghi giá trị cũ → mới |
 | ID-UC-04 | SystemAdmin | Tạm ngưng tổ chức (lý do) | Mọi user của tổ chức không đăng nhập/refresh được; token hiện tại bị từ chối ≤ 1 phút |
 | ID-UC-05 | SystemAdmin | Kích hoạt lại tổ chức | |
 | ID-UC-06 | SystemAdmin | Reset mật khẩu user | Mật khẩu tạm mới, `MustChangePassword=true`, thu hồi mọi refresh token, đổi SecurityStamp |
@@ -54,7 +55,7 @@ sửa hồ sơ cá nhân (`PUT /me`), số khu / số phòng trong danh sách t�
 | ID-UC-09 | Mọi user | Làm mới token | Cặp token mới; refresh cũ bị thu hồi |
 | ID-UC-10 | Mọi user | Đăng xuất (`/auth/logout`) / đăng xuất mọi thiết bị (`/auth/logout-all`) | Thu hồi refresh token hiện tại / mọi refresh token của user |
 | ID-UC-11 | Mọi user | Đổi mật khẩu | Thu hồi refresh token khác; đổi SecurityStamp |
-| ID-UC-12 | Mọi user | Xem hồ sơ (`GET /me`). **Chưa code**: tự cập nhật họ tên, email, SĐT (`PUT /me`) | Đổi email/SĐT phải còn unique |
+| ID-UC-12 | Mọi user | Xem hồ sơ (`GET /me`). ✅ 11/10/2026 **tự cập nhật** họ tên, SĐT, email (`PUT /me`) — phải còn ít nhất SĐT hoặc email; đổi SĐT / email (tên đăng nhập) ⇒ **phải đăng nhập lại** (mọi phiên bị vô hiệu); trùng → 409 `PHONE_TAKEN` / `EMAIL_TAKEN` | Đổi email/SĐT phải còn unique |
 
 ### 3.2 Quy tắc nghiệp vụ
 
@@ -212,7 +213,9 @@ CHECK: `(role = 'SystemAdmin') = (organization_id IS NULL)`.
 | revoked_reason | varchar(32) | Y | `Rotated`,`Logout`,`Reuse`,`PasswordChanged`,`AdminAction` |
 | replaced_by_id | uuid | Y | |
 
-Dọn rác: job xóa token hết hạn > 7 ngày — **chưa code** (P2; P1 chấp nhận tăng dần).
+Dọn rác ✅ (12/10/2026 — `AccountCleanupService`, chạy mỗi 6 giờ): xóa refresh token đã **hết hạn quá 7 ngày** (token còn hạn nhưng đã bị thu hồi vẫn giữ tới khi hết hạn để phát hiện dùng lại — ID-BR-09) và nhật ký đăng nhập cũ hơn **180 ngày**.
+
+**Đăng xuất 1 thiết bị vô hiệu ngay access token của phiên đó** ✅ (12/10/2026): access token mang claim `sid` = `family_id` của phiên; mỗi request kiểm phiên còn refresh token chưa thu hồi (cache như kiểm tài khoản bị khóa, xóa cache ngay khi đăng xuất). Trước đây access token của phiên vừa đăng xuất còn dùng được tới khi hết hạn (≤ 15 phút). Token cũ không có `sid` vẫn hợp lệ tới khi hết hạn.
 
 **(P3, chừa chỗ)** `user_property_access(organization_id, user_id, property_id)` cho `OrgManager`.
 
@@ -227,7 +230,7 @@ Dọn rác: job xóa token hết hạn > 7 ngày — **chưa code** (P2; P1 ch�
 
 ### 4.3 Dữ liệu dẫn xuất
 - `User.IsLockedOut(now) = status = Locked || lockout_end > now`.
-- Số khu / số phòng của tổ chức (ID-UC-02): đếm on-demand từ M02, không lưu — **chưa code**.
+- Số khu / số phòng của tổ chức (ID-UC-02) ✅ 12/10/2026: `propertyCount`, `roomCount` (khu / phòng chưa ngừng dùng) trong danh sách tổ chức của SystemAdmin — đếm on-demand, không lưu.
 
 ## 5. Domain model
 
@@ -383,7 +386,7 @@ Mặc định **mọi endpoint** yêu cầu `RequireOrgMember` (fallback policy)
 
 ## 11. Audit & bảo mật
 
-- Audit: tạo / tạm ngưng tổ chức, reset mật khẩu, khóa / mở — qua `audit_logs` (C-10). **Chưa code**: bảng `login_events` (user_id?, username_hash, ip, success, reason, at) ghi đăng nhập thành công / thất bại.
+- Audit: tạo / tạm ngưng tổ chức, reset mật khẩu, khóa / mở — qua `audit_logs` (C-10). ✅ 12/10/2026 **nhật ký đăng nhập** `login_events` (user_id?, organization_id?, username_hash — SHA-256 của tên đăng nhập đã chuẩn hóa, không lưu tên gõ vào; ip, success, reason, occurred_at): mỗi lần đăng nhập thành công / thất bại ghi 1 dòng, `reason` ∈ `Success`, `UnknownUser`, `WrongPassword`, `LockedOut`, `TemporaryPasswordExpired`, `OrganizationSuspended`. Chủ trọ xem của tổ chức mình: `GET /org/login-events?userId=&success=&page=` (mới nhất trước); giữ 180 ngày.
 - Không log mật khẩu, token, mật khẩu tạm. Response chứa mật khẩu tạm có `Cache-Control: no-store`.
 - Rate limit ✅ (ASP.NET Core RateLimiter, cửa sổ trượt): `/auth/login` 5 req/phút theo IP+username (`LoginAttemptLimiter` trong endpoint — username lấy từ body, chuẩn hóa SĐT/email), 20 req/phút theo IP (policy `login`); `/auth/refresh` 30/phút/IP. Cấu hình section `RateLimiting`.
 - Chống timing attack: khi username không tồn tại vẫn chạy hash giả.

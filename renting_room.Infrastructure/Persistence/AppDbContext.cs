@@ -26,6 +26,7 @@ public class AppDbContext(
     public DbSet<Organization> Organizations => Set<Organization>();
     public DbSet<User> Users => Set<User>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
+    public DbSet<LoginEvent> LoginEvents => Set<LoginEvent>();
     public DbSet<Property> Properties => Set<Property>();
     public DbSet<Room> Rooms => Set<Room>();
     public DbSet<RoomGroup> RoomGroups => Set<RoomGroup>();
@@ -35,6 +36,7 @@ public class AppDbContext(
     public DbSet<Meter> Meters => Set<Meter>();
     public DbSet<Invoice> Invoices => Set<Invoice>();
     public DbSet<RoomCharge> RoomCharges => Set<RoomCharge>();
+    public DbSet<RenterConsent> RenterConsents => Set<RenterConsent>();
     public DbSet<Payment> Payments => Set<Payment>();
     public DbSet<Contract> Contracts => Set<Contract>();
 

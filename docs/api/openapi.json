@@ -374,6 +374,27 @@
             }
           }
         }
+      },
+      "put": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Tự sửa họ tên, SĐT, email — đổi SĐT / email (tên đăng nhập) thì phải đăng nhập lại",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateMeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
       }
     },
     "/api/v1/auth/login": {
@@ -1188,7 +1209,7 @@
         "tags": [
           "Contracts"
         ],
-        "summary": "Thêm người ở",
+        "summary": "Thêm người ở (vai trò: người ở / đồng thuê)",
         "parameters": [
           {
             "name": "id",
@@ -1205,6 +1226,126 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/AddOccupantRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/contracts/{id}/occupants/{occupantId}/role": {
+      "put": {
+        "tags": [
+          "Contracts"
+        ],
+        "summary": "Đổi vai trò người ở ↔ đồng thuê (đồng thuê chỉ mang tính giấy tờ, phải có giấy tờ)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "occupantId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangeOccupantRoleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/contracts/{id}/occupants/{occupantId}/move": {
+      "post": {
+        "tags": [
+          "Contracts"
+        ],
+        "summary": "Chuyển người sang hợp đồng đang hiệu lực của phòng khác (xe của người đó chuyển theo)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "occupantId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MoveOccupantRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/contracts/{id}/representative": {
+      "post": {
+        "tags": [
+          "Contracts"
+        ],
+        "summary": "Đổi người đứng tên trên cùng hợp đồng (nợ, cọc giữ nguyên; bản ký về Thiếu tài liệu)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangeRepresentativeRequest"
               }
             }
           },
@@ -1422,7 +1563,7 @@
         "tags": [
           "Contracts"
         ],
-        "summary": "Chuyển phòng (cùng khu): HĐ giữ nguyên, chỉ số cuối phòng cũ + nhận phòng mới tại ngày chuyển, giá mới tùy chọn",
+        "summary": "Chuyển phòng (cùng khu): HĐ giữ nguyên, chỉ số cuối phòng cũ (chốt điện nước thành khoản phát sinh) + nhận phòng mới tại ngày chuyển; giá mới theo quy tắc nửa kỳ, bỏ dịch vụ không dùng ở phòng mới",
         "parameters": [
           {
             "name": "id",
@@ -1455,6 +1596,30 @@
           },
           "required": true
         },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/contracts/{id}/transfer-room/cancel": {
+      "post": {
+        "tags": [
+          "Contracts"
+        ],
+        "summary": "Hủy lần chuyển phòng gần nhất: trả HĐ về phòng cũ, hủy khoản chốt điện nước và các chỉ số của lần chuyển",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -1534,6 +1699,30 @@
           },
           "required": true
         },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/contracts/{id}/liquidation/preview": {
+      "get": {
+        "tags": [
+          "Contracts"
+        ],
+        "summary": "Xem trước thanh lý: phiếu còn nợ, tiền chờ hoàn, chỉ số cuối còn thiếu, phiếu quyết toán, cọc, những gì còn chặn hoàn tất",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -2506,7 +2695,7 @@
         "tags": [
           "Invoices"
         ],
-        "summary": "Tạo phiếu nháp theo khu + tháng thu (lọc phòng / tầng)",
+        "summary": "Tạo phiếu nháp theo khu + tháng thu (lọc phòng / tầng / 1 hợp đồng)",
         "parameters": [
           {
             "name": "Idempotency-Key",
@@ -2529,6 +2718,115 @@
           },
           "required": true
         },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/invoices/generate-bulk": {
+      "post": {
+        "tags": [
+          "Invoices"
+        ],
+        "summary": "Tạo phiếu nháp tháng thu cho nhiều khu một lệnh (bỏ trống propertyIds = mọi khu đang dùng) — kết quả từng khu",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Khóa duy nhất cho thao tác (VD UUID). Gửi lại cùng khóa ⇒ nhận lại kết quả cũ, không thực thi lần 2.",
+            "schema": {
+              "maxLength": 64,
+              "minLength": 8,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerateInvoicesBulkRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/invoices/totals": {
+      "get": {
+        "tags": [
+          "Invoices"
+        ],
+        "summary": "Số tổng hợp theo cùng bộ lọc với danh sách phiếu: phải thu, đã thu, còn nợ, quá hạn; số phiếu nháp và tổng tạm tính",
+        "parameters": [
+          {
+            "name": "propertyId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "billingMonth",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/InvoiceStatus"
+            }
+          },
+          {
+            "name": "roomId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "contractId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "floor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "unpaidOnly",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "stale",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -3178,6 +3476,91 @@
         }
       }
     },
+    "/api/v1/properties/{propertyId}/meters/bulk": {
+      "post": {
+        "tags": [
+          "Meters"
+        ],
+        "summary": "Lắp công tơ hàng loạt cho nhiều phòng của khu — lỗi 1 dòng ⇒ không lưu dòng nào (rowErrors)",
+        "parameters": [
+          {
+            "name": "propertyId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Khóa duy nhất cho thao tác (VD UUID). Gửi lại cùng khóa ⇒ nhận lại kết quả cũ, không thực thi lần 2.",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 8,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkInstallMetersRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/properties/{propertyId}/meters/vacant-usage": {
+      "get": {
+        "tags": [
+          "Meters"
+        ],
+        "summary": "Sản lượng điện nước lúc phòng trống (từ chỉ số liền trước tới chỉ số nhận phòng) — để đối chiếu hóa đơn của khu",
+        "parameters": [
+          {
+            "name": "propertyId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/api/v1/properties/{propertyId}/meters/bulk-replace": {
       "post": {
         "tags": [
@@ -3360,12 +3743,46 @@
         }
       }
     },
+    "/api/v1/meter-readings/{id}/void": {
+      "post": {
+        "tags": [
+          "Meters"
+        ],
+        "summary": "Hủy chỉ số ghi nhầm / ghi thừa (chỉ chỉ số cuối kỳ, kiểm tra; chưa bị phiếu đã chốt khóa)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VoidReadingRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/api/v1/properties/{propertyId}/meter-reading-sheet": {
       "get": {
         "tags": [
           "Meters"
         ],
-        "summary": "Lưới ghi chỉ số cuối kỳ của khu theo tháng thu",
+        "summary": "Lưới ghi chỉ số cuối kỳ của khu theo tháng thu (lọc tầng, khoản thu)",
         "parameters": [
           {
             "name": "propertyId",
@@ -3389,6 +3806,14 @@
             "in": "query",
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "feeTypeId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
             }
           }
         ],
@@ -3436,6 +3861,52 @@
           },
           "required": true
         },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/org/login-events": {
+      "get": {
+        "tags": [
+          "Organization members"
+        ],
+        "summary": "Nhật ký đăng nhập của các tài khoản trong tổ chức (thành công / thất bại, lý do, IP) — chỉ chủ trọ, mới nhất trước",
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "success",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -3712,6 +4183,40 @@
             }
           }
         ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/org": {
+      "get": {
+        "tags": [
+          "Organization members"
+        ],
+        "summary": "Thông tin tổ chức (tên, liên hệ, mã số thuế, địa chỉ)",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Organization members"
+        ],
+        "summary": "Chủ trọ sửa thông tin tổ chức — mã tổ chức không đổi",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateOrganizationInfoRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "OK"
@@ -4419,13 +4924,35 @@
         "tags": [
           "Renters"
         ],
-        "summary": "Danh sách / tìm người thuê theo tên (không dấu) / SĐT. Tìm theo số giấy tờ: POST /renters/search",
+        "summary": "Danh sách / tìm người thuê theo tên (không dấu) / SĐT; lọc theo khu, đang ở / không còn ở, kèm hồ sơ đã ẩn. Tìm theo số giấy tờ: POST /renters/search",
         "parameters": [
           {
             "name": "q",
             "in": "query",
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "name": "propertyId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "staying",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "includeArchived",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
             }
           },
           {
@@ -4474,6 +5001,153 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/RenterInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/renters/{id}/archive": {
+      "post": {
+        "tags": [
+          "Renters"
+        ],
+        "summary": "Ẩn hồ sơ khỏi danh sách / tìm kiếm mặc định (không xóa; người còn HĐ đang chạy thì không ẩn được)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/renters/{id}/restore": {
+      "post": {
+        "tags": [
+          "Renters"
+        ],
+        "summary": "Hiện lại hồ sơ đã ẩn",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/renters/{id}/consents": {
+      "get": {
+        "tags": [
+          "Renters"
+        ],
+        "summary": "Các lần ghi nhận đồng ý xử lý dữ liệu của người thuê (mới nhất trước)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Renters"
+        ],
+        "summary": "Ghi nhận đồng ý xử lý dữ liệu: mục đích, phương thức (ký giấy / điều khoản HĐ / miệng), ngày",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddConsentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/renters/{id}/consents/{consentId}/withdraw": {
+      "post": {
+        "tags": [
+          "Renters"
+        ],
+        "summary": "Ghi nhận người thuê rút lại đồng ý (giữ dòng, ghi ngày rút)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "consentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WithdrawConsentRequest"
               }
             }
           },
@@ -5062,6 +5736,30 @@
         }
       }
     },
+    "/api/v1/rooms/{id}/tenancy-history": {
+      "get": {
+        "tags": [
+          "Rooms"
+        ],
+        "summary": "Lịch sử thuê của phòng: từng lần một HĐ ở phòng, người đứng tên, người ở và vai trò (mới nhất trước)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/api/v1/rooms/{id}": {
       "get": {
         "tags": [
@@ -5336,6 +6034,36 @@
           }
         }
       }
+    },
+    "/api/v1/tenancy-history": {
+      "get": {
+        "tags": [
+          "Rooms"
+        ],
+        "summary": "Tìm theo họ tên: người đó đã ở / đứng tên phòng nào, HĐ nào, từ – đến",
+        "parameters": [
+          {
+            "name": "search",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "propertyId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -5348,6 +6076,27 @@
             "items": {
               "$ref": "#/components/schemas/MeterReadingInput"
             },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "AddConsentRequest": {
+        "type": "object",
+        "properties": {
+          "purpose": {
+            "type": "string",
+            "nullable": true
+          },
+          "method": {
+            "$ref": "#/components/schemas/ConsentMethod"
+          },
+          "givenAt": {
+            "type": "string",
+            "format": "date"
+          },
+          "note": {
+            "type": "string",
             "nullable": true
           }
         },
@@ -5436,6 +6185,9 @@
           "guardianConsent": {
             "type": "boolean",
             "nullable": true
+          },
+          "role": {
+            "$ref": "#/components/schemas/OccupantRole"
           }
         },
         "additionalProperties": false
@@ -5682,6 +6434,45 @@
         },
         "additionalProperties": false
       },
+      "BulkInstallMetersRequest": {
+        "type": "object",
+        "properties": {
+          "feeTypeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "installedDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BulkInstallRow"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "BulkInstallRow": {
+        "type": "object",
+        "properties": {
+          "roomId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "serialNo": {
+            "type": "string",
+            "nullable": true
+          },
+          "initialValue": {
+            "type": "number",
+            "format": "double"
+          }
+        },
+        "additionalProperties": false
+      },
       "BulkReplaceMetersRequest": {
         "type": "object",
         "properties": {
@@ -5788,6 +6579,15 @@
         },
         "additionalProperties": false
       },
+      "ChangeOccupantRoleRequest": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "$ref": "#/components/schemas/OccupantRole"
+          }
+        },
+        "additionalProperties": false
+      },
       "ChangePasswordRequest": {
         "type": "object",
         "properties": {
@@ -5820,6 +6620,29 @@
           },
           "note": {
             "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ChangeRepresentativeRequest": {
+        "type": "object",
+        "properties": {
+          "renterId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "householdHeadRenterId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "oldRepresentativeMovesOut": {
+            "type": "boolean",
             "nullable": true
           }
         },
@@ -5877,6 +6700,14 @@
           }
         },
         "additionalProperties": false
+      },
+      "ConsentMethod": {
+        "enum": [
+          "PaperSigned",
+          "ContractClause",
+          "Verbal"
+        ],
+        "type": "string"
       },
       "ContractClause": {
         "type": "object",
@@ -6014,7 +6845,7 @@
           },
           "customFields": {
             "type": "object",
-            "additionalProperties": {},
+            "additionalProperties": { },
             "nullable": true
           },
           "householdHeadRenterId": {
@@ -6585,6 +7416,28 @@
         ],
         "type": "string"
       },
+      "GenerateInvoicesBulkRequest": {
+        "type": "object",
+        "properties": {
+          "propertyIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "nullable": true
+          },
+          "billingMonth": {
+            "type": "string",
+            "nullable": true
+          },
+          "recalculateExistingDrafts": {
+            "type": "boolean",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
       "GenerateInvoicesRequest": {
         "type": "object",
         "properties": {
@@ -6610,6 +7463,11 @@
           },
           "recalculateExistingDrafts": {
             "type": "boolean",
+            "nullable": true
+          },
+          "contractId": {
+            "type": "string",
+            "format": "uuid",
             "nullable": true
           }
         },
@@ -6834,6 +7692,38 @@
         },
         "additionalProperties": false
       },
+      "MoveOccupantRequest": {
+        "type": "object",
+        "properties": {
+          "toContractId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "role": {
+            "$ref": "#/components/schemas/OccupantRole"
+          },
+          "relationshipType": {
+            "$ref": "#/components/schemas/OccupantRelationship"
+          },
+          "relationship": {
+            "type": "string",
+            "nullable": true
+          },
+          "guardianConsent": {
+            "type": "boolean",
+            "nullable": true
+          },
+          "note": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
       "OccupantRelationship": {
         "enum": [
           "Wife",
@@ -6898,9 +7788,19 @@
           "guardianConsent": {
             "type": "boolean",
             "nullable": true
+          },
+          "role": {
+            "$ref": "#/components/schemas/OccupantRole"
           }
         },
         "additionalProperties": false
+      },
+      "OccupantRole": {
+        "enum": [
+          "Resident",
+          "CoTenant"
+        ],
+        "type": "string"
       },
       "OrganizationDetailDto": {
         "type": "object",
@@ -6998,6 +7898,14 @@
           "createdAt": {
             "type": "string",
             "format": "date-time"
+          },
+          "propertyCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "roomCount": {
+            "type": "integer",
+            "format": "int32"
           }
         },
         "additionalProperties": false
@@ -7856,6 +8764,13 @@
         ],
         "type": "string"
       },
+      "TransferRentFrom": {
+        "enum": [
+          "CurrentPeriod",
+          "NextPeriod"
+        ],
+        "type": "string"
+      },
       "TransferRoomRequest": {
         "type": "object",
         "properties": {
@@ -7888,6 +8803,17 @@
           },
           "note": {
             "type": "string",
+            "nullable": true
+          },
+          "rentFrom": {
+            "$ref": "#/components/schemas/TransferRentFrom"
+          },
+          "removeFeeTypeIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
             "nullable": true
           }
         },
@@ -8117,6 +9043,54 @@
         },
         "additionalProperties": false
       },
+      "UpdateMeRequest": {
+        "type": "object",
+        "properties": {
+          "fullName": {
+            "type": "string",
+            "nullable": true
+          },
+          "phone": {
+            "type": "string",
+            "nullable": true
+          },
+          "email": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "UpdateOrganizationInfoRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "contactName": {
+            "type": "string",
+            "nullable": true
+          },
+          "contactPhone": {
+            "type": "string",
+            "nullable": true
+          },
+          "contactEmail": {
+            "type": "string",
+            "nullable": true
+          },
+          "taxCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "address": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
       "UpdatePropertyBillingRequest": {
         "type": "object",
         "properties": {
@@ -8243,6 +9217,26 @@
         },
         "additionalProperties": false
       },
+      "VoidReadingRequest": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "WithdrawConsentRequest": {
+        "type": "object",
+        "properties": {
+          "withdrawnOn": {
+            "type": "string",
+            "format": "date"
+          }
+        },
+        "additionalProperties": false
+      },
       "WriteOffInvoiceRequest": {
         "type": "object",
         "properties": {
@@ -8279,7 +9273,7 @@
   },
   "security": [
     {
-      "Bearer": []
+      "Bearer": [ ]
     }
   ],
   "tags": [

@@ -191,6 +191,12 @@ internal sealed class TenancyImportChecker(
         void Warn(TenancyImportRow r, string? key, string code, string message) =>
             warnings[r.RowNumber].Add(new(code, message, key is null ? null : TenancyImportTemplate.Headers[key]));
 
+        // RT-UC-10 (11/10/2026): phòng có nhiều dòng "Đứng tên" ⇒ dòng đầu là người đứng tên, các dòng sau là đồng thuê (M05 CT-BR-49).
+        var mainRepresentatives = rows.Where(r => r.RoomCode is not null && TenancyImportTemplate.IsRepresentative(r.Role))
+            .GroupBy(r => r.RoomCode!).Select(g => g.Min(r => r.RowNumber)).ToHashSet();
+        bool IsMainRepresentative(TenancyImportRow r) =>
+            TenancyImportTemplate.IsRepresentative(r.Role) && (r.RoomCode is null || mainRepresentatives.Contains(r.RowNumber));
+
         // 1. Từng dòng.
         foreach (var row in rows)
         {
@@ -208,7 +214,7 @@ internal sealed class TenancyImportChecker(
                 Error(row, "moveIn", "START_DATE_IN_FUTURE", "Chỉ nhập người đang ở (ngày vào ở ≤ hôm nay) — người sắp vào thì tạo HĐ nháp ở màn HĐ.");
             else if (row.MoveInDate < today.AddYears(-10))
                 Error(row, "moveIn", "INVALID_START_DATE", "Ngày vào ở không được trước hôm nay quá 10 năm.");
-            if (TenancyImportTemplate.IsRepresentative(row.Role))
+            if (IsMainRepresentative(row))
             {
                 if (row.MonthlyRent is not > 0)
                     Error(row, "rent", "REQUIRED", "Dòng đứng tên phải có giá thuê > 0.");
@@ -301,9 +307,16 @@ internal sealed class TenancyImportChecker(
             else if (openContracts.TryGetValue(room.Id, out var open))
                 roomErrors.Add(new("ROOM_HAS_CONTRACTS",
                     $"Phòng {group.Key} đang có HĐ {open.ContractNo} của {open.Name} ({open.Status}) — import chỉ cho phòng trống; thêm người / ký lại / thanh lý ở màn HĐ."));
-            var representatives = members.Where(r => TenancyImportTemplate.IsRepresentative(r.Role)).ToList();
-            if (representatives.Count != 1)
-                roomErrors.Add(new("REPRESENTATIVE_COUNT", representatives.Count == 0 ? "Phòng chưa có người đứng tên." : "Phòng có nhiều hơn 1 người đứng tên."));
+            var representatives = members.Where(r => TenancyImportTemplate.IsRepresentative(r.Role)).OrderBy(r => r.RowNumber).ToList();
+            if (representatives.Count == 0)
+                roomErrors.Add(new("REPRESENTATIVE_COUNT", "Phòng chưa có người đứng tên."));
+            else if (representatives.Skip(1).Any(r => r.Role != ImportRole.Representative))
+                roomErrors.Add(new("REPRESENTATIVE_COUNT",
+                    "Phòng có nhiều hơn 1 người đứng tên — người thứ hai trở đi được nhập là đồng thuê nên phải ở trong phòng (vai trò \"Đứng tên\")."));
+            else
+                foreach (var coTenant in representatives.Skip(1))
+                    Warn(coTenant, "role", "IMPORTED_AS_CO_TENANT",
+                        $"Phòng đã có người đứng tên ở dòng {representatives[0].RowNumber} — người này được nhập là đồng thuê (có tên trên hợp đồng).");
             var living = members.Where(r => TenancyImportTemplate.IsLiving(r.Role)).ToList();
             if (living.Count == 0)
                 roomErrors.Add(new("NO_OCCUPANT", "Phòng không có ai ở (vai trò \"Đứng tên\" hoặc \"Ở cùng\")."));
@@ -442,9 +455,13 @@ public sealed class SaveTenancyImportHandler(
             ids[row.RowNumber] = id.Value;
         }
 
-        var representative = plan.Rows.Single(r => TenancyImportTemplate.IsRepresentative(r.Role));
+        // Nhiều dòng "Đứng tên": dòng đầu đứng tên HĐ, các dòng sau là đồng thuê.
+        var representative = plan.Rows.Where(r => TenancyImportTemplate.IsRepresentative(r.Role)).MinBy(r => r.RowNumber)!;
+        bool IsCoTenant(TenancyImportRow r) => TenancyImportTemplate.IsRepresentative(r.Role) && r.RowNumber != representative.RowNumber;
         var occupants = plan.Rows.Where(r => TenancyImportTemplate.IsLiving(r.Role))
-            .Select(r => new OccupantRequest(ids[r.RowNumber], r.MoveInDate, null, null, null, r.Role == ImportRole.Occupant ? r.Relationship : null))
+            .Select(r => new OccupantRequest(ids[r.RowNumber], r.MoveInDate, null, null, null,
+                r.Role == ImportRole.Occupant ? r.Relationship : IsCoTenant(r) ? OccupantRelationship.CoTenant : null,
+                Role: IsCoTenant(r) ? OccupantRole.CoTenant : null))
             .ToList();
         var input = new ContractInput(ids[representative.RowNumber], plan.StartDate, null, null, null, null, plan.MonthlyRent, plan.DepositAmount, null,
             plan.BillingStartDate == plan.StartDate ? null : plan.BillingStartDate, null, null, null, null, "Nhập từ Excel", occupants);

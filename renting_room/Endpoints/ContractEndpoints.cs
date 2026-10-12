@@ -199,6 +199,9 @@ public static class ContractEndpoints
             .WithSummary("Báo trả phòng — trả cảnh báo nếu báo trước ít hơn thỏa thuận (thường 30 ngày)");
 
         // ---- Thanh lý
+        group.MapGet("/{id:guid}/liquidation/preview", async (Guid id, ISender sender, CancellationToken ct) =>
+                (await sender.Send(new GetLiquidationPreviewQuery(id), ct)).ToHttp())
+            .WithSummary("Xem trước thanh lý: phiếu còn nợ, tiền chờ hoàn, chỉ số cuối còn thiếu, phiếu quyết toán, cọc, những gì còn chặn hoàn tất");
         group.MapPost("/{id:guid}/liquidation/start", async (Guid id, StartLiquidationRequest b, ISender sender, CancellationToken ct) =>
                 (await sender.Send(new StartLiquidationCommand(id, b.ActualEndDate, b.Reason, b.Ground, b.Note), ct)).ToHttp())
             .WithSummary("Bắt đầu thanh lý (bên cho thuê đơn phương ⇒ phải nêu căn cứ Điều 172)");

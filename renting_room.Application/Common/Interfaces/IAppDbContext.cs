@@ -19,10 +19,12 @@ public interface IAppDbContext
     DbSet<Organization> Organizations { get; }
     DbSet<User> Users { get; }
     DbSet<RefreshToken> RefreshTokens { get; }
+    DbSet<LoginEvent> LoginEvents { get; }
     DbSet<Property> Properties { get; }
     DbSet<Room> Rooms { get; }
     DbSet<RoomGroup> RoomGroups { get; }
     DbSet<Renter> Renters { get; }
+    DbSet<RenterConsent> RenterConsents { get; }
     DbSet<ContractTemplate> ContractTemplates { get; }
     DbSet<FeeType> FeeTypes { get; }
     DbSet<Contract> Contracts { get; }

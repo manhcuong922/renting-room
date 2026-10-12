@@ -25,7 +25,7 @@ public sealed class AuthTokenIssuer(ITokenService tokenService)
     private (AuthTokens Tokens, RefreshToken Entity) Issue(
         User user, Guid familyId, DateTimeOffset familyExpiresAt, DateTimeOffset now, string? ipAddress)
     {
-        var accessToken = tokenService.CreateAccessToken(user, now);
+        var accessToken = tokenService.CreateAccessToken(user, now, familyId);
         var refreshToken = tokenService.GenerateRefreshToken();
 
         var entity = RefreshToken.Issue(

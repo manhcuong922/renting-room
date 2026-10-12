@@ -189,6 +189,37 @@ public sealed class ImportTests(ApiFactory factory)
         again.GetProperty("saved").GetInt32().Should().Be(0);
     }
 
+    /// <summary>RT-UC-10 (11/10/2026): 2 dòng "Đứng tên" cùng phòng ⇒ dòng đầu đứng tên HĐ, dòng sau là đồng thuê; giá thuê đọc ở dòng đầu.</summary>
+    [Fact]
+    public async Task TenancyImport_SecondRepresentativeInSameRoom_BecomesCoTenant()
+    {
+        var owner = await _client.CreateActiveOwnerAsync();
+        var token = owner.Tokens.AccessToken;
+        var today = TestData.Today(factory);
+        var propertyId = await _client.CreatePropertyAsync(token, anchorDay: 1);
+        var roomId = await _client.CreateRoomAsync(token, propertyId, "301");
+        var url = $"/api/v1/properties/{propertyId}/tenancies/import";
+        var moveIn = today.AddMonths(-2);
+
+        var preview = await PreviewAsync($"{url}/preview", Workbook("Người thuê",
+            TenancyHeader,
+            ["301", "Đứng tên", "Đỗ Văn Tùng", new DateOnly(1996, 1, 5), "Nam", "0911222333", "CCCD", TestData.NewCitizenId(), "VN", null, null, null,
+                moveIn, 3_000_000, 1_000_000],
+            ["301", "Đứng tên", "Vũ Văn Khang", new DateOnly(1997, 7, 9), "Nam", null, "CCCD", TestData.NewCitizenId(), "VN", null, null, null,
+                moveIn, null, null]), token);
+
+        preview.GetProperty("validRooms").GetInt32().Should().Be(1, preview.ToString());
+        Codes(preview.GetProperty("rows")[1].GetProperty("warnings")).Should().Contain("IMPORTED_AS_CO_TENANT");
+        (await (await _client.PostJsonAsync(url, Rows(preview), token)).ReadAsync<JsonElement>()).GetProperty("saved").GetInt32().Should().Be(1);
+
+        var contractId = (await (await _client.GetAsync($"/api/v1/rooms/{roomId}", token)).ReadAsync<JsonElement>()).GetProperty("currentContract").GetProperty("id").GetGuid();
+        var detail = await (await _client.GetAsync($"/api/v1/contracts/{contractId}", token)).ReadAsync<JsonElement>();
+        detail.GetProperty("representativeName").GetString().Should().Be("Đỗ Văn Tùng");
+        detail.GetProperty("occupants").EnumerateArray().Single(o => o.GetProperty("fullName").GetString() == "Vũ Văn Khang")
+            .GetProperty("role").GetString().Should().Be("CoTenant");
+        detail.GetProperty("currentRent").GetDecimal().Should().Be(3_000_000);
+    }
+
     /// <summary>RT-UC-10: xem trước kiểm như lúc lưu — phòng đã có HĐ khác ở (đã chuyển đi) sau ngày vào ở khai trong file ⇒ báo ngay.</summary>
     [Fact]
     public async Task TenancyImport_Preview_FlagsRoomOccupiedByMovedOutContract_AfterImportedMoveInDate()

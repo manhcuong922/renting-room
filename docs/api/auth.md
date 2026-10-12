@@ -135,6 +135,7 @@ async function ensureFreshToken() {
 | Endpoint | Body | Kết quả |
 |----------|------|---------|
 | `POST /auth/logout` | `{ "refreshToken": "…" }` | 204 — thu hồi phiên hiện tại. Luôn xóa token phía client kể cả khi lỗi |
+| | | **12/10/2026:** access token của **đúng phiên đó** hết hiệu lực ngay (401 ở lần gọi kế tiếp), không chờ hết hạn; thiết bị khác không ảnh hưởng |
 | `POST /auth/logout-all` | (không body, cần access token) | 204 — đăng xuất mọi thiết bị, kể cả thiết bị này |
 
 ## Hồ sơ của tôi
@@ -159,3 +160,15 @@ async function ensureFreshToken() {
 - `canViewSensitiveData`: chủ trọ luôn `true`; phó quản lý `true` khi chủ trọ cấp quyền — `false` thì ẩn nút xem / xuất số giấy tờ đầy đủ ([conventions.md](conventions.md#dữ-liệu-cá-nhân)).
 - Header app: hiện `organization.name` + `fullName` + nhãn vai trò.
 - Hiện chưa có API tự sửa họ tên/SĐT — chủ trọ sửa cho phó quản lý ([members.md](members.md)), admin sửa chủ trọ (P2).
+
+## Tự sửa hồ sơ của mình (11/10/2026)
+
+`PUT /me` — mọi người dùng đã đăng nhập.
+
+```json
+{ "fullName": "Nguyễn Văn Chủ", "phone": "0912345678", "email": null }
+```
+
+→ **204**. Phải còn ít nhất `phone` hoặc `email` (400 `USERNAME_REQUIRED`). SĐT / email là **tên đăng nhập**, không trùng với tài khoản khác
+(409 `PHONE_TAKEN` / `EMAIL_TAKEN`). **Đổi SĐT hoặc email ⇒ mọi phiên bị vô hiệu** (request kế tiếp nhận 401) — UI đưa người dùng về màn đăng
+nhập và đăng nhập lại bằng tên đăng nhập mới, mật khẩu giữ nguyên. Chỉ đổi họ tên thì phiên vẫn dùng tiếp.

@@ -641,8 +641,8 @@ Chi tiết HĐ có `deposit`:
 chỉ đổi phòng từ `date` (D):
 - `oldRoomReadings`: chỉ số cuối **mọi** công tơ phòng cũ tại D — thiếu → 422 `FINAL_READING_REQUIRED`.
 - `newRoomReadings`: chỉ số nhận phòng phòng mới tại D — null / `value` null = số mới nhất.
-- `monthlyRent`: giá thuê sau khi chuyển; bỏ trống = giữ giá đang áp — khi đó nếu giá niêm yết phòng mới khác giá đang áp thì có cảnh báo
-  `ROOM_TRANSFER_RENT_UNCHANGED` (UI nên bắt chọn: giữ giá cũ / giá niêm yết phòng mới / giá khác).
+- `monthlyRent`: giá thuê sau khi chuyển; **bỏ trống = lấy giá niêm yết của phòng mới** (phòng mới chưa có giá niêm yết thì giữ giá đang áp).
+  Giá đổi theo mặc định này ⇒ cảnh báo `ROOM_TRANSFER_LISTED_RENT_APPLIED` (kèm giá mới trong `message`). Muốn giữ giá cũ thì gửi lại đúng giá cũ.
 - `rentFrom`: `CurrentPeriod` | `NextPeriod` — giá mới áp cho **cả kỳ**, không chia ngày theo từng phòng. Bỏ trống = tự chọn: đã ở phòng cũ
   **quá nửa kỳ** chứa D ⇒ `NextPeriod` (kỳ này vẫn giá cũ), **không quá nửa** ⇒ `CurrentPeriod`. Kỳ được chọn đã chốt tiền phòng (thu trước) ⇒
   mốc giá ghi từ kỳ chưa chốt đầu tiên và, với `CurrentPeriod`, sinh khoản phát sinh **chênh lệch cả kỳ** (phụ thu hoặc bù, sửa / hủy được).
@@ -787,6 +787,37 @@ Bước trả phòng sau khi bắt đầu thanh lý: nhập **chỉ số cuối*
 | 422 `PREVIOUS_PERIOD_NOT_BILLED` | Chưa lập phiếu các kỳ trước |
 | 422 `CONTRACT_NOT_LIQUIDATING` | HĐ chưa bắt đầu thanh lý |
 
+### Xem trước — `GET /contracts/{id}/liquidation/preview` (12/10/2026)
+
+Một lần gọi cho màn hình "Thanh lý": còn gì chưa xong trước khi bấm Hoàn tất. Chỉ đọc, gọi được ở mọi trạng thái HĐ.
+
+```json
+{
+  "status": "Liquidating", "actualEndDate": "2026-10-12",
+  "unpaidInvoices": [ { "invoiceId": "…", "invoiceNo": "PB2026-0031", "billingMonth": "2026-10", "type": "Final", "outstanding": 1250000 } ],
+  "outstanding": 1250000, "refundDue": 0,
+  "missingFinalReadingMeterIds": [],
+  "finalInvoiceId": "…", "finalInvoiceStatus": "Finalized", "hasOtherDraftInvoices": false,
+  "pendingRoomCharges": 0,
+  "deposit": { "amount": 3500000, "status": "Holding", "refundedOn": null, "refundedAmount": null, "note": null, "notRefundedReminder": false },
+  "blockers": [], "needsDebtDecision": true, "canComplete": true
+}
+```
+
+| Trường | Ý nghĩa / UI |
+|--------|--------------|
+| `blockers` | Các mã **sẽ chặn** Hoàn tất nếu bấm ngay: `CONTRACT_NOT_LIQUIDATING`, `LIQUIDATION_BEFORE_END_DATE`, `FINAL_READING_REQUIRED`, `INVOICE_DRAFT_EXISTS`, `FINAL_INVOICE_REQUIRED`, `REFUND_PENDING` — hiện thành danh sách việc cần làm |
+| `canComplete` | `blockers` rỗng ⇒ bật nút Hoàn tất |
+| `needsDebtDecision` | Còn nợ (`outstanding > 0`) ⇒ khi hoàn tất phải chọn "Đã thu toàn bộ" hoặc "Bỏ nợ" (xem dưới) |
+| `missingFinalReadingMeterIds` | Công tơ chưa có chỉ số cuối tại ngày trả phòng — nhập khi lập phiếu quyết toán |
+| `finalInvoiceId` / `finalInvoiceStatus` | `null` = chưa lập phiếu quyết toán; `Draft` = cần chốt; `Finalized` = xong |
+| `hasOtherDraftInvoices` | Còn phiếu nháp kỳ thường — chốt hoặc xóa |
+| `pendingRoomCharges` | Số khoản phát sinh chưa lên phiếu — sẽ vào phiếu quyết toán khi lập / tính lại |
+| `refundDue` | Tiền chờ hoàn cho người thuê — xác nhận đã hoàn trên phiếu |
+| `deposit` | Trạng thái cọc — không chặn hoàn tất |
+
+HĐ không tồn tại → 404.
+
 ### Hoàn tất — `POST /contracts/{id}/liquidation/complete`
 
 ```json
@@ -865,3 +896,8 @@ Kết thúc: `POST /contracts/{id}/vehicles/{vehicleId}/end` `{ "endDate": "2026
 | `ROOM_PERIOD_OVERLAP` | 409 | "Phòng đã có hợp đồng trong thời gian này" |
 | `DATE_OUTSIDE_CONTRACT`, `INVALID_END_DATE` | 422 | Lỗi dưới ô ngày |
 | `CONCURRENCY_CONFLICT` | 409 | Tải lại |
+
+## Cảnh báo vai trò trên hợp đồng nháp (11/10/2026)
+
+Hợp đồng **nháp** có người đứng tên đang là người ở thường của hợp đồng khác (hoặc ngược lại) không bị chặn lúc soạn — chi tiết hợp đồng trả
+`warnings[]` có mã `REPRESENTATIVE_IS_RESIDENT_ELSEWHERE`. Kích hoạt mới chặn bằng 409 cùng mã.
