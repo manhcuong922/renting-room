@@ -77,23 +77,37 @@ public sealed class ContractAttentionTests(ApiFactory factory)
         var today = TestData.Today(factory);
         var (_, roomId, _, contractId) = await _client.CreateActiveContractAsync(token, today.AddYears(-1)); // hết hạn hôm qua
 
+        // PR-BR-16 (13/10/2026): nhãn hết hạn chỉ ở hợp đồng, không đưa lên phòng.
+        Flags(await ContractAsync(token, contractId)).Should().Equal("ExpiredAwaitingDecision");
+        var roomBefore = await (await _client.GetAsync($"/api/v1/rooms/{roomId}", token)).ReadAsync<JsonElement>();
+        Flags(roomBefore.GetProperty("currentContract")).Should().BeEmpty();
+
+        // CT-BR-45 (13/10/2026): "Ở tiếp" = chuyển hẳn sang không thời hạn, hết nhãn.
         (await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/holdover", new { note = (string?)null }, token)).StatusCode
             .Should().Be(HttpStatusCode.NoContent);
         var detail = await ContractAsync(token, contractId);
-        Flags(detail).Should().Equal("Holdover");
+        Flags(detail).Should().BeEmpty();
+        detail.GetProperty("endDate").ValueKind.Should().Be(JsonValueKind.Null);
+        detail.GetProperty("previousEndDate").GetString().Should().Be(today.AddDays(-1).ToString("yyyy-MM-dd"));
         detail.GetProperty("holdoverSince").GetString().Should().Be(today.ToString("yyyy-MM-dd"));
-        detail.GetProperty("warnings").EnumerateArray().Select(w => w.GetProperty("code").GetString()).Should().Contain("HOLDOVER_SIGN_ADDENDUM");
+        detail.GetProperty("warnings").EnumerateArray().Select(w => w.GetProperty("code").GetString())
+            .Should().NotContain(["HOLDOVER_SIGN_ADDENDUM", "CONTRACT_EXPIRED_DECISION_NEEDED"]);
         (await (await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/holdover", new { note = "lần 2" }, token)).ReadProblemCodeAsync())
             .Should().Be("HOLDOVER_ALREADY");
 
         var room = await (await _client.GetAsync($"/api/v1/rooms/{roomId}", token)).ReadAsync<JsonElement>();
         room.GetProperty("status").GetString().Should().Be("Occupied", "hết hạn mà vẫn ở thì không báo phòng trống");
-        Flags(room.GetProperty("currentContract")).Should().Equal("Holdover");
+        Flags(room.GetProperty("currentContract")).Should().BeEmpty();
 
+        // Đang ở tiếp vẫn ký phụ lục gia hạn được (hạn mới phải sau hạn cũ) ⇒ có hạn trở lại.
+        (await (await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/extend", new { newEndDate = today.AddDays(-1) }, token)).ReadProblemCodeAsync())
+            .Should().Be("INVALID_END_DATE");
         (await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/extend", new { newEndDate = today.AddMonths(6) }, token))
             .StatusCode.Should().Be(HttpStatusCode.NoContent);
         detail = await ContractAsync(token, contractId);
         Flags(detail).Should().BeEmpty();
+        detail.GetProperty("endDate").GetString().Should().Be(today.AddMonths(6).ToString("yyyy-MM-dd"));
+        detail.GetProperty("previousEndDate").ValueKind.Should().Be(JsonValueKind.Null);
         detail.GetProperty("holdoverSince").ValueKind.Should().Be(JsonValueKind.Null);
 
         // Chưa hết hạn ⇒ không chọn "ở tiếp" được.

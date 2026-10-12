@@ -236,7 +236,14 @@ public sealed class RoomChargeTests(ApiFactory factory)
         (await (await CreateAsync(s, "Credit", 1_500_000, s.Today, description: "Bù thêm")).ReadProblemCodeAsync())
             .Should().Be("ROOM_CHARGE_CREDIT_TOO_HIGH", "2,0tr đang chờ + 1,5tr > 3,0tr tiền phòng");
         (await CreateAsync(s, "Credit", 1_000_000, s.Today, description: "Bù vừa đủ")).StatusCode.Should().Be(HttpStatusCode.Created);
-        (await CreateAsync(s, "Credit", 5_000_000, s.Today, settled: true, description: "Đã trả tay")).StatusCode.Should().Be(HttpStatusCode.Created);
+        var paidByHand = await CreateAsync(s, "Credit", 5_000_000, s.Today, settled: true, description: "Đã trả tay");
+        paidByHand.StatusCode.Should().Be(HttpStatusCode.Created);
+        // 13/10/2026: bỏ đánh dấu đã thanh toán ⇒ khoản quay lại chờ trừ vào phiếu ⇒ cũng phải trong giới hạn.
+        var paidId = (await paidByHand.ReadAsync<JsonElement>()).GetProperty("id").GetGuid();
+        (await (await _client.DeleteAsync($"/api/v1/room-charges/{paidId}/settle", s.Token)).ReadProblemCodeAsync())
+            .Should().Be("ROOM_CHARGE_CREDIT_TOO_HIGH", "3,0tr đang chờ + 5,0tr vừa bỏ đánh dấu > 3,0tr tiền phòng");
+        (await (await _client.GetAsync($"/api/v1/room-charges?roomId={s.RoomId}", s.Token)).ReadAsync<List<JsonElement>>())
+            .Single(c => c.GetProperty("id").GetGuid() == paidId).GetProperty("isSettled").GetBoolean().Should().BeTrue("bị từ chối thì giữ nguyên");
         (await CreateAsync(s, "Surcharge", 9_000_000, s.Today)).StatusCode.Should().Be(HttpStatusCode.Created, "phụ thu không bị giới hạn này");
     }
 }

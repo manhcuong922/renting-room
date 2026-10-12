@@ -132,6 +132,7 @@ public sealed record ContractDetailDto(
     IReadOnlyList<ContractFlag> Flags,
     DateOnly? HoldoverSince,
     string? HoldoverNote,
+    DateOnly? PreviousEndDate,
     Guid? PreviousContractId,
     string Version,
     bool HasSignedDocument = false,

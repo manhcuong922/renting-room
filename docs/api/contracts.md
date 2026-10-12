@@ -46,7 +46,7 @@ Hết hạn mà chưa thanh lý thì hợp đồng **vẫn hiệu lực và vẫ
 | Kết thúc gửi xe | `POST …/vehicles/{vehicleId}/end` | ✅ | ✅ | ✅ | |
 | Phụ lục đổi giá | `POST /contracts/{id}/rent-terms` | | ✅ | | |
 | Gia hạn | `POST /contracts/{id}/extend` | | ✅ (có `endDate`) | | |
-| Ở tiếp chưa ký lại (đã quá hạn) | `POST /contracts/{id}/holdover` | | ✅ (cờ `ExpiredAwaitingDecision`) | | |
+| Ở tiếp — chuyển sang không thời hạn (đã quá hạn) | `POST /contracts/{id}/holdover` | | ✅ (cờ `ExpiredAwaitingDecision`) | | |
 | Ký lại cho người còn ở | `POST /contracts/{id}/re-sign` | | ✅ (hay dùng khi cờ `RepresentativeMovedOut`) | | |
 | Ghi nhận báo trả phòng | `POST /contracts/{id}/notice` | | ✅ | | |
 | Bắt đầu thanh lý | `POST /contracts/{id}/liquidation/start` | | ✅ | | |
@@ -549,7 +549,8 @@ Sau khi sửa `listedRent` của phòng đang có người ở, UI hỏi "Áp gi
 
 ## Cần xử lý (`flags`)
 
-Danh sách HĐ, chi tiết HĐ và `currentContract` của phòng có `flags` (tính theo hôm nay, chỉ HĐ đang hiệu lực). Chi tiết HĐ có thêm câu
+Danh sách HĐ, chi tiết HĐ và `currentContract` của phòng có `flags` (tính theo hôm nay, chỉ HĐ đang hiệu lực). **13/10/2026:** nhãn về thời hạn
+(`ExpiredAwaitingDecision`) **chỉ có ở hợp đồng**, không còn trong `currentContract.flags` của phòng; cờ `Holdover` đã bỏ. Chi tiết HĐ có thêm câu
 cảnh báo tương ứng trong `warnings`. **Phòng vẫn "Đang thuê"** trong mọi trường hợp dưới — chỉ về "Trống" khi thanh lý xong.
 
 | Cờ | Khi nào | Cảnh báo | Nút gợi ý |
@@ -557,7 +558,6 @@ cảnh báo tương ứng trong `warnings`. **Phòng vẫn "Đang thuê"** trong
 | `RepresentativeMovedOut` | Người ký (là người ở) đã chuyển đi, còn người khác ở | `REPRESENTATIVE_MOVED_OUT` | **Ký lại cho người còn ở** |
 | `NoOccupantLeft` | Không còn ai ở mà HĐ vẫn hiệu lực | `NO_OCCUPANT_LEFT` | **Thanh lý** |
 | `ExpiredAwaitingDecision` | Đã quá `endDate`, chủ trọ chưa quyết định | `CONTRACT_EXPIRED_DECISION_NEEDED` | **Gia hạn** · **Cho ở tiếp, chưa ký** · **Thu lại phòng** (thanh lý) |
-| `Holdover` | Đã chọn "ở tiếp, chưa ký lại" (`holdoverSince`) | `HOLDOVER_SIGN_ADDENDUM` | **Gia hạn** (ký phụ lục) · **Thu lại phòng** |
 | `MissingSignedDocument` | Chưa có bản HĐ ký (nhãn xám "Thiếu tài liệu" — không gấp) | `SIGNED_DOCUMENT_MISSING` | **Đã có bản ký** |
 
 Người ký không phải người ở (VD bố ký cho con) thì không có cờ `RepresentativeMovedOut`.
@@ -566,19 +566,23 @@ Người ký không phải người ở (VD bố ký cho con) thì không có c�
 ## Gia hạn
 
 `POST /contracts/{id}/extend` — `{ "newEndDate": "2028-10-01" }` → 204.
-Phải sau `endDate` hiện tại, tối đa 10 năm từ hôm nay. HĐ không thời hạn → 422 `CANNOT_EXTEND_INDEFINITE` (ẩn nút khi `endDate` null).
-Gia hạn xóa trạng thái "ở tiếp, chưa ký lại".
+Phải sau `endDate` hiện tại, tối đa 10 năm từ hôm nay. HĐ không thời hạn → 422 `CANNOT_EXTEND_INDEFINITE`.
+**HĐ đang ở tiếp** (`holdoverSince` khác null, `endDate` null) **vẫn gia hạn được**: ngày mới phải sau `previousEndDate`; gia hạn xong `endDate` có lại,
+`holdoverSince` / `previousEndDate` về null. ⇒ Hiện nút Gia hạn khi `endDate != null` **hoặc** `holdoverSince != null`.
 
 ## Ở tiếp, chưa ký lại
 
 `POST /contracts/{id}/holdover` — `{ "note": "Hẹn ký lại cuối tháng" }` (note tùy chọn, ≤ 500) → 204.
-Chi tiết HĐ trả `holdoverSince`, `holdoverNote`. Vẫn tính tiền theo điều khoản cũ, kỳ thu chạy tiếp. Luật không tự gia hạn HĐ hết hạn —
-nên ký phụ lục sớm (nút Gia hạn).
+
+**Đổi 13/10/2026 — "Ở tiếp" = chuyển hẳn sang không thời hạn:** sau khi gọi, chi tiết HĐ có `endDate: null`, `previousEndDate` = hạn cũ,
+`holdoverSince` = hôm nay, `holdoverNote`; **không còn cờ / cảnh báo nào về thời hạn** (không còn `Holdover`, `HOLDOVER_SIGN_ADDENDUM`).
+Vẫn tính tiền theo điều khoản cũ, kỳ thu chạy tiếp. UI hiện dòng "Không thời hạn — ở tiếp từ {holdoverSince}, hạn cũ {previousEndDate}".
+Muốn có hạn mới: nút Gia hạn (xem trên). VD: HĐ 1/1–30/6, ngày 3/7 bấm "Ở tiếp" ⇒ `endDate` null, `previousEndDate` 30/6, `holdoverSince` 3/7.
 
 | Lỗi | Khi nào |
 |-----|---------|
-| 422 `CONTRACT_NOT_EXPIRED` | HĐ chưa quá `endDate` (hoặc không thời hạn) |
-| 409 `HOLDOVER_ALREADY` | Đã ghi nhận trước đó |
+| 422 `CONTRACT_NOT_EXPIRED` | HĐ chưa quá `endDate` (hoặc không thời hạn từ đầu) |
+| 409 `HOLDOVER_ALREADY` | Đã ghi nhận trước đó (HĐ đang ở tiếp) |
 
 ## Tiền cọc
 
@@ -660,10 +664,21 @@ chỉ đổi phòng từ `date` (D):
 - **Chuyển về phòng đã từng ở** (A → B → A) được.
 
 `POST /contracts/{id}/transfer-room/cancel` — hủy **lần chuyển gần nhất** (nhập nhầm phòng / ngày / chỉ số) → **200**
-`{ "warnings": [ RESIDENCE_ROOM_CHANGED, ROOM_TRANSFER_CANCELLED_CHECK_RENT ] }`: HĐ về phòng cũ như chưa chuyển, khoản chốt điện nước
-bị hủy, chỉ số cuối phòng cũ và các chỉ số của HĐ trên công tơ phòng mới bị hủy. Giá thuê / dịch vụ đã đổi lúc chuyển **không** tự đổi lại.
+`{ "warnings": [ RESIDENCE_ROOM_CHANGED ] }`: HĐ về phòng cũ như chưa chuyển, khoản chốt điện nước bị hủy, chỉ số cuối phòng cũ và các chỉ số
+của HĐ trên công tơ phòng mới bị hủy.
+
+**Đổi 13/10/2026:**
+- **Chỉ hủy được trong 3 ngày** kể từ ngày chuyển (hôm nay ≤ ngày chuyển + 3). Quá hạn → 422 `ROOM_TRANSFER_CANCEL_EXPIRED` — muốn quay về thì
+  **chuyển phòng lại** (B → A) như một lần chuyển bình thường (chốt điện nước phòng B, hỏi giá / dịch vụ). UI: ẩn nút "Hủy chuyển phòng" khi
+  `hôm nay > roomSince + 3 ngày`, thay bằng gợi ý "Chuyển về phòng cũ".
+- **Hoàn nguyên trọn lần chuyển:** giá thuê trở lại như trước khi chuyển, dịch vụ đã bỏ lúc chuyển được gắn lại (số lượng / giá riêng cũ), khoản
+  "Chênh lệch tiền phòng" của lần chuyển bị hủy. Không cần sửa tay.
+- Chỉ khi có phần không hoàn được (giá / dịch vụ đã bị sửa tiếp sau lần chuyển, hoặc lần chuyển ghi trước 13/10/2026) mới có thêm cảnh báo
+  `ROOM_TRANSFER_CANCELLED_CHECK_RENT` — hiện câu nhắc kiểm tra giá thuê / dịch vụ.
+
 Lỗi: 422 `ROOM_TRANSFER_NOTHING_TO_CANCEL` (chưa chuyển lần nào), `ROOM_TRANSFER_ROOM_UNAVAILABLE` (phòng cũ đã có HĐ khác),
-`ROOM_TRANSFER_CANCEL_BILLED` (khoản chốt đã vào phiếu đã chốt, hoặc đã lập phiếu ở phòng mới — hủy / xóa phiếu đó trước).
+`ROOM_TRANSFER_CANCEL_BILLED` (khoản chốt / khoản chênh lệch đã vào phiếu đã chốt, hoặc đã lập phiếu ở phòng mới — hủy / xóa phiếu đó trước),
+`ROOM_TRANSFER_CANCEL_EXPIRED` (quá 3 ngày).
 
 | Lỗi | Khi nào |
 |-----|---------|

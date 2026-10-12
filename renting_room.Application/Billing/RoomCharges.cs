@@ -195,7 +195,7 @@ public sealed class CreateRoomChargeHandler(IAppDbContext db, TimeProvider clock
 
         // BL-BR-30 (G-01): khoản bù chưa trả không vượt một tháng tiền phòng ⇒ phiếu tháng luôn trừ được hết, không còn khoản bù treo.
         if (request.Kind == RoomChargeKind.Credit && request.Settlement is null
-            && await CreditLimitExceededAsync(tenancy.Id, date, request.Amount, cancellationToken) is { } limit)
+            && await CreditLimitExceededAsync(db, tenancy.Id, date, request.Amount, cancellationToken) is { } limit)
             return RoomChargeErrors.CreditTooHigh(limit);
 
         var charge = RoomCharge.Create(room.PropertyId, room.Id, tenancy.Id, request.Kind, request.Description, request.Amount, date, request.Reason);
@@ -215,7 +215,7 @@ public sealed class CreateRoomChargeHandler(IAppDbContext db, TimeProvider clock
     }
 
     /// <summary>Trả giới hạn (1 tháng tiền phòng) nếu khoản bù mới + các khoản bù chưa trả chưa vào phiếu đã chốt vượt giới hạn; null = hợp lệ.</summary>
-    private async Task<decimal?> CreditLimitExceededAsync(Guid contractId, DateOnly date, decimal amount, CancellationToken ct)
+    internal static async Task<decimal?> CreditLimitExceededAsync(IAppDbContext db, Guid contractId, DateOnly date, decimal amount, CancellationToken ct)
     {
         var contract = await db.Contracts.AsNoTracking().Include(c => c.RentTerms).FirstAsync(c => c.Id == contractId, ct);
         if (contract.CurrentRent(date) is not { } rent)
@@ -286,12 +286,22 @@ public sealed record UnsettleRoomChargeCommand(Guid Id) : IRequest<Result<RoomCh
 /// <summary>Bỏ đánh dấu đã thanh toán (nhập nhầm) ⇒ dòng trên nháp tính lại vào tổng.</summary>
 public sealed class UnsettleRoomChargeHandler(IAppDbContext db) : IRequestHandler<UnsettleRoomChargeCommand, Result<RoomChargeDto>>
 {
-    public async ValueTask<Result<RoomChargeDto>> Handle(UnsettleRoomChargeCommand request, CancellationToken cancellationToken) =>
-        await RoomChargeMutation.RunAsync(db, request.Id, (charge, draft) =>
+    public async ValueTask<Result<RoomChargeDto>> Handle(UnsettleRoomChargeCommand request, CancellationToken cancellationToken)
+    {
+        // BL-BR-30: bỏ đánh dấu một khoản bù ⇒ khoản đó quay lại chờ trừ vào phiếu, phải còn trong giới hạn 1 tháng tiền phòng.
+        var credit = await db.RoomCharges.AsNoTracking()
+            .Where(c => c.Id == request.Id && c.Kind == RoomChargeKind.Credit && c.IsSettled && c.CancelledAt == null)
+            .Select(c => new { c.ContractId, c.IncurredOn, c.Amount }).FirstOrDefaultAsync(cancellationToken);
+        if (credit is not null && await CreateRoomChargeHandler.CreditLimitExceededAsync(
+                db, credit.ContractId, credit.IncurredOn, credit.Amount, cancellationToken) is { } limit)
+            return RoomChargeErrors.CreditTooHigh(limit);
+
+        return await RoomChargeMutation.RunAsync(db, request.Id, (charge, draft) =>
         {
             var unsettled = charge.Unsettle();
             return unsettled.IsFailure || draft is null ? unsettled : draft.SetChargeSettled(charge.Id, false);
         }, cancellationToken);
+    }
 }
 
 public sealed record CancelRoomChargeCommand(Guid Id, string Reason) : IRequest<Result<RoomChargeDto>>;

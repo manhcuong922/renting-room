@@ -54,9 +54,22 @@ public sealed class SelfServiceAndHistoryTests(ApiFactory factory)
         (await _client.PutJsonAsync("/api/v1/org", new { name = "Tên khác" }, managerLogin.AccessToken)).StatusCode.Should().Be(HttpStatusCode.Forbidden);
 
         // Đổi SĐT (tên đăng nhập) ⇒ phiên cũ bị vô hiệu, đăng nhập lại bằng số mới.
+        // ID-UC-12 (13/10/2026): phó quản lý không tự sửa hồ sơ; chủ trọ đổi SĐT phải nhập đúng mật khẩu hiện tại.
+        var managerTokens = await _client.PostJsonAsync("/api/v1/auth/change-password",
+            new { currentPassword = created.GetProperty("temporaryPassword").GetString(), newPassword = "Pho-Quan-Ly-2026!" }, managerLogin.AccessToken);
+        var managerToken = (await managerTokens.ReadAsync<JsonElement>()).GetProperty("accessToken").GetString()!;
+        var selfEdit = await _client.PutJsonAsync("/api/v1/me",
+            new { fullName = "Tự Đổi Tên", phone = created.GetProperty("username").GetString(), email = (string?)null }, managerToken);
+        selfEdit.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await selfEdit.ReadProblemCodeAsync()).Should().Be("PROFILE_MANAGED_BY_OWNER");
+
         var newPhone = TestApi.NewPhone();
-        (await _client.PutJsonAsync("/api/v1/me", new { fullName = "Nguyễn Văn Chủ Mới", phone = newPhone, email = (string?)null }, token))
-            .StatusCode.Should().Be(HttpStatusCode.NoContent);
+        Task<HttpResponseMessage> ChangePhoneAsync(string? currentPassword) => _client.PutJsonAsync("/api/v1/me",
+            new { fullName = "Nguyễn Văn Chủ Mới", phone = newPhone, email = (string?)null, currentPassword }, token);
+        (await (await ChangePhoneAsync(null)).ReadProblemCodeAsync()).Should().Be("CURRENT_PASSWORD_REQUIRED");
+        (await (await ChangePhoneAsync("Sai-mat-khau-123")).ReadProblemCodeAsync()).Should().Be("INVALID_CURRENT_PASSWORD");
+        (await _client.GetAsync("/api/v1/me", token)).StatusCode.Should().Be(HttpStatusCode.OK, "đổi không thành thì phiên vẫn còn");
+        (await ChangePhoneAsync(owner.Password)).StatusCode.Should().Be(HttpStatusCode.NoContent);
         (await _client.GetAsync("/api/v1/me", token)).StatusCode.Should().Be(HttpStatusCode.Unauthorized);
         (await _client.LoginAsync(newPhone, owner.Password)).AccessToken.Should().NotBeNullOrEmpty();
     }
@@ -147,5 +160,51 @@ public sealed class SelfServiceAndHistoryTests(ApiFactory factory)
         (await _client.PostJsonAsync($"/api/v1/invoices/{page.GetProperty("items")[0].GetProperty("id").GetGuid()}/finalize", null, token))
             .StatusCode.Should().Be(HttpStatusCode.OK);
         (await (await VoidAsync(await ReadingIdAsync("Periodic"))).ReadProblemCodeAsync()).Should().Be("READING_LOCKED");
+    }
+
+    /// <summary>RT-UC-04 (13/10/2026): người đứng tên trong lịch sử phòng lấy theo thời điểm, không lấy người hiện tại cho giai đoạn cũ.</summary>
+    [Fact]
+    public async Task RoomTenancyHistory_ShowsWhoWasRepresentativeWhen_AfterRepresentativeChange()
+    {
+        var owner = await _client.CreateActiveOwnerAsync();
+        var token = owner.Tokens.AccessToken;
+        var today = TestData.Today(factory);
+        var start = today.AddDays(-40);
+        var changedOn = today.AddDays(-10);
+        var propertyId = await _client.CreatePropertyAsync(token);
+        var roomId = await _client.CreateRoomAsync(token, propertyId, "A1");
+        var father = await RenterAsync(token, "Đào Văn Cha");
+        var binh = await RenterAsync(token, "Tô Văn Bình");
+        var hanh = await RenterAsync(token, "Tô Thị Hạnh");
+        // Bố đứng tên nhưng không ở; Bình và Hạnh ở. Sau 30 ngày Hạnh đứng tên thay.
+        var contractId = await (await _client.PostJsonAsync("/api/v1/contracts", new
+        {
+            roomId,
+            contract = new
+            {
+                representativeRenterId = father, startDate = start, monthlyRent = 3_500_000, depositAmount = 0,
+                occupants = new object[] { new { renterId = binh, relationshipType = "Child" }, new { renterId = hanh, relationshipType = "Child" } }
+            }
+        }, token)).ReadIdAsync();
+        (await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/activate", null, token)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+        var changed = await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/representative", new { renterId = hanh, date = changedOn }, token);
+        changed.StatusCode.Should().Be(HttpStatusCode.NoContent, await changed.Content.ReadAsStringAsync());
+
+        var stay = (await (await _client.GetAsync($"/api/v1/rooms/{roomId}/tenancy-history", token)).ReadAsync<List<JsonElement>>()).Single();
+        stay.GetProperty("representativeName").GetString().Should().Be("Tô Thị Hạnh", "người đứng tên cuối lần ở");
+        stay.GetProperty("representatives").EnumerateArray()
+            .Select(r => (r.GetProperty("fullName").GetString(), r.GetProperty("fromDate").GetString(),
+                r.GetProperty("toDate").ValueKind == JsonValueKind.Null ? null : r.GetProperty("toDate").GetString()))
+            .Should().Equal(
+                ("Đào Văn Cha", $"{start:yyyy-MM-dd}", $"{changedOn.AddDays(-1):yyyy-MM-dd}"),
+                ("Tô Thị Hạnh", $"{changedOn:yyyy-MM-dd}", null));
+        stay.GetProperty("occupants").EnumerateArray().Select(o => (o.GetProperty("fullName").GetString(), o.GetProperty("role").GetString()))
+            .Should().BeEquivalentTo([("Tô Văn Bình", "Resident"), ("Tô Thị Hạnh", "Representative")]);
+
+        // Tìm theo tên: người từng đứng tên (không ở) vẫn ra, đúng khoảng ngày đứng tên.
+        var found = (await (await _client.GetAsync("/api/v1/tenancy-history?search=dao van cha", token)).ReadAsync<List<JsonElement>>()).Single();
+        found.GetProperty("role").GetString().Should().Be("Representative");
+        found.GetProperty("fromDate").GetString().Should().Be($"{start:yyyy-MM-dd}");
+        found.GetProperty("toDate").GetString().Should().Be($"{changedOn.AddDays(-1):yyyy-MM-dd}");
     }
 }

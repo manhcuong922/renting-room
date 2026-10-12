@@ -287,6 +287,22 @@ Nguồn duy nhất cho "còn gì chưa làm". Từng plan chỉ ghi "chưa code"
 | G-10 ✅ (11/10/2026: `PUT /me`, `GET/PUT /org` — M01 ID-UC-03, 12) | **Chủ trọ không tự sửa được hồ sơ của mình / tên tổ chức** | Không có `PUT /me`, `PUT /admin/organizations/{id}` | Làm ID-UC-03, ID-UC-12 |
 | G-11 ✅ | Dữ liệu demo | ✅ 11/10/2026: thêm phó quản lý thứ hai **được cấp quyền bỏ nợ** (`Seed:DemoData:WriteOffManagerPhone`, cùng mật khẩu phó quản lý); kịch bản chuyển về phòng cũ (207 ⇄ 208) | — |
 
+### C2b. Bất cập logic rà 12–13/10/2026
+
+| # | Bất cập | Quyết định 13/10/2026 |
+|---|---------|------------------------|
+| L-1 | Thay công tơ rồi chuyển phòng cùng kỳ: khoản chốt mất phần công tơ cũ | ⏸ Để sau (ít xảy ra) |
+| L-2 ✅ | `PUT /me` đổi tên đăng nhập không hỏi mật khẩu | Phó quản lý không tự sửa hồ sơ; chủ trọ đổi SĐT / email phải nhập mật khẩu hiện tại (M01 ID-UC-12) |
+| L-3 ✅ | HĐ hết hạn mang nhãn mãi | "Ở tiếp" = không thời hạn, hết nhãn; nhãn thời hạn không đưa lên phòng (M05 CT-BR-45, M02 PR-BR-16) |
+| L-4 ✅ | File xuất người thuê thiếu "Đồng thuê" | Thêm giá trị (M10 E1) |
+| L-5 ✅ | Lịch sử phòng ghi người đứng tên hiện tại cho giai đoạn cũ | Người đứng tên theo thời điểm (M03 RT-UC-04) |
+| L-6 | Bản in HĐ sau khi đổi người đứng tên | ⏸ Để sau, làm cùng phần xuất file / in ấn |
+| L-7 | Khoản chênh lệch tiền phòng khi chuyển phòng sai với kỳ lẻ ngày / đã sửa tay | ⏸ Lượt sau |
+| L-8 ✅ | Lách trần khoản bù bằng bỏ đánh dấu đã thanh toán | Kiểm trần khi bỏ đánh dấu (M07 BL-BR-30) |
+| L-9 | Chuyển người không mang theo xe | Đã có sẵn: xe gắn với người đó tự chuyển theo (CT-BR-52); xe không gắn người thì ở lại HĐ cũ |
+| L-10 ✅ | Hủy chuyển phòng không trả lại giá / dịch vụ | Hủy trong 3 ngày và hoàn nguyên trọn lần chuyển; quá hạn thì chuyển ngược lại (M05 CT-BR-14) |
+| L-11 | Phụ thu "đã thu ngay" không có phiếu thu | ❌ Không làm — cuối tháng đã tổng hợp vào hóa đơn |
+
 ### C3. Có trong plan, chưa code
 
 | Module | Chưa code | Mức |

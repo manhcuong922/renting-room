@@ -3,13 +3,15 @@ using Mediator;
 using Microsoft.EntityFrameworkCore;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Common.Validation;
+using renting_room.Application.Identity.Auth;
 using renting_room.Domain.Common;
 using renting_room.Domain.Identity;
 
 namespace renting_room.Application.Identity.Me;
 
-/// <summary>ID-UC-12: người dùng tự sửa họ tên, SĐT, email của mình.</summary>
-public sealed record UpdateMeCommand(string FullName, string? Phone, string? Email) : IRequest<Result>;
+/// <summary>ID-UC-12: chủ trọ / SystemAdmin tự sửa họ tên, SĐT, email của mình; phó quản lý do chủ trọ sửa.</summary>
+/// <param name="CurrentPassword">Bắt buộc khi đổi SĐT hoặc email (tên đăng nhập).</param>
+public sealed record UpdateMeCommand(string FullName, string? Phone, string? Email, string? CurrentPassword = null) : IRequest<Result>;
 
 public sealed class UpdateMeCommandValidator : AbstractValidator<UpdateMeCommand>
 {
@@ -25,11 +27,19 @@ public sealed class UpdateMeCommandValidator : AbstractValidator<UpdateMeCommand
     }
 }
 
-/// <summary>SĐT / email là tên đăng nhập, unique toàn hệ thống (ID-BR-02); đổi ⇒ mọi phiên bị vô hiệu, phải đăng nhập lại.</summary>
-public sealed class UpdateMeHandler(IAppDbContext db, ICurrentUser currentUser, IUserSessionStore sessionStore) : IRequestHandler<UpdateMeCommand, Result>
+/// <summary>
+/// SĐT / email là tên đăng nhập, unique toàn hệ thống (ID-BR-02); đổi ⇒ phải nhập mật khẩu hiện tại (phiên bỏ quên không chiếm được tài khoản),
+/// mọi phiên bị vô hiệu, phải đăng nhập lại.
+/// </summary>
+public sealed class UpdateMeHandler(
+    IAppDbContext db, ICurrentUser currentUser, IUserSessionStore sessionStore, IPasswordHasher passwordHasher, TimeProvider clock)
+    : IRequestHandler<UpdateMeCommand, Result>
 {
     public async ValueTask<Result> Handle(UpdateMeCommand request, CancellationToken cancellationToken)
     {
+        if (currentUser.Role == UserRole.OrgManager)
+            return Result.Failure(IdentityErrors.ProfileManagedByOwner);
+
         var userId = currentUser.RequireUserId();
         var user = await db.Users.FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
         if (user is null)
@@ -37,6 +47,12 @@ public sealed class UpdateMeHandler(IAppDbContext db, ICurrentUser currentUser, 
 
         var phone = ContactNormalizer.NormalizePhone(request.Phone);
         var email = ContactNormalizer.NormalizeEmail(request.Email);
+        if (phone != user.PhoneNormalized || email != user.EmailNormalized)
+        {
+            var confirmed = await ConfirmPasswordAsync(user, request.CurrentPassword, cancellationToken);
+            if (confirmed.IsFailure)
+                return confirmed;
+        }
         if (phone is not null && await db.Users.AnyAsync(u => u.PhoneNormalized == phone && u.Id != user.Id, cancellationToken))
             return Result.Failure(IdentityErrors.PhoneTaken);
         if (email is not null && await db.Users.AnyAsync(u => u.EmailNormalized == email && u.Id != user.Id, cancellationToken))
@@ -49,5 +65,20 @@ public sealed class UpdateMeHandler(IAppDbContext db, ICurrentUser currentUser, 
         await db.SaveChangesAsync(cancellationToken);
         sessionStore.Invalidate(user.Id);
         return updated;
+    }
+
+    /// <summary>Sai mật khẩu tính vào bộ đếm khóa tài khoản như đăng nhập sai — access token bị lộ không dò được mật khẩu.</summary>
+    private async Task<Result> ConfirmPasswordAsync(User user, string? currentPassword, CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(currentPassword))
+            return Result.Failure(IdentityErrors.CurrentPasswordRequired);
+        var now = clock.GetUtcNow();
+        if (user.IsLockedOut(now))
+            return Result.Failure(IdentityErrors.AccountLocked);
+        if (passwordHasher.Verify(user.PasswordHash, currentPassword) != PasswordCheckResult.Failed)
+            return Result.Success();
+
+        await FailedLoginTracker.RegisterFailureAsync(db, user.Id, now, ct);
+        return Result.Failure(IdentityErrors.InvalidCurrentPassword);
     }
 }

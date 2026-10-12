@@ -35,9 +35,6 @@ public enum ContractFlag
     /// <summary>Đã quá ngày hết hạn, chủ trọ chưa quyết định (gia hạn / ở tiếp / thu lại phòng).</summary>
     ExpiredAwaitingDecision,
 
-    /// <summary>Quá hạn, chủ trọ cho ở tiếp chưa ký lại.</summary>
-    Holdover,
-
     /// <summary>Chưa có bản hợp đồng đã ký (giấy / ảnh / PDF) — chỉ để nhắc, không ảnh hưởng thu tiền.</summary>
     MissingSignedDocument
 }

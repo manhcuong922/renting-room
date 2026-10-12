@@ -174,7 +174,7 @@ public sealed partial class DemoDataSeeder
         var c202 = await ContractAsync(r202.Id, await RenterAsync("Trịnh Văn Long", new DateOnly(1987, 3, 9), Gender.Male, null),
             Month(-11), 3000000, r202.Meters, fees: standard, end: _today.AddDays(-5));
 
-        // 203 — Hết hạn nhưng vẫn ở tiếp, chưa ký lại (holdover); phiếu tháng -2 chưa thu ⇒ còn nợ.
+        // 203 — Hết hạn nhưng vẫn ở tiếp: chủ trọ bấm "Ở tiếp" ⇒ HĐ thành không thời hạn, hết nhãn (CT-BR-45); phiếu tháng -2 chưa thu ⇒ còn nợ.
         var r203 = await Room("203");
         var c203 = await ContractAsync(r203.Id, await RenterAsync("Lý Thị Ngọc", new DateOnly(1993, 10, 21), Gender.Female, Phone(11)),
             Month(-2), 3000000, r203.Meters, fees: standard, end: _today.AddDays(-20));

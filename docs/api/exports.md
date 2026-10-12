@@ -80,7 +80,7 @@ Lỗi trả JSON (ProblemDetails) như mọi API khác — kiểm tra `Content-T
 | Cột | Ghi chú |
 |-----|---------|
 | STT · Khu · Tầng · Phòng · Số hợp đồng | |
-| Vai trò | Đại diện / Người ở |
+| Vai trò | Đại diện / Đồng thuê / Người ở (thêm "Đồng thuê" 13/10/2026) |
 | Họ tên · Ngày sinh · Giới tính · Số điện thoại | SĐT giữ số 0 đầu |
 | Loại giấy tờ · Số giấy tờ · Ngày cấp · Nơi cấp · Quốc tịch | Số giấy tờ che `********1234` trừ khi `includeSensitive` |
 | Địa chỉ thường trú · Nghề nghiệp · Nơi làm việc / học tập | |

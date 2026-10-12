@@ -97,6 +97,9 @@ public sealed class Contract : TenantEntity
     /// <summary>CT-BR-45: ngày chủ trọ chọn "ở tiếp, chưa ký lại" sau khi HĐ hết hạn; gia hạn thì xóa.</summary>
     public DateOnly? HoldoverSince { get; private set; }
     public string? HoldoverNote { get; private set; }
+
+    /// <summary>CT-BR-45: ngày hết hạn trước khi chủ trọ chọn "ở tiếp" (HĐ khi đó chuyển sang không thời hạn); xóa khi gia hạn.</summary>
+    public DateOnly? PreviousEndDate { get; private set; }
     public TerminationGround? TerminationGround { get; private set; }
     public string? TerminationNote { get; private set; }
 
@@ -149,7 +152,7 @@ public sealed class Contract : TenantEntity
             flags.Add(ContractFlag.RepresentativeMovedOut);
 
         if (EndDate is { } end && end < today)
-            flags.Add(HoldoverSince is null ? ContractFlag.ExpiredAwaitingDecision : ContractFlag.Holdover);
+            flags.Add(ContractFlag.ExpiredAwaitingDecision);
         if (!HasSignedDocument)
             flags.Add(ContractFlag.MissingSignedDocument);
         return flags;
@@ -503,29 +506,36 @@ public sealed class Contract : TenantEntity
     {
         if (Status != ContractStatus.Active)
             return Result.Failure(ContractErrors.NotActive);
-        if (EndDate is null)
+        // CT-BR-45: HĐ đang ở tiếp (đã thành không thời hạn) vẫn ký phụ lục gia hạn được — mốc so sánh là hạn cũ.
+        if ((EndDate ?? (HoldoverSince is null ? null : PreviousEndDate)) is not { } currentEnd)
             return Result.Failure(ContractErrors.CannotExtendIndefinite);
-        if (newEndDate <= EndDate)
+        if (newEndDate <= currentEnd)
             return Result.Failure(ContractErrors.InvalidEndDate);
 
         EndDate = newEndDate;
-        HoldoverSince = null; // CT-BR-45: đã ký phụ lục gia hạn ⇒ hết trạng thái ở tiếp chưa ký
+        HoldoverSince = null; // đã ký phụ lục gia hạn ⇒ hết trạng thái ở tiếp chưa ký
         HoldoverNote = null;
+        PreviousEndDate = null;
         return Result.Success();
     }
 
-    /// <summary>CT-UC-22: HĐ đã quá hạn, chủ trọ cho ở tiếp chưa ký lại — vẫn tính tiền theo điều khoản cũ.</summary>
+    /// <summary>
+    /// CT-UC-22 / CT-BR-45: HĐ đã quá hạn, chủ trọ cho ở tiếp chưa ký lại ⇒ HĐ thành không thời hạn (giữ hạn cũ ở <see cref="PreviousEndDate"/>),
+    /// vẫn tính tiền theo điều khoản cũ, hết nhãn "hết hạn chờ quyết định".
+    /// </summary>
     public Result StartHoldover(DateOnly today, string? note)
     {
         if (Status != ContractStatus.Active)
             return Result.Failure(ContractErrors.NotActive);
-        if (EndDate is not { } end || end >= today)
-            return Result.Failure(ContractErrors.NotExpired);
         if (HoldoverSince is not null)
             return Result.Failure(ContractErrors.HoldoverAlready);
+        if (EndDate is not { } end || end >= today)
+            return Result.Failure(ContractErrors.NotExpired);
 
         HoldoverSince = today;
         HoldoverNote = TextNormalizer.TrimToNull(note);
+        PreviousEndDate = end;
+        EndDate = null;
         return Result.Success();
     }
 
@@ -622,6 +632,47 @@ public sealed class Contract : TenantEntity
         RoomId = last.RoomId;
         RoomSince = last.FromDate;
         return Result.Success();
+    }
+
+    /// <summary>CT-BR-14: lưu những gì lần chuyển phòng gần nhất đã đổi ngoài phòng + chỉ số, để hủy chuyển phòng hoàn nguyên được.</summary>
+    public Result RecordTransferUndo(string snapshotJson)
+    {
+        if (_roomMoves.MaxBy(m => m.FromDate) is not { } last)
+            return Result.Failure(ContractErrors.TransferNothingToCancel);
+        last.SetUndoSnapshot(snapshotJson);
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// CT-BR-14: hủy chuyển phòng — trả lại mốc giá thuê lần chuyển đã ghi (xóa mốc mới thêm, hoặc trả mốc bị sửa đè về giá cũ).
+    /// false = mốc đó đã bị đổi tiếp sau lần chuyển ⇒ giữ nguyên, chủ trọ tự kiểm.
+    /// </summary>
+    public bool RevertTransferRent(DateOnly effectiveFrom, decimal rentAfter, decimal? rentBefore, bool termAdded)
+    {
+        var term = _rentTerms.FirstOrDefault(t => t.EffectiveFrom == effectiveFrom);
+        if (term is null || term.MonthlyRent != rentAfter)
+            return false;
+        if (termAdded && _rentTerms.Count > 1)
+            _rentTerms.Remove(term);
+        else if (!termAdded && rentBefore is { } before)
+            term.Replace(before, term.AddendumNo, null);
+        else
+            return false;
+        return true;
+    }
+
+    /// <summary>CT-BR-14: hủy chuyển phòng — gắn lại dịch vụ đã bỏ lúc chuyển. false = khoản đó đã được gắn / đổi lại sau lần chuyển.</summary>
+    public bool RestoreTransferFee(ContractFeeInput input, DateOnly effectiveFrom)
+    {
+        if (_fees.Any(f => f.FeeTypeId == input.FeeTypeId && (f.Covers(effectiveFrom) || f.EffectiveFrom > effectiveFrom)))
+            return false;
+        var ended = _fees.FirstOrDefault(f => f.FeeTypeId == input.FeeTypeId && f.EffectiveTo == effectiveFrom.AddDays(-1)
+            && f.Quantity == input.Quantity && f.UnitPriceOverride == input.UnitPriceOverride);
+        if (ended is not null)
+            ended.Reopen();
+        else
+            _fees.Add(new ContractFee(Id, PropertyId, input, effectiveFrom));
+        return true;
     }
 
     // ------------------------------------------------------------------ Thanh lý

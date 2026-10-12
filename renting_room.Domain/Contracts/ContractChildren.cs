@@ -59,6 +59,11 @@ public sealed class ContractRoomMove : TenantEntity
     public Guid RoomId { get; private set; }
     public DateOnly FromDate { get; private set; }
     public DateOnly ToDate { get; private set; }
+
+    /// <summary>CT-BR-14: những gì lần chuyển đi khỏi phòng này đã đổi (giá thuê, dịch vụ, khoản chênh lệch) — để hủy chuyển phòng hoàn nguyên. JSON.</summary>
+    public string? UndoSnapshot { get; private set; }
+
+    internal void SetUndoSnapshot(string snapshotJson) => UndoSnapshot = snapshotJson;
 }
 
 /// <summary>Một khoảng HĐ ở 1 phòng (phòng cũ đã chuyển đi hoặc phòng hiện tại — <paramref name="To"/> null = chưa trả phòng).</summary>
@@ -280,4 +285,6 @@ public sealed class ContractFee : TenantEntity
     }
 
     internal void EndOn(DateOnly date) => EffectiveTo = date;
+
+    internal void Reopen() => EffectiveTo = null;
 }

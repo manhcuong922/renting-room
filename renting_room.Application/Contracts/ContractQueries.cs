@@ -189,6 +189,7 @@ public sealed class GetContractHandler(IAppDbContext db, TimeProvider clock) : I
             contract.Flags(today),
             contract.HoldoverSince,
             contract.HoldoverNote,
+            contract.PreviousEndDate,
             contract.PreviousContractId,
             contract.Version.ToString(),
             contract.HasSignedDocument,

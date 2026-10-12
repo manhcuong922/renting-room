@@ -290,3 +290,15 @@ Lỗi / cảnh báo từng dòng import nằm trong kết quả xem trước / l
 
 Cảnh báo (không chặn): `READING_DATE_FAR_FROM_PERIOD_END` trong `warnings[]` của `PUT /properties/{id}/meter-readings`.
 401 sau khi đăng xuất: access token của phiên đã đăng xuất bị từ chối ngay — xóa token, về màn hình đăng nhập (không thử làm mới).
+
+## Bổ sung 13/10/2026
+
+| Code | HTTP | UI |
+|------|------|----|
+| `PROFILE_MANAGED_BY_OWNER` | 403 | Phó quản lý không tự sửa hồ sơ — ẩn nút sửa, ghi "Liên hệ chủ trọ để đổi thông tin" |
+| `CURRENT_PASSWORD_REQUIRED` | 400 | Đổi SĐT / email đăng nhập phải nhập mật khẩu hiện tại — hiện ô mật khẩu |
+| `INVALID_CURRENT_PASSWORD` | 422 | Mật khẩu hiện tại sai (cũng dùng cho `PUT /me`) |
+| `ROOM_TRANSFER_CANCEL_EXPIRED` | 422 | Quá 3 ngày kể từ ngày chuyển — không hủy được, gợi ý "Chuyển về phòng cũ" |
+
+Đã bỏ: cờ `Holdover`, cảnh báo `HOLDOVER_SIGN_ADDENDUM` ("Ở tiếp" giờ chuyển hợp đồng sang không thời hạn).
+`ROOM_CHARGE_CREDIT_TOO_HIGH` giờ còn trả khi bỏ đánh dấu "đã thanh toán" một khoản bù.
