@@ -58,6 +58,22 @@ public sealed class BillingAndRenterExtrasTests(ApiFactory factory)
         (await _client.PostJsonAsync($"/api/v1/contracts/{a.ContractId}/payments", new { amount = 1_000_000, method = "Cash", paidAt = today, invoiceId }, token))
             .StatusCode.Should().Be(HttpStatusCode.Created);
 
+        // PM-UC-09: số nợ của hợp đồng vừa thu một phần; hợp đồng chỉ có nháp thì chưa nợ.
+        var balance = await (await _client.GetAsync($"/api/v1/contracts/{a.ContractId}/balance", token)).ReadAsync<JsonElement>();
+        balance.GetProperty("outstanding").GetDecimal().Should().Be(2_500_000);
+        balance.GetProperty("overdueAmount").GetDecimal().Should().Be(0);
+        balance.GetProperty("refundDue").GetDecimal().Should().Be(0);
+        var owed = balance.GetProperty("unpaidInvoices").EnumerateArray().Single();
+        owed.GetProperty("invoiceId").GetGuid().Should().Be(invoiceId);
+        owed.GetProperty("billingMonth").GetString().Should().Be(billingMonth);
+        owed.GetProperty("totalAmount").GetDecimal().Should().Be(3_500_000);
+        owed.GetProperty("paidAmount").GetDecimal().Should().Be(1_000_000);
+        owed.GetProperty("isOverdue").GetBoolean().Should().BeFalse();
+        var draftOnly = await (await _client.GetAsync($"/api/v1/contracts/{b.ContractId}/balance", token)).ReadAsync<JsonElement>();
+        draftOnly.GetProperty("outstanding").GetDecimal().Should().Be(0);
+        draftOnly.GetProperty("draftInvoices").GetInt32().Should().Be(1);
+        (await _client.GetAsync($"/api/v1/contracts/{Guid.NewGuid()}/balance", token)).StatusCode.Should().Be(HttpStatusCode.NotFound);
+
         var totals = await (await _client.GetAsync($"/api/v1/invoices/totals?billingMonth={billingMonth}", token)).ReadAsync<JsonElement>();
         totals.GetProperty("finalizedCount").GetInt32().Should().Be(1);
         totals.GetProperty("totalAmount").GetDecimal().Should().Be(3_500_000);

@@ -68,3 +68,47 @@ Số phiếu thu `PT{năm lập phiếu}-…` (ghi bù ngày thu năm trước v
 
 `POST /payments/{id}/reverse` `{ "reason": "Nhập nhầm số tiền" }` → **200** phiếu thu (`status: "Reversed"`). Các phiếu tiền phòng liên quan
 trở lại còn nợ. Đã đảo → 409 `PAYMENT_ALREADY_REVERSED`. Không xóa / sửa phiếu thu — nhập sai thì đảo rồi ghi lại.
+
+## Danh sách phiếu thu — cấu trúc trả về (bổ sung 13/10/2026)
+
+`GET /payments?contractId=` (hoặc `roomId=`, `invoiceId=`) → **mảng, không phân trang**, mới nhất trước:
+
+```json
+[ { "id": "…", "receiptNo": "PT2026-000004", "contractId": "…", "amount": 1000000, "method": "BankTransfer", "paidAt": "2026-10-13",
+    "payerName": null, "reference": "FT01A1318C2B", "note": null, "status": "Recorded", "kind": "Receipt",
+    "reversedAt": null, "reverseReason": null,
+    "allocations": [ { "invoiceId": "…", "invoiceNo": "PB2026-000005", "amount": 1000000 } ] } ]
+```
+
+- `status`: `Recorded` đã ghi · `Reversed` đã đảo (gạch ngang, hiện `reverseReason`). `kind`: `Receipt` tiền thu thật · `WriteOff` bỏ nợ (không tính doanh thu).
+- `method`: `Cash` tiền mặt · `BankTransfer` chuyển khoản · `EWallet` ví điện tử.
+- `allocations` = tiền này trừ vào phiếu nào, bao nhiêu (thu theo hợp đồng có thể trừ vào nhiều phiếu, cũ trước).
+- Ghi thu (`POST /contracts/{id}/payments`) → 201 + đúng một phần tử như trên; đảo (`POST /payments/{id}/reverse`) → 200 + phần tử đó sau khi đảo.
+
+## Số nợ của hợp đồng (13/10/2026)
+
+`GET /contracts/{id}/balance` — cho màn **"thu theo hợp đồng"** và mọi chỗ cần biết một hợp đồng đang nợ bao nhiêu. Chỉ đọc, xem được cả HĐ đã kết thúc.
+
+```json
+{
+  "contractId": "…", "contractNo": "HD2026-0002", "status": "Active",
+  "outstanding": 6079000, "overdueAmount": 3512000, "refundDue": 0,
+  "unpaidInvoices": [
+    { "invoiceId": "…", "invoiceNo": "PB2026-000004", "billingMonth": "2026-08", "type": "Regular", "totalAmount": 3512000, "paidAmount": 0,
+      "outstanding": 3512000, "dueDate": "2026-09-06", "isOverdue": true },
+    { "invoiceId": "…", "invoiceNo": "PB2026-000005", "billingMonth": "2026-09", "type": "Regular", "totalAmount": 3567000, "paidAmount": 1000000,
+      "outstanding": 2567000, "dueDate": "2026-10-18", "isOverdue": false } ],
+  "draftInvoices": 0, "pendingRoomCharges": 1
+}
+```
+
+| Trường | Ý nghĩa / UI |
+|--------|--------------|
+| `outstanding` | Tổng còn nợ = tổng phần chưa thu của các phiếu **đã chốt**. Là số mặc định và **số tối đa** của ô tiền khi thu theo hợp đồng (nhập hơn → 422 `PAYMENT_EXCEEDS_DEBT`) |
+| `overdueAmount` | Phần đã quá hạn — tô đỏ |
+| `refundDue` | Chủ trọ còn phải trả lại người thuê; **không** bù trừ vào nợ |
+| `unpaidInvoices[]` | Từng phiếu còn nợ, cũ trước — hiện thành bảng; mỗi dòng có nút "Đã thu" cho riêng phiếu đó (`invoiceId`) |
+| `draftInvoices` | Số phiếu nháp chưa chốt — chưa tính vào nợ, nhắc "còn N phiếu nháp" |
+| `pendingRoomCharges` | Số khoản phát sinh chưa lên phiếu |
+
+HĐ không tồn tại → 404. Gợi ý màn hình: tiêu đề "HĐ … còn nợ X đ", bảng phiếu còn nợ, nút **Thu tất cả** (`POST /contracts/{id}/payments` không gửi `invoiceId`).

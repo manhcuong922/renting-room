@@ -67,7 +67,9 @@ Quyền: chủ trọ và phó quản lý.
 - **Tất cả hoặc không**: dòng lỗi (`ROOM_NOT_FOUND` phòng không thuộc khu, `ROOM_ARCHIVED` phòng ngừng dùng, `METER_ALREADY_ACTIVE` phòng đã có công tơ của khoản
   này) ⇒ 422 `BULK_INSTALL_INVALID` kèm `rowErrors: [ { "index", "roomId", "code", "message" } ]`, không lưu dòng nào — tô đỏ dòng theo `index`.
 - → **200** `{ "installed": 18, "meterIds": ["…"] }`.
-- Màn hình gợi ý: lưới các phòng chưa có công tơ của khoản thu (lấy từ danh sách phòng + `GET /rooms/{id}/meters`), nhập serial / chỉ số đầu rồi lưu 1 lần.
+- **Lưới để nhập (13/10/2026):** `GET /properties/{propertyId}/meters/install-sheet?feeTypeId=…` → các phòng đang dùng của khu **chưa có công tơ đang
+  hoạt động** của khoản thu, xếp theo tầng rồi mã phòng: `[ { "roomId": "…", "roomCode": "104", "floor": "1" } ]`. Mảng rỗng = phòng nào cũng có rồi.
+  Khoản thu không thuộc khu / không tính theo công tơ → lỗi như lệnh lắp. Màn hình: chọn khoản thu → hiện lưới này → nhập serial / chỉ số đầu → lưu 1 lần.
 
 ## Thay công tơ (phiên bản)
 
@@ -108,7 +110,14 @@ Lỗi chung khi thay / tháo: 422 `METER_REMOVED` (đã tháo), `INVALID_READING
 
 ## Lịch sử & sửa chỉ số
 
-`GET /meters/{id}/readings` → mảng, mới nhất trước. `kind`: `Initial` lắp · `Handover` nhận phòng · `Periodic` cuối kỳ ·
+`GET /meters/{id}/readings` → mảng (không phân trang), mới nhất trước:
+
+```json
+[ { "id": "…", "kind": "Periodic", "readingDate": "2026-10-01", "value": 1270, "contractId": "…", "note": null, "version": "5613" },
+  { "id": "…", "kind": "Periodic", "readingDate": "2026-09-01", "value": 1170, "contractId": "…", "note": null, "version": "5605" } ]
+```
+
+`contractId` = hợp đồng chỉ số này thuộc về (`null` với chỉ số lắp / tháo công tơ). `kind`: `Initial` lắp · `Handover` nhận phòng · `Periodic` cuối kỳ ·
 `Adhoc` kiểm tra · `Final` cuối hợp đồng · `Removal` tháo.
 
 `PUT /meter-readings/{id}` — `{ "value": 108, "note": "Đọc lại" }` → **200** chỉ số sau khi sửa. Đã dùng cho phiếu đã chốt → 422 `READING_LOCKED`.

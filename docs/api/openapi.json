@@ -3476,6 +3476,39 @@
         }
       }
     },
+    "/api/v1/properties/{propertyId}/meters/install-sheet": {
+      "get": {
+        "tags": [
+          "Meters"
+        ],
+        "summary": "Lưới lắp công tơ hàng loạt: các phòng của khu chưa có công tơ đang hoạt động của khoản thu",
+        "parameters": [
+          {
+            "name": "propertyId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "feeTypeId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/api/v1/properties/{propertyId}/meters/bulk": {
       "post": {
         "tags": [
@@ -4298,6 +4331,30 @@
           },
           "required": true
         },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/contracts/{contractId}/balance": {
+      "get": {
+        "tags": [
+          "Payments"
+        ],
+        "summary": "Số nợ của hợp đồng: tổng còn nợ, phần quá hạn, tiền chờ hoàn, từng phiếu còn nợ — cho màn thu theo hợp đồng",
+        "parameters": [
+          {
+            "name": "contractId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"

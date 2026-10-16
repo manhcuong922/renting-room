@@ -40,6 +40,9 @@ public static class MeterEndpoints
         properties.MapGet("/replace-sheet", async (Guid propertyId, Guid feeTypeId, ISender sender, CancellationToken ct) =>
                 (await sender.Send(new GetReplaceSheetQuery(propertyId, feeTypeId), ct)).ToHttp())
             .WithSummary("Lưới thay công tơ hàng loạt: công tơ đang hoạt động của khoản thu trong khu, chỉ số gần nhất");
+        properties.MapGet("/install-sheet", async (Guid propertyId, Guid feeTypeId, ISender sender, CancellationToken ct) =>
+                (await sender.Send(new GetInstallSheetQuery(propertyId, feeTypeId), ct)).ToHttp())
+            .WithSummary("Lưới lắp công tơ hàng loạt: các phòng của khu chưa có công tơ đang hoạt động của khoản thu");
         properties.MapPost("/bulk", async (Guid propertyId, BulkInstallMetersRequest b, ISender sender, CancellationToken ct) =>
                 (await sender.Send(new BulkInstallMetersCommand(propertyId, b.FeeTypeId, b.InstalledDate, b.Rows), ct)).ToHttp())
             .WithIdempotency(required: true)

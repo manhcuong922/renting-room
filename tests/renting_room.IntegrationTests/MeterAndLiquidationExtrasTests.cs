@@ -29,6 +29,14 @@ public sealed class MeterAndLiquidationExtrasTests(ApiFactory factory)
         var roomB = await _client.CreateRoomAsync(token, propertyId, "A2");
         var installedDate = month.AddDays(-10);
 
+        // Lưới lắp hàng loạt: cả 2 phòng chưa có công tơ điện; khoản không theo công tơ thì không có lưới.
+        var sheetUrlInstall = $"/api/v1/properties/{propertyId}/meters/install-sheet";
+        async Task<List<string?>> ToInstallAsync() =>
+            (await (await _client.GetAsync($"{sheetUrlInstall}?feeTypeId={electricity}", token)).ReadAsync<List<JsonElement>>())
+            .Select(r => r.GetProperty("roomCode").GetString()).ToList();
+        (await ToInstallAsync()).Should().Equal("A1", "A2");
+        (await _client.GetAsync($"{sheetUrlInstall}?feeTypeId={Guid.NewGuid()}", token)).IsSuccessStatusCode.Should().BeFalse();
+
         // Lắp điện cho cả 2 phòng bằng 1 lệnh.
         Task<HttpResponseMessage> BulkAsync(params object[] rows) =>
             _client.PostJsonAsync($"/api/v1/properties/{propertyId}/meters/bulk", new { feeTypeId = electricity, installedDate, rows }, token);
@@ -46,6 +54,7 @@ public sealed class MeterAndLiquidationExtrasTests(ApiFactory factory)
         problem.GetProperty("code").GetString().Should().Be("BULK_INSTALL_INVALID");
         problem.GetProperty("rowErrors").EnumerateArray().Select(e => e.GetProperty("index").GetInt32()).Should().Equal(1);
         (await (await _client.GetAsync($"/api/v1/rooms/{roomC}/meters", token)).ReadAsync<List<JsonElement>>()).Should().BeEmpty();
+        (await ToInstallAsync()).Should().Equal(["A3"], "A1, A2 đã có công tơ điện");
 
         // Phòng A1 có thêm công tơ nước; HĐ nhận phòng điện ở 130 (công tơ chạy 30 kWh lúc phòng trống).
         var meters = await (await _client.GetAsync($"/api/v1/rooms/{roomA}/meters", token)).ReadAsync<List<JsonElement>>();

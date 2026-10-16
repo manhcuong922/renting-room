@@ -35,6 +35,7 @@ không chặn được ⇒ lúc đó mới làm **số dư có** (trả thừa, 
 | ID | Mô tả |
 |----|-------|
 | PM-UC-01 ✅ | **Đã thu** bằng tay (tiền mặt / chuyển khoản tự kiểm): từ phiếu bấm "Đã thu" (mặc định đủ số còn nợ, sửa được nếu thu một phần — **trả dần**, phần còn lại vẫn là nợ), hoặc thu theo HĐ (tự trừ phiếu cũ nhất trước); phương thức, ngày thu, người nộp, mã giao dịch |
+| PM-UC-09 ✅ | **Số nợ của một hợp đồng** (13/10/2026) — `GET /contracts/{id}/balance`: tổng còn nợ (phiếu đã chốt chưa thu đủ), phần quá hạn, tiền chờ hoàn, từng phiếu còn nợ (số phiếu, tháng, tổng, đã thu, còn nợ, hạn, quá hạn chưa), số phiếu nháp, số khoản phát sinh chưa lên phiếu. Dùng cho màn "thu theo hợp đồng": `outstanding` là số tối đa nhập được (PM-BR-03). Chỉ đọc, xem được cả HĐ đã kết thúc |
 | PM-UC-04 ✅ | Đảo phiếu thu nhập sai (lý do) — phiếu tiền phòng trở lại còn nợ |
 | PM-UC-12 ✅ | **Công nợ khi xem phòng**: nhãn "Còn nợ" + số tiền, nhãn đỏ "Quá hạn" (M02 PR-BR-16) — tính trên phiếu của HĐ đang gắn với phòng, chuyển phòng thì nợ đi theo (11/10/2026) |
 | PM-UC-14 ✅ | **"Đã thu toàn bộ"** khi hoàn tất thanh lý: 1 phiếu thu đúng tổng còn nợ (mặc định tiền mặt, hôm nay) |

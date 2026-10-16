@@ -43,6 +43,38 @@ Quyền: chủ trọ và phó quản lý.
 | Tab **Phiếu** trong chi tiết phòng | `GET /rooms/{roomId}/invoices` |
 | Trước khi tạo phiếu: nhập chỉ số cuối kỳ | [meters.md](meters.md#lưới-ghi-chỉ-số-hằng-tháng) |
 
+## Danh sách phiếu — cấu trúc trả về (bổ sung 13/10/2026)
+
+`GET /invoices?…` và `GET /rooms/{id}/invoices` đều **phân trang** (`page`, `pageSize`); mỗi dòng **chính là phần `summary`** của chi tiết phiếu:
+
+```json
+{
+  "items": [
+    { "id": "…", "invoiceNo": "PB2026-000005", "type": "Regular", "status": "Finalized", "paymentStatus": "PartiallyPaid",
+      "propertyId": "…", "roomId": "…", "roomCode": "102", "contractId": "…", "contractNo": "HD2026-0002", "representativeName": "Đỗ Thị Hoa",
+      "billingMonth": "2026-09", "periodStart": "2026-09-01", "periodEnd": "2026-09-30",
+      "totalAmount": 3567000, "paidAmount": 1000000, "outstanding": 2567000, "refundDue": 0, "dueDate": "2026-10-18",
+      "errorCount": 0, "version": "6162", "isStale": false, "roundingAmount": -500 }
+  ],
+  "page": 1, "pageSize": 20, "totalCount": 2, "totalPages": 1
+}
+```
+
+| Trường | Ghi chú |
+|--------|---------|
+| `invoiceNo` | `null` khi còn nháp (số cấp lúc chốt) |
+| `paymentStatus` | `null` khi nháp / đã hủy; còn lại xem [Trạng thái thu tiền](#trạng-thái-thu-tiền-paymentstatus-chỉ-phiếu-đã-chốt) |
+| `outstanding` / `refundDue` | Còn phải thu / còn phải trả lại người thuê (phiếu tổng âm) |
+| `dueDate` | Hạn thanh toán — `null` khi nháp |
+| `errorCount` | Số vấn đề chặn chốt (> 0 ⇒ nhãn đỏ "Cần sửa", không chốt được) |
+| `isStale` | Nháp "Cần tính lại" |
+| `roundingAmount` | Phần làm tròn tổng phiếu (âm = làm tròn xuống) |
+
+`GET /rooms/{id}/invoices`: phiếu của phòng, mới nhất trước — dùng cho tab "Phiếu" trong chi tiết phòng.
+
+**Kết quả các thao tác trên phiếu:** chốt (`POST …/finalize`), hủy (`POST …/void`), sửa dòng, thêm dòng tay, xác nhận hoàn tiền đều trả
+**200 + chi tiết phiếu sau khi đổi** (cùng cấu trúc `GET /invoices/{id}`) — UI thay luôn dữ liệu đang hiện, không cần gọi lại. Xóa nháp (`DELETE`) → 204.
+
 ## Tạo phiếu nháp
 
 `POST /invoices/generate` (nên gửi `Idempotency-Key`)

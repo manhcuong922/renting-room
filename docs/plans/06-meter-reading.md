@@ -46,7 +46,7 @@ Chỉ số cuối / nhận phòng khi một HĐ chuyển đi rồi chuyển về
 
 | ID | Mô tả |
 |----|-------|
-| MT-UC-01 ✅ | Lắp công tơ cho phòng (khoản thu Metered, số serial, ngày lắp, chỉ số ban đầu). ✅ 12/10/2026 **lắp hàng loạt** cho nhiều phòng của khu: `POST /properties/{id}/meters/bulk` `{ feeTypeId, installedDate, rows[{roomId, serialNo?, initialValue}] }` — tất cả hoặc không (lỗi 1 dòng ⇒ 422 `BULK_INSTALL_INVALID` kèm `rowErrors`), tối đa 500 dòng |
+| MT-UC-01 ✅ | **Bổ sung 13/10/2026 — lưới lắp hàng loạt**: `GET /properties/{id}/meters/install-sheet?feeTypeId=` trả các phòng đang dùng của khu **chưa có công tơ đang hoạt động** của khoản thu đó (mã phòng, tầng) — UI dựng lưới nhập serial / chỉ số đầu rồi gửi lệnh lắp hàng loạt, không phải hỏi từng phòng. Khoản thu không thuộc khu / không phải loại theo công tơ → lỗi như lệnh lắp. Lắp công tơ cho phòng (khoản thu Metered, số serial, ngày lắp, chỉ số ban đầu). ✅ 12/10/2026 **lắp hàng loạt** cho nhiều phòng của khu: `POST /properties/{id}/meters/bulk` `{ feeTypeId, installedDate, rows[{roomId, serialNo?, initialValue}] }` — tất cả hoặc không (lỗi 1 dòng ⇒ 422 `BULK_INSTALL_INVALID` kèm `rowErrors`), tối đa 500 dòng |
 | MT-UC-02 ✅ | Thay công tơ (hỏng / quay vòng về 0): chỉ số tháo của công tơ cũ + chỉ số ban đầu công tơ mới trong **một** lệnh |
 | MT-UC-03 ✅ | Gỡ công tơ (không thay) |
 | MT-UC-04 ✅ | **Màn hình ghi chỉ số**: chọn khu + tháng thu (+ lọc tầng, lọc khoản thu `feeTypeId` ✅ 12/10/2026) → lưới mỗi dòng = (phòng, công tơ, HĐ): chỉ số cũ (ngày), ô nhập chỉ số mới, sản lượng tạm tính, cảnh báo; lưu hàng loạt |
