@@ -90,6 +90,8 @@ Không seed được HĐ "kết thúc hơn 36 tháng" (phần tính tiền khôn
 
 **Bổ sung 13/10/2026 — thử trên dữ liệu sẵn có:** đăng nhập phó quản lý rồi `PUT /me` ⇒ 403 `PROFILE_MANAGED_BY_OWNER`; chủ trọ đổi SĐT không gửi `currentPassword` ⇒ 400 `CURRENT_PASSWORD_REQUIRED`; tạo khoản bù "đã trả ngay" lớn hơn tiền phòng rồi **bỏ đánh dấu** ⇒ 422 `ROOM_CHARGE_CREDIT_TOO_HIGH`.
 
+**Hai endpoint đọc thêm 13/10/2026:** `GET /contracts/{id}/balance` — thử với HĐ phòng **102** (nợ 2 phiếu, 1 phiếu quá hạn); `GET /properties/{id}/meters/install-sheet?feeTypeId=<Nước>` ở khu A — ra phòng **104** và **210, 211** (chưa có công tơ nước).
+
 **Không có trong dữ liệu mẫu** (cần dữ liệu nhiều năm — có integration test riêng): xóa nhật ký cũ hơn 5 năm (`AuditRetentionTests`),
 ẩn danh người thuê sau 36 tháng (`RenterAnonymizationTests`).
 

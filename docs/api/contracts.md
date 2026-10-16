@@ -320,6 +320,45 @@ Nhiều bản **nháp** cho cùng một phòng được phép (đàm phán song 
 }
 ```
 
+### Các trường bổ sung của chi tiết hợp đồng — ví dụ thật (13/10/2026)
+
+Ngoài các trường trong ví dụ phía trên, `GET /contracts/{id}` còn trả các trường sau (HĐ ví dụ: hết hạn 23/9, chủ trọ chọn "Ở tiếp" rồi chuyển
+từ phòng 203 sang 206 ngày 13/10):
+
+```json
+{
+  "roomId": "…", "roomCode": "206",
+  "endDate": null, "previousEndDate": "2026-09-23", "holdoverSince": "2026-10-13", "holdoverNote": "Người thuê xin ở thêm 2 tháng, chưa ký phụ lục",
+  "currentRent": 3200000, "isOverdue": false, "billingStartDate": "2026-08-01",
+  "hasSignedDocument": false, "signedDocumentNote": null,
+  "flags": [ "MissingSignedDocument" ],
+  "deposit": { "amount": 3000000, "status": "Holding", "refundedOn": null, "refundedAmount": null, "note": null, "notRefundedReminder": false },
+  "roomSince": "2026-10-13",
+  "roomMoves": [ { "roomId": "…", "roomCode": "203", "fromDate": "2026-08-01", "toDate": "2026-10-13" } ],
+  "representativeSince": "2026-08-01",
+  "representativeHistory": [],
+  "occupants": [ { "id": "…", "renterId": "…", "fullName": "Lý Văn Khôi", "moveInDate": "2026-10-13", "moveOutDate": null, "expectedEndDate": null,
+                   "relationship": null, "note": null, "isRepresentative": false, "relationshipType": "Sibling", "guardianConsent": false,
+                   "isHouseholdHead": false, "role": "Resident" } ],
+  "fees": [ { "id": "…", "feeTypeId": "…", "name": "Wifi", "group": "Service", "chargeBasis": "PerRoom", "unit": "phòng", "quantity": 1,
+              "unitPriceOverride": null, "currentUnitPrice": 120000, "effectiveFrom": "2026-08-01", "effectiveTo": null } ],
+  "utilityPrices": [ { "feeTypeId": "…", "name": "Điện", "group": "Metered", "chargeBasis": null, "unit": "kWh", "quantity": 1, "unitPrice": 3500,
+                       "isOverride": false, "tiers": null } ]
+}
+```
+
+| Trường | Ý nghĩa / UI |
+|--------|--------------|
+| `endDate` `null` + `holdoverSince` khác `null` | HĐ **đang ở tiếp** = không thời hạn; `previousEndDate` là hạn cũ. Hiện "Không thời hạn — ở tiếp từ …, hạn cũ …"; nút Gia hạn vẫn bật |
+| `hasSignedDocument`, `signedDocumentNote` | Đã có bản HĐ ký chưa — `false` ⇒ nhãn xám "Thiếu tài liệu" + nút "Đã có bản ký" |
+| `deposit` | Xem [Tiền cọc](#tiền-cọc) |
+| `roomSince` | Ngày HĐ vào **phòng hiện tại** (= ngày chuyển phòng gần nhất, hoặc ngày bắt đầu). Nút "Hủy chuyển phòng" chỉ hiện khi `roomMoves` không rỗng **và** hôm nay ≤ `roomSince` + 3 ngày |
+| `roomMoves[]` | Các phòng HĐ đã ở trước đó, cũ trước (`toDate` = ngày chuyển đi). Rỗng = chưa chuyển lần nào |
+| `representativeSince`, `representativeHistory[]` | Người đứng tên hiện tại đứng tên từ ngày nào; những người đứng tên trước: `{ "renterId", "fullName", "fromDate", "toDate" }` |
+| `occupants[].role` | `Resident` người ở · `CoTenant` đồng thuê (có tên trên HĐ). `isRepresentative` = là người đứng tên |
+| `fees[]` | Dịch vụ đang áp cho HĐ (`effectiveTo` khác `null` = đã thôi tính từ ngày đó) |
+| `utilityPrices[]` | Giá điện nước ghi nhận cho HĐ — để hiện, không sửa ở đây |
+
 ### Bố cục gợi ý
 
 - **Header**: số HĐ · badge trạng thái · badge "Quá hạn" · khu/phòng · thanh nút theo ma trận ở trên.

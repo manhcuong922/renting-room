@@ -157,7 +157,11 @@ public static class BillingEndpoints
 
     private static void MapPayments(IEndpointRouteBuilder app)
     {
-        app.MapGroup($"{EndpointHelpers.ApiPrefix}/contracts/{{contractId:guid}}").WithTags("Payments")
+        var byContract = app.MapGroup($"{EndpointHelpers.ApiPrefix}/contracts/{{contractId:guid}}").WithTags("Payments");
+        byContract.MapGet("/balance", async (Guid contractId, ISender sender, CancellationToken ct) =>
+                (await sender.Send(new GetContractBalanceQuery(contractId), ct)).ToHttp())
+            .WithSummary("Số nợ của hợp đồng: tổng còn nợ, phần quá hạn, tiền chờ hoàn, từng phiếu còn nợ — cho màn thu theo hợp đồng");
+        byContract
             .MapPost("/payments", async (Guid contractId, RecordPaymentRequest b, ISender sender, CancellationToken ct) =>
             {
                 var result = await sender.Send(new RecordPaymentCommand(contractId, b.Amount, b.Method, b.PaidAt, b.InvoiceId, b.PayerName, b.Reference, b.Note), ct);

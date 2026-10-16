@@ -79,3 +79,31 @@ Khoản bù chưa trả mà lớn hơn phần thu của phiếu ⇒ chưa đưa 
 | 422 `ROOM_CHARGE_CANCELLED` | Khoản đã hủy |
 | 422 `ROOM_CHARGE_NOT_SETTLED` | Bỏ đánh dấu khi chưa đánh dấu |
 | 400 `INVALID_INCURRED_DATE` / `INVALID_SETTLED_DATE` | Ngày ở tương lai |
+
+## Cấu trúc trả về (bổ sung 13/10/2026)
+
+`GET /rooms/{roomId}/charges` và `GET /room-charges?…` → **mảng, không phân trang**, mới nhất trước:
+
+```json
+[ { "id": "…", "roomId": "…", "roomCode": "103", "contractId": "…", "kind": "Credit", "description": "Mất nước 1 ngày", "amount": 50000,
+    "incurredOn": "2026-09-30", "reason": "Sự cố bồn nước", "isSettled": false, "settledOn": null, "settledMethod": null,
+    "status": "OnDraft", "invoiceId": "…", "invoiceNo": null, "billingMonth": "2026-09", "cancelReason": null,
+    "createdAt": "2026-10-12T19:17:12.651281+00:00", "isSystem": false, "feeTypeId": null, "quantity": null, "unitPrice": null } ]
+```
+
+| `status` | Nghĩa | Nút |
+|----------|-------|-----|
+| `Pending` | Chờ lên phiếu (chưa có phiếu của kỳ) | Hủy · Đánh dấu / bỏ đánh dấu đã thanh toán (không có lệnh sửa — nhập sai thì hủy rồi tạo lại) |
+| `OnDraft` | Đang nằm trên phiếu nháp (`invoiceId`, `billingMonth`; `invoiceNo` còn `null`) | Như trên — phiếu nháp tự cập nhật |
+| `Billed` | Đã vào phiếu đã chốt (`invoiceNo`) | Chỉ xem (422 `ROOM_CHARGE_LOCKED`) |
+| `Cancelled` | Đã hủy (`cancelReason`) | Chỉ xem, gạch ngang |
+
+- `isSystem: true` = khoản chốt điện nước khi chuyển phòng (`feeTypeId`, `quantity`, `unitPrice` có giá trị): không hủy tay.
+- **Kết quả thao tác:** tạo → 201 + khoản vừa tạo; đánh dấu đã thanh toán (`POST …/settle`), bỏ đánh dấu (`DELETE …/settle`), hủy
+  (`POST …/cancel`) → **200 + chính khoản đó sau khi đổi** (cùng cấu trúc trên).
+
+## Màn hình gợi ý
+
+- **Tab "Khoản phát sinh" trong chi tiết phòng:** danh sách của phòng + nút "Thêm phụ thu" / "Thêm khoản bù" (chọn đã thanh toán ngay hay chưa).
+- **Trang theo khu:** bảng lọc theo trạng thái / khoảng ngày (`GET /room-charges?propertyId=`), nhãn màu theo `status`, biểu tượng khóa cho `isSystem`.
+- Trên phiếu nháp, dòng có `roomChargeId` là khoản phát sinh: thao tác tại màn khoản phát sinh, không sửa trên phiếu.

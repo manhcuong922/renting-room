@@ -152,7 +152,8 @@ async function ensureFreshToken() {
   "mustChangePassword": false,
   "lastLoginAt": "2026-10-02T13:19:05.194016+00:00",
   "organization": { "id": "e22cfc70-…", "code": "MAU-9080", "name": "Nhà trọ Mẫu" },
-  "canViewSensitiveData": true
+  "canViewSensitiveData": true,
+  "canWriteOff": true
 }
 ```
 
@@ -177,3 +178,15 @@ UI: khi người dùng sửa ô SĐT / email thì hiện thêm ô "Mật khẩu 
 → **204**. Phải còn ít nhất `phone` hoặc `email` (400 `USERNAME_REQUIRED`). SĐT / email là **tên đăng nhập**, không trùng với tài khoản khác
 (409 `PHONE_TAKEN` / `EMAIL_TAKEN`). **Đổi SĐT hoặc email ⇒ mọi phiên bị vô hiệu** (request kế tiếp nhận 401) — UI đưa người dùng về màn đăng
 nhập và đăng nhập lại bằng tên đăng nhập mới, mật khẩu giữ nguyên. Chỉ đổi họ tên thì phiên vẫn dùng tiếp.
+
+## Quyền theo từng người — đọc từ `GET /me` (bổ sung 13/10/2026)
+
+Dựng menu và bật / tắt nút theo 3 trường của `GET /me`, **không** suy từ `role` một mình:
+
+| Trường | Ý nghĩa | UI |
+|--------|---------|----|
+| `role` | `SystemAdmin` · `OrgOwner` (chủ trọ) · `OrgManager` (phó quản lý) | Chọn khu vực giao diện; phó quản lý: ẩn thêm / sửa thành viên, nhật ký đăng nhập, sửa tổ chức, **sửa hồ sơ của mình** |
+| `canViewSensitiveData` | Được xem số giấy tờ đầy đủ. Chủ trọ luôn `true`; phó quản lý do chủ trọ cấp | `false` ⇒ ẩn nút 👁 và ô "hiện đầy đủ số giấy tờ" khi xuất Excel |
+| `canWriteOff` | Được **bỏ nợ**. Chủ trọ luôn `true`; phó quản lý **chỉ khi chủ trọ cấp riêng** ([members.md](members.md#quyền-bỏ-nợ)) | `false` ⇒ ẩn nút "Bỏ nợ" / "Thanh toán + bỏ phần còn lại" và lựa chọn "Bỏ nợ" khi hoàn tất thanh lý. **Không** coi bỏ nợ là quyền riêng của chủ trọ |
+
+Quyền có thể đổi giữa phiên: gọi vẫn bị 403 (`WRITE_OFF_NOT_ALLOWED`, `SENSITIVE_DATA_FORBIDDEN`) thì báo lỗi và gọi lại `GET /me`, không đăng xuất.

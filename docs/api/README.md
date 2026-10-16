@@ -3,8 +3,9 @@
 > Dành cho **người làm giao diện** (web / mobile): hiểu từng chức năng nghiệp vụ, cần những màn hình nào,
 > gọi endpoint nào, gửi gì – nhận gì, xử lý lỗi ra sao, nút nào bật/tắt theo trạng thái.
 >
-> Mọi ví dụ JSON trong thư mục này lấy từ **response thật** của API (02/10/2026).
-> Đặc tả máy đọc được: [`openapi.json`](openapi.json) — dùng để sinh client tự động (VD `openapi-typescript`, `orval`, NSwag).
+> Ví dụ JSON trong thư mục này lấy từ **response thật** của API (cập nhật tới 13/10/2026).
+> [`openapi.json`](openapi.json): danh sách endpoint và kiểu **request** đầy đủ; **hầu hết endpoint chưa khai kiểu response** —
+> cấu trúc dữ liệu trả về lấy từ ví dụ JSON trong các file `.md` này, không sinh kiểu response từ `openapi.json`.
 
 ## Mục lục
 
@@ -47,39 +48,62 @@ flowchart TB
 |------------------|---------|-----------|
 | `SystemAdmin` | Danh sách tổ chức, tài khoản | **Không** xem dữ liệu trọ (khu, phòng, người thuê, hợp đồng) — API trả 403 |
 | `OrgOwner` (chủ trọ) | Toàn bộ dữ liệu tổ chức mình + quản lý phó quản lý | Dữ liệu tổ chức khác (API trả 404) |
-| `OrgManager` (phó quản lý) | Như chủ trọ | Thêm/sửa/khóa/gỡ thành viên (API trả 403) — **ẩn menu "Thành viên → thêm/sửa"** |
+| `OrgManager` (phó quản lý) | Như chủ trọ | Thêm / sửa / khóa / gỡ thành viên, nhật ký đăng nhập, sửa thông tin tổ chức, **tự sửa hồ sơ** (API trả 403). **Bỏ nợ** và **xem số giấy tờ đầy đủ** chỉ khi chủ trọ cấp riêng — đọc `canWriteOff`, `canViewSensitiveData` |
 
-Đọc `role` từ `GET /api/v1/me` sau khi đăng nhập để dựng menu.
+Đọc `role`, `canWriteOff`, `canViewSensitiveData` từ `GET /api/v1/me` sau khi đăng nhập để dựng menu và bật / tắt nút ([auth.md](auth.md#quyền-theo-từng-người--đọc-từ-get-me-bổ-sung-13102026)).
 
 ## Sơ đồ màn hình đề xuất (khu vực chủ trọ)
 
+Mỗi dòng ghi endpoint chính và file mô tả chi tiết.
+
 ```
-├── Tổng quan (P2 — dashboard)
-├── Khu trọ
-│   ├── Danh sách khu                         GET  /properties
-│   ├── Tạo / sửa khu                         POST /properties · PUT /properties/{id}
+├── Tổng quan                                  (chưa có API — xem cuối trang)
+├── Khu trọ                                    properties.md
+│   ├── Danh sách / tạo / sửa khu              GET, POST /properties · PUT /properties/{id}
 │   └── Chi tiết khu (tab)
-│       ├── Thông tin chung + cài đặt thu
-│       ├── Bên cho thuê ⚠ bắt buộc trước khi ký HĐ   PUT /properties/{id}/lessor
-│       ├── Tài khoản ngân hàng                PUT /properties/{id}/bank-account
-│       ├── Nội quy                            PUT /properties/{id}/house-rules
-│       ├── Khoản thu (điện, nước, dịch vụ)    GET /properties/{id}/fee-types
-│       ├── Phòng (lưới theo tầng)             GET /rooms?propertyId=
-│       └── Nhóm phòng                         GET /properties/{id}/room-groups
-├── Phòng
-│   ├── Danh sách / lọc theo trạng thái       GET  /rooms
-│   ├── Tạo phòng / tạo hàng loạt             POST /properties/{id}/rooms[/bulk]
-│   └── Chi tiết phòng (+ hợp đồng hiện hành) GET  /rooms/{id}
-├── Người thuê
-│   ├── Tìm kiếm                               GET  /renters
-│   ├── Xuất Excel danh sách người thuê        POST /exports/renters
-│   └── Tạo / sửa hồ sơ                        POST /renters · PUT /renters/{id}
-├── Hợp đồng
-│   ├── Mẫu hợp đồng (theo loại)               GET  /contract-templates
-│   ├── Danh sách (lọc: sắp hết hạn, quá hạn) GET  /contracts
-│   ├── Tạo hợp đồng (wizard 4 bước)           POST /contracts
+│       ├── Thông tin chung + cài đặt thu      PUT /properties/{id}/billing
+│       ├── Bên cho thuê ⚠ cần trước khi ký HĐ PUT /properties/{id}/lessor
+│       ├── Tài khoản ngân hàng · Nội quy      PUT …/bank-account · …/house-rules
+│       ├── Khoản thu + bảng giá               GET /properties/{id}/fee-types            fees.md
+│       ├── Phòng (lưới theo tầng) · Nhóm phòng GET /rooms?propertyId= · …/room-groups    rooms.md
+│       ├── Công tơ: lắp / thay hàng loạt      …/meters/install-sheet · /bulk · /replace-sheet · /bulk-replace   meters.md
+│       ├── Sản lượng phòng trống              GET …/meters/vacant-usage                  meters.md
+│       └── Nhập Excel (phòng, người đang ở)   …/rooms/import · …/tenancies/import        imports.md
+├── Phòng                                      rooms.md
+│   ├── Danh sách / lọc trạng thái, còn nợ     GET /rooms
+│   ├── Tạo phòng / tạo hàng loạt              POST /properties/{id}/rooms[/bulk]
+│   └── Chi tiết phòng (tab)
+│       ├── Hợp đồng hiện hành                 GET /rooms/{id}
+│       ├── Công tơ + lịch sử chỉ số           GET /rooms/{id}/meters · /meters/{id}/readings   meters.md
+│       ├── Phiếu của phòng                    GET /rooms/{id}/invoices                   invoices.md
+│       ├── Khoản phát sinh                    GET /rooms/{id}/charges                    room-charges.md
+│       └── Lịch sử thuê                       GET /rooms/{id}/tenancy-history
+├── Người thuê                                 renters.md
+│   ├── Tìm kiếm (theo khu, đang ở, đã ẩn)     GET /renters · POST /renters/search
+│   ├── Tạo / sửa hồ sơ · ẩn / hiện lại        POST, PUT /renters · …/archive · …/restore
+│   ├── Ghi nhận đồng ý xử lý dữ liệu          GET, POST /renters/{id}/consents
+│   ├── Tìm "ai đã ở phòng nào"                GET /tenancy-history?search=               rooms.md
+│   └── Xuất Excel danh sách người thuê        POST /exports/renters                      exports.md
+├── Hợp đồng                                   contracts.md
+│   ├── Mẫu hợp đồng                           GET /contract-templates                    contract-templates.md
+│   ├── Danh sách (lọc: sắp hết hạn, cần xử lý) GET /contracts
+│   ├── Tạo hợp đồng (wizard) → kích hoạt      POST /contracts · …/activate
 │   └── Chi tiết hợp đồng (tab + nút theo trạng thái)
-└── Thành viên (chỉ chủ trọ thao tác)          /org/members
+│       ├── Người ở, đồng thuê, đổi người đứng tên, chuyển người
+│       ├── Giá thuê, dịch vụ, xe, tài sản, cọc
+│       ├── Gia hạn · Ở tiếp · Chuyển phòng / hủy chuyển phòng
+│       └── Thanh lý: xem trước → phiếu quyết toán → hoàn tất   GET …/liquidation/preview
+├── Hằng tháng
+│   ├── Ghi chỉ số điện nước                   GET …/meter-reading-sheet · PUT …/meter-readings   meters.md
+│   ├── Phiếu tiền phòng                       POST /invoices/generate[-bulk] · GET /invoices · /invoices/totals   invoices.md
+│   ├── Khoản phát sinh (phụ thu / bù)         GET /room-charges                          room-charges.md
+│   └── Thu tiền                               GET /contracts/{id}/balance · POST /contracts/{id}/payments · GET /payments   payments.md
+├── Thành viên (chỉ chủ trọ thao tác)          /org/members                               members.md
+│   ├── Phó quản lý: thêm, sửa, khóa, quyền bỏ nợ, quyền xem giấy tờ
+│   ├── Nhật ký đăng nhập                      GET /org/login-events
+│   └── Thông tin tổ chức · thời gian giữ dữ liệu   GET, PUT /org
+├── Nhật ký thao tác                           GET /audit-logs                            audit.md
+└── Hồ sơ của tôi · đổi mật khẩu               GET, PUT /me · POST /auth/change-password   auth.md
 ```
 
 ## Luồng sử dụng điển hình
@@ -101,7 +125,32 @@ sequenceDiagram
   Chủ->>UI: Bắt đầu thanh lý → ghi tình trạng tài sản → Hoàn tất (từ ngày trả phòng)
 ```
 
+## Vòng làm việc hằng tháng
+
+```mermaid
+sequenceDiagram
+  actor Chủ as Chủ trọ / phó quản lý
+  participant UI
+  Chủ->>UI: Cuối kỳ: mở lưới ghi chỉ số của khu, nhập số điện nước
+  Note over UI: Cảnh báo sản lượng bất thường / ngày ghi lệch xa cuối kỳ — vẫn lưu
+  Chủ->>UI: Trong tháng: thêm khoản phát sinh (phụ thu, bù) cho phòng khi xảy ra
+  Chủ->>UI: Tạo phiếu nháp cho tháng (1 khu hoặc mọi khu)
+  UI-->>Chủ: Số phiếu tạo được, phiếu còn vấn đề (thiếu chỉ số, thiếu giá)
+  Chủ->>UI: Xem nháp, sửa tay nếu cần, "Tính lại" khi có nhãn Cần tính lại
+  Chủ->>UI: Chốt phiếu (cấp số phiếu, khóa chỉ số và bảng giá của kỳ)
+  Chủ->>UI: Thu tiền: "Đã thu" trên phiếu, hoặc thu theo hợp đồng
+  Note over UI: Thẻ phòng hiện Còn nợ / Quá hạn cho tới khi thu đủ
+```
+
 ## Chưa có trong API (đừng làm UI)
 
-Các module sau mới có trong plan (`docs/plans/`), **chưa có endpoint**: công tơ & ghi chỉ số (M06),
-phiếu báo tiền phòng (M07), thu tiền (M08), upload ảnh/file (M09), các file Excel khác ngoài danh sách người thuê (M10), theo dõi tạm trú (M03 phần cư trú).
+Cập nhật 13/10/2026. Công tơ & ghi chỉ số, phiếu tiền phòng, thu tiền, khoản phát sinh **đã có API** (xem các file tương ứng). Những phần sau **chưa có
+endpoint**:
+
+- **Trang Tổng quan / dashboard, báo cáo doanh thu, công nợ** và các file Excel khác ngoài danh sách người thuê (M10).
+- **Tải lên / tải xuống file**: ảnh giấy tờ, ảnh công tơ, bản hợp đồng đã ký (M09). Hiện chỉ có cờ "đã có bản ký" trên hợp đồng.
+- **Danh mục tỉnh / xã**: địa chỉ đang nhập chữ tự do.
+- **In / gửi phiếu** (PDF, Zalo, mã QR chuyển khoản), in phụ lục / biên bản bàn giao. Hiện chỉ tải được văn bản hợp đồng `.docx`.
+- **Quên mật khẩu**: chủ trọ / quản trị cấp lại mật khẩu tạm.
+- **Thủ tục cư trú** (tạm trú, tạm vắng, nhắc việc).
+- Thanh toán online, đối soát ngân hàng, người thuê tự đăng nhập.

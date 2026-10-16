@@ -3,7 +3,7 @@
 Mỗi **khu** có danh mục khoản thu riêng. Mỗi **hợp đồng** chọn khoản **cố định / theo số lượng** áp cho phòng đó, kèm số lượng và giá riêng nếu cần.
 **Điện, nước theo công tơ đi theo phòng** — không gắn vào hợp đồng: phòng đang có người thuê thì tính theo công tơ của phòng,
 từ chỉ số ngày nhận phòng — xem [meters.md](meters.md).
-Đây là dữ liệu nền cho tính tiền phiếu hằng tháng (chưa có API phiếu).
+Đây là dữ liệu nền cho tính tiền phiếu hằng tháng ([invoices.md](invoices.md)).
 
 Quyền: chủ trọ và phó quản lý.
 
@@ -16,7 +16,7 @@ Quyền: chủ trọ và phó quản lý.
 | | | `PerOccupant` | đơn giá × **số người ở** đầu kỳ | Nước 20.000đ/người |
 | | | `PerUnit` | đơn giá × **số gói** đăng ký trên hợp đồng | Giữ xe 120.000đ/xe — 2 xe = 2 gói |
 
-**Phụ thu** (sửa chữa do người thuê làm hỏng, lắp thêm có thu phí…) không có trong danh mục — nhập trên phiếu nháp (module phiếu, chưa có API).
+**Phụ thu** (sửa chữa do người thuê làm hỏng, lắp thêm có thu phí…) không có trong danh mục — nhập trên phiếu nháp ([invoices.md](invoices.md#sửa-phiếu-nháp)) hoặc tạo khoản phát sinh của phòng ([room-charges.md](room-charges.md)).
 
 **Linh hoạt theo phòng**: một khu có thể có cả "Nước" (theo công tơ) và "Nước theo người" (theo đầu người). Phòng A có công tơ nước
 (không cần gắn gì vào hợp đồng), phòng B không lắp công tơ nước và gắn khoản "Nước theo người" vào hợp đồng. Không đổi được cách tính của một khoản đã tạo — tạo khoản mới rồi ngừng dùng khoản cũ.
@@ -170,3 +170,28 @@ chép giá vào. `effectiveFrom` mặc định hôm nay.
 | `FEE_ALREADY_ARCHIVED` / `FEE_NOT_ARCHIVED` | 409 | Tải lại |
 | `FEE_ARCHIVED` / `FEE_NOT_IN_PROPERTY` | 422 | Khi gắn vào hợp đồng: chọn khoản khác |
 | `FEE_METERED_FOLLOWS_ROOM` | 400 | Khi gắn vào hợp đồng: điện / nước theo công tơ không gắn — bỏ khỏi danh sách chọn |
+
+## Chi tiết & sửa khoản thu — cấu trúc (bổ sung 13/10/2026)
+
+`GET /fee-types/{id}` → khoản thu kèm **toàn bộ bảng giá** (mới nhất trước):
+
+```json
+{ "id": "…", "propertyId": "…", "name": "Nước", "group": "Metered", "chargeBasis": null, "unit": "m³", "systemCode": "WATER",
+  "autoAttach": false, "defaultQuantity": null, "sortOrder": 1, "vehicleType": null, "isArchived": false,
+  "currentPrice": { "id": "…", "effectiveFrom": "2026-10-01", "unitPrice": 18000, "note": "Tăng giá nước từ tháng này", "tiers": null },
+  "prices": [ { "id": "…", "effectiveFrom": "2026-10-01", "unitPrice": 18000, "note": "Tăng giá nước từ tháng này", "tiers": null },
+              { "id": "…", "effectiveFrom": "2021-10-01", "unitPrice": 15000, "note": null, "tiers": null } ],
+  "version": "5567" }
+```
+
+- `currentPrice` = giá đang áp hôm nay (`null` nếu chưa có giá); `tiers` khác `null` = giá bậc thang.
+- `systemCode` khác `null` (`ELECTRICITY`, `WATER`) = khoản có sẵn của khu, không xóa được. `chargeBasis` chỉ có với nhóm `Service`.
+- Danh sách `GET /properties/{id}/fee-types` trả mảng các phần tử cùng cấu trúc này.
+
+`PUT /fee-types/{id}` — sửa tên / đơn vị / tự gắn / thứ tự:
+
+```json
+{ "name": "Wifi", "unit": "phòng", "autoAttach": true, "defaultQuantity": 1, "sortOrder": 3, "vehicleType": null, "version": "5567" }
+```
+
+→ 200 khoản thu sau khi sửa (cấu trúc trên). `version` lấy từ lần đọc gần nhất (409 khi người khác vừa sửa). Không đổi được nhóm / cách tính sau khi tạo.
