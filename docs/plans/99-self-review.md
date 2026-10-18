@@ -319,6 +319,8 @@ Nguồn duy nhất cho "còn gì chưa làm". Từng plan chỉ ghi "chưa code"
 | A-12 | Nhập Excel: chỉ số cũ không cảnh báo; trùng giấy tờ khác tên chỉ cảnh báo | Luôn cảnh báo chỉ số trước ngày tính tiền; khác họ tên / ngày sinh ⇒ lỗi dòng — M03 RT-UC-10 |
 | A-5 | Bỏ nợ hiện là "đã thu" | ✅ 18/10/2026: API tách thực thu / bỏ nợ (`collectedAmount`, `writtenOffAmount`) — M08 PM-BR-36 |
 | A-11 | Gõ sai chỉ số khi phiếu đã chốt / đã thu: phải đảo thu → hủy phiếu → sửa → chốt lại → thu lại | ✅ 18/10/2026: điều chỉnh chỉ số đã chốt, tự tạo khoản bù / phụ thu kỳ sau — M06 MT-UC-09, MT-BR-19 |
+| A-11b ⏳ | (rà soát 18/10/2026) Điều chỉnh chỉ số rồi hủy phiếu nguồn ⇒ lập lại phiếu đã đúng mà khoản bù vẫn còn ⇒ trừ 2 lần | Chốt 18/10/2026: phiếu nguồn chưa thu ⇒ điều chỉnh = hủy + lập lại nháp, không tạo khoản; đã thu ⇒ khoản lưu phiếu nguồn, hủy phiếu nguồn thì khoản tự hủy — M06 MT-BR-19, M07 BL-BR-15. **Chưa code** (chờ session sửa kiến trúc xong) |
+| A-8b ⏳ | (rà soát 18/10/2026) Ký lại không thành (hủy HĐ nháp / hủy thanh lý) ⇒ xe của người ở lại đã kết thúc ở HĐ cũ không được mở lại | Chốt 18/10/2026: mở lại các xe đã kết thúc lúc ký lại (như cọc); biển số đã ở HĐ khác ⇒ cảnh báo `VEHICLE_NOT_RESTORED` — M05 CT-UC-21. **Chưa code** (chờ session sửa kiến trúc xong) |
 | B, C | Bảo mật / dữ liệu cá nhân; các điểm cần chủ trọ quyết | Chờ quyết định |
 
 ### C3. Có trong plan, chưa code
