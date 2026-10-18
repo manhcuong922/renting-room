@@ -7,7 +7,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\renting_room\renting_room.csproj" />
+    <ProjectReference Include="..\..\src\renting_room.Api\renting_room.Api.csproj" />
   </ItemGroup>
 
 </Project>

@@ -5,10 +5,10 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\renting_room.Domain\renting_room.Domain.csproj" />
-    <ProjectReference Include="..\..\renting_room.Application\renting_room.Application.csproj" />
-    <ProjectReference Include="..\..\renting_room.Infrastructure\renting_room.Infrastructure.csproj" />
-    <ProjectReference Include="..\..\renting_room\renting_room.csproj" />
+    <ProjectReference Include="..\..\src\renting_room.Domain\renting_room.Domain.csproj" />
+    <ProjectReference Include="..\..\src\renting_room.Application\renting_room.Application.csproj" />
+    <ProjectReference Include="..\..\src\renting_room.Infrastructure\renting_room.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\renting_room.Api\renting_room.Api.csproj" />
   </ItemGroup>
 
 </Project>
