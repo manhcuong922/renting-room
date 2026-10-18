@@ -7,6 +7,7 @@ using renting_room.Infrastructure.Auditing;
 using renting_room.Infrastructure.Jobs;
 using renting_room.Infrastructure.Seeding;
 using renting_room.Infrastructure.Exports;
+using renting_room.Infrastructure.Fees;
 using renting_room.Infrastructure.Idempotency;
 using renting_room.Infrastructure.Identity;
 using renting_room.Infrastructure.Persistence;

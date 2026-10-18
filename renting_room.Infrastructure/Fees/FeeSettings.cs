@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Options;
 using renting_room.Application.Common.Interfaces;
 
-namespace renting_room.Infrastructure.Persistence;
+namespace renting_room.Infrastructure.Fees;
 
 public sealed class FeeOptions
 {
