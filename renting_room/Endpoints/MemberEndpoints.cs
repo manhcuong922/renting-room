@@ -6,14 +6,6 @@ using renting_room.Security;
 
 namespace renting_room.Endpoints;
 
-public sealed record CreateManagerRequest(string FullName, string? Phone, string? Email);
-
-public sealed record UpdateManagerRequest(string FullName, string? Phone, string? Email, uint Version);
-
-public sealed record SensitiveDataAccessRequest(bool Allowed);
-
-public sealed record WriteOffPermissionRequest(bool Allowed);
-
 /// <summary>Thành viên tổ chức: chủ trọ + phó quản lý (M01 §3.3).</summary>
 public static class MemberEndpoints
 {
