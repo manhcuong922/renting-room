@@ -1,0 +1,10 @@
+<Project>
+
+  <!-- Áp cho mọi project trong repo. Thuộc tính riêng của project nào thì để trong csproj đó. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>
