@@ -2,7 +2,7 @@ using renting_room.Application.Identity.Auth.ChangePassword;
 using renting_room.Application.Identity.Organizations;
 using renting_room.Application.Identity.Organizations.CreateOrganization;
 
-namespace renting_room.UnitTests.Application;
+namespace renting_room.Application.UnitTests;
 
 public sealed class TemporaryPasswordGeneratorTests
 {

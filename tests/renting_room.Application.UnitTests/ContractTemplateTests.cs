@@ -3,7 +3,7 @@ using FluentValidation;
 using renting_room.Application.Contracts;
 using renting_room.Domain.Contracts;
 
-namespace renting_room.UnitTests.Application;
+namespace renting_room.Application.UnitTests;
 
 public sealed class CustomFieldValuesTests
 {

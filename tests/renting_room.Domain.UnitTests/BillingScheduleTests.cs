@@ -1,7 +1,7 @@
 using renting_room.Domain.Billing;
 using renting_room.Domain.Properties;
 
-namespace renting_room.UnitTests.Domain;
+namespace renting_room.Domain.UnitTests;
 
 /// <summary>C-05 / PR-BR-09 / K4 / K5 — kỳ thu theo lịch kỳ thu của khu.</summary>
 public sealed class BillingScheduleTests

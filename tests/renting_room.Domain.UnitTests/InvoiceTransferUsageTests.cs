@@ -4,7 +4,7 @@ using renting_room.Domain.Fees;
 using renting_room.Domain.Meters;
 using renting_room.Domain.Properties;
 
-namespace renting_room.UnitTests.Domain;
+namespace renting_room.Domain.UnitTests;
 
 /// <summary>
 /// Điện nước khi chuyển phòng / thay công tơ / phiếu quyết toán (17/10/2026): sản lượng phòng cũ cộng vào dòng của kỳ (M05 CT-BR-47),

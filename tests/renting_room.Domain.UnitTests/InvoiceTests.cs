@@ -5,7 +5,7 @@ using renting_room.Domain.Fees;
 using renting_room.Domain.Meters;
 using renting_room.Domain.Properties;
 
-namespace renting_room.UnitTests.Domain;
+namespace renting_room.Domain.UnitTests;
 
 public sealed class InvoiceTests
 {

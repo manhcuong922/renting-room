@@ -1,6 +1,6 @@
 using renting_room.Domain.Meters;
 
-namespace renting_room.UnitTests.Domain;
+namespace renting_room.Domain.UnitTests;
 
 /// <summary>MT-BR-08 — ngưỡng cảnh báo điện nước bất thường.</summary>
 public sealed class UsageAnomalyTests

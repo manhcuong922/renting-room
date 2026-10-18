@@ -5,7 +5,7 @@ using renting_room.Domain.Properties;
 using renting_room.Domain.Renters;
 using renting_room.Infrastructure.Auditing;
 
-namespace renting_room.UnitTests.Infrastructure;
+namespace renting_room.Infrastructure.UnitTests;
 
 public sealed class AuditPolicyTests
 {
