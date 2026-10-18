@@ -7,7 +7,6 @@ using renting_room.Domain.Renters;
 
 namespace renting_room.Application.Renters;
 
-// Tạo / sửa
 public sealed record UpdateRenterCommand(Guid Id, RenterInput Renter, uint Version) : IRequest<Result<RenterDto>>;
 
 public sealed class UpdateRenterCommandValidator : AbstractValidator<UpdateRenterCommand>

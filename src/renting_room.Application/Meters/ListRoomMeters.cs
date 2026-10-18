@@ -7,7 +7,6 @@ using renting_room.Domain.Properties;
 
 namespace renting_room.Application.Meters;
 
-// Truy vấn
 public sealed record ListRoomMetersQuery(Guid RoomId, bool IncludeRemoved) : IRequest<Result<IReadOnlyList<MeterDto>>>;
 
 public sealed class ListRoomMetersHandler(IAppDbContext db) : IRequestHandler<ListRoomMetersQuery, Result<IReadOnlyList<MeterDto>>>

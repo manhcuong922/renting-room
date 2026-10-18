@@ -8,7 +8,6 @@ using renting_room.Domain.Renters;
 
 namespace renting_room.Application.Renters;
 
-// Ẩn danh tự động (job) và bằng tay
 /// <summary>
 /// Ẩn danh bằng tay — người thuê yêu cầu xóa dữ liệu, hoặc chủ trọ muốn xóa sớm hơn thời gian giữ. Chỉ chủ trọ; lý do bắt buộc (ghi audit);
 /// không cần đủ thời gian giữ nhưng vẫn chặn khi còn HĐ đang chạy / còn nợ / chờ hoàn. Không đảo ngược.

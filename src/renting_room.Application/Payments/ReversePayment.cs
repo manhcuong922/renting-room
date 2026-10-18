@@ -10,7 +10,6 @@ using renting_room.Domain.Payments;
 
 namespace renting_room.Application.Payments;
 
-// Đảo phiếu thu
 public sealed record ReversePaymentCommand(Guid PaymentId, string Reason) : IRequest<Result<PaymentDto>>;
 
 public sealed class ReversePaymentCommandValidator : AbstractValidator<ReversePaymentCommand>

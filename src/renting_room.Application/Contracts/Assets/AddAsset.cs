@@ -6,7 +6,6 @@ using renting_room.Domain.Common;
 
 namespace renting_room.Application.Contracts;
 
-// Tài sản bàn giao
 public sealed record AddAssetCommand(Guid ContractId, AssetRequest Asset) : IRequest<Result<Guid>>;
 
 public sealed class AddAssetCommandValidator : AbstractValidator<AddAssetCommand>

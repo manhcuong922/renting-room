@@ -5,7 +5,6 @@ using renting_room.Domain.Identity;
 
 namespace renting_room.Application.Identity.Members;
 
-// Sửa / khóa / mở / cấp lại mật khẩu / gỡ (chỉ chủ trọ, chỉ phó quản lý)
 internal static class ManagerLookup
 {
     /// <summary>Phó quản lý cùng tổ chức với người gọi. Khác tổ chức ⇒ 404 (không lộ tồn tại); là chủ trọ ⇒ 422.</summary>

@@ -9,7 +9,6 @@ using renting_room.Domain.Common;
 
 namespace renting_room.Application.Properties;
 
-// Queries
 public sealed record ListPropertiesQuery(string? Search, bool IncludeArchived, int Page = 1, int PageSize = Paging.DefaultPageSize)
     : IRequest<PagedResult<PropertySummaryDto>>;
 

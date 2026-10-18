@@ -42,7 +42,6 @@ public enum ContractFlag
 /// <summary>M08 PM-BR-32: cọc chỉ để theo dõi — có nghĩa khi <c>deposit_amount</c> &gt; 0.</summary>
 public enum DepositStatus
 {
-    /// <summary>Đang giữ cọc.</summary>
     Holding,
 
     /// <summary>Đã hoàn trả (ngày, số tiền thực trả — có thể ít hơn cọc, ghi chú).</summary>
@@ -101,7 +100,6 @@ public enum OccupantRole
     CoTenant
 }
 
-/// <summary>Toàn bộ nội dung hợp đồng nháp (tạo mới hoặc sửa nháp).</summary>
 public sealed record ContractDraftData(
     Guid RepresentativeRenterId,
     DateOnly StartDate,

@@ -4,7 +4,6 @@ using renting_room.Domain.Common;
 
 namespace renting_room.Application.Contracts;
 
-// Người ở
 public sealed record EndOccupancyCommand(Guid ContractId, Guid OccupantId, DateOnly MoveOutDate) : IRequest<Result>;
 
 public sealed class EndOccupancyHandler(IAppDbContext db) : IRequestHandler<EndOccupancyCommand, Result>

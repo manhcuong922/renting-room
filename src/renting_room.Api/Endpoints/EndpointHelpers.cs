@@ -26,7 +26,6 @@ internal static class EndpointHelpers
     public static IResult ToHttp<T>(this Result<T> result) =>
         result.IsSuccess ? Results.Ok(result.Value) : result.Error!.ToProblem();
 
-    /// <summary>201 + header Location trỏ tới tài nguyên mới.</summary>
     public static IResult ToCreated(this Result<renting_room.Application.Common.Models.CreatedWithWarnings> result, string collectionRoute) =>
         result.IsSuccess
             ? Results.Created($"{collectionRoute}/{result.Value!.Id}", result.Value)

@@ -8,7 +8,6 @@ using renting_room.Domain.Payments;
 
 namespace renting_room.Application.Billing;
 
-// Xác nhận đã hoàn tiền (phiếu tổng âm)
 internal static class RefundMutation
 {
     /// <summary>

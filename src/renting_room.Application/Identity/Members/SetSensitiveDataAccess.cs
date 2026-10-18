@@ -6,7 +6,6 @@ using renting_room.Domain.Common;
 
 namespace renting_room.Application.Identity.Members;
 
-// Sửa / khóa / mở / cấp lại mật khẩu / gỡ (chỉ chủ trọ, chỉ phó quản lý)
 /// <summary>
 /// ID-BR-22: chủ trọ cấp / thu hồi quyền xem dữ liệu nhạy cảm cho phó quản lý — audit tự ghi khi lưu
 /// (Updated User, <c>canViewSensitiveData</c> cũ → mới).

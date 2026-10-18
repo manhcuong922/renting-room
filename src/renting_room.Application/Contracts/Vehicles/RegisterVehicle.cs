@@ -10,7 +10,6 @@ using renting_room.Domain.Renters;
 
 namespace renting_room.Application.Contracts;
 
-// Xe gửi
 public sealed record RegisterVehicleCommand(
     Guid ContractId, Guid? RenterId, VehicleType VehicleType, string? PlateNumber, string? BrandColor, DateOnly? RegisteredFrom, string? Note)
     : IRequest<Result<CreatedWithWarnings>>;

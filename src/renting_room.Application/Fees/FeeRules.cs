@@ -6,7 +6,6 @@ using renting_room.Domain.Fees;
 
 namespace renting_room.Application.Fees;
 
-// Validation dùng chung
 internal static class FeeRules
 {
     public const decimal MaxMeteredPrice = 100_000;

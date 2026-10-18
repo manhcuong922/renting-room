@@ -7,7 +7,6 @@ using renting_room.Domain.Common;
 
 namespace renting_room.Application.Billing;
 
-// Phụ thu / giảm trừ / hoàn trả cho nhiều phòng
 /// <param name="RoomId">Phòng được chọn mà không có phiếu nháp ⇒ <see cref="InvoiceId"/> null, lỗi <c>NO_DRAFT_INVOICE</c>.</param>
 public sealed record BulkManualLineOutcome(Guid? InvoiceId, Guid RoomId, string RoomCode, bool Success, string? ErrorCode, string? Message);
 

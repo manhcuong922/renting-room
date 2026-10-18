@@ -7,7 +7,6 @@ using renting_room.Domain.Common;
 
 namespace renting_room.Application.Billing;
 
-// Đánh dấu đã thanh toán / bỏ đánh dấu / hủy
 public sealed record UnsettleRoomChargeCommand(Guid Id) : IRequest<Result<RoomChargeDto>>;
 
 /// <summary>Bỏ đánh dấu đã thanh toán (nhập nhầm) ⇒ dòng trên nháp tính lại vào tổng.</summary>

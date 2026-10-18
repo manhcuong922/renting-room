@@ -6,7 +6,6 @@ using renting_room.Domain.Identity;
 
 namespace renting_room.Application.Identity.Members;
 
-// Queries (chủ trọ + phó quản lý)
 public sealed record ListMembersQuery(bool IncludeRemoved = false) : IRequest<IReadOnlyList<MemberDto>>;
 
 public sealed class ListMembersHandler(IAppDbContext db, ICurrentUser currentUser)

@@ -57,7 +57,6 @@ public sealed class RoomCharge : TenantEntity
     public bool IsCancelled => CancelledAt is not null;
     public bool IsPending => InvoiceId is null && !IsCancelled;
 
-    /// <summary>Loại dòng trên phiếu: phụ thu hoặc giảm trừ.</summary>
     public InvoiceLineType LineType => Kind == RoomChargeKind.Surcharge ? InvoiceLineType.Surcharge : InvoiceLineType.ManualDiscount;
 
     public static RoomCharge Create(

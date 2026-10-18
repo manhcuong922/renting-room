@@ -6,7 +6,6 @@ using renting_room.Domain.Fees;
 
 namespace renting_room.Application.Fees;
 
-// Bảng giá
 public sealed record DeleteFeePriceCommand(Guid FeeTypeId, Guid PriceId) : IRequest<Result>;
 
 public sealed class DeleteFeePriceHandler(IAppDbContext db, IFeePriceLockReader locks) : IRequestHandler<DeleteFeePriceCommand, Result>

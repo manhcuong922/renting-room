@@ -7,7 +7,6 @@ using renting_room.Domain.Properties;
 
 namespace renting_room.Application.Rooms;
 
-// Queries
 public sealed record GetRoomQuery(Guid Id) : IRequest<Result<RoomDto>>;
 
 public sealed class GetRoomHandler(IAppDbContext db, TimeProvider clock) : IRequestHandler<GetRoomQuery, Result<RoomDto>>

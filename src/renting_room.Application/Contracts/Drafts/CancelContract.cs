@@ -7,7 +7,6 @@ using renting_room.Domain.Common;
 
 namespace renting_room.Application.Contracts;
 
-// Sửa nháp / hủy nháp
 public sealed record CancelContractCommand(Guid Id, string Reason) : IRequest<Result>;
 
 public sealed class CancelContractCommandValidator : AbstractValidator<CancelContractCommand>

@@ -119,8 +119,6 @@ internal static class ContractPrintBuilder
         return new PrintDocument(watermark, blocks);
     }
 
-    // ------------------------------------------------------------------ Các bên
-
     private static IEnumerable<PrintBlock> LessorBlocks(ContractPrintData d)
     {
         yield return Heading("BÊN CHO THUÊ (BÊN A):");
@@ -172,8 +170,6 @@ internal static class ContractPrintBuilder
                 o.Renter.Id == d.Contract.ReferenceRenterId ? "Chủ hộ" : OccupantRelationshipLabels.Describe(o.Occupant.RelationshipType, o.Occupant.Relationship) ?? ""])
                 .ToList());
     }
-
-    // ------------------------------------------------------------------ Điều khoản
 
     private static string PremisesText(ContractPrintData d)
     {
@@ -299,8 +295,6 @@ internal static class ContractPrintBuilder
         };
         return f.Unit is null || f.Type is CustomFieldType.Boolean or CustomFieldType.Select ? text : $"{text} {f.Unit}";
     }
-
-    // ------------------------------------------------------------------ Tiện ích
 
     private static PrintParagraph Center(string text, bool bold = false, int size = 13) => new(text, PrintAlign.Center, bold, FontSize: size);
     private static PrintParagraph Heading(string text) => new(text, PrintAlign.Left, Bold: true);

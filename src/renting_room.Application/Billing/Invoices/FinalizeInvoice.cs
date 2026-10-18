@@ -10,7 +10,6 @@ using renting_room.Domain.Contracts;
 
 namespace renting_room.Application.Billing;
 
-// Xóa nháp / chốt / hủy
 public sealed record FinalizeInvoiceCommand(Guid Id) : IRequest<Result<InvoiceDetailDto>>;
 
 /// <summary>

@@ -10,7 +10,6 @@ using renting_room.Domain.Properties;
 
 namespace renting_room.Application.Contracts;
 
-// Tạo nháp
 public sealed record CreateContractCommand(Guid RoomId, string? ContractNo, ContractInput Contract) : IRequest<Result<CreatedWithWarnings>>;
 
 public sealed class CreateContractCommandValidator : AbstractValidator<CreateContractCommand>

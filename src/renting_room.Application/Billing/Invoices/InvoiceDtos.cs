@@ -4,7 +4,6 @@ using renting_room.Domain.Contracts;
 
 namespace renting_room.Application.Billing;
 
-// DTO
 public sealed record InvoiceSummaryDto(
     Guid Id,
     string? InvoiceNo,

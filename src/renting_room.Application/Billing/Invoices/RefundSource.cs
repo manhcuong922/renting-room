@@ -6,7 +6,6 @@ using renting_room.Domain.Common;
 
 namespace renting_room.Application.Billing;
 
-// Sửa nháp: sửa tay, phụ thu / giảm tay, ghi chú
 /// <summary>
 /// BL-BR-27 (E — "chặn nhẹ"): hoàn trả ≤ số người thuê đã trả thật cho phiếu nguồn (đã thu − bỏ nợ) − các dòng hoàn trả khác đã trỏ tới phiếu
 /// nguồn (phiếu chưa hủy). Gọi khi đã khóa phiếu nguồn ⇒ 2 lần hoàn song song không vượt.

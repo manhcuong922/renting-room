@@ -49,7 +49,6 @@ public sealed class SaveTenancyImportHandler(
             var failure = await ImportFiles.SaveUnitAsync(db, () => SaveAsync(plan, cancellationToken), cancellationToken);
             units.Add(new ImportUnitResult(room.RoomCode, room.RowNumbers, failure.Count == 0 ? ImportOutcome.Saved : ImportOutcome.Failed, failure));
         }
-        // Dòng thiếu mã phòng không thuộc phòng nào.
         foreach (var orphan in check.Rows.Where(r => r.Row.RoomCode is null))
             units.Add(new ImportUnitResult($"#{orphan.Row.RowNumber}", [orphan.Row.RowNumber], ImportOutcome.Invalid, orphan.Errors));
         return await ImportPreview.RecordAsync(db, auditTrail, request.PropertyId, "Tenancies", units, cancellationToken);

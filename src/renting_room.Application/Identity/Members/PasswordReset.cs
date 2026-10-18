@@ -5,7 +5,6 @@ using renting_room.Domain.Identity;
 
 namespace renting_room.Application.Identity.Members;
 
-// Sửa / khóa / mở / cấp lại mật khẩu / gỡ (chỉ chủ trọ, chỉ phó quản lý)
 internal static class PasswordReset
 {
     public static async Task<Result<TemporaryCredentials>> ResetAsync(

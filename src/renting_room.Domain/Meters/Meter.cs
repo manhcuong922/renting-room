@@ -32,7 +32,6 @@ public sealed class Meter : TenantEntity
     public DateOnly InstalledDate { get; private set; }
     public DateOnly? RemovedDate { get; private set; }
 
-    /// <summary>Công tơ thay thế bản này (phiên bản kế tiếp).</summary>
     public Guid? ReplacedByMeterId { get; private set; }
     public string? Note { get; private set; }
 

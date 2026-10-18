@@ -7,7 +7,6 @@ using renting_room.Domain.Properties;
 
 namespace renting_room.Application.Fees;
 
-// Truy vấn
 public sealed record ListFeeTypesQuery(Guid PropertyId, bool IncludeArchived) : IRequest<Result<IReadOnlyList<FeeTypeDto>>>;
 
 public sealed class ListFeeTypesHandler(IAppDbContext db, TimeProvider clock) : IRequestHandler<ListFeeTypesQuery, Result<IReadOnlyList<FeeTypeDto>>>

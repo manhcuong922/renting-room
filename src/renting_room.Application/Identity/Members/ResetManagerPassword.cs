@@ -4,7 +4,6 @@ using renting_room.Domain.Common;
 
 namespace renting_room.Application.Identity.Members;
 
-// Sửa / khóa / mở / cấp lại mật khẩu / gỡ (chỉ chủ trọ, chỉ phó quản lý)
 public sealed record ResetManagerPasswordCommand(Guid Id) : IRequest<Result<TemporaryCredentials>>;
 
 public sealed class ResetManagerPasswordHandler(

@@ -13,7 +13,6 @@ using renting_room.Domain.Payments;
 
 namespace renting_room.Application.Contracts;
 
-// Thanh lý
 /// <param name="Settlement">Bắt buộc khi còn nợ; null mà còn nợ ⇒ 422 CONTRACT_HAS_DEBT (cảnh báo kèm số nợ).</param>
 /// <param name="Method">Phương thức khi "Đã thu toàn bộ" — mặc định tiền mặt.</param>
 /// <param name="Reason">Lý do bỏ nợ (bắt buộc khi WriteOff) / ghi chú phiếu thu.</param>

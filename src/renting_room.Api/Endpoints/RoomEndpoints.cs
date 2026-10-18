@@ -72,7 +72,6 @@ public static class RoomEndpoints
                 (await sender.Send(new ChangeRoomStateCommand(id, RoomAction.Restore), ct)).ToHttp())
             .WithSummary("Khôi phục phòng");
 
-        // ---- Nhóm phòng
         byProperty.MapGet("/room-groups", async (Guid propertyId, ISender sender, CancellationToken ct) =>
                 (await sender.Send(new ListRoomGroupsQuery(propertyId), ct)).ToHttp())
             .WithTags("Room groups")

@@ -9,7 +9,6 @@ public enum ContractType
     WholeHouseRental  // Thuê nhà nguyên căn
 }
 
-/// <summary>Kiểu dữ liệu của trường tùy biến trong mẫu hợp đồng.</summary>
 public enum CustomFieldType
 {
     Text,      // ≤ 500 ký tự

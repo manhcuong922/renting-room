@@ -4,7 +4,6 @@ namespace renting_room.Domain.Contracts;
 
 public sealed partial class Contract
 {
-    // Tài sản bàn giao & xe
     public Result<ContractAsset> AddAsset(AssetInput input)
     {
         if (Status != ContractStatus.Draft)

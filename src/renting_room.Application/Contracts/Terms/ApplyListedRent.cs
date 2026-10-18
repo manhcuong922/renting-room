@@ -8,7 +8,6 @@ using renting_room.Domain.Properties;
 
 namespace renting_room.Application.Contracts;
 
-// Áp giá niêm yết của phòng cho người đang thuê
 /// <summary>
 /// Chủ trọ sửa giá niêm yết của phòng rồi chọn "áp cho người đang thuê": HĐ đang hiệu lực của phòng đổi giá từ kỳ chưa chốt đầu tiên
 /// (lịch sử giữ nguyên). Không tự đổi khi sửa giá phòng — giá thỏa thuận có thể khác giá niêm yết.

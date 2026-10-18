@@ -8,7 +8,6 @@ using renting_room.Domain.Renters;
 
 namespace renting_room.Application.Renters;
 
-// Ẩn danh tự động (job) và bằng tay
 /// <summary>Phần dùng chung của ẩn danh tự động và bằng tay: điều kiện chặn + thao tác xóa trên hồ sơ, HĐ, phiếu, phiếu thu, audit.</summary>
 public sealed class RenterAnonymizer(IAppDbContext db, IAuditTrail auditTrail, IAuditLogEraser auditLogEraser, TimeProvider clock)
 {

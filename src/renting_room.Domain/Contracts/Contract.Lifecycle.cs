@@ -4,7 +4,6 @@ namespace renting_room.Domain.Contracts;
 
 public sealed partial class Contract
 {
-    // Nháp
     public static Contract CreateDraft(Guid propertyId, Guid roomId, string contractNo, ContractDraftData data, Guid? previousContractId = null)
     {
         if (propertyId == Guid.Empty || roomId == Guid.Empty)

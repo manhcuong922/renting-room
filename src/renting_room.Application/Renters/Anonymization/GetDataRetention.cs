@@ -4,7 +4,6 @@ using renting_room.Application.Common.Interfaces;
 
 namespace renting_room.Application.Renters;
 
-// Cài đặt lưu giữ của tổ chức
 public sealed record GetDataRetentionQuery : IRequest<DataRetentionDto>;
 
 public sealed class GetDataRetentionHandler(IAppDbContext db, ICurrentUser currentUser) : IRequestHandler<GetDataRetentionQuery, DataRetentionDto>

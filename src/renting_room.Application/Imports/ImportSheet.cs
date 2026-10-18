@@ -21,7 +21,6 @@ public sealed record ImportPreviewDto<TRow>(int ValidCount, int ErrorCount, IRea
 
 public enum ImportOutcome
 {
-    /// <summary>Đã lưu.</summary>
     Saved,
     /// <summary>Không hợp lệ ⇒ bỏ qua, chưa lưu (sửa rồi lưu lại).</summary>
     Invalid,

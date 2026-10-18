@@ -5,7 +5,6 @@ using renting_room.Domain.Billing;
 
 namespace renting_room.Application.Billing;
 
-// Sửa nháp: sửa tay, phụ thu / giảm tay, ghi chú
 internal static class ManualLineRules
 {
     public const decimal MaxAmount = 100_000_000;

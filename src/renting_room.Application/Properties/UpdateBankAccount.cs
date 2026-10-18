@@ -8,7 +8,6 @@ using renting_room.Domain.Properties;
 
 namespace renting_room.Application.Properties;
 
-// Ngân hàng & nội quy
 /// <summary>Cả 3 trường null = xóa tài khoản ngân hàng.</summary>
 public sealed record UpdateBankAccountCommand(Guid PropertyId, string? BankName, string? AccountNo, string? AccountName)
     : IRequest<Result<PropertyDetailDto>>;

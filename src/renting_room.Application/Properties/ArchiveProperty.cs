@@ -8,7 +8,6 @@ using renting_room.Domain.Properties;
 
 namespace renting_room.Application.Properties;
 
-// Ngừng dùng / khôi phục
 public sealed record ArchivePropertyCommand(Guid Id) : IRequest<Result>;
 
 /// <summary>PR-BR-05: chỉ khi khu không còn hợp đồng nháp/hiệu lực/thanh lý; các phòng được ngừng dùng cùng lúc.</summary>

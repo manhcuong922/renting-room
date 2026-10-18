@@ -5,7 +5,6 @@ using renting_room.Domain.Common;
 
 namespace renting_room.Application.Contracts;
 
-// Phụ lục: đổi giá, gia hạn, báo trả phòng
 public sealed record ExtendContractCommand(Guid ContractId, DateOnly NewEndDate) : IRequest<Result>;
 
 public sealed class ExtendContractCommandValidator : AbstractValidator<ExtendContractCommand>

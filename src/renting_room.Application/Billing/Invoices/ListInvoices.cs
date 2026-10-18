@@ -9,7 +9,6 @@ using renting_room.Domain.Common;
 
 namespace renting_room.Application.Billing;
 
-// Truy vấn
 public sealed record ListInvoicesQuery(
     Guid? PropertyId, string? BillingMonth, InvoiceStatus? Status, Guid? RoomId, Guid? ContractId, string? Floor,
     bool? UnpaidOnly = null, int Page = 1, int PageSize = Paging.DefaultPageSize, bool? Stale = null) : IRequest<PagedResult<InvoiceSummaryDto>>;

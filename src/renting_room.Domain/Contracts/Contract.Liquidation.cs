@@ -4,7 +4,6 @@ namespace renting_room.Domain.Contracts;
 
 public sealed partial class Contract
 {
-    // Thanh lý
     public Result StartLiquidation(
         DateOnly actualEndDate, TerminationReason reason, TerminationGround? ground, string? note, DateOnly today)
     {
