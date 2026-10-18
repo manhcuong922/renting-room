@@ -1,6 +1,6 @@
 using renting_room.Application.Common.Formatting;
 
-namespace renting_room.UnitTests.Application;
+namespace renting_room.Application.UnitTests;
 
 public sealed class VietnameseMoneyTests
 {

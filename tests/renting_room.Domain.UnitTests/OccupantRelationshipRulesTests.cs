@@ -1,7 +1,7 @@
 using renting_room.Domain.Contracts;
 using renting_room.Domain.Renters;
 
-namespace renting_room.UnitTests.Domain;
+namespace renting_room.Domain.UnitTests;
 
 public sealed class OccupantRelationshipRulesTests
 {

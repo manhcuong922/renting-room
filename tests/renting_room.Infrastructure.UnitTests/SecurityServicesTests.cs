@@ -8,7 +8,7 @@ using renting_room.Application.Common.Security;
 using renting_room.Domain.Identity;
 using renting_room.Infrastructure.Identity;
 
-namespace renting_room.UnitTests.Infrastructure;
+namespace renting_room.Infrastructure.UnitTests;
 
 public sealed class JwtTokenServiceTests
 {

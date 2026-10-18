@@ -22,9 +22,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\renting_room.Domain\renting_room.Domain.csproj" />
     <ProjectReference Include="..\..\renting_room.Application\renting_room.Application.csproj" />
-    <ProjectReference Include="..\..\renting_room.Infrastructure\renting_room.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>
