@@ -1,7 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using renting_room.Application.Common.Interfaces;
-using renting_room.Domain.Billing;
 
 namespace renting_room.Infrastructure.Persistence;
 
@@ -37,25 +36,4 @@ public sealed class DocumentNumberGenerator(AppDbContext db) : IDocumentNumberGe
             """).ToListAsync(cancellationToken);
         return $"{prefix}{year}-{values[0]:000000}";
     }
-}
-
-/// <summary>CT-BR-05: kỳ đầu tiên chưa bị khóa = ngày sau kỳ của phiếu đã chốt (chưa hủy) mới nhất.</summary>
-public sealed class InvoiceLockReader(AppDbContext db) : IInvoiceLockReader
-{
-    public async Task<DateOnly?> GetFirstOpenPeriodStartAsync(Guid contractId, CancellationToken cancellationToken)
-    {
-        var lastEnd = await db.Invoices.Where(i => i.ContractId == contractId && i.Status == InvoiceStatus.Finalized)
-            .MaxAsync(i => (DateOnly?)i.PeriodEnd, cancellationToken);
-        return lastEnd?.AddDays(1);
-    }
-}
-
-/// <summary>FE-BR-07: ngày cuối của dòng phiếu đã chốt có dùng khoản thu — không thêm / xóa giá hồi tố trước ngày đó.</summary>
-public sealed class FeePriceLockReader(AppDbContext db) : IFeePriceLockReader
-{
-    public async Task<DateOnly?> GetLockedUntilAsync(Guid feeTypeId, CancellationToken cancellationToken) =>
-        await db.Invoices.Where(i => i.Status == InvoiceStatus.Finalized)
-            .SelectMany(i => i.Lines)
-            .Where(l => l.FeeTypeId == feeTypeId)
-            .MaxAsync(l => (DateOnly?)l.ServiceTo, cancellationToken);
 }
