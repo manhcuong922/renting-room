@@ -3,7 +3,12 @@
 > Dành cho **người làm giao diện** (web / mobile): hiểu từng chức năng nghiệp vụ, cần những màn hình nào,
 > gọi endpoint nào, gửi gì – nhận gì, xử lý lỗi ra sao, nút nào bật/tắt theo trạng thái.
 >
-> Ví dụ JSON trong thư mục này lấy từ **response thật** của API (cập nhật tới 13/10/2026).
+> Ví dụ JSON trong thư mục này lấy từ **response thật** của API (cập nhật tới 17/10/2026).
+>
+> **Đổi 17/10/2026 (UI cần sửa):** chuyển phòng luôn từ hôm nay — bỏ `date`, bỏ `POST …/transfer-room/cancel`, chuyển nhầm thì chuyển lại về
+> phòng cũ trong ngày ([contracts.md](contracts.md#chuyển-phòng)); điện nước phòng cũ cộng vào dòng điện của phiếu, không còn khoản chốt; tạo phiếu
+> thiếu chỉ số ⇒ bỏ qua `MISSING_READING` (không tạo nháp), phiếu quyết toán khu thu trước tách 2 dòng điện ([invoices.md](invoices.md));
+> thay / tháo công tơ lùi vào kỳ đã chốt ⇒ `METER_PERIOD_LOCKED` ([meters.md](meters.md)).
 > [`openapi.json`](openapi.json): danh sách endpoint và kiểu **request** đầy đủ; **hầu hết endpoint chưa khai kiểu response** —
 > cấu trúc dữ liệu trả về lấy từ ví dụ JSON trong các file `.md` này, không sinh kiểu response từ `openapi.json`.
 
@@ -91,7 +96,7 @@ Mỗi dòng ghi endpoint chính và file mô tả chi tiết.
 │   └── Chi tiết hợp đồng (tab + nút theo trạng thái)
 │       ├── Người ở, đồng thuê, đổi người đứng tên, chuyển người
 │       ├── Giá thuê, dịch vụ, xe, tài sản, cọc
-│       ├── Gia hạn · Ở tiếp · Chuyển phòng / hủy chuyển phòng
+│       ├── Gia hạn · Ở tiếp · Chuyển phòng (chuyển nhầm ⇒ chuyển lại trong ngày)
 │       └── Thanh lý: xem trước → phiếu quyết toán → hoàn tất   GET …/liquidation/preview
 ├── Hằng tháng
 │   ├── Ghi chỉ số điện nước                   GET …/meter-reading-sheet · PUT …/meter-readings   meters.md

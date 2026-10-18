@@ -12,8 +12,9 @@ Quyền: chủ trọ và phó quản lý.
 - **Giới hạn khoản bù** (11/10/2026): khoản bù **chưa trả** cộng các khoản bù chưa trả khác của HĐ (chưa nằm trên phiếu đã chốt) không vượt
   **một tháng tiền phòng** → 422 `ROOM_CHARGE_CREDIT_TOO_HIGH` (`limit` = tiền phòng). Bù nhiều hơn thì trả trực tiếp rồi tạo khoản với
   "đã trả ngay" — khoản đã trả không bị giới hạn. Phụ thu không bị giới hạn này.
-- **Khoản hệ thống** (`isSystem = true`, 11/10/2026): khoản chốt điện nước của phòng cũ khi chuyển phòng — kèm `feeTypeId`, `quantity`,
-  `unitPrice`. Chỉ đánh dấu / bỏ đánh dấu "đã thu ngay"; sửa / hủy → 422 `ROOM_CHARGE_SYSTEM` (hủy chuyển phòng thì khoản tự hủy).
+- **Khoản hệ thống** (`isSystem = true`) — **chỉ còn dữ liệu cũ** (17/10/2026: chuyển phòng không tạo khoản này nữa, sản lượng phòng cũ cộng vào
+  dòng điện nước của phiếu): khoản chốt điện nước của phòng cũ khi chuyển phòng trước 17/10/2026 — kèm `feeTypeId`, `quantity`, `unitPrice`.
+  Chỉ đánh dấu / bỏ đánh dấu "đã thu ngay"; sửa / hủy → 422 `ROOM_CHARGE_SYSTEM`.
 - **Trạng thái thanh toán** (`isSettled`):
   - `false` — chưa thanh toán: phụ thu cộng vào phiếu, bù trừ vào phiếu.
   - `true` — phụ thu người thuê **đã trả ngay** / bù chủ trọ **đã trả ngay**: vẫn hiện trên phiếu cho đầy đủ nhưng **không tính vào tổng**.
@@ -98,7 +99,7 @@ Khoản bù chưa trả mà lớn hơn phần thu của phiếu ⇒ chưa đưa 
 | `Billed` | Đã vào phiếu đã chốt (`invoiceNo`) | Chỉ xem (422 `ROOM_CHARGE_LOCKED`) |
 | `Cancelled` | Đã hủy (`cancelReason`) | Chỉ xem, gạch ngang |
 
-- `isSystem: true` = khoản chốt điện nước khi chuyển phòng (`feeTypeId`, `quantity`, `unitPrice` có giá trị): không hủy tay.
+- `isSystem: true` = khoản chốt điện nước khi chuyển phòng của dữ liệu trước 17/10/2026 (`feeTypeId`, `quantity`, `unitPrice` có giá trị): không hủy tay.
 - **Kết quả thao tác:** tạo → 201 + khoản vừa tạo; đánh dấu đã thanh toán (`POST …/settle`), bỏ đánh dấu (`DELETE …/settle`), hủy
   (`POST …/cancel`) → **200 + chính khoản đó sau khi đổi** (cùng cấu trúc trên).
 

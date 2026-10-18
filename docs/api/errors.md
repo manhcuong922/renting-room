@@ -129,12 +129,11 @@ Mọi lỗi có dạng ProblemDetails (xem [conventions.md](conventions.md#lỗi
 | `ROOM_TRANSFER_SAME_ROOM` | 400 | Chuyển phòng: trùng phòng hiện tại |
 | `ROOM_TRANSFER_OTHER_PROPERTY` | 422 | Chuyển phòng sang khu khác — thanh lý + HĐ mới |
 | `ROOM_TRANSFER_ROOM_UNAVAILABLE` | 422 | Phòng mới không trống từ ngày chuyển / bảo trì / ngừng dùng |
-| `ROOM_TRANSFER_INVALID_DATE` | 400 | Ngày chuyển không sau ngày vào phòng hiện tại hoặc ở tương lai |
+| `ROOM_TRANSFER_INVALID_DATE` | 400 | Hôm nay HĐ vừa vào phòng hiện tại — chưa chuyển tiếp được (chuyển nhầm thì chuyển lại về phòng vừa rời) |
 | `ROOM_TRANSFER_ALREADY_BILLED` | 422 | Điện nước phòng cũ đã ghi chỉ số / lập phiếu tới sau ngày chuyển |
-| `ROOM_TRANSFER_PRICE_MISSING` | 422 | Khoản điện nước của phòng cũ chưa có giá tại ngày chuyển (kèm `feeTypeId`) |
-| `ROOM_TRANSFER_USAGE_TOO_LARGE` | 400 | Tiền điện nước phòng cũ tính ra quá lớn — kiểm tra chỉ số cuối (kèm `meterId`) |
-| `ROOM_TRANSFER_NOTHING_TO_CANCEL` | 422 | Hủy chuyển phòng: HĐ chưa chuyển lần nào |
-| `ROOM_TRANSFER_CANCEL_BILLED` | 422 | Hủy chuyển phòng: lần chuyển đã có phiếu — hủy / xóa phiếu trước |
+| `ROOM_TRANSFER_CANCEL_BILLED` | 422 | Chuyển lại trong ngày: lần chuyển đã có phiếu ở phòng mới / chỉ số đã bị khóa — xóa / hủy phiếu trước |
+| `ROOM_TRANSFER_CANCEL_SETTLED` | 422 | Chuyển lại trong ngày: khoản chênh lệch tiền phòng đã đánh dấu đã thu / đã trả — bỏ đánh dấu trước |
+| `END_DATE_BEFORE_ROOM_TRANSFER` | 422 | Ngày trả phòng trước ngày chuyển sang phòng hiện tại |
 | `VEHICLE_OWNER_NOT_IN_CONTRACT` | 422 | Kết thúc đăng ký xe của người không còn thuộc HĐ trước |
 | `HOUSEHOLD_HEAD_NOT_OCCUPANT` | 400 | Chủ hộ phải là một người ở |
 
@@ -175,6 +174,7 @@ giấy tờ / pháp lý (09/10/2026 — trước là lỗi chặn): `LESSOR_INFO
 | `METER_ALREADY_ACTIVE` | 409 | Phòng đã có công tơ khoản này — dùng "Thay công tơ" |
 | `FEE_NOT_METERED` | 422 | Chỉ lắp công tơ cho điện nước theo công tơ |
 | `METER_REMOVED` | 422 | Công tơ đã tháo |
+| `METER_PERIOD_LOCKED` | 422 | Ngày thay / tháo công tơ thuộc kỳ đã chốt phiếu (`lockedUntil`) — chọn ngày sau đó |
 | `INVALID_READING_DATE` | 422 | Ngày ngoài thời gian công tơ hoạt động / trước chỉ số đã ghi |
 | `READING_NOT_MONOTONIC` | 422 | Chỉ số phải ≥ `previousValue` và ≤ `nextValue` (trong body) |
 | `HANDOVER_READING_REQUIRED` | 422 | Kích hoạt: nhập chỉ số nhận phòng cho các công tơ trong `meterIds` |
@@ -199,9 +199,9 @@ Cảnh báo mềm: `ROOM_WITHOUT_METER` (HĐ hiệu lực, phòng chưa có côn
 | `ROOM_CHARGE_CREDIT_TOO_HIGH` | 422 | Khoản bù chưa trả (cộng các khoản bù chưa trả khác) vượt một tháng tiền phòng — kèm `limit` |
 | `ROOM_CHARGE_NO_OPEN_INVOICE` | 422 | Khoản phát sinh: HĐ đã chốt phiếu quyết toán / đã kết thúc |
 | `ROOM_CHARGE_LOCKED` | 422 | Khoản phát sinh đã nằm trên phiếu đã chốt — không đánh dấu / hủy |
-| `ROOM_CHARGE_SYSTEM` | 422 | Khoản chốt điện nước khi chuyển phòng — không sửa / hủy tay; hủy chuyển phòng rồi chuyển lại |
+| `ROOM_CHARGE_SYSTEM` | 422 | Khoản chốt điện nước khi chuyển phòng (dữ liệu trước 17/10/2026) — không sửa / hủy tay |
 | `REFUND_SOURCE_INVALID` | 422 | Phiếu nguồn của dòng hoàn trả không phải phiếu đã chốt của cùng HĐ |
-| `REFUND_EXCEEDS_PAID` | 422 | Hoàn trả vượt số người thuê đã trả thật cho phiếu nguồn trừ các lần hoàn trước (`available`) |
+| `REFUND_EXCEEDS_PAID` | 422 | Hoàn trả vượt số người thuê đã trả thật cho phiếu nguồn trừ các lần hoàn trước (`available`) — kiểm khi thêm, sửa dòng và khi chốt |
 | `REFUND_NOT_BULK` | 400 | Thêm hoàn trả hàng loạt — hoàn từng phiếu (chọn phiếu nguồn) |
 | `REFUND_CONFIRMED` | 422 | Phiếu đã xác nhận hoàn tiền — bỏ xác nhận (`DELETE /invoices/{id}/refund`) trước khi hủy / xác nhận lại |
 | `REFUND_NOT_CONFIRMED` | 422 | Phiếu chưa xác nhận hoàn tiền |
@@ -209,11 +209,11 @@ Cảnh báo mềm: `ROOM_WITHOUT_METER` (HĐ hiệu lực, phòng chưa có côn
 | `INVALID_REFUND_DATE` | 400 | Ngày hoàn từ ngày lập phiếu tới hôm nay |
 | `NO_DRAFT_INVOICE` | — | (kết quả từng phòng của `POST /invoices/manual-lines`) Phòng chưa có phiếu nháp tháng này |
 | `INVOICE_SAVE_FAILED` | — | (kết quả từng phòng của `POST /invoices/manual-lines`) Không lưu được phiếu đó — tải lại rồi thử lại; `CONCURRENCY_CONFLICT`: phiếu vừa được sửa |
-| `NOT_LATEST_INVOICE` | 422 | Hủy / xóa phiếu kỳ sau trước |
+| `NOT_LATEST_INVOICE` | 422 | Hủy / xóa phiếu kỳ sau trước (phiếu quyết toán chưa hủy luôn là mới nhất) |
 | `INVOICE_EXISTS` | 409 | Kỳ đã có phiếu (tạo song song) — tải lại |
 | `INVALID_BILLING_MONTH` | 400 | Tháng thu dạng yyyy-MM |
 | `READINGS_INVALID` | 422 | Lưu chỉ số: tô đỏ dòng theo `rowErrors[].index`, chưa lưu dòng nào |
-| `READING_LOCKED` | 422 | Chỉ số đã dùng cho phiếu đã chốt (hủy phiếu trước) hoặc cho khoản chốt điện nước khi chuyển phòng |
+| `READING_LOCKED` | 422 | Chỉ số đã dùng cho phiếu đã chốt (hủy phiếu trước) hoặc cho khoản chốt điện nước khi chuyển phòng (dữ liệu cũ) |
 | `READING_NOT_VOIDABLE` | 422 | Hủy chỉ số: chỉ hủy được chỉ số cuối kỳ / kiểm tra |
 | `SEARCH_TOO_SHORT` | 400 | Tìm lịch sử thuê theo tên: nhập ít nhất 2 ký tự |
 | `USERNAME_REQUIRED` | 400 | Tài khoản phải còn SĐT hoặc email để đăng nhập |
@@ -228,6 +228,8 @@ Cảnh báo mềm: `ROOM_WITHOUT_METER` (HĐ hiệu lực, phòng chưa có côn
 | `FINAL_INVOICE_FINALIZED` | 422 | Hủy thanh lý: hủy phiếu quyết toán đã chốt trước |
 | `INVOICE_DRAFT_EXISTS` | 409 | Còn phiếu nháp — chốt hoặc xóa |
 | `PREVIOUS_PERIOD_NOT_BILLED` | 422 | Lập phiếu các kỳ trước trước |
+| `MISSING_READING` / `PREVIOUS_PERIOD_INCOMPLETE` | — | Lý do bỏ qua khi tạo phiếu (`skipped[].reason`, 17/10/2026): thiếu chỉ số ⇒ không tạo nháp; kỳ trước còn nháp thiếu chỉ số |
+| `RENTER_IDENTITY_MISMATCH` | — | Lỗi dòng nhập Excel: số giấy tờ trùng hồ sơ có sẵn nhưng khác họ tên / ngày sinh |
 | `CONTRACT_HAS_DEBT` | 422 | Hoàn tất thanh lý: còn nợ `outstanding` — chọn "Đã thu toàn bộ" / "Bỏ nợ" |
 | `REFUND_PENDING` | 422 | Hoàn tất thanh lý: còn `refundDue` phải trả lại người thuê — xác nhận đã hoàn trên phiếu trước |
 | `CONTRACT_NOT_BILLABLE` | 422 | HĐ đã kết thúc — không ghi / đảo phiếu thu, không xác nhận / bỏ xác nhận hoàn tiền |
@@ -298,7 +300,6 @@ Cảnh báo (không chặn): `READING_DATE_FAR_FROM_PERIOD_END` trong `warnings[
 | `PROFILE_MANAGED_BY_OWNER` | 403 | Phó quản lý không tự sửa hồ sơ — ẩn nút sửa, ghi "Liên hệ chủ trọ để đổi thông tin" |
 | `CURRENT_PASSWORD_REQUIRED` | 400 | Đổi SĐT / email đăng nhập phải nhập mật khẩu hiện tại — hiện ô mật khẩu |
 | `INVALID_CURRENT_PASSWORD` | 422 | Mật khẩu hiện tại sai (cũng dùng cho `PUT /me`) |
-| `ROOM_TRANSFER_CANCEL_EXPIRED` | 422 | Quá 3 ngày kể từ ngày chuyển — không hủy được, gợi ý "Chuyển về phòng cũ" |
 
 Đã bỏ: cờ `Holdover`, cảnh báo `HOLDOVER_SIGN_ADDENDUM` ("Ở tiếp" giờ chuyển hợp đồng sang không thời hạn).
 `ROOM_CHARGE_CREDIT_TOO_HIGH` giờ còn trả khi bỏ đánh dấu "đã thanh toán" một khoản bù.

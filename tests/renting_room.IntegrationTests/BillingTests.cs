@@ -78,12 +78,10 @@ public sealed class BillingTests(ApiFactory factory)
         var s = await ArrangeAsync("Postpaid");
         var month = s.Start;
 
+        // BL-BR-21: thiếu chỉ số cuối kỳ ⇒ không tạo nháp, báo lý do MISSING_READING.
         var generated = await GenerateAsync(s, month);
-        generated.GetProperty("created").GetInt32().Should().Be(1);
-        generated.GetProperty("withIssues").GetInt32().Should().Be(1, "chưa có chỉ số cuối kỳ");
-        var draft = await InvoiceForAsync(s, month);
-        draft.GetProperty("issues").EnumerateArray().Select(i => i.GetProperty("code").GetString()).Should().Contain("MISSING_READING");
-        (await (await _client.PostJsonAsync($"/api/v1/invoices/{Id(draft)}/finalize", null, s.Token)).ReadProblemCodeAsync()).Should().Be("INVOICE_HAS_ISSUES");
+        generated.GetProperty("created").GetInt32().Should().Be(0);
+        generated.GetProperty("skipped").EnumerateArray().Select(x => x.GetProperty("reason").GetString()).Should().Equal("MISSING_READING");
 
         // Lưới ghi chỉ số: chỉ số cũ = chỉ số nhận phòng 100.
         var sheet = await (await _client.GetAsync($"/api/v1/properties/{s.PropertyId}/meter-reading-sheet?billingMonth={month:yyyy-MM}", s.Token)).ReadAsync<JsonElement>();
@@ -93,9 +91,11 @@ public sealed class BillingTests(ApiFactory factory)
         (await SaveReadingAsync(s, month, 99)).StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity, "chỉ số mới nhỏ hơn chỉ số cũ");
         (await SaveReadingAsync(s, month, 188)).StatusCode.Should().Be(HttpStatusCode.OK);
 
-        // Tính lại: Tiền phòng 3.000.000 + Điện 88 × 3.500 + Nước 1 người × 20.000.
-        await _client.PostJsonAsync("/api/v1/invoices/recalculate", new { propertyId = s.PropertyId, billingMonth = $"{month:yyyy-MM}" }, s.Token);
-        draft = await InvoiceForAsync(s, month);
+        // Đủ chỉ số ⇒ có nháp: Tiền phòng 3.000.000 + Điện 88 × 3.500 + Nước 1 người × 20.000.
+        generated = await GenerateAsync(s, month);
+        generated.GetProperty("created").GetInt32().Should().Be(1);
+        generated.GetProperty("withIssues").GetInt32().Should().Be(0);
+        var draft = await InvoiceForAsync(s, month);
         draft.GetProperty("issues").EnumerateArray().Should().BeEmpty();
         draft.GetProperty("lines").EnumerateArray().Select(l => (l.GetProperty("type").GetString(), l.GetProperty("amount").GetDecimal()))
             .Should().Equal(("Rent", 3_000_000m), ("Metered", 308_000m), ("Service", 20_000m));
@@ -145,7 +145,8 @@ public sealed class BillingTests(ApiFactory factory)
         // Hủy: đã thu tiền ⇒ chặn; có phiếu kỳ sau ⇒ chặn (LIFO); đảo phiếu thu + xóa nháp kỳ sau ⇒ hủy được.
         (await (await _client.PostJsonAsync($"/api/v1/invoices/{Id(draft)}/void", new { reason = "Sai" }, s.Token)).ReadProblemCodeAsync())
             .Should().Be("INVOICE_HAS_PAYMENTS");
-        (await GenerateAsync(s, month.AddMonths(1))).GetProperty("created").GetInt32().Should().Be(1, "kỳ trước đã lập phiếu");
+        (await SaveReadingAsync(s, month.AddMonths(1), 200)).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await GenerateAsync(s, month.AddMonths(1))).GetProperty("created").GetInt32().Should().Be(1, "kỳ trước đã lập phiếu, đủ chỉ số");
         (await _client.PostJsonAsync($"/api/v1/payments/{payment.GetProperty("id").GetGuid()}/reverse", new { reason = "Nhập nhầm" }, s.Token))
             .StatusCode.Should().Be(HttpStatusCode.OK);
         (await (await _client.PostJsonAsync($"/api/v1/invoices/{Id(draft)}/void", new { reason = "Sai" }, s.Token)).ReadProblemCodeAsync())

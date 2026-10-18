@@ -125,7 +125,7 @@ hoàn tất thanh lý: còn nợ ⇒ "Đã thu toàn bộ" / "Bỏ nợ"; còn p
 Trả lại cọc ⇒ bấm **"Đã hoàn trả cọc"** (không bắt buộc trước khi hoàn tất; HĐ đã kết thúc còn giữ cọc ⇒ nhãn "Chưa hoàn cọc").
 
 ### F6. Giữa kỳ (M05, M07)
-- **Chuyển phòng** cùng khu: HĐ giữ nguyên, ghi chỉ số cuối phòng cũ + chỉ số nhận phòng mới; điện nước kỳ đó cộng cả 2 phòng.
+- **Chuyển phòng** cùng khu (luôn từ hôm nay): HĐ giữ nguyên, ghi chỉ số cuối phòng cũ + chỉ số nhận phòng mới; dòng điện nước của kỳ = sản lượng phòng cũ + phòng mới (M05 CT-BR-47). Chuyển nhầm ⇒ chuyển lại về phòng cũ trong ngày.
 - **Ký lại** HĐ (đổi người đứng tên / điều khoản): HĐ cũ kết thúc, HĐ mới nối tiếp, cọc HĐ cũ ghi "đã chuyển".
 - **Khoản phát sinh theo phòng**: phụ thu / bù tạo ngay lúc xảy ra, đánh dấu đã thanh toán hay chưa.
 

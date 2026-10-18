@@ -96,20 +96,16 @@ public sealed class SelfServiceAndHistoryTests(ApiFactory factory)
             }
         }, token)).ReadIdAsync();
         (await _client.PostJsonAsync($"/api/v1/contracts/{first}/activate", null, token)).StatusCode.Should().Be(HttpStatusCode.NoContent);
-        // HĐ đầu chuyển sang A2 cách đây 10 ngày; A1 có người mới vào cách đây 5 ngày.
-        (await _client.PostJsonAsync($"/api/v1/contracts/{first}/transfer-room", new { toRoomId = roomB, date = today.AddDays(-10) }, token))
+        // HĐ chuyển sang A2 hôm nay (ngày chuyển luôn là hôm nay — CT-BR-14).
+        (await _client.PostJsonAsync($"/api/v1/contracts/{first}/transfer-room", new { toRoomId = roomB }, token))
             .StatusCode.Should().Be(HttpStatusCode.OK);
-        var khoi = await RenterAsync(token, "Lý Văn Khôi");
-        var second = await _client.CreateContractAsync(token, roomA, khoi, today.AddDays(-5));
-        (await _client.PostJsonAsync($"/api/v1/contracts/{second}/activate", null, token)).StatusCode.Should().Be(HttpStatusCode.NoContent);
 
         var history = await (await _client.GetAsync($"/api/v1/rooms/{roomA}/tenancy-history", token)).ReadAsync<List<JsonElement>>();
-        history.Select(h => h.GetProperty("contractId").GetGuid()).Should().Equal([second, first], "mới nhất trước");
-        history[0].GetProperty("isCurrent").GetBoolean().Should().BeTrue();
-        var earlier = history[1];
+        history.Select(h => h.GetProperty("contractId").GetGuid()).Should().Equal([first]);
+        var earlier = history[0];
         earlier.GetProperty("fromDate").GetString().Should().Be($"{start:yyyy-MM-dd}");
-        earlier.GetProperty("toDate").GetString().Should().Be($"{today.AddDays(-10):yyyy-MM-dd}");
-        earlier.GetProperty("isCurrent").GetBoolean().Should().BeFalse();
+        earlier.GetProperty("toDate").GetString().Should().Be($"{today:yyyy-MM-dd}");
+        earlier.GetProperty("isCurrent").GetBoolean().Should().BeTrue("ngày chuyển vẫn tính là đang ở phòng cũ (CT-BR-14)");
         earlier.GetProperty("representativeName").GetString().Should().Be("Tô Văn Bình");
         earlier.GetProperty("occupants").EnumerateArray().Select(o => (o.GetProperty("fullName").GetString(), o.GetProperty("role").GetString()))
             .Should().BeEquivalentTo([("Tô Văn Bình", "Representative"), ("Tô Thị Hạnh", "CoTenant")]);

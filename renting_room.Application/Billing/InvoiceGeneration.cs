@@ -68,8 +68,13 @@ internal static class InvoiceInputs
                 .ToListAsync(ct))
             .GroupBy(x => x.FeeTypeId)
             .ToDictionary(g => g.Key, g => (IReadOnlyList<decimal>)g.OrderByDescending(x => x.PeriodStart).Select(x => x.Quantity).ToList());
+        // BL-BR-38 (dữ liệu trước 17/10/2026): đoạn đo đã thu bằng khoản chốt điện nước khi chuyển phòng — phiếu không tính lại.
+        var closed = (await db.RoomCharges.AsNoTracking()
+                .Where(c => c.ContractId == contract.Id && c.CancelledAt == null && c.EndReadingId != null)
+                .Select(c => c.EndReadingId!.Value).ToListAsync(ct))
+            .ToHashSet();
         return new InvoiceCalcInput(contract, period, billing.Schedule, billing.ProrationMode, types, meters, lastEnd, final, recent,
-            billing.RoundInvoiceTotal);
+            billing.RoundInvoiceTotal, closed);
     }
 
     /// <summary>Kỳ hiện tại của phiếu theo HĐ (có thể bị cắt ngắn nếu HĐ đã bắt đầu thanh lý).</summary>
@@ -139,10 +144,13 @@ public sealed class GenerateInvoicesCommandValidator : AbstractValidator<Generat
 
 /// <summary>
 /// BL-UC-01: tạo phiếu nháp kỳ có tháng thu = tháng chọn cho từng HĐ của khu — mỗi HĐ 1 transaction, khóa HĐ (C-07).
-/// Bỏ qua kèm lý do: đã có phiếu, đã lập kỳ sau, chưa lập kỳ trước (BL-BR-21 — kỳ đầu = kỳ chứa "Tính tiền từ ngày"), không có kỳ trong tháng.
+/// Bỏ qua kèm lý do: đã có phiếu, đã lập kỳ sau, chưa lập kỳ trước (BL-BR-21 — kỳ đầu = kỳ chứa "Tính tiền từ ngày"), không có kỳ trong tháng,
+/// thiếu chỉ số (nháp chỉ lập khi đủ chỉ số), kỳ trước còn nháp thiếu chỉ số.
 /// </summary>
 public sealed class GenerateInvoicesHandler(IAppDbContext db) : IRequestHandler<GenerateInvoicesCommand, Result<GenerateInvoicesResult>>
 {
+    private const string MissingReadingCode = "MISSING_READING";
+
     public async ValueTask<Result<GenerateInvoicesResult>> Handle(GenerateInvoicesCommand request, CancellationToken cancellationToken)
     {
         if (!await db.Properties.AnyAsync(p => p.Id == request.PropertyId, cancellationToken))
@@ -208,8 +216,15 @@ public sealed class GenerateInvoicesHandler(IAppDbContext db) : IRequestHandler<
         // BL-BR-21: lập lần lượt từ kỳ đầu (kỳ chứa "Tính tiền từ ngày") — không để kỳ sau nuốt / bỏ sót kỳ trước.
         if (existing is null && period.Start != contract.BillingStartDate && invoices.All(i => i.PeriodEnd != period.Start.AddDays(-1)))
             return ("PREVIOUS_PERIOD_NOT_BILLED", false);
+        // BL-BR-21 (17/10/2026): nháp kỳ trước mất chỉ số sau khi lập ⇒ không lập kỳ sau, tránh kỳ sau gộp sản lượng của kỳ trước.
+        if (existing is null && invoices.Any(i => i.Status == InvoiceStatus.Draft && i.PeriodStart < period.Start
+                && i.Issues.Any(x => x.Code == MissingReadingCode)))
+            return ("PREVIOUS_PERIOD_INCOMPLETE", false);
 
         var calculation = InvoiceCalculator.Calculate(await InvoiceInputs.LoadAsync(db, contract, period, existing?.Id, ct));
+        // Nháp chỉ lập khi đủ chỉ số; nháp đã có thì vẫn tính lại (lỗi hiện trên nháp, chặn chốt).
+        if (existing is null && calculation.Issues.Any(x => x.Code == MissingReadingCode))
+            return (MissingReadingCode, false);
         Invoice invoice;
         if (existing is not null)
         {

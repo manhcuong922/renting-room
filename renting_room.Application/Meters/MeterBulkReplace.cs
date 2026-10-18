@@ -81,6 +81,7 @@ public sealed class BulkReplaceMetersHandler(IAppDbContext db) : IRequestHandler
     {
         await using var transaction = await db.BeginTransactionAsync(cancellationToken);
         var meters = (await MeterMapping.LockAndLoadAsync(db, request.Rows.Select(r => r.MeterId), cancellationToken)).ToDictionary(m => m.Id);
+        var locks = await MeterPeriodLocks.LockedUntilAsync(db, meters.Keys.ToList(), cancellationToken);
 
         var errors = new List<BulkReplaceRowError>();
         var created = new List<Meter>();
@@ -90,6 +91,11 @@ public sealed class BulkReplaceMetersHandler(IAppDbContext db) : IRequestHandler
             if (!meters.TryGetValue(row.MeterId, out var meter) || meter.PropertyId != request.PropertyId || meter.FeeTypeId != request.FeeTypeId)
             {
                 errors.Add(new BulkReplaceRowError(index, row.MeterId, MeterErrors.NotFound.Code, "Công tơ không thuộc khu / khoản thu đã chọn."));
+                continue;
+            }
+            if (MeterPeriodLocks.Check(locks, meter.Id, request.ReplacedOn) is { } locked)
+            {
+                errors.Add(new BulkReplaceRowError(index, row.MeterId, locked.Code, locked.Message));
                 continue;
             }
             var next = meter.ReplaceWith(request.ReplacedOn, row.OldFinalValue, row.NewSerialNo, row.NewInitialValue ?? 0, request.Note);

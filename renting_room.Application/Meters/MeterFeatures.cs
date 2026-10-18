@@ -166,6 +166,8 @@ public sealed class ReplaceMeterHandler(IAppDbContext db) : IRequestHandler<Repl
         var old = (await MeterMapping.LockAndLoadAsync(db, [request.MeterId], cancellationToken)).FirstOrDefault();
         if (old is null)
             return MeterErrors.NotFound;
+        if (MeterPeriodLocks.Check(await MeterPeriodLocks.LockedUntilAsync(db, [old.Id], cancellationToken), old.Id, request.Date) is { } locked)
+            return locked;
 
         var next = old.ReplaceWith(request.Date, request.OldFinalValue, request.NewSerialNo, request.NewInitialValue, request.Note);
         if (next.IsFailure)
@@ -201,6 +203,8 @@ public sealed class RemoveMeterHandler(IAppDbContext db) : IRequestHandler<Remov
         var meter = (await MeterMapping.LockAndLoadAsync(db, [request.MeterId], cancellationToken)).FirstOrDefault();
         if (meter is null)
             return MeterErrors.NotFound;
+        if (MeterPeriodLocks.Check(await MeterPeriodLocks.LockedUntilAsync(db, [meter.Id], cancellationToken), meter.Id, request.Date) is { } locked)
+            return locked;
 
         var removed = meter.Remove(request.Date, request.FinalValue, request.Note);
         if (removed.IsFailure)

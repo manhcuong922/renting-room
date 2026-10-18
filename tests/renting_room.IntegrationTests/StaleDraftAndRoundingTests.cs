@@ -12,7 +12,10 @@ public sealed class StaleDraftAndRoundingTests(ApiFactory factory)
 
     private sealed record Setup(string Token, Guid PropertyId, Guid ContractId, Guid MeterId, Guid ElectricityId, DateOnly Month);
 
-    /// <summary>Khu thu sau chốt ngày 1, HĐ từ đầu tháng trước, điện 3.500đ, chỉ số nhận phòng 100 — nháp tháng trước lập sớm (chưa có chỉ số cuối).</summary>
+    /// <summary>
+    /// Khu thu sau chốt ngày 1, HĐ từ đầu tháng trước, điện 3.500đ, chỉ số nhận phòng 100 — nháp tháng trước lập với chỉ số cuối 150
+    /// (BL-BR-21: nháp chỉ lập khi đủ chỉ số), test sửa chỉ số sau đó.
+    /// </summary>
     private async Task<Setup> ArrangeAsync()
     {
         var owner = await _client.CreateActiveOwnerAsync();
@@ -31,8 +34,12 @@ public sealed class StaleDraftAndRoundingTests(ApiFactory factory)
         }, token)).ReadIdAsync();
         (await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/activate",
             new { handoverReadings = new[] { new { meterId = meter, value = (decimal?)null } } }, token)).StatusCode.Should().Be(HttpStatusCode.NoContent);
-        await _client.PostJsonAsync("/api/v1/invoices/generate", new { propertyId, billingMonth = $"{month:yyyy-MM}" }, token);
-        return new Setup(token, propertyId, contractId, meter, electricity, month);
+        var setup = new Setup(token, propertyId, contractId, meter, electricity, month);
+        (await SaveReadingAsync(setup, 150)).StatusCode.Should().Be(HttpStatusCode.OK);
+        var generated = await (await _client.PostJsonAsync("/api/v1/invoices/generate", new { propertyId, billingMonth = $"{month:yyyy-MM}" }, token))
+            .ReadAsync<JsonElement>();
+        generated.GetProperty("created").GetInt32().Should().Be(1);
+        return setup;
     }
 
     private async Task<JsonElement> DraftAsync(Setup s)
@@ -58,7 +65,7 @@ public sealed class StaleDraftAndRoundingTests(ApiFactory factory)
         (await DraftAsync(s)).GetProperty("isStale").GetBoolean().Should().BeFalse("vừa tính");
 
         (await SaveReadingAsync(s, 187)).StatusCode.Should().Be(HttpStatusCode.OK);
-        (await DraftAsync(s)).GetProperty("isStale").GetBoolean().Should().BeTrue("nhập chỉ số sau khi lập nháp");
+        (await DraftAsync(s)).GetProperty("isStale").GetBoolean().Should().BeTrue("sửa chỉ số sau khi lập nháp");
         var stale = await (await _client.GetAsync($"/api/v1/invoices?propertyId={s.PropertyId}&stale=true", s.Token)).ReadAsync<JsonElement>();
         stale.GetProperty("totalCount").GetInt32().Should().Be(1);
 
@@ -66,7 +73,7 @@ public sealed class StaleDraftAndRoundingTests(ApiFactory factory)
         recalculated.GetProperty("recalculated").GetInt32().Should().Be(1);
         var draft = await DraftAsync(s);
         draft.GetProperty("isStale").GetBoolean().Should().BeFalse();
-        draft.GetProperty("errorCount").GetInt32().Should().Be(0, "đã có chỉ số cuối");
+        draft.GetProperty("errorCount").GetInt32().Should().Be(0);
         (await RecalculateStaleAsync(s)).GetProperty("recalculated").GetInt32().Should().Be(0, "không còn nháp cần tính lại");
 
         await _client.PostJsonAsync($"/api/v1/fee-types/{s.ElectricityId}/prices", new { effectiveFrom = s.Month, unitPrice = 3800 }, s.Token);

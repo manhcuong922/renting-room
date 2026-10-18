@@ -50,8 +50,9 @@ public sealed record HoldoverRequest(string? Note);
 
 public sealed record RefundDepositRequest(DateOnly RefundedOn, decimal? Amount, string? Note);
 
+/// <summary>Ngày chuyển luôn là hôm nay (CT-BR-14) — body không có ngày.</summary>
 public sealed record TransferRoomRequest(
-    Guid ToRoomId, DateOnly Date, IReadOnlyList<MeterReadingInput>? OldRoomReadings, IReadOnlyList<MeterReadingInput>? NewRoomReadings,
+    Guid ToRoomId, IReadOnlyList<MeterReadingInput>? OldRoomReadings, IReadOnlyList<MeterReadingInput>? NewRoomReadings,
     decimal? MonthlyRent, string? Note, TransferRentFrom? RentFrom = null, IReadOnlyList<Guid>? RemoveFeeTypeIds = null);
 
 public sealed record ResignContractRequest(DateOnly HandoverDate, Guid RepresentativeRenterId, DateOnly? EndDate, bool? TransferDeposit);
@@ -178,18 +179,12 @@ public static class ContractEndpoints
             .WithSummary("Bỏ đánh dấu hoàn trả / chuyển cọc (nhập nhầm)");
         group.MapPost("/{id:guid}/transfer-room", async (Guid id, TransferRoomRequest b, ISender sender, CancellationToken ct) =>
             {
-                var result = await sender.Send(new TransferRoomCommand(id, b.ToRoomId, b.Date, b.OldRoomReadings, b.NewRoomReadings, b.MonthlyRent, b.Note, b.RentFrom,
+                var result = await sender.Send(new TransferRoomCommand(id, b.ToRoomId, b.OldRoomReadings, b.NewRoomReadings, b.MonthlyRent, b.Note, b.RentFrom,
                     b.RemoveFeeTypeIds), ct);
                 return result.IsSuccess ? Results.Ok(new { warnings = result.Value }) : result.ToHttp();
             })
             .WithIdempotency(required: true)
-            .WithSummary("Chuyển phòng (cùng khu): HĐ giữ nguyên, chỉ số cuối phòng cũ (chốt điện nước thành khoản phát sinh) + nhận phòng mới tại ngày chuyển; giá mới theo quy tắc nửa kỳ, bỏ dịch vụ không dùng ở phòng mới");
-        group.MapPost("/{id:guid}/transfer-room/cancel", async (Guid id, ISender sender, CancellationToken ct) =>
-            {
-                var result = await sender.Send(new CancelRoomTransferCommand(id), ct);
-                return result.IsSuccess ? Results.Ok(new { warnings = result.Value }) : result.ToHttp();
-            })
-            .WithSummary("Hủy lần chuyển phòng gần nhất: trả HĐ về phòng cũ, hủy khoản chốt điện nước và các chỉ số của lần chuyển");
+            .WithSummary("Chuyển phòng (cùng khu) từ hôm nay: HĐ giữ nguyên, chỉ số cuối phòng cũ + nhận phòng mới (sản lượng phòng cũ cộng vào dòng điện nước của kỳ); giá mới theo quy tắc nửa kỳ, bỏ dịch vụ không dùng ở phòng mới. Về đúng phòng vừa rời trong ngày chuyển = xóa lần chuyển");
         group.MapPost("/{id:guid}/re-sign", async (Guid id, ResignContractRequest b, ISender sender, CancellationToken ct) =>
                 (await sender.Send(new ResignContractCommand(id, b.HandoverDate, b.RepresentativeRenterId, b.EndDate, b.TransferDeposit ?? true), ct)).ToCreated(Route))
             .WithIdempotency(required: true)

@@ -220,7 +220,10 @@ public sealed class ImportTests(ApiFactory factory)
         detail.GetProperty("currentRent").GetDecimal().Should().Be(3_000_000);
     }
 
-    /// <summary>RT-UC-10: xem trước kiểm như lúc lưu — phòng đã có HĐ khác ở (đã chuyển đi) sau ngày vào ở khai trong file ⇒ báo ngay.</summary>
+    /// <summary>
+    /// RT-UC-10: xem trước kiểm như lúc lưu — phòng đã có HĐ khác ở (đã chuyển đi hôm nay — ngày chuyển còn tính là đang ở) sau ngày vào ở khai
+    /// trong file ⇒ báo ngay.
+    /// </summary>
     [Fact]
     public async Task TenancyImport_Preview_FlagsRoomOccupiedByMovedOutContract_AfterImportedMoveInDate()
     {
@@ -233,7 +236,7 @@ public sealed class ImportTests(ApiFactory factory)
         var contractId = await _client.CreateContractAsync(token, room201, await _client.CreateRenterAsync(token), today.AddDays(-60));
         (await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/activate", null, token)).StatusCode.Should().Be(HttpStatusCode.NoContent);
         var moved = await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/transfer-room",
-            new { toRoomId = room202, date = today.AddDays(-5), oldRoomReadings = (object?)null, newRoomReadings = (object?)null }, token);
+            new { toRoomId = room202, oldRoomReadings = (object?)null, newRoomReadings = (object?)null }, token);
         moved.StatusCode.Should().Be(HttpStatusCode.OK, await moved.Content.ReadAsStringAsync());
         var url = $"/api/v1/properties/{propertyId}/tenancies/import/preview";
 
@@ -245,8 +248,8 @@ public sealed class ImportTests(ApiFactory factory)
         var overlapping = await PreviewWithMoveInAsync(today.AddDays(-30));
         overlapping.GetProperty("validRooms").GetInt32().Should().Be(0);
         Codes(overlapping.GetProperty("rooms")[0].GetProperty("errors")).Should().Contain("ROOM_PERIOD_OVERLAP");
-
-        (await PreviewWithMoveInAsync(today.AddDays(-2))).GetProperty("validRooms").GetInt32().Should().Be(1, "vào ở sau ngày HĐ kia chuyển đi là hợp lệ");
+        Codes((await PreviewWithMoveInAsync(today)).GetProperty("rooms")[0].GetProperty("errors"))
+            .Should().Contain("ROOM_PERIOD_OVERLAP", "HĐ kia rời phòng hôm nay — phòng trống từ mai");
     }
 
     [Fact]
@@ -272,5 +275,47 @@ public sealed class ImportTests(ApiFactory factory)
 
         var formula = await PreviewAsync(url, Workbook("Phòng", RoomHeader, ["101", "1", 20, 2, "=1+1", null, null, null, null, null, null, null]), token);
         Codes(formula.GetProperty("rows")[0].GetProperty("errors")).Should().Contain("FORMULA_NOT_ALLOWED");
+    }
+
+    /// <summary>
+    /// RT-UC-10 (17/10/2026): số giấy tờ trùng hồ sơ có sẵn mà khác họ tên / ngày sinh ⇒ lỗi dòng (thường là gõ nhầm số); khác SĐT ⇒ chỉ cảnh báo.
+    /// Chỉ số công tơ mới nhất ghi trước ngày tính tiền ⇒ cảnh báo, ghi đúng ngày tính tiền ⇒ không cảnh báo.
+    /// </summary>
+    [Fact]
+    public async Task TenancyImport_IdentityMismatchIsError_PhoneDiffersIsWarning_MeterReadingBeforeBillingStartWarns()
+    {
+        var owner = await _client.CreateActiveOwnerAsync();
+        var token = owner.Tokens.AccessToken;
+        var today = TestData.Today(factory);
+        var monthStart = new DateOnly(today.Year, today.Month, 1);
+        var propertyId = await _client.CreatePropertyAsync(token, anchorDay: 1);
+        var electricity = await _client.FeeIdAsync(token, propertyId, "Điện");
+        var staleRoom = await _client.CreateRoomAsync(token, propertyId, "301");
+        await _client.InstallMeterAsync(token, staleRoom, electricity, monthStart.AddDays(-20), 100);
+        var freshRoom = await _client.CreateRoomAsync(token, propertyId, "302");
+        await _client.InstallMeterAsync(token, freshRoom, electricity, monthStart, 500);
+        await _client.CreateRoomAsync(token, propertyId, "303");
+        var knownId = TestData.NewCitizenId();
+        await _client.CreateRenterAsync(token, knownId); // Trần Thị Lan, 15/04/2000, 0987654321
+        var otherKnownId = TestData.NewCitizenId();
+        await _client.CreateRenterAsync(token, otherKnownId);
+
+        var preview = await PreviewAsync($"/api/v1/properties/{propertyId}/tenancies/import/preview", Workbook("Người thuê",
+            TenancyHeader,
+            ["301", "Đứng tên", "Ngô Văn Long", new DateOnly(1990, 2, 2), "Nam", null, "CCCD", TestData.NewCitizenId(), "VN", null, null, null,
+                monthStart.AddMonths(-6), 2_000_000, 0],
+            ["302", "Đứng tên", "Trần Thị Lan", new DateOnly(2000, 4, 15), "Nữ", "0911222333", "CCCD", knownId, "VN", null, null, null,
+                monthStart.AddMonths(-6), 2_000_000, 0],
+            ["303", "Đứng tên", "Nguyễn Văn An", new DateOnly(1999, 9, 9), "Nam", null, "CCCD", otherKnownId, "VN", null, null, null,
+                monthStart.AddMonths(-6), 2_000_000, 0]), token);
+
+        var rooms = preview.GetProperty("rooms").EnumerateArray().ToDictionary(r => r.GetProperty("roomCode").GetString()!);
+        Codes(rooms["301"].GetProperty("warnings")).Should().Contain("STALE_METER_READING", "chỉ số mới nhất ghi trước ngày tính tiền (đầu kỳ)");
+        Codes(rooms["302"].GetProperty("warnings")).Should().NotContain("STALE_METER_READING", "chỉ số ghi đúng ngày tính tiền");
+        var rows = preview.GetProperty("rows").EnumerateArray().ToList();
+        Codes(rows[1].GetProperty("warnings")).Should().Contain("RENTER_DATA_DIFFERS");
+        rows[1].GetProperty("errors").GetArrayLength().Should().Be(0, "chỉ khác SĐT — vẫn dùng lại hồ sơ");
+        Codes(rows[2].GetProperty("errors")).Should().Contain("RENTER_IDENTITY_MISMATCH");
+        rooms["303"].GetProperty("isValid").GetBoolean().Should().BeFalse("không gắn nhầm hồ sơ Trần Thị Lan làm người đứng tên phòng 303");
     }
 }

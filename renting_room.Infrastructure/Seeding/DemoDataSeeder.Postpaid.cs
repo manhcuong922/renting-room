@@ -199,20 +199,19 @@ public sealed partial class DemoDataSeeder
         await Send(new ChangeRoomStateCommand(r205.Id, RoomAction.StartMaintenance, "Sơn lại tường, thay bình nóng lạnh"));
         // 206 — CT-UC-12: người ở 203 (đang ở tiếp sau hết hạn) chuyển sang 206 hôm nay, giá mới 3,2tr; HĐ, cọc, người ở giữ nguyên.
         // PR-BR-16: nợ đi theo HĐ ⇒ nhãn "Còn nợ" sang 206, phòng 203 hết nhãn.
-        // CT-BR-47: điện 25 kWh + nước 2 m³ của 203 chốt ngay thành 2 khoản phát sinh hệ thống (giá hôm nay), chờ vào phiếu tháng này.
+        // CT-BR-47: điện 25 kWh + nước 2 m³ của 203 là sản lượng đã lưu (chỉ số cuối lúc chuyển) — phiếu tháng này cộng vào cùng dòng với 206.
         var r206 = await Room("206");
-        await Send(new TransferRoomCommand(c203, r206.Id, _today, [FinalReading(r203.Electricity, 25), FinalReading(r203.Water!.Value, 2)], null,
+        await Send(new TransferRoomCommand(c203, r206.Id, [FinalReading(r203.Electricity, 25), FinalReading(r203.Water!.Value, 2)], null,
             3200000, "Chuyển sang phòng rộng hơn"));
-        // 207 ⇄ 208 — CT-BR-14: chuyển sang 208 (sửa trần) rồi chuyển về lại 207 — phòng đã từng ở; mỗi lần chuyển chốt điện nước
-        // phòng vừa rời thành khoản phát sinh (CT-BR-47), giá thuê giữ nguyên.
+        // 207 ⇄ 208 — CT-BR-14: hôm nay chuyển nhầm sang 208 rồi chuyển lại về 207 ngay trong ngày ⇒ lần chuyển bị xóa như chưa từng chuyển
+        // (chỉ số của lần chuyển bị hủy, giá thuê giữ nguyên), 208 vẫn trống.
         var r207 = await Room("207");
         var r208 = await Room("208");
         var c207 = await ContractAsync(r207.Id, await RenterAsync("Kiều Văn Sang", new DateOnly(1994, 8, 14), Gender.Male, Phone(17)),
             Month(-1), 3000000, r207.Meters, fees: standard);
-        await Send(new TransferRoomCommand(c207, r208.Id, _today.AddDays(-12),
+        await Send(new TransferRoomCommand(c207, r208.Id,
             [FinalReading(r207.Electricity, 40), FinalReading(r207.Water!.Value, 3)], null, null, "Sửa trần phòng 207"));
-        await Send(new TransferRoomCommand(c207, r207.Id, _today.AddDays(-4),
-            [FinalReading(r208.Electricity, 18), FinalReading(r208.Water!.Value, 1)], null, null, "Sửa xong, chuyển về phòng cũ"));
+        await Send(new TransferRoomCommand(c207, r207.Id, null, null, null, "Chọn nhầm phòng — chuyển lại trong ngày"));
         // 208 (trống lại sau khi 207 chuyển về) — HĐ mới 3 người: người đứng tên, em gái, bạn đồng thuê (CT-BR-49: có tên trên HĐ, chỉ là giấy tờ).
         // Hôm nay: bạn đồng thuê chuyển sang ở 207 (CT-BR-52 — người đi, HĐ ở lại); người đứng tên rời đi, em gái đứng tên thay trên cùng HĐ
         // (CT-BR-51 — nợ, cọc giữ nguyên; HĐ về "Thiếu tài liệu", quan hệ khai lại).

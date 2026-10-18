@@ -61,12 +61,12 @@ không chặn được ⇒ lúc đó mới làm **số dư có** (trả thừa, 
 | PM-BR-31 ✅ | **Nợ các kỳ trước** (PM-UC-18): phiếu đã chốt của cùng HĐ, kỳ trước phiếu đang xem, còn nợ; "Tổng cần thanh toán" = còn phải trả của phiếu này (nháp: tổng phiếu) + nợ các kỳ trước. **Nợ HĐ trước** (11/10/2026 — HĐ ký lại, CT-UC-21): phiếu đã chốt còn nợ của các HĐ đứng trước trong chuỗi `previous_contract_id` hiện ở **danh sách riêng** `previousContractDebts` (kèm số HĐ) + tổng `previousContractDue` — **không cộng** vào "Tổng cần thanh toán" (thu tiền vẫn ghi trên HĐ cũ, PM-BR-02; người đứng tên có thể đã đổi) | Query |
 | PM-BR-32 ✅ | **Cọc tối giản** (chốt 10/10/2026): cọc chỉ là thông tin theo dõi trên HĐ — **không** ghi nhận tiền cọc vào / ra, **không** trừ cọc vào phiếu, **không** chặn hủy / thanh lý vì cọc, **không** tính vào doanh thu. `deposit_amount = 0` ⇒ "Không cọc". `deposit_amount > 0` ⇒ trạng thái mặc định `Holding` ("Đang giữ cọc") | Domain |
 | PM-BR-33 ✅ | **"Đã hoàn trả cọc"** — `POST /contracts/{id}/deposit/refund { refundedOn, amount, note }`: HĐ có cọc, đang `Holding`; `refundedOn` ≤ hôm nay; `amount` 0…`deposit_amount` (mặc định = cọc); trả **ít hơn** cọc (chủ trọ giữ lại một phần / mất cọc) ⇒ `note` bắt buộc → 400. Được ở mọi trạng thái HĐ (kể cả đã kết thúc, đã hủy — khách không đến). `DELETE /contracts/{id}/deposit/refund` bỏ đánh dấu (nhập nhầm) ⇒ về `Holding` | Domain + Application |
-| PM-BR-34 ✅ | **Ký lại HĐ** (M05 CT-UC-21): HĐ mới chép cọc thỏa thuận; mặc định HĐ cũ ⇒ `Transferred` ("Đã chuyển sang HĐ …"); chọn không chuyển ⇒ HĐ cũ vẫn `Holding` để hoàn sau. **Chuyển phòng** (M05 CT-UC-12): HĐ giữ nguyên ⇒ cọc không đổi | Application |
+| PM-BR-34 ✅ | **Ký lại HĐ** (M05 CT-UC-21): HĐ mới chép cọc thỏa thuận; mặc định HĐ cũ ⇒ `Transferred` ("Đã chuyển sang HĐ …"); chọn không chuyển ⇒ HĐ cũ vẫn `Holding` để hoàn sau. Ký lại không thành (17/10/2026): **hủy HĐ nháp mới** hoặc **hủy thanh lý HĐ cũ** ⇒ cọc HĐ cũ tự về `Holding` (để còn hiện "Chưa hoàn cọc" khi HĐ cũ kết thúc). **Chuyển phòng** (M05 CT-UC-12): HĐ giữ nguyên ⇒ cọc không đổi | Application |
 | PM-BR-35 ✅ | **Nhắc hoàn cọc**: hoàn tất thanh lý **không chặn** vì cọc; chi tiết HĐ / danh sách HĐ có cờ "Chưa hoàn cọc" cho HĐ `Ended` có cọc đang `Holding`; lọc `GET /contracts?depositNotRefunded=true` | Query |
 
 ### 3.3 Vòng đời
 - Payment: `Recorded` → `Reversed`. Không sửa số tiền.
-- Cọc của HĐ: `Holding` ⇄ `Refunded` (bỏ đánh dấu khi nhập nhầm); `Holding` → `Transferred` (ký lại).
+- Cọc của HĐ: `Holding` ⇄ `Refunded` (bỏ đánh dấu khi nhập nhầm); `Holding` → `Transferred` (ký lại); `Transferred` → `Holding` (hủy HĐ nháp ký lại / hủy thanh lý HĐ cũ / bỏ đánh dấu).
 
 ## 4. Dữ liệu
 

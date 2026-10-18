@@ -144,10 +144,14 @@ internal static class InvoiceAccess
         return invoice.ToDetail(today);
     }
 
-    /// <summary>BL-BR-22: chỉ hủy / xóa phiếu mới nhất chưa hủy của HĐ.</summary>
+    /// <summary>
+    /// BL-BR-22: chỉ hủy / xóa phiếu mới nhất chưa hủy của HĐ. Phiếu quyết toán cùng kỳ với phiếu thường của kỳ cuối nhưng luôn là mới nhất —
+    /// hủy phiếu thường kỳ cuối khi còn phiếu quyết toán sẽ làm mất tiền phòng / dịch vụ kỳ cuối.
+    /// </summary>
     public static Task<bool> HasLaterInvoiceAsync(IAppDbContext db, Invoice invoice, CancellationToken ct) =>
-        db.Invoices.AnyAsync(i => i.ContractId == invoice.ContractId && i.Status != InvoiceStatus.Void
-            && i.Id != invoice.Id && i.PeriodStart > invoice.PeriodStart, ct);
+        db.Invoices.AnyAsync(i => i.ContractId == invoice.ContractId && i.Status != InvoiceStatus.Void && i.Id != invoice.Id
+            && (i.PeriodStart > invoice.PeriodStart
+                || (invoice.Type == InvoiceType.Regular && i.Type == InvoiceType.Final && i.PeriodStart == invoice.PeriodStart)), ct);
 }
 
 // ============================================================ Truy vấn
@@ -323,8 +327,18 @@ public sealed class EditInvoiceLineHandler(IAppDbContext db, TimeProvider clock)
             if (await IsSystemChargeLineAsync(db, invoice, request.LineId, cancellationToken))
                 return Result.Failure(RoomChargeErrors.System);
             var edited = invoice.EditLine(request.LineId, request.Quantity, request.UnitPrice, request.Amount, request.Note);
+            if (edited.IsFailure)
+                return edited;
+            var line = invoice.Lines.First(l => l.Id == request.LineId);
+            // BL-BR-27: sửa số tiền hoàn trả cũng không vượt số đã thu của phiếu nguồn.
+            if (line is { Type: InvoiceLineType.Refund, SourceInvoiceId: { } sourceId } && sourceId != invoice.Id)
+            {
+                var allowed = await RefundSource.CheckAsync(db, invoice, sourceId, Math.Abs(line.Amount), cancellationToken, line.Id);
+                if (allowed.IsFailure)
+                    return allowed;
+            }
             // BL-BR-34: sửa dòng phụ thu / giảm trừ trên nháp ⇒ sửa khoản phát sinh của phòng.
-            if (edited.IsSuccess && invoice.Lines.First(l => l.Id == request.LineId) is { RoomChargeId: { } chargeId } line)
+            if (line.RoomChargeId is { } chargeId)
                 (await db.RoomCharges.FirstAsync(c => c.Id == chargeId, cancellationToken)).Update(Math.Abs(line.Amount), line.Note!);
             return edited;
         }, cancellationToken);
@@ -376,18 +390,33 @@ public sealed class AddInvoiceManualLineCommandValidator : AbstractValidator<Add
 /// BL-BR-27 (E — "chặn nhẹ"): hoàn trả ≤ số người thuê đã trả thật cho phiếu nguồn (đã thu − bỏ nợ) − các dòng hoàn trả khác đã trỏ tới phiếu
 /// nguồn (phiếu chưa hủy). Gọi khi đã khóa phiếu nguồn ⇒ 2 lần hoàn song song không vượt.
 /// </summary>
+/// <summary>BL-BR-27: hoàn trả ≤ số đã thu thật của phiếu nguồn − các lần hoàn khác — kiểm khi thêm dòng, sửa dòng và khi chốt phiếu.</summary>
 internal static class RefundSource
 {
-    public static async Task<Result> CheckAsync(IAppDbContext db, Invoice target, Guid sourceId, decimal amount, CancellationToken ct)
+    /// <param name="excludeLineId">Dòng đang sửa — không tính vào "các lần hoàn khác".</param>
+    public static async Task<Result> CheckAsync(
+        IAppDbContext db, Invoice target, Guid sourceId, decimal amount, CancellationToken ct, Guid? excludeLineId = null)
     {
         var source = await db.Invoices.AsNoTracking().FirstOrDefaultAsync(i => i.Id == sourceId, ct);
         if (source is null || source.ContractId != target.ContractId || source.Status != InvoiceStatus.Finalized)
             return Result.Failure(BillingErrors.RefundSourceInvalid);
         var refunded = -(await db.Invoices.Where(i => i.Status != InvoiceStatus.Void)
-            .SelectMany(i => i.Lines).Where(l => l.SourceInvoiceId == sourceId && l.Type == InvoiceLineType.Refund)
+            .SelectMany(i => i.Lines).Where(l => l.SourceInvoiceId == sourceId && l.Type == InvoiceLineType.Refund && l.Id != excludeLineId)
             .SumAsync(l => (decimal?)l.Amount, ct) ?? 0);
         var available = Math.Max(source.PaidAmount - source.WrittenOffAmount - refunded, 0);
         return amount > available ? Result.Failure(BillingErrors.RefundExceedsPaid(available)) : Result.Success();
+    }
+
+    /// <summary>Lúc chốt: từng dòng hoàn trả của phiếu kiểm lại theo số liệu hiện tại (phiếu nguồn có thể đã bị đảo thu sau khi thêm dòng).</summary>
+    public static async Task<Result> CheckInvoiceAsync(IAppDbContext db, Invoice invoice, CancellationToken ct)
+    {
+        foreach (var line in invoice.Lines.Where(l => l.Type == InvoiceLineType.Refund && l.SourceInvoiceId is { } src && src != invoice.Id))
+        {
+            var allowed = await CheckAsync(db, invoice, line.SourceInvoiceId!.Value, Math.Abs(line.Amount), ct, line.Id);
+            if (allowed.IsFailure)
+                return allowed;
+        }
+        return Result.Success();
     }
 }
 
@@ -525,6 +554,9 @@ public sealed class FinalizeInvoiceHandler(IAppDbContext db, IDocumentNumberGene
         var today = now.ToBusinessDate();
         if (invoice.HasBlockingIssues)
             return BillingErrors.HasIssues(invoice.Issues.Where(i => i.Severity == InvoiceIssue.Error).Select(i => i.Code).Distinct().ToList());
+        var refunds = await RefundSource.CheckInvoiceAsync(db, invoice, ct);
+        if (refunds.IsFailure)
+            return refunds.Error!;
         var invoiceNo = await numbers.NextAsync(currentUser.OrganizationId!.Value, "PB", today.Year, ct);
         var finalized = invoice.Finalize(invoiceNo, today, billing.PaymentDueDays, now);
         if (finalized.IsFailure)

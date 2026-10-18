@@ -96,7 +96,8 @@ Xem trước → 200: như form phòng (`rows[]` có `errors`, `warnings`) + `ro
 Lưu `{ "rows": [ { …row… } ] }` → 200 dạng như form phòng, `key` = mã phòng.
 
 **Hỗ trợ**: gia đình / ở ghép vào phòng trống · người đứng tên không ở · **1 người đứng tên nhiều phòng** (ở thật tối đa 1 phòng) · trẻ < 14 tuổi
-không giấy tờ · người đã có hồ sơ mà không đang ở HĐ mở (dùng lại; khác thông tin ⇒ cảnh báo `RENTER_DATA_DIFFERS`) · hộ chiếu · người đứng tên
+không giấy tờ · người đã có hồ sơ mà không đang ở HĐ mở (dùng lại; khác SĐT ⇒ cảnh báo `RENTER_DATA_DIFFERS`; **khác họ tên / ngày sinh ⇒ lỗi dòng
+`RENTER_IDENTITY_MISMATCH`** — 17/10/2026, thường là gõ nhầm số giấy tờ) · hộ chiếu · người đứng tên
 < 18 tuổi / quan hệ chưa hợp lý (cảnh báo trên HĐ).
 
 | Lỗi | Khi nào |
@@ -110,8 +111,9 @@ không giấy tờ · người đã có hồ sơ mà không đang ở HĐ mở (
 | `PERSON_MISMATCH`, `DUPLICATE_IN_ROOM` | Cùng số giấy tờ khác họ tên / ngày sinh; 1 người 2 lần trong 1 phòng |
 | `INVALID_FORMAT` | Vai trò, giới tính, loại giấy tờ, quan hệ sai danh mục |
 
-Cảnh báo: `RENTER_EXISTS`, `RENTER_DATA_DIFFERS`, `RELATIONSHIP_REQUIRED`, `IGNORED_FOR_OCCUPANT`, `STALE_METER_READING` (chỉ số công tơ ghi lần cuối
-trước kỳ tính tiền > 31 ngày — cập nhật chỉ số trước, nếu không phiếu đầu gộp điện nước nhiều tháng).
+Cảnh báo: `RENTER_EXISTS`, `RENTER_DATA_DIFFERS`, `RELATIONSHIP_REQUIRED`, `IGNORED_FOR_OCCUPANT`, `STALE_METER_READING` (chỉ số mới nhất của công tơ ghi
+**trước ngày tính tiền** — 17/10/2026, trước là > 31 ngày; chỉ số nhận phòng lấy số đó nên phiếu đầu sẽ tính cả điện nước trước ngày tính tiền —
+ghi lại chỉ số tại ngày tính tiền trước khi tạo phiếu).
 
 **Không nhập**: người đã rời đi (lịch sử), nợ cũ, cọc đã thu.
 

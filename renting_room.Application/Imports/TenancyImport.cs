@@ -179,7 +179,6 @@ internal sealed class TenancyImportChecker(
     IAppDbContext db, ICurrentUser currentUser, IPersonalDataProtector protector, IValidator<CreateRenterCommand> renterValidator)
 {
     private static readonly ContractStatus[] OpenStatuses = [ContractStatus.Draft, ContractStatus.Active, ContractStatus.Liquidating];
-    private const int StaleReadingDays = 31;
 
     public async Task<TenancyCheck> CheckAsync(
         Property property, IReadOnlyList<TenancyImportRow> rows, IReadOnlyDictionary<int, List<ImportIssue>> parseErrors, DateOnly today,
@@ -265,10 +264,13 @@ internal sealed class TenancyImportChecker(
             if (match is null)
                 continue;
             Warn(row, "idNumber", "RENTER_EXISTS", "Đã có hồ sơ cùng số giấy tờ — dùng lại hồ sơ đó, không sửa.");
-            if (TextNormalizer.ToSearchText(match.FullName) != TextNormalizer.ToSearchText(row.FullName ?? "") || match.DateOfBirth != row.DateOfBirth
-                || (row.Phone is not null && RenterProjection.NormalizePhone(row.Phone) != match.Phone))
-                Warn(row, "name", "RENTER_DATA_DIFFERS",
-                    $"Thông tin trong file khác hồ sơ đang có ({match.FullName}, {match.DateOfBirth:dd/MM/yyyy}, {match.Phone ?? "không SĐT"}) — giữ hồ sơ, sửa ở màn người thuê nếu cần.");
+            // RT-UC-10 (17/10/2026): khác họ tên / ngày sinh thường là gõ nhầm số giấy tờ ⇒ chặn, tránh gắn nhầm người vào HĐ.
+            if (TextNormalizer.ToSearchText(match.FullName) != TextNormalizer.ToSearchText(row.FullName ?? "") || match.DateOfBirth != row.DateOfBirth)
+                Error(row, "idNumber", "RENTER_IDENTITY_MISMATCH",
+                    $"Số giấy tờ trùng hồ sơ {match.FullName} ({match.DateOfBirth:dd/MM/yyyy}) nhưng họ tên / ngày sinh trong file khác — kiểm tra lại số giấy tờ.");
+            else if (row.Phone is not null && RenterProjection.NormalizePhone(row.Phone) != match.Phone)
+                Warn(row, "phone", "RENTER_DATA_DIFFERS",
+                    $"SĐT trong file khác hồ sơ đang có ({match.Phone ?? "không SĐT"}) — giữ hồ sơ, sửa ở màn người thuê nếu cần.");
             if (TenancyImportTemplate.IsLiving(row.Role) && stayingElsewhere.TryGetValue(match.Id, out var stay))
                 Error(row, "idNumber", "OCCUPANT_LIVES_ELSEWHERE", $"Người này đang ở phòng {stay.RoomCode} (HĐ {stay.ContractNo}) — thanh lý / chuyển phòng ở màn HĐ trước.");
         }
@@ -327,9 +329,10 @@ internal sealed class TenancyImportChecker(
                     $"Phòng {group.Key} đã có hợp đồng khác ở tới {until:dd/MM/yyyy} — ngày vào ở phải sau ngày đó."));
             DateOnly? billingStart = start is { } s ? (s > periodStart ? s : periodStart) : null;
             if (room is not null && billingStart is { } from)
-                foreach (var meter in lastReadings[room.Id].Where(m => m.Last is null || m.Last < from.AddDays(-StaleReadingDays)))
+                // Chỉ số nhận phòng = số mới nhất; ghi trước ngày tính tiền ⇒ phiếu đầu tính cả điện nước trước đó (đã thu trên sổ cũ).
+                foreach (var meter in lastReadings[room.Id].Where(m => m.Last is null || m.Last < from))
                     roomWarnings.Add(new("STALE_METER_READING",
-                        $"Chỉ số công tơ {meter.SerialNo ?? ""} ghi lần cuối {meter.Last:dd/MM/yyyy} — cập nhật chỉ số trước, nếu không phiếu đầu sẽ gộp điện nước nhiều tháng."));
+                        $"Chỉ số công tơ {meter.SerialNo ?? ""} ghi lần cuối {meter.Last:dd/MM/yyyy}, trước ngày tính tiền {from:dd/MM/yyyy} — ghi lại chỉ số tại ngày tính tiền, nếu không phiếu đầu sẽ tính cả điện nước trước đó."));
 
             var isValid = roomErrors.Count == 0 && members.All(r => errors[r.RowNumber].Count == 0);
             rooms.Add(new TenancyRoomDto(group.Key, members.Select(r => r.RowNumber).ToList(), isValid, start, billingStart, roomErrors, roomWarnings));
