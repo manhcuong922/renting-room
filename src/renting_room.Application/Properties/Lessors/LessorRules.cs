@@ -109,7 +109,6 @@ internal static class LessorRules
     }
 }
 
-// Ngân hàng & nội quy
 internal static class LessorErrors
 {
     public static readonly Error IdNumberRequired =

@@ -8,7 +8,6 @@ using renting_room.Domain.Fees;
 
 namespace renting_room.Application.Fees;
 
-// Ngừng dùng / khôi phục
 public sealed record ChangeFeeTypeStateCommand(Guid Id, bool Archive) : IRequest<Result>;
 
 /// <summary>Ngừng dùng chỉ khi không còn HĐ nháp / hiệu lực / thanh lý đang gắn khoản này (thay FE-BR-12 bản đầu).</summary>

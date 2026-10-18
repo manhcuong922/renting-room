@@ -45,7 +45,6 @@ public sealed class RateLimitingOptions
     /// <summary>Xem trước import Excel (PR-UC-11, RT-UC-10) — theo user: mỗi lần đọc cả file, chặn bấm liên tục.</summary>
     [Required] public RateLimitRule Import { get; init; } = new() { PermitLimit = 10 };
 
-    /// <summary>Mọi request của user đã đăng nhập.</summary>
     [Required] public RateLimitRule Authenticated { get; init; } = new() { PermitLimit = 300 };
 
     /// <summary>Mọi request chưa đăng nhập — theo IP.</summary>

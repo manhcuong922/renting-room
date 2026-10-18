@@ -13,7 +13,6 @@ public static class PersonalDataRetention
     public const int MaxRentersPerRun = 200;
 }
 
-// Ẩn danh tự động (job) và bằng tay
 /// <summary>
 /// RT-BR-06: ẩn danh tự động các hồ sơ của tổ chức hiện tại đủ điều kiện tại ngày <paramref name="AsOf"/> — job hằng ngày chạy dưới
 /// danh nghĩa hệ thống của từng tổ chức. Tổ chức tắt ẩn danh tự động ⇒ bỏ qua. Trả số hồ sơ đã ẩn danh.

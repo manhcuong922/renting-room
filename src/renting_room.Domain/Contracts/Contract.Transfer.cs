@@ -4,7 +4,6 @@ namespace renting_room.Domain.Contracts;
 
 public sealed partial class Contract
 {
-    // Chuyển phòng
     /// <summary>
     /// CT-UC-12 / CT-BR-14: HĐ đi theo người thuê sang phòng khác cùng khu từ ngày <paramref name="date"/> — người ở, xe, dịch vụ, cọc giữ nguyên.
     /// Phòng mới trống, chỉ số công tơ: Application kiểm và ghi.

@@ -9,7 +9,6 @@ using renting_room.Domain.Contracts;
 
 namespace renting_room.Application.Renters;
 
-// Queries
 /// <param name="PropertyId">Người từng đứng tên / ở trong HĐ của khu này.</param>
 /// <param name="Staying"><c>true</c> = đang ở trong HĐ hiệu lực / đang thanh lý; <c>false</c> = không còn ở.</param>
 /// <param name="IncludeArchived">Kèm hồ sơ đã ẩn (RT-BR-05).</param>

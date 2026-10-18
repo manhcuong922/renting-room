@@ -9,7 +9,6 @@ using renting_room.Domain.Properties;
 
 namespace renting_room.Application.Rooms;
 
-// Queries
 public sealed record ListRoomsQuery(
     Guid? PropertyId,
     RoomDisplayStatus? Status,

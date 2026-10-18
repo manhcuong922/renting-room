@@ -110,8 +110,6 @@ public sealed partial class DemoDataSeeder(
         await Send(new Application.Identity.Members.SetWriteOffPermissionCommand(trusted.UserId, true));
     }
 
-    // ------------------------------------------------------------------ gọi lệnh
-
     private async Task<TResponse> Raw<TResponse>(IRequest<TResponse> request, ICurrentUser? user = null)
     {
         await using var scope = scopeFactory.CreateAsyncScope();
@@ -134,8 +132,6 @@ public sealed partial class DemoDataSeeder(
 
     private static InvalidOperationException Failed(object request, Error error) =>
         new($"Demo seed failed at {request.GetType().Name}: {error.Code} — {error.Message}");
-
-    // ------------------------------------------------------------------ hợp đồng, chỉ số, phiếu
 
     private static string CitizenId(int n) => $"0{10_000_000_000L + n * 7_919L:D11}";
 

@@ -11,7 +11,6 @@ using renting_room.Domain.Properties;
 
 namespace renting_room.Application.Fees;
 
-// Tạo / sửa
 public sealed record CreateFeeTypeCommand(
     Guid PropertyId,
     string Name,

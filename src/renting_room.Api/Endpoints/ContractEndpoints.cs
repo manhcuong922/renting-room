@@ -82,7 +82,6 @@ public static class ContractEndpoints
                 (await sender.Send(new GetBillingPeriodsQuery(id, until), ct)).ToHttp())
             .WithSummary("Lịch kỳ thu của hợp đồng");
 
-        // ---- Người ở
         group.MapPost("/{id:guid}/occupants", async (Guid id, AddOccupantRequest b, ISender sender, CancellationToken ct) =>
                 (await sender.Send(new AddOccupantCommand(id, b.RenterId, b.MoveInDate, b.ExpectedEndDate, b.Relationship, b.Note,
                     b.RelationshipType, b.GuardianConsent ?? false, b.Role ?? OccupantRole.Resident), ct)).ToHttp())
@@ -102,7 +101,6 @@ public static class ContractEndpoints
                 (await sender.Send(new EndOccupancyCommand(id, occupantId, b.MoveOutDate), ct)).ToHttp())
             .WithSummary("Ghi nhận người ở rời đi");
 
-        // ---- Phụ lục
         group.MapPost("/{id:guid}/rent-terms", async (Guid id, ChangeRentRequest b, ISender sender, CancellationToken ct) =>
                 (await sender.Send(new ChangeRentCommand(id, b.EffectiveFrom, b.MonthlyRent, b.AddendumNo, b.Note), ct)).ToHttp())
             .WithSummary("Sửa giá thuê — effectiveFrom bỏ trống ⇒ từ kỳ chưa chốt đầu tiên (lịch sử giữ nguyên)");
@@ -134,7 +132,6 @@ public static class ContractEndpoints
                 (await sender.Send(new GiveNoticeCommand(id, b.NoticeDate, b.PlannedMoveOutDate), ct)).ToHttp())
             .WithSummary("Báo trả phòng — trả cảnh báo nếu báo trước ít hơn thỏa thuận (thường 30 ngày)");
 
-        // ---- Thanh lý
         group.MapGet("/{id:guid}/liquidation/preview", async (Guid id, ISender sender, CancellationToken ct) =>
                 (await sender.Send(new GetLiquidationPreviewQuery(id), ct)).ToHttp())
             .WithSummary("Xem trước thanh lý: phiếu còn nợ, tiền chờ hoàn, chỉ số cuối còn thiếu, phiếu quyết toán, cọc, những gì còn chặn hoàn tất");
@@ -155,7 +152,6 @@ public static class ContractEndpoints
             .WithIdempotency(required: false)
             .WithSummary("Lập phiếu quyết toán khi trả phòng (nhập chỉ số cuối) — nháp sửa được như phiếu thường");
 
-        // ---- Tài sản bàn giao
         group.MapPost("/{id:guid}/assets", async (Guid id, AssetRequest b, ISender sender, CancellationToken ct) =>
                 (await sender.Send(new AddAssetCommand(id, b), ct)).ToCreated($"{Route}/{id}/assets"))
             .WithSummary("Thêm tài sản bàn giao (khi hợp đồng còn nháp)");
@@ -169,7 +165,6 @@ public static class ContractEndpoints
                 (await sender.Send(new RecordAssetReturnCommand(id, assetId, b.ConditionAtReturn), ct)).ToHttp())
             .WithSummary("Ghi tình trạng tài sản khi trả phòng (bồi thường: thêm phụ thu trên phiếu quyết toán)");
 
-        // ---- Xe gửi
         group.MapPost("/{id:guid}/vehicles", async (Guid id, RegisterVehicleRequest b, ISender sender, CancellationToken ct) =>
                 (await sender.Send(new RegisterVehicleCommand(id, b.RenterId, b.VehicleType, b.PlateNumber, b.BrandColor, b.RegisteredFrom, b.Note), ct))
                 .ToCreated($"{Route}/{id}/vehicles"))

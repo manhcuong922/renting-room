@@ -4,7 +4,6 @@ using renting_room.Domain.Billing;
 
 namespace renting_room.Application.Properties;
 
-// Validators dùng chung
 internal static class PropertyRules
 {
     public static void AddressRules<T>(this AbstractValidator<T> v, Func<T, AddressInput> address)

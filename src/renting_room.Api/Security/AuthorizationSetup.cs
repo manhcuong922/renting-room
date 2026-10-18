@@ -11,7 +11,6 @@ public static class AuthPolicies
     /// <summary>Chỉ cần đăng nhập — kể cả khi đang bắt buộc đổi mật khẩu (dùng cho /me, đổi mật khẩu, đăng xuất).</summary>
     public const string AnyUser = "AnyUser";
 
-    /// <summary>Quản trị nền tảng.</summary>
     public const string SystemAdmin = "SystemAdmin";
 
     /// <summary>Thành viên tổ chức chủ trọ. Đây cũng là policy MẶC ĐỊNH cho mọi endpoint không khai báo gì.</summary>

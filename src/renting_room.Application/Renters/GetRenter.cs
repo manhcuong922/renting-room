@@ -7,7 +7,6 @@ using renting_room.Domain.Renters;
 
 namespace renting_room.Application.Renters;
 
-// Queries
 public sealed record GetRenterQuery(Guid Id) : IRequest<Result<RenterDto>>;
 
 public sealed class GetRenterHandler(IAppDbContext db) : IRequestHandler<GetRenterQuery, Result<RenterDto>>

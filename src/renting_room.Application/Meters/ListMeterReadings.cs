@@ -6,7 +6,6 @@ using renting_room.Domain.Meters;
 
 namespace renting_room.Application.Meters;
 
-// Truy vấn
 public sealed record ListMeterReadingsQuery(Guid MeterId) : IRequest<Result<IReadOnlyList<MeterReadingDto>>>;
 
 public sealed class ListMeterReadingsHandler(IAppDbContext db) : IRequestHandler<ListMeterReadingsQuery, Result<IReadOnlyList<MeterReadingDto>>>

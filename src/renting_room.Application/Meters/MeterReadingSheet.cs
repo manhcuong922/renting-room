@@ -99,8 +99,6 @@ internal static class MeterPeriodLocks
         locks.TryGetValue(meterId, out var until) && date <= until ? MeterErrors.PeriodLocked(until) : null;
 }
 
-// ============================================================ Lưới ghi chỉ số
-
 /// <param name="FeeTypeId">Chỉ các công tơ của khoản thu này (VD đi ghi riêng điện).</param>
 public sealed record GetMeterReadingSheetQuery(Guid PropertyId, string BillingMonth, string? Floor, Guid? FeeTypeId = null)
     : IRequest<Result<MeterReadingSheetDto>>;
@@ -198,8 +196,6 @@ public sealed class GetMeterReadingSheetHandler(IAppDbContext db) : IRequestHand
         return db.Renters.AsNoTracking().Where(r => list.Contains(r.Id)).ToDictionaryAsync(r => r.Id, r => r.FullName, ct);
     }
 }
-
-// ============================================================ Lưu hàng loạt
 
 public sealed record PeriodicReadingInput(Guid MeterId, Guid ContractId, DateOnly ClosingPeriodStart, DateOnly ReadingDate, decimal Value);
 

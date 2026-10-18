@@ -8,7 +8,6 @@ using renting_room.Domain.Properties;
 
 namespace renting_room.Application.Rooms;
 
-// Tạo phòng
 public sealed record CreateRoomCommand(Guid PropertyId, string Code, RoomSpecInput Spec) : IRequest<Result<Guid>>;
 
 public sealed class CreateRoomCommandValidator : AbstractValidator<CreateRoomCommand>

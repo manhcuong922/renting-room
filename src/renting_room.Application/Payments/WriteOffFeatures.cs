@@ -47,8 +47,6 @@ internal static class WriteOffGuard
             .Select(i => (decimal?)(i.TotalAmount - i.PaidAmount)).FirstOrDefaultAsync(ct);
 }
 
-// ============================================================ Bỏ nợ riêng
-
 /// <param name="Amount">null ⇒ bỏ toàn bộ số còn nợ của phiếu.</param>
 public sealed record WriteOffInvoiceCommand(Guid InvoiceId, decimal? Amount, string Reason) : IRequest<Result<PaymentDto>>;
 
@@ -86,8 +84,6 @@ public sealed class WriteOffInvoiceHandler(IAppDbContext db, IDocumentNumberGene
         return (await PaymentMapping.ToDtosAsync(db, [writeOff.Value!], cancellationToken))[0];
     }
 }
-
-// ============================================================ Thanh toán + bỏ phần còn lại
 
 public sealed record PayAndWriteOffCommand(
     Guid InvoiceId, decimal Amount, PaymentMethod Method, DateOnly PaidAt, string? PayerName, string? Reference, string Reason)

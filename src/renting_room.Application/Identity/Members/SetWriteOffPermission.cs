@@ -6,7 +6,6 @@ using renting_room.Domain.Common;
 
 namespace renting_room.Application.Identity.Members;
 
-// Sửa / khóa / mở / cấp lại mật khẩu / gỡ (chỉ chủ trọ, chỉ phó quản lý)
 /// <summary>PM-BR-16: chủ trọ bật / tắt quyền bỏ nợ cho từng phó quản lý — audit tự ghi (Updated User, <c>canWriteOff</c>).</summary>
 public sealed record SetWriteOffPermissionCommand(Guid Id, bool Allowed) : IRequest<Result<MemberDto>>;
 

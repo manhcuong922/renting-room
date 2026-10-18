@@ -9,7 +9,6 @@ using renting_room.Domain.Renters;
 
 namespace renting_room.Application.Renters;
 
-// Queries
 /// <summary>Xem số giấy tờ đầy đủ — chỉ người có quyền (ID-BR-22), luôn ghi log ai xem (C-10).</summary>
 public sealed record RevealRenterIdNumberQuery(Guid Id) : IRequest<Result<string>>;
 

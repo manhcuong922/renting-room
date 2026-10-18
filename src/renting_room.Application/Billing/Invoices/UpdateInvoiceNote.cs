@@ -7,7 +7,6 @@ using renting_room.Domain.Common;
 
 namespace renting_room.Application.Billing;
 
-// Sửa nháp: sửa tay, phụ thu / giảm tay, ghi chú
 public sealed record UpdateInvoiceNoteCommand(Guid InvoiceId, string? Note) : IRequest<Result<InvoiceDetailDto>>;
 
 public sealed class UpdateInvoiceNoteCommandValidator : AbstractValidator<UpdateInvoiceNoteCommand>

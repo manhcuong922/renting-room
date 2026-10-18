@@ -6,7 +6,6 @@ using renting_room.Domain.Contracts;
 
 namespace renting_room.Application.Contracts;
 
-// Truy vấn
 public sealed record GetContractTemplateQuery(Guid Id) : IRequest<Result<ContractTemplateDto>>;
 
 public sealed class GetContractTemplateHandler(IAppDbContext db) : IRequestHandler<GetContractTemplateQuery, Result<ContractTemplateDto>>

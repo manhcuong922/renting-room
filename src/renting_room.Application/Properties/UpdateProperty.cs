@@ -8,7 +8,6 @@ using renting_room.Domain.Properties;
 
 namespace renting_room.Application.Properties;
 
-// Tạo / sửa khu
 public sealed record UpdatePropertyCommand(
     Guid Id,
     string Name,

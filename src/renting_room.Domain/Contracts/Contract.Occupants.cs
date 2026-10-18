@@ -4,7 +4,6 @@ namespace renting_room.Domain.Contracts;
 
 public sealed partial class Contract
 {
-    // Người ở
     public Result AddOccupant(OccupantInput input)
     {
         if (Status is not (ContractStatus.Draft or ContractStatus.Active))

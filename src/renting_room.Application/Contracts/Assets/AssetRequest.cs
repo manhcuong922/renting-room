@@ -4,7 +4,6 @@ using renting_room.Domain.Contracts;
 
 namespace renting_room.Application.Contracts;
 
-// Tài sản bàn giao
 public sealed record AssetRequest(string Name, int Quantity, string? ConditionAtHandover, decimal? ValueEstimate, string? Note)
 {
     public AssetInput ToDomain() => new(Name, Quantity, ConditionAtHandover, ValueEstimate, Note);

@@ -2,7 +2,6 @@ using renting_room.Domain.Contracts;
 
 namespace renting_room.Application.Contracts;
 
-// Mẫu gợi ý
 /// <summary>
 /// Điểm xuất phát cho chủ trọ. Điều khoản theo mẫu thực tế + các nội dung Luật Nhà ở 2023 Điều 163 yêu cầu
 /// (bàn giao, quyền và nghĩa vụ, chấm dứt, giải quyết tranh chấp). Điện / nước / dịch vụ KHÔNG còn là trường tùy biến:

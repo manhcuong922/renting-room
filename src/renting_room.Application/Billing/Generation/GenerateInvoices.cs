@@ -11,7 +11,6 @@ using renting_room.Domain.Properties;
 
 namespace renting_room.Application.Billing;
 
-// Tạo phiếu nháp hàng loạt
 /// <param name="RoomIds">Lọc phòng (null = cả khu).</param>
 /// <param name="RecalculateExistingDrafts">Kỳ đã có phiếu nháp ⇒ tính lại (giữ ô sửa tay) thay vì bỏ qua.</param>
 /// <param name="ContractId">Chỉ lập cho 1 HĐ cụ thể của khu (BL-UC-01).</param>

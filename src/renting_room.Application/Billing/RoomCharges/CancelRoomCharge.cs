@@ -7,7 +7,6 @@ using renting_room.Domain.Common;
 
 namespace renting_room.Application.Billing;
 
-// Đánh dấu đã thanh toán / bỏ đánh dấu / hủy
 public sealed record CancelRoomChargeCommand(Guid Id, string Reason) : IRequest<Result<RoomChargeDto>>;
 
 public sealed class CancelRoomChargeCommandValidator : AbstractValidator<CancelRoomChargeCommand>

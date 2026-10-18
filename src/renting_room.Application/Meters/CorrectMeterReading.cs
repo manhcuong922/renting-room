@@ -8,7 +8,6 @@ using renting_room.Domain.Meters;
 
 namespace renting_room.Application.Meters;
 
-// Sửa chỉ số
 public sealed record CorrectMeterReadingCommand(Guid ReadingId, decimal Value, string? Note) : IRequest<Result<MeterReadingDto>>;
 
 public sealed class CorrectMeterReadingCommandValidator : AbstractValidator<CorrectMeterReadingCommand>

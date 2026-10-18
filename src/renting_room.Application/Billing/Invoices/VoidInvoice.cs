@@ -9,7 +9,6 @@ using renting_room.Domain.Contracts;
 
 namespace renting_room.Application.Billing;
 
-// Xóa nháp / chốt / hủy
 public sealed record VoidInvoiceCommand(Guid Id, string Reason) : IRequest<Result<InvoiceDetailDto>>;
 
 public sealed class VoidInvoiceCommandValidator : AbstractValidator<VoidInvoiceCommand>

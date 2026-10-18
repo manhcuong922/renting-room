@@ -6,7 +6,6 @@ using renting_room.Domain.Fees;
 
 namespace renting_room.Application.Fees;
 
-// Truy vấn
 public sealed record GetFeeTypeQuery(Guid Id) : IRequest<Result<FeeTypeDto>>;
 
 public sealed class GetFeeTypeHandler(IAppDbContext db, TimeProvider clock) : IRequestHandler<GetFeeTypeQuery, Result<FeeTypeDto>>
