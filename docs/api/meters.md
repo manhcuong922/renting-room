@@ -125,6 +125,34 @@ body có `lockedUntil`, UI gợi ý chọn từ `lockedUntil + 1`; thay hàng lo
 Giá trị phải **≥ chỉ số trước và ≤ chỉ số sau** (422 `READING_NOT_MONOTONIC`, body có `previousValue`, `nextValue` để hiện gợi ý).
 VD: chỉ số nhận phòng tự lấy 100 (số cuối người cũ), thực tế thợ sửa chữa đã dùng 8 kWh → sửa thành 108.
 
+### Điều chỉnh chỉ số đã chốt (18/10/2026 — MT-UC-09)
+
+Gõ sai chỉ số, phát hiện khi phiếu đã chốt (kể cả đã thu): `PUT` trả `READING_LOCKED` ⇒ UI hiện nút **"Điều chỉnh chỉ số đã chốt"**.
+
+`POST /meter-readings/{id}/adjust` — **Idempotency-Key** — `{ "value": 1338, "reason": "Gõ nhầm 1.338 thành 1.388" }` (`reason` bắt buộc ≤ 300)
+
+```json
+{ "reading": { "id": "…", "kind": "Periodic", "readingDate": "2026-11-04", "value": 1338, "contractId": "…", "note": "Gõ nhầm 1.338 thành 1.388", "version": "…" },
+  "charge": { "id": "…", "roomCode": "101", "kind": "Credit", "description": "Điều chỉnh chỉ số Điện kỳ 05/10–04/11: 1388 → 1338 (−50 kWh)",
+              "amount": 190000, "incurredOn": "2026-11-10", "status": "Pending", "isSettled": false, "invoiceId": null, … },
+  "warnings": [] }
+```
+
+- Chỉ số được sửa về số đúng; **phiếu đã chốt giữ nguyên** (chứng từ). Hệ thống tính lại thành tiền dòng điện nước của phiếu đó với sản lượng mới (cùng
+  giá / bậc của dòng) và tạo **khoản phát sinh** phần chênh ([room-charges.md](room-charges.md)): thu dư ⇒ `Credit` (bù), thu thiếu ⇒ `Surcharge`
+  (phụ thu); chênh 0đ ⇒ `charge: null`. Có nháp đang mở ⇒ khoản gắn ngay (`status: OnDraft`), không thì chờ phiếu sau. Khoản sửa / hủy được như khoản thường.
+- Kỳ sau tính tiếp từ chỉ số đúng (nhập được 1.380 bình thường); nháp kỳ sau tự "Cần tính lại".
+- `warnings`: `LINE_MANUALLY_EDITED` — dòng của phiếu đã chốt từng sửa tay, khoản tính theo số hệ thống, chủ trọ tự kiểm tra.
+
+| Lỗi | Khi nào |
+|-----|---------|
+| 422 `READING_NOT_LOCKED` | Chỉ số chưa dùng cho phiếu đã chốt — dùng `PUT` sửa trực tiếp |
+| 422 `READING_NOT_ADJUSTABLE` | Không phải chỉ số cuối của đoạn đo trên phiếu đã chốt (VD chỉ số đầu kỳ) |
+| 422 `READING_NEXT_PERIOD_FINALIZED` | Kỳ sau đã chốt phiếu bắt đầu từ chỉ số này — tổng 2 kỳ đã tự bù nhau |
+| 400 `READING_UNCHANGED` | Số mới trùng số hiện tại |
+| 422 `READING_NOT_MONOTONIC` | Số mới nhỏ hơn chỉ số trước / lớn hơn chỉ số sau |
+| 422 `ROOM_CHARGE_NO_OPEN_INVOICE` | HĐ đã kết thúc / đã chốt phiếu quyết toán — không còn phiếu để đưa khoản vào |
+
 ## Lưới ghi chỉ số hằng tháng
 
 `GET /properties/{propertyId}/meter-reading-sheet?billingMonth=2026-11&floor=2&feeTypeId=…` (`floor`, `feeTypeId` tùy chọn — `feeTypeId` để đi ghi

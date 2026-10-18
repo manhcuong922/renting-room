@@ -17,6 +17,9 @@ public sealed record BulkReplaceMetersRequest(Guid FeeTypeId, DateOnly ReplacedO
 /// <summary>Công tơ của phòng & chỉ số (M06 đợt 1): lắp, thay (phiên bản), tháo, lịch sử, sửa chỉ số.</summary>
 public sealed record VoidReadingRequest(string Reason);
 
+/// <summary>MT-UC-09: điều chỉnh chỉ số đã chốt — `reason` bắt buộc.</summary>
+public sealed record AdjustReadingRequest(decimal Value, string Reason);
+
 public sealed record BulkInstallMetersRequest(Guid FeeTypeId, DateOnly InstalledDate, IReadOnlyList<BulkInstallRow> Rows);
 
 public static class MeterEndpoints
@@ -75,5 +78,9 @@ public static class MeterEndpoints
         readings.MapPost("/{id:guid}/void", async (Guid id, VoidReadingRequest b, ISender sender, CancellationToken ct) =>
                 (await sender.Send(new VoidMeterReadingCommand(id, b.Reason), ct)).ToHttp())
             .WithSummary("Hủy chỉ số ghi nhầm / ghi thừa (chỉ chỉ số cuối kỳ, kiểm tra; chưa bị phiếu đã chốt khóa)");
+        readings.MapPost("/{id:guid}/adjust", async (Guid id, AdjustReadingRequest b, ISender sender, CancellationToken ct) =>
+                (await sender.Send(new AdjustMeterReadingCommand(id, b.Value, b.Reason), ct)).ToHttp())
+            .WithIdempotency(required: true)
+            .WithSummary("Điều chỉnh chỉ số đã chốt (gõ sai): sửa chỉ số + tự tạo khoản bù / phụ thu phần tiền chênh vào phiếu kỳ sau");
     }
 }

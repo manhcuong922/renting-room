@@ -60,6 +60,13 @@ public sealed class WriteOffTests(ApiFactory factory)
         var summary = await SummaryAsync(token, invoiceId);
         summary.GetProperty("paymentStatus").GetString().Should().Be("WrittenOff");
         summary.GetProperty("paidAmount").GetDecimal().Should().Be(Rent);
+        // PM-BR-36: thực thu tách khỏi bỏ nợ — trên phiếu và số tổng hợp.
+        summary.GetProperty("collectedAmount").GetDecimal().Should().Be(2_000_000);
+        summary.GetProperty("writtenOffAmount").GetDecimal().Should().Be(1_000_000);
+        var totals = await (await _client.GetAsync($"/api/v1/invoices/totals?contractId={contractId}", token)).ReadAsync<JsonElement>();
+        totals.GetProperty("collectedAmount").GetDecimal().Should().Be(2_000_000);
+        totals.GetProperty("writtenOffAmount").GetDecimal().Should().Be(1_000_000);
+        totals.GetProperty("paidAmount").GetDecimal().Should().Be(Rent, "đã xử lý = thực thu + bỏ nợ");
         var payments = await (await _client.GetAsync($"/api/v1/payments?contractId={contractId}", token)).ReadAsync<JsonElement>();
         payments.EnumerateArray().Where(p => p.GetProperty("kind").GetString() == "Receipt").Sum(p => p.GetProperty("amount").GetDecimal())
             .Should().Be(2_000_000, "tiền thu thật chỉ 2tr");
@@ -68,7 +75,7 @@ public sealed class WriteOffTests(ApiFactory factory)
     [Fact]
     public async Task WriteOffAlone_WhileActive_ManagerNeedsPermissionGrantedPerPerson()
     {
-        var (token, _, invoiceId) = await ArrangeAsync();
+        var (token, contractId, invoiceId) = await ArrangeAsync();
         var created = await _client.PostJsonAsync("/api/v1/org/members", new { fullName = "Phó Quản Lý", phone = TestApi.NewPhone() }, token);
         var credentials = await created.ReadAsync<TemporaryCredentialsResponse>();
         var login = await _client.LoginAsync(credentials.Username, credentials.TemporaryPassword);
@@ -87,7 +94,13 @@ public sealed class WriteOffTests(ApiFactory factory)
         writeOff.StatusCode.Should().Be(HttpStatusCode.OK, await writeOff.Content.ReadAsStringAsync());
         var summary = await SummaryAsync(token, invoiceId);
         summary.GetProperty("paidAmount").GetDecimal().Should().Be(500_000);
-        summary.GetProperty("paymentStatus").GetString().Should().Be("PartiallyPaid", "còn 2,5tr vẫn là nợ");
+        summary.GetProperty("collectedAmount").GetDecimal().Should().Be(0);
+        summary.GetProperty("writtenOffAmount").GetDecimal().Should().Be(500_000);
+        summary.GetProperty("paymentStatus").GetString().Should().BeOneOf(["Unpaid", "Overdue"], "chưa thu đồng nào — bỏ nợ không phải thu một phần (PM-BR-36)");
+        var row = (await (await _client.GetAsync($"/api/v1/contracts/{contractId}/balance", token)).ReadAsync<JsonElement>())
+            .GetProperty("unpaidInvoices").EnumerateArray().Single();
+        (row.GetProperty("outstanding").GetDecimal(), row.GetProperty("collectedAmount").GetDecimal(), row.GetProperty("writtenOffAmount").GetDecimal())
+            .Should().Be((2_500_000m, 0m, 500_000m));
 
         (await _client.PostJsonAsync($"/api/v1/invoices/{invoiceId}/write-off", new { reason = "Bỏ nốt" }, token)).StatusCode.Should().Be(HttpStatusCode.OK);
         (await SummaryAsync(token, invoiceId)).GetProperty("paymentStatus").GetString().Should().Be("WrittenOff");

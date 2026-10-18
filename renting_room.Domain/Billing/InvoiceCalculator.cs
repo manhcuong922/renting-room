@@ -94,6 +94,7 @@ public sealed record UsagePeriod(DateOnly Start, DateOnly End, DateOnly ClosingP
 /// <param name="RoundTotal">Khu bật làm tròn tổng phiếu xuống nghìn (BL-BR-29).</param>
 /// <param name="ClosedReadingIds">Chỉ số cuối của các khoản chốt điện nước khi chuyển phòng còn hiệu lực (dữ liệu trước 17/10/2026 — BL-BR-38):
 /// đoạn đo kết thúc ở đó đã thu bằng khoản phát sinh, phiếu không tính lại.</param>
+/// <param name="RoomCodes">Mã phòng theo id — chụp vào đoạn đo để hiển thị (phòng cũ / phòng mới khi chuyển phòng).</param>
 public sealed record InvoiceCalcInput(
     Contract Contract,
     BillingPeriod Period,
@@ -105,7 +106,8 @@ public sealed record InvoiceCalcInput(
     FinalSettlement? Final = null,
     IReadOnlyDictionary<Guid, IReadOnlyList<decimal>>? RecentUsage = null,
     bool RoundTotal = false,
-    IReadOnlySet<Guid>? ClosedReadingIds = null);
+    IReadOnlySet<Guid>? ClosedReadingIds = null,
+    IReadOnlyDictionary<Guid, string>? RoomCodes = null);
 
 /// <summary>
 /// Bối cảnh phiếu quyết toán: <paramref name="RentBilled"/> = tiền phòng kỳ cuối đã nằm trên phiếu thường (null = chưa thu) ⇒ không thu thêm;
@@ -276,7 +278,8 @@ public static class InvoiceCalculator
                 // Cùng một chỉ số (đã tính tới mốc này ở kỳ trước) hoặc đoạn đã thu bằng khoản chốt khi chuyển phòng (dữ liệu cũ) ⇒ không tính.
                 if (end.Id == start.Id || input.ClosedReadingIds?.Contains(end.Id) == true)
                     continue;
-                parts.Add(new CalculatedSegment(type.Id, meter.Id, meter.SerialNo, start.Id, end.Id, start.Value, end.Value));
+                parts.Add(new CalculatedSegment(type.Id, meter.Id, meter.SerialNo, start.Id, end.Id, start.Value, end.Value,
+                    meter.RoomId, input.RoomCodes?.GetValueOrDefault(meter.RoomId), start.ReadingDate, end.ReadingDate, usage.Start));
             }
             if (!complete || parts.Count == 0)
                 continue;

@@ -388,7 +388,7 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("ix_invoice_lines_source_invoice")
                         .HasFilter("source_invoice_id IS NOT NULL");
 
-                    b.HasIndex(new[] { "InvoiceId", "FeeTypeId" }, "ux_invoice_lines_fee")
+                    b.HasIndex(new[] { "InvoiceId", "FeeTypeId", "ServiceFrom" }, "ux_invoice_lines_fee")
                         .IsUnique()
                         .HasDatabaseName("ux_invoice_lines_fee")
                         .HasFilter("fee_type_id IS NOT NULL AND is_system");
@@ -426,6 +426,10 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("created_by");
 
+                    b.Property<DateOnly?>("EndDate")
+                        .HasColumnType("date")
+                        .HasColumnName("end_date");
+
                     b.Property<Guid>("EndReadingId")
                         .HasColumnType("uuid")
                         .HasColumnName("end_reading_id");
@@ -446,9 +450,27 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("meter_id");
 
+                    b.Property<string>("MeterSerial")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("meter_serial");
+
                     b.Property<Guid>("OrganizationId")
                         .HasColumnType("uuid")
                         .HasColumnName("organization_id");
+
+                    b.Property<string>("RoomCode")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("room_code");
+
+                    b.Property<Guid?>("RoomId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("room_id");
+
+                    b.Property<DateOnly?>("StartDate")
+                        .HasColumnType("date")
+                        .HasColumnName("start_date");
 
                     b.Property<Guid>("StartReadingId")
                         .HasColumnType("uuid")
@@ -465,6 +487,10 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                     b.Property<Guid?>("UpdatedBy")
                         .HasColumnType("uuid")
                         .HasColumnName("updated_by");
+
+                    b.Property<DateOnly?>("UsageStart")
+                        .HasColumnType("date")
+                        .HasColumnName("usage_start");
 
                     b.Property<uint>("Version")
                         .IsConcurrencyToken()

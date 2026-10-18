@@ -8,6 +8,7 @@ using renting_room.Domain.Billing;
 using renting_room.Domain.Common;
 using renting_room.Domain.Contracts;
 using renting_room.Domain.Fees;
+using renting_room.Domain.Meters;
 using renting_room.Domain.Payments;
 using renting_room.Domain.Properties;
 using renting_room.Domain.Renters;
@@ -68,6 +69,11 @@ public sealed partial class DemoDataSeeder
             await Close(r101, c101, Month(k), Month(k), 110 + 10 * k);
             await Bill(r101, c101, Month(k));
         }
+        // MT-UC-09: chỉ số điện cuối tháng trước gõ dư 20 kWh, phiếu đã chốt + đã thu ⇒ điều chỉnh chỉ số đã chốt: khoản bù tiền điện
+        // dư chờ vào phiếu tháng này, tháng này tính tiếp từ chỉ số đúng.
+        var wrong = (await Send(new ListMeterReadingsQuery(r101.Electricity))).First(r => r.Kind == ReadingKind.Periodic);
+        await Send(new AdjustMeterReadingCommand(wrong.Id, wrong.Value - 20, "Ghi nhầm chỉ số tháng trước (dư 20 kWh)"));
+        _meterValues[r101.Electricity] -= 20;
         // Khoản phát sinh (BL-BR-30..33): hôm nay 101 làm hỏng khóa ⇒ phụ thu chưa thu, tháng này chưa lập phiếu ⇒ "Chờ vào phiếu".
         await Send(new CreateRoomChargeCommand(r101.Id, RoomChargeKind.Surcharge, "Thay khóa cửa", 250000, _today, "Người thuê làm hỏng khóa", null));
 

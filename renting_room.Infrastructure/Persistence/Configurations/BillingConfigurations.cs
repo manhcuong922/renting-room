@@ -126,7 +126,8 @@ internal sealed class InvoiceLineConfiguration : IEntityTypeConfiguration<Invoic
 
         builder.HasIndex(l => l.InvoiceId, "ux_invoice_lines_rent").HasDatabaseName("ux_invoice_lines_rent")
             .IsUnique().HasFilter("line_type = 'Rent' AND is_system");
-        builder.HasIndex(l => new { l.InvoiceId, l.FeeTypeId }, "ux_invoice_lines_fee").HasDatabaseName("ux_invoice_lines_fee")
+        // Mỗi khoản 1 dòng hệ thống cho mỗi khoảng dịch vụ — phiếu quyết toán khu thu trước có 2 dòng điện nước cùng khoản (BL-BR-05).
+        builder.HasIndex(l => new { l.InvoiceId, l.FeeTypeId, l.ServiceFrom }, "ux_invoice_lines_fee").HasDatabaseName("ux_invoice_lines_fee")
             .IsUnique().HasFilter("fee_type_id IS NOT NULL AND is_system");
         builder.HasIndex(l => new { l.OrganizationId, l.FeeTypeId }, "ix_invoice_lines_fee_type").HasDatabaseName("ix_invoice_lines_fee_type");
     }
@@ -149,6 +150,8 @@ internal sealed class InvoiceMeterSegmentConfiguration : IEntityTypeConfiguratio
 
         foreach (var value in new[] { nameof(InvoiceMeterSegment.StartValue), nameof(InvoiceMeterSegment.EndValue), nameof(InvoiceMeterSegment.Consumption) })
             builder.Property(value).HasColumnType("numeric(12,2)");
+        builder.Property(s => s.RoomCode).HasMaxLength(20);
+        builder.Property(s => s.MeterSerial).HasMaxLength(50);
 
         // Một khoảng chỉ số không thể bị tính 2 lần (M06 §10).
         builder.HasIndex(s => s.EndReadingId, DbConstraints.SegmentEndReadingUnique).HasDatabaseName(DbConstraints.SegmentEndReadingUnique)

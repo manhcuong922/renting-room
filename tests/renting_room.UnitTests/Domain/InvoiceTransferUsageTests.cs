@@ -44,7 +44,8 @@ public sealed class InvoiceTransferUsageTests
         Contract contract, BillingSchedule schedule, BillingPeriod period, FeeType fee, Meter[] meters,
         Dictionary<Guid, Guid>? lastEnd = null, FinalSettlement? final = null, IReadOnlySet<Guid>? closed = null) =>
         InvoiceCalculator.Calculate(new InvoiceCalcInput(contract, period, schedule, ProrationMode.Daily,
-            new Dictionary<Guid, FeeType> { [fee.Id] = fee }, meters, lastEnd ?? [], final, ClosedReadingIds: closed));
+            new Dictionary<Guid, FeeType> { [fee.Id] = fee }, meters, lastEnd ?? [], final, ClosedReadingIds: closed,
+            RoomCodes: new Dictionary<Guid, string> { [RoomA] = "203", [RoomB] = "206" }));
 
     /// <summary>Chuyển A → B ngày 20/10: A 100 → 160 (chỉ số lúc chuyển) + B 500 → 540 ⇒ một dòng 100 kWh.</summary>
     private static (Contract, BillingSchedule, BillingPeriod, Meter A, Meter B) TransferMidPeriod(FeeType fee)
@@ -75,6 +76,10 @@ public sealed class InvoiceTransferUsageTests
         metered.Quantity.Should().Be(60 + 40);
         metered.Amount.Should().Be(100 * 3800);
         result.Segments.Select(s => (s.MeterId, s.StartValue, s.EndValue)).Should().BeEquivalentTo([(meterA.Id, 100m, 160m), (meterB.Id, 500m, 540m)]);
+        // BL-BR-05: bản chụp để UI hiện từng phòng dưới dòng Điện.
+        result.Segments.Select(s => (s.RoomCode, s.MeterSerial, s.StartDate, s.EndDate, s.UsageStart)).Should().Equal(
+            ("203", "A", Start, Start.AddDays(15), period.Start),
+            ("206", "B", Start.AddDays(15), period.End, period.Start));
     }
 
     [Fact]
@@ -199,5 +204,12 @@ public sealed class InvoiceTransferUsageTests
         lines.Select(l => (l.Quantity, l.Amount)).Should().Equal((80m, 50 * 1800m + 30 * 2300m), (40m, 40 * 1800m));
         lines[0].Description.Should().Contain("05/10–04/11");
         lines[1].ServiceFrom.Should().Be(periods[^1].Start);
+
+        // 2 dòng cùng khoản: lưu, tính lại và so khi chốt không nhầm dòng; mỗi đoạn đo thuộc đúng 1 dòng.
+        var invoice = Invoice.CreateDraft(PropertyId, RoomA, contract.Id, periods[^1], "203", "HD2026-0009", "A", result, InvoiceType.Final);
+        invoice.ApplyCalculation(result, keepManualEdits: true).IsSuccess.Should().BeTrue();
+        invoice.SystemPartMatches(result).Should().BeTrue();
+        invoice.Lines.Where(l => l.Type == InvoiceLineType.Metered)
+            .Select(l => invoice.Segments.Count(s => s.BelongsTo(l))).Should().Equal(1, 1);
     }
 }

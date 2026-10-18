@@ -3786,6 +3786,51 @@
         }
       }
     },
+    "/api/v1/meter-readings/{id}/adjust": {
+      "post": {
+        "tags": [
+          "Meters"
+        ],
+        "summary": "Điều chỉnh chỉ số đã chốt (gõ sai): sửa chỉ số + tự tạo khoản bù / phụ thu phần tiền chênh vào phiếu kỳ sau",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Khóa duy nhất cho thao tác (VD UUID). Gửi lại cùng khóa ⇒ nhận lại kết quả cũ, không thực thi lần 2.",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 8,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdjustReadingRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/api/v1/properties/{propertyId}/meter-reading-sheet": {
       "get": {
         "tags": [
@@ -6245,6 +6290,20 @@
             "nullable": true
           },
           "provinceCode": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "AdjustReadingRequest": {
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": "number",
+            "format": "double"
+          },
+          "reason": {
             "type": "string",
             "nullable": true
           }

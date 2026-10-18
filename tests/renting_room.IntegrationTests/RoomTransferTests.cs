@@ -102,7 +102,11 @@ public sealed class RoomTransferTests(ApiFactory factory)
         var metered = invoice.GetProperty("lines").EnumerateArray().Single(l => l.GetProperty("type").GetString() == "Metered");
         metered.GetProperty("quantity").GetDecimal().Should().Be(30 + 20, "A 100 → 130 + B 500 → 520 trên một dòng");
         metered.GetProperty("amount").GetDecimal().Should().Be(50 * 3500);
-        metered.GetProperty("segments").GetArrayLength().Should().Be(2);
+        // BL-BR-05: UI hiện từng phòng dưới dòng Điện.
+        metered.GetProperty("segments").EnumerateArray()
+            .Select(x => (x.GetProperty("roomCode").GetString(), x.GetProperty("startValue").GetDecimal(), x.GetProperty("endValue").GetDecimal(),
+                x.GetProperty("endDate").GetString()))
+            .Should().Equal(("A1", 100m, 130m, $"{today:yyyy-MM-dd}"), ("A2", 500m, 520m, $"{today:yyyy-MM-dd}"));
         invoice.GetProperty("lines").EnumerateArray().Should().NotContain(l => l.GetProperty("type").GetString() == "Surcharge");
         Sum(invoice, "Rent", "amount").Should().Be(3_200_000, "ở phòng cũ chưa quá nửa kỳ ⇒ cả kỳ giá mới");
 

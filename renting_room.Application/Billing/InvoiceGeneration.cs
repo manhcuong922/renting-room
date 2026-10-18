@@ -73,8 +73,9 @@ internal static class InvoiceInputs
                 .Where(c => c.ContractId == contract.Id && c.CancelledAt == null && c.EndReadingId != null)
                 .Select(c => c.EndReadingId!.Value).ToListAsync(ct))
             .ToHashSet();
+        var roomCodes = await db.Rooms.AsNoTracking().Where(r => roomIds.Contains(r.Id)).ToDictionaryAsync(r => r.Id, r => r.Code, ct);
         return new InvoiceCalcInput(contract, period, billing.Schedule, billing.ProrationMode, types, meters, lastEnd, final, recent,
-            billing.RoundInvoiceTotal, closed);
+            billing.RoundInvoiceTotal, closed, roomCodes);
     }
 
     /// <summary>Kỳ hiện tại của phiếu theo HĐ (có thể bị cắt ngắn nếu HĐ đã bắt đầu thanh lý).</summary>

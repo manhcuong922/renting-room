@@ -7,11 +7,14 @@ using renting_room.Domain.Contracts;
 
 namespace renting_room.Application.Payments;
 
+/// <param name="PaidAmount">Đã xử lý = thực thu + bỏ nợ (PM-BR-36).</param>
 /// <param name="Outstanding">Còn phải thu của phiếu này.</param>
 /// <param name="IsOverdue">Đã quá hạn thanh toán mà chưa thu đủ.</param>
+/// <param name="CollectedAmount">Thực thu — tiền người thuê đã trả thật.</param>
+/// <param name="WrittenOffAmount">Phần đã bỏ nợ.</param>
 public sealed record ContractUnpaidInvoiceDto(
     Guid InvoiceId, string? InvoiceNo, string BillingMonth, InvoiceType Type, decimal TotalAmount, decimal PaidAmount, decimal Outstanding,
-    DateOnly? DueDate, bool IsOverdue);
+    DateOnly? DueDate, bool IsOverdue, decimal CollectedAmount = 0, decimal WrittenOffAmount = 0);
 
 /// <param name="Outstanding">Tổng còn nợ của HĐ = tổng phần chưa thu của các phiếu đã chốt — số tối đa thu được khi "thu theo hợp đồng".</param>
 /// <param name="OverdueAmount">Phần còn nợ đã quá hạn.</param>
@@ -37,11 +40,11 @@ public sealed class GetContractBalanceHandler(IAppDbContext db, TimeProvider clo
         var today = clock.GetUtcNow().ToBusinessDate();
         var invoices = await db.Invoices.AsNoTracking().Where(i => i.ContractId == contract.Id && i.Status != InvoiceStatus.Void)
             .OrderBy(i => i.PeriodStart)
-            .Select(i => new { i.Id, i.InvoiceNo, i.BillingMonth, i.Type, i.Status, i.TotalAmount, i.PaidAmount, i.DueDate })
+            .Select(i => new { i.Id, i.InvoiceNo, i.BillingMonth, i.Type, i.Status, i.TotalAmount, i.PaidAmount, i.WrittenOffAmount, i.DueDate })
             .ToListAsync(cancellationToken);
         var unpaid = invoices.Where(i => i.Status == InvoiceStatus.Finalized && i.PaidAmount < i.TotalAmount)
             .Select(i => new ContractUnpaidInvoiceDto(i.Id, i.InvoiceNo, $"{i.BillingMonth:yyyy-MM}", i.Type, i.TotalAmount, i.PaidAmount,
-                i.TotalAmount - i.PaidAmount, i.DueDate, i.DueDate < today))
+                i.TotalAmount - i.PaidAmount, i.DueDate, i.DueDate < today, i.PaidAmount - i.WrittenOffAmount, i.WrittenOffAmount))
             .ToList();
         var pendingCharges = await db.RoomCharges.CountAsync(c => c.ContractId == contract.Id && c.InvoiceId == null && c.CancelledAt == null,
             cancellationToken);
