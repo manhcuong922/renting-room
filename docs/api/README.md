@@ -9,6 +9,10 @@
 > phòng cũ trong ngày ([contracts.md](contracts.md#chuyển-phòng)); điện nước phòng cũ cộng vào dòng điện của phiếu, không còn khoản chốt; tạo phiếu
 > thiếu chỉ số ⇒ bỏ qua `MISSING_READING` (không tạo nháp), phiếu quyết toán khu thu trước tách 2 dòng điện ([invoices.md](invoices.md));
 > thay / tháo công tơ lùi vào kỳ đã chốt ⇒ `METER_PERIOD_LOCKED` ([meters.md](meters.md)).
+>
+> **Thêm 18/10/2026:** thực thu tách khỏi bỏ nợ — hiện "Đã thu" bằng `collectedAmount`, thêm "Đã bỏ nợ" `writtenOffAmount` ([invoices.md](invoices.md),
+> [payments.md](payments.md)); `segments` có `roomCode` / ngày để hiện từng phòng dưới dòng Điện; **điều chỉnh chỉ số đã chốt**
+> `POST /meter-readings/{id}/adjust` tự tạo khoản bù / phụ thu ([meters.md](meters.md#điều-chỉnh-chỉ-số-đã-chốt-18102026--mt-uc-09)).
 > [`openapi.json`](openapi.json): danh sách endpoint và kiểu **request** đầy đủ; **hầu hết endpoint chưa khai kiểu response** —
 > cấu trúc dữ liệu trả về lấy từ ví dụ JSON trong các file `.md` này, không sinh kiểu response từ `openapi.json`.
 

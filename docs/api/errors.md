@@ -213,7 +213,12 @@ Cảnh báo mềm: `ROOM_WITHOUT_METER` (HĐ hiệu lực, phòng chưa có côn
 | `INVOICE_EXISTS` | 409 | Kỳ đã có phiếu (tạo song song) — tải lại |
 | `INVALID_BILLING_MONTH` | 400 | Tháng thu dạng yyyy-MM |
 | `READINGS_INVALID` | 422 | Lưu chỉ số: tô đỏ dòng theo `rowErrors[].index`, chưa lưu dòng nào |
-| `READING_LOCKED` | 422 | Chỉ số đã dùng cho phiếu đã chốt (hủy phiếu trước) hoặc cho khoản chốt điện nước khi chuyển phòng (dữ liệu cũ) |
+| `READING_LOCKED` | 422 | Chỉ số đã dùng cho phiếu đã chốt — dùng "Điều chỉnh chỉ số đã chốt" (`POST /meter-readings/{id}/adjust`); hoặc thuộc khoản chốt điện nước khi chuyển phòng (dữ liệu cũ) |
+| `READING_NOT_LOCKED` | 422 | Điều chỉnh: chỉ số chưa chốt — sửa trực tiếp |
+| `READING_NOT_ADJUSTABLE` | 422 | Điều chỉnh: không phải chỉ số cuối của đoạn đo trên phiếu đã chốt |
+| `READING_NEXT_PERIOD_FINALIZED` | 422 | Điều chỉnh: kỳ sau đã chốt từ chỉ số này |
+| `READING_UNCHANGED` | 400 | Điều chỉnh: số mới trùng số hiện tại |
+| `READING_ADJUSTMENT_TOO_LARGE` | 422 | Điều chỉnh: tiền chênh quá lớn — kiểm tra lại chỉ số |
 | `READING_NOT_VOIDABLE` | 422 | Hủy chỉ số: chỉ hủy được chỉ số cuối kỳ / kiểm tra |
 | `SEARCH_TOO_SHORT` | 400 | Tìm lịch sử thuê theo tên: nhập ít nhất 2 ký tự |
 | `USERNAME_REQUIRED` | 400 | Tài khoản phải còn SĐT hoặc email để đăng nhập |

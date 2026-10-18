@@ -59,6 +59,8 @@ Số phiếu thu `PT{năm lập phiếu}-…` (ghi bù ngày thu năm trước v
 
   → **200** `{ "payment": Payment (kind Receipt), "writeOff": Payment (kind WriteOff) }` — 1 transaction; phiếu thành `WrittenOff`,
   tiền thu thật chỉ là `amount`. `amount` = số còn nợ → 422 `NOTHING_TO_WRITE_OFF` (dùng "Đã thu"); lớn hơn → 422 `PAYMENT_EXCEEDS_DEBT`.
+  Phiếu sau đó: `collectedAmount` = `amount`, `writtenOffAmount` = phần bỏ, `paidAmount` = tổng phiếu. Bỏ nợ riêng (không thu) ⇒ `collectedAmount` không
+  đổi; phiếu chưa thu đồng nào vẫn là `Unpaid` / `Overdue` (không thành `PartiallyPaid`).
 - **Bỏ nợ riêng** — `POST /invoices/{id}/write-off` `{ "amount": null, "reason": "…" }` — **Idempotency-Key**, chủ trọ hoặc phó quản lý **được cấp quyền**;
   `amount` null = toàn bộ số còn nợ → **200** phiếu thu `kind: WriteOff`.
 - Được làm **bất kỳ lúc nào** HĐ còn hiệu lực / đang thanh lý (không chỉ khi trả phòng). Phó quản lý chưa được chủ trọ cấp quyền bỏ nợ
@@ -95,9 +97,9 @@ trở lại còn nợ. Đã đảo → 409 `PAYMENT_ALREADY_REVERSED`. Không x�
   "outstanding": 6079000, "overdueAmount": 3512000, "refundDue": 0,
   "unpaidInvoices": [
     { "invoiceId": "…", "invoiceNo": "PB2026-000004", "billingMonth": "2026-08", "type": "Regular", "totalAmount": 3512000, "paidAmount": 0,
-      "outstanding": 3512000, "dueDate": "2026-09-06", "isOverdue": true },
+      "outstanding": 3512000, "dueDate": "2026-09-06", "isOverdue": true, "collectedAmount": 0, "writtenOffAmount": 0 },
     { "invoiceId": "…", "invoiceNo": "PB2026-000005", "billingMonth": "2026-09", "type": "Regular", "totalAmount": 3567000, "paidAmount": 1000000,
-      "outstanding": 2567000, "dueDate": "2026-10-18", "isOverdue": false } ],
+      "outstanding": 2567000, "dueDate": "2026-10-18", "isOverdue": false, "collectedAmount": 1000000, "writtenOffAmount": 0 } ],
   "draftInvoices": 0, "pendingRoomCharges": 1
 }
 ```
@@ -107,7 +109,7 @@ trở lại còn nợ. Đã đảo → 409 `PAYMENT_ALREADY_REVERSED`. Không x�
 | `outstanding` | Tổng còn nợ = tổng phần chưa thu của các phiếu **đã chốt**. Là số mặc định và **số tối đa** của ô tiền khi thu theo hợp đồng (nhập hơn → 422 `PAYMENT_EXCEEDS_DEBT`) |
 | `overdueAmount` | Phần đã quá hạn — tô đỏ |
 | `refundDue` | Chủ trọ còn phải trả lại người thuê; **không** bù trừ vào nợ |
-| `unpaidInvoices[]` | Từng phiếu còn nợ, cũ trước — hiện thành bảng; mỗi dòng có nút "Đã thu" cho riêng phiếu đó (`invoiceId`) |
+| `unpaidInvoices[]` | Từng phiếu còn nợ, cũ trước — hiện thành bảng; mỗi dòng có nút "Đã thu" cho riêng phiếu đó (`invoiceId`). Cột "Đã thu" = `collectedAmount` (thực thu), "Đã bỏ nợ" = `writtenOffAmount`; `paidAmount` = tổng hai số (18/10/2026 — PM-BR-36) |
 | `draftInvoices` | Số phiếu nháp chưa chốt — chưa tính vào nợ, nhắc "còn N phiếu nháp" |
 | `pendingRoomCharges` | Số khoản phát sinh chưa lên phiếu |
 

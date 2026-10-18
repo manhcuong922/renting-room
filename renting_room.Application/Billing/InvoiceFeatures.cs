@@ -38,9 +38,15 @@ public sealed record InvoiceSummaryDto(
     int ErrorCount,
     string Version,
     bool IsStale = false,
-    decimal RoundingAmount = 0);
+    decimal RoundingAmount = 0,
+    decimal CollectedAmount = 0,
+    decimal WrittenOffAmount = 0);
 
-public sealed record InvoiceSegmentDto(Guid MeterId, Guid StartReadingId, Guid EndReadingId, decimal StartValue, decimal EndValue, decimal Consumption);
+/// <param name="RoomCode">Phòng của đoạn đo (chuyển phòng ⇒ dòng Điện nước có đoạn của phòng cũ và phòng mới) — UI hiện mỗi đoạn một hàng (BL-BR-05).</param>
+/// <param name="StartDate">Ngày ghi chỉ số đầu; <paramref name="EndDate"/> — chỉ số cuối. Các trường bản chụp null ở phiếu lập trước 18/10/2026 mà không tìm lại được.</param>
+public sealed record InvoiceSegmentDto(
+    Guid MeterId, Guid StartReadingId, Guid EndReadingId, decimal StartValue, decimal EndValue, decimal Consumption,
+    Guid? RoomId = null, string? RoomCode = null, string? MeterSerial = null, DateOnly? StartDate = null, DateOnly? EndDate = null);
 
 public sealed record InvoiceLineDto(
     Guid Id,
@@ -103,16 +109,17 @@ internal static class InvoiceMapping
         i.Id, i.InvoiceNo, i.Type, i.Status, i.PaymentStatus(today), i.PropertyId, i.RoomId, i.SnapshotRoomCode, i.ContractId,
         i.SnapshotContractNo, i.SnapshotRepresentativeName, $"{i.BillingMonth:yyyy-MM}", i.PeriodStart, i.PeriodEnd,
         i.TotalAmount, i.PaidAmount, i.Outstanding, i.RefundDue, i.DueDate, i.Issues.Count(x => x.Severity == InvoiceIssue.Error), i.Version.ToString(),
-        i.IsStale, i.RoundingAmount);
+        i.IsStale, i.RoundingAmount, i.CollectedAmount, i.WrittenOffAmount);
 
     public static InvoiceDetailDto ToDetail(this Invoice i, DateOnly today) => new(
         i.ToSummary(today), i.Subtotal, i.DiscountTotal, i.RefundTotal, i.RefundedOn, i.RefundMethod, i.RefundNote, i.IssueDate,
-        i.Lines.OrderBy(l => l.SortOrder).Select(l => new InvoiceLineDto(
+        i.Lines.OrderBy(l => l.SortOrder).ThenBy(l => l.ServiceFrom).Select(l => new InvoiceLineDto(
             l.Id, l.Type, l.IsSystem, l.FeeTypeId, l.Description, l.Unit, l.ServiceFrom, l.ServiceTo, l.Quantity, l.UnitPrice,
             l.ProrationFactor, l.Amount, l.IsManuallyEdited, l.SystemQuantity, l.SystemUnitPrice, l.SystemAmount, l.Note,
             l.Type == InvoiceLineType.Metered && l.IsSystem
-                ? i.Segments.Where(s => s.FeeTypeId == l.FeeTypeId)
-                    .Select(s => new InvoiceSegmentDto(s.MeterId, s.StartReadingId, s.EndReadingId, s.StartValue, s.EndValue, s.Consumption)).ToList()
+                ? i.Segments.Where(s => s.BelongsTo(l)).OrderBy(s => s.StartDate).ThenBy(s => s.StartValue)
+                    .Select(s => new InvoiceSegmentDto(s.MeterId, s.StartReadingId, s.EndReadingId, s.StartValue, s.EndValue, s.Consumption,
+                        s.RoomId, s.RoomCode, s.MeterSerial, s.StartDate, s.EndDate)).ToList()
                 : [], l.SourceInvoiceId, l.RoomChargeId, l.IsSettled)).ToList(),
         i.Issues, i.Note, i.FinalizedAt, i.VoidedAt, i.VoidReason);
 }
@@ -200,8 +207,10 @@ internal static class InvoiceFilters
 /// <param name="TotalAmount">Tổng phải thu của phiếu đã chốt (phiếu tổng âm — chờ hoàn — không tính).</param>
 /// <param name="OverdueAmount">Phần còn nợ của phiếu đã quá hạn thanh toán.</param>
 /// <param name="DraftAmount">Tổng tạm tính của phiếu nháp — chưa phải số phải thu.</param>
+/// <param name="PaidAmount">Đã xử lý = thực thu + bỏ nợ (PM-BR-36); <paramref name="CollectedAmount"/> = thực thu; <paramref name="WrittenOffAmount"/> = đã bỏ nợ.</param>
 public sealed record InvoiceTotalsDto(
-    int FinalizedCount, decimal TotalAmount, decimal PaidAmount, decimal OutstandingAmount, decimal OverdueAmount, int DraftCount, decimal DraftAmount);
+    int FinalizedCount, decimal TotalAmount, decimal PaidAmount, decimal OutstandingAmount, decimal OverdueAmount, int DraftCount, decimal DraftAmount,
+    decimal CollectedAmount = 0, decimal WrittenOffAmount = 0);
 
 /// <summary>BL-UC-02: số tổng hợp trên toàn bộ kết quả lọc (không riêng trang đang xem).</summary>
 public sealed record GetInvoiceTotalsQuery(ListInvoicesQuery Filter) : IRequest<InvoiceTotalsDto>;
@@ -216,15 +225,17 @@ public sealed class GetInvoiceTotalsHandler(IAppDbContext db, TimeProvider clock
             .GroupBy(_ => 1)
             .Select(g => new
             {
-                Count = g.Count(), Total = g.Sum(i => i.TotalAmount), Paid = g.Sum(i => i.PaidAmount),
+                Count = g.Count(), Total = g.Sum(i => i.TotalAmount), Paid = g.Sum(i => i.PaidAmount), WrittenOff = g.Sum(i => i.WrittenOffAmount),
                 Outstanding = g.Sum(i => i.PaidAmount < i.TotalAmount ? i.TotalAmount - i.PaidAmount : 0),
                 Overdue = g.Sum(i => i.PaidAmount < i.TotalAmount && i.DueDate < today ? i.TotalAmount - i.PaidAmount : 0)
             })
             .FirstOrDefaultAsync(cancellationToken);
         var drafts = await query.Where(i => i.Status == InvoiceStatus.Draft).GroupBy(_ => 1)
             .Select(g => new { Count = g.Count(), Total = g.Sum(i => i.TotalAmount) }).FirstOrDefaultAsync(cancellationToken);
-        return new InvoiceTotalsDto(finalized?.Count ?? 0, finalized?.Total ?? 0, finalized?.Paid ?? 0, finalized?.Outstanding ?? 0,
-            finalized?.Overdue ?? 0, drafts?.Count ?? 0, drafts?.Total ?? 0);
+        var paid = finalized?.Paid ?? 0;
+        var writtenOff = finalized?.WrittenOff ?? 0;
+        return new InvoiceTotalsDto(finalized?.Count ?? 0, finalized?.Total ?? 0, paid, finalized?.Outstanding ?? 0,
+            finalized?.Overdue ?? 0, drafts?.Count ?? 0, drafts?.Total ?? 0, paid - writtenOff, writtenOff);
     }
 }
 

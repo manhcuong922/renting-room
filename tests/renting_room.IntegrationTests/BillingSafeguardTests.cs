@@ -58,6 +58,48 @@ public sealed class BillingSafeguardTests(ApiFactory factory)
         (await _client.PostJsonAsync($"/api/v1/invoices/{lastRegular}/void", new { reason = "Sai" }, token)).StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
+    /// <summary>
+    /// BL-BR-05, 17: phiếu quyết toán khu thu trước, kỳ trước chưa thu ⇒ 2 dòng Điện; tính lại và chốt được (trước 18/10/2026 trùng khóa dòng),
+    /// mỗi dòng chỉ có đoạn đo của kỳ mình.
+    /// </summary>
+    [Fact]
+    public async Task FinalInvoice_TwoMeteredLines_RecalculateAndFinalize_SegmentsPerLine()
+    {
+        var owner = await _client.CreateActiveOwnerAsync();
+        var token = owner.Tokens.AccessToken;
+        var today = TestData.Today(factory);
+        var month = new DateOnly(today.Year, today.Month, 1);
+        var previous = month.AddMonths(-1);
+        var propertyId = await _client.CreatePropertyAsync(token, anchorDay: 1, chargeMode: "Prepaid");
+        var electricity = await _client.FeeIdAsync(token, propertyId, "Điện");
+        await _client.PostJsonAsync($"/api/v1/fee-types/{electricity}/prices", new { effectiveFrom = previous.AddDays(-30), unitPrice = 3500 }, token);
+        var roomId = await _client.CreateRoomAsync(token, propertyId, "A1");
+        var meterId = await _client.InstallMeterAsync(token, roomId, electricity, previous.AddDays(-1), 100);
+        var contractId = await _client.CreateContractAsync(token, roomId, await _client.CreateRenterAsync(token), previous);
+        (await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/activate",
+            new { handoverReadings = new[] { new { meterId, value = (decimal?)null } } }, token)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+        await FinalizedInvoiceAsync(propertyId, contractId, previous, token); // thu trước kỳ đầu: chưa có điện
+        (await _client.PutJsonAsync($"/api/v1/properties/{propertyId}/meter-readings",
+            new { readings = new[] { new { meterId, contractId, closingPeriodStart = previous, readingDate = month, value = 180m } } }, token))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+
+        (await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/liquidation/start", new { actualEndDate = today, reason = "MutualAgreement" }, token))
+            .StatusCode.Should().Be(HttpStatusCode.NoContent);
+        var created = await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/final-invoice",
+            new { finalReadings = new[] { new { meterId, value = (decimal?)220 } } }, token);
+        created.StatusCode.Should().Be(HttpStatusCode.Created, await created.Content.ReadAsStringAsync());
+        var finalId = (await created.ReadAsync<JsonElement>()).GetProperty("summary").GetProperty("id").GetGuid();
+
+        (await _client.PostJsonAsync("/api/v1/invoices/recalculate", new { invoiceIds = new[] { finalId } }, token)).StatusCode.Should().Be(HttpStatusCode.OK);
+        var finalized = await _client.PostJsonAsync($"/api/v1/invoices/{finalId}/finalize", null, token);
+        finalized.StatusCode.Should().Be(HttpStatusCode.OK, await finalized.Content.ReadAsStringAsync());
+        var metered = (await finalized.ReadAsync<JsonElement>()).GetProperty("lines").EnumerateArray()
+            .Where(l => l.GetProperty("type").GetString() == "Metered").ToList();
+        metered.Select(l => (l.GetProperty("quantity").GetDecimal(), l.GetProperty("segments").GetArrayLength())).Should().Equal((80m, 1), (40m, 1));
+        metered[0].GetProperty("segments")[0].GetProperty("endValue").GetDecimal().Should().Be(180);
+        metered[1].GetProperty("segments")[0].GetProperty("startValue").GetDecimal().Should().Be(180);
+    }
+
     [Fact]
     public async Task Generate_PreviousDraftLostItsReading_NextPeriodSkippedAsIncomplete()
     {

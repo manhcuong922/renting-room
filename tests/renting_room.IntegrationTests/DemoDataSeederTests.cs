@@ -132,8 +132,10 @@ public sealed class DemoDataSeederTests(ApiFactory factory)
         var charges = await (await _client.GetAsync("/api/v1/room-charges", token)).ReadAsync<JsonElement>();
         charges.EnumerateArray().Select(c => c.GetProperty("status").GetString()).Should().Contain(["Pending", "OnDraft", "Billed"]);
         charges.EnumerateArray().Where(c => c.GetProperty("status").GetString() == "Pending").Select(c => c.GetProperty("roomCode").GetString())
-            .Should().BeEquivalentTo(["101", "102", "B08"],
-                "chuyển phòng không còn tạo khoản chốt điện nước — sản lượng phòng cũ cộng vào dòng của kỳ (CT-BR-47); B08 có khoản chênh lệch tiền phòng (CT-BR-48)");
+            .Should().BeEquivalentTo(["101", "101", "102", "B08"],
+                "chuyển phòng không còn tạo khoản chốt điện nước — sản lượng phòng cũ cộng vào dòng của kỳ (CT-BR-47); B08 có khoản chênh lệch tiền phòng (CT-BR-48); 101 có thêm khoản bù điều chỉnh chỉ số (MT-UC-09)");
+        charges.EnumerateArray().Should().Contain(c => c.GetProperty("roomCode").GetString() == "101" && c.GetProperty("kind").GetString() == "Credit"
+            && c.GetProperty("description").GetString()!.StartsWith("Điều chỉnh chỉ số"), "điều chỉnh chỉ số đã chốt tạo khoản bù (MT-UC-09)");
         charges.EnumerateArray().Single(c => c.GetProperty("roomCode").GetString() == "B08").GetProperty("amount").GetDecimal().Should().Be(300_000);
         (await DetailAsync("209", "Draft")).GetProperty("warnings").EnumerateArray().Select(w => w.GetProperty("code").GetString())
             .Should().Contain("REPRESENTATIVE_IS_RESIDENT_ELSEWHERE", "người đứng tên HĐ nháp đang là người ở thường của phòng 102 (CT-BR-50)");

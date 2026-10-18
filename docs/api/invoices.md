@@ -26,6 +26,11 @@ Quyền: chủ trọ và phó quản lý.
   trả phòng), `description` ghi khoảng ngày ("Điện (giá bậc) 05/10–04/11"), giá bậc tính riêng từng dòng; thiếu chỉ số cuối kỳ trước ⇒ `MISSING_READING`.
 - **Chuyển phòng giữa kỳ** (17/10/2026): **1 dòng** cho mỗi khoản = phòng cũ (tới chỉ số lúc chuyển) + phòng mới; `segments` có nhiều đoạn, giá bậc
   tính trên tổng. Không còn dòng phụ thu "chốt điện nước" (dữ liệu trước 17/10/2026 vẫn giữ dòng cũ).
+- **Hiển thị `segments` (18/10/2026 — plan M07 BL-BR-05):** mỗi đoạn đo có `roomCode`, `meterSerial`, `startDate` → `endDate`, `startValue` →
+  `endValue`, `consumption`. Dòng Điện nước có **từ 2 đoạn** (chuyển phòng / thay công tơ / quay lại phòng cũ) ⇒ hiện mỗi đoạn một hàng dưới dòng,
+  VD "Phòng 203 (E-101): 01/10 1.200 → 20/10 1.260 = 60 kWh" · "Phòng 206: 20/10 3.500 → 04/11 3.540 = 40 kWh"; 1 đoạn ⇒ chỉ "chỉ số cũ → mới".
+  Mỗi đoạn chỉ nằm trong đúng 1 dòng (phiếu quyết toán 2 dòng Điện thì mỗi dòng có đoạn của kỳ mình). Phiếu lập trước 18/10/2026: các trường
+  bản chụp đã được điền lại, trường nào không tìm được thì `null`. `lines[]` sắp theo nhóm rồi theo `serviceFrom`.
 - **Thay công tơ giữa kỳ**: hệ thống tự cộng phần công tơ cũ (`segments` có 2 đoạn), kể cả khi sau đó chuyển phòng trong cùng kỳ. Cách khác: nhập tiền điện công tơ cũ thành phụ thu.
 - **Giá theo phiên bản**: mọi khoản (điện nước, dịch vụ) lấy bản giá mới nhất có hiệu lực tới **ngày cuối** kỳ, áp cả kỳ — đổi giá giữa kỳ thì cả kỳ tính giá mới.
 - **Tiền phòng thu hằng tháng** (không có đóng nhiều tháng / lần).
@@ -57,7 +62,7 @@ Quyền: chủ trọ và phó quản lý.
       "propertyId": "…", "roomId": "…", "roomCode": "102", "contractId": "…", "contractNo": "HD2026-0002", "representativeName": "Đỗ Thị Hoa",
       "billingMonth": "2026-09", "periodStart": "2026-09-01", "periodEnd": "2026-09-30",
       "totalAmount": 3567000, "paidAmount": 1000000, "outstanding": 2567000, "refundDue": 0, "dueDate": "2026-10-18",
-      "errorCount": 0, "version": "6162", "isStale": false, "roundingAmount": -500 }
+      "errorCount": 0, "version": "6162", "isStale": false, "roundingAmount": -500, "collectedAmount": 1000000, "writtenOffAmount": 0 }
   ],
   "page": 1, "pageSize": 20, "totalCount": 2, "totalPages": 1
 }
@@ -137,13 +142,14 @@ Nháp chỉ được tạo khi đủ chỉ số; xóa nháp không mất chỉ s
 
 ```json
 { "finalizedCount": 42, "totalAmount": 151200000, "paidAmount": 120000000, "outstandingAmount": 31200000, "overdueAmount": 8400000,
-  "draftCount": 3, "draftAmount": 10500000 }
+  "draftCount": 3, "draftAmount": 10500000, "collectedAmount": 117500000, "writtenOffAmount": 2500000 }
 ```
 
 | Trường | Ý nghĩa |
 |--------|---------|
 | `finalizedCount`, `totalAmount` | Số phiếu đã chốt và tổng phải thu |
-| `paidAmount`, `outstandingAmount` | Đã thu / còn nợ của các phiếu đã chốt |
+| `paidAmount`, `outstandingAmount` | Đã xử lý (thực thu + bỏ nợ) / còn nợ của các phiếu đã chốt |
+| `collectedAmount`, `writtenOffAmount` | **Thực thu** (hiện là "Đã thu") / đã bỏ nợ — 18/10/2026 |
 | `overdueAmount` | Phần còn nợ đã quá hạn thanh toán |
 | `draftCount`, `draftAmount` | Phiếu nháp và tổng **tạm tính** — không cộng vào phải thu |
 
@@ -170,7 +176,8 @@ Hiện thành dải thẻ số phía trên danh sách phiếu; gọi lại mỗi
       "note": "Giảm do sửa nhà", "segments": [] },
     { "id": "…", "type": "Metered", "isSystem": true, "feeTypeId": "…", "description": "Điện", "unit": "kWh",
       "quantity": 88, "unitPrice": 3500, "amount": 308000, "isManuallyEdited": false,
-      "segments": [ { "meterId": "…", "startReadingId": "…", "endReadingId": "…", "startValue": 100, "endValue": 188, "consumption": 88 } ] },
+      "segments": [ { "meterId": "…", "startReadingId": "…", "endReadingId": "…", "startValue": 100, "endValue": 188, "consumption": 88,
+                      "roomId": "…", "roomCode": "101", "meterSerial": "E-101", "startDate": "2026-10-05", "endDate": "2026-11-04" } ] },
     { "id": "…", "type": "Surcharge", "isSystem": false, "description": "Thay khóa cửa", "quantity": 1, "unitPrice": 250000,
       "amount": 250000, "note": "Người thuê làm hỏng khóa", "segments": [] }
   ],
@@ -258,7 +265,12 @@ thanh toán của HĐ). Sau khi chốt: chỉ số cuối kỳ bị khóa và th
 
 ## Trạng thái thu tiền (`paymentStatus`, chỉ phiếu đã chốt)
 
-`Unpaid` chưa thu · `PartiallyPaid` thu một phần · `Paid` đủ (phiếu 0đ coi như đã thu) · `Overdue` quá hạn chưa thu đủ · `WrittenOff` đã bỏ nợ (không tính doanh thu) ·
+> **Thực thu / bỏ nợ (18/10/2026 — PM-BR-36):** `paidAmount` = **đã xử lý** (thực thu + bỏ nợ, dùng tính còn nợ), `collectedAmount` = **thực thu**
+> (tiền người thuê trả thật), `writtenOffAmount` = **đã bỏ nợ**. UI hiện cột / ô **"Đã thu" bằng `collectedAmount`**, thêm "Đã bỏ nợ" khi > 0 —
+> không dùng `paidAmount` làm "Đã thu" nữa. VD phiếu 3.000.000 "trả 2.000.000 + bỏ phần còn lại": `paidAmount` 3.000.000, `collectedAmount`
+> 2.000.000, `writtenOffAmount` 1.000.000, `WrittenOff`.
+
+`Unpaid` chưa thu (kể cả đã bỏ nợ một phần mà chưa thu đồng nào) · `PartiallyPaid` **có thực thu** một phần · `Paid` đủ bằng tiền (phiếu 0đ coi như đã thu) · `Overdue` quá hạn chưa thu đủ · `WrittenOff` đóng có phần bỏ nợ (không tính doanh thu) ·
 `RefundPending` tổng âm, **chờ chủ trọ trả lại** người thuê · `Refunded` đã trả lại.
 `outstanding` = số còn nợ (≥ 0 — phiếu âm không bù trừ nợ phiếu khác); `refundDue` = số còn phải trả lại người thuê. Gửi phiếu qua Zalo kèm mã QR: P2.
 

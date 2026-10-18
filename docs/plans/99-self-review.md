@@ -317,7 +317,9 @@ Nguồn duy nhất cho "còn gì chưa làm". Từng plan chỉ ghi "chưa code"
 | A-9 | Ngày trả phòng trước ngày chuyển phòng ⇒ lỗi 500 | Chuyển phòng luôn hôm nay; thanh lý ≥ ngày vào phòng hiện tại — M05 CT-BR-11, 14 |
 | A-10 | Giá bậc tính trên sản lượng gộp 2 kỳ | Phiếu quyết toán: mỗi kỳ sử dụng 1 dòng, tính riêng; chuyển phòng / thay công tơ cộng sản lượng vào dòng của kỳ — M07 BL-BR-05 (đổi thu trước → thu sau vẫn gộp: không có chỉ số mốc) |
 | A-12 | Nhập Excel: chỉ số cũ không cảnh báo; trùng giấy tờ khác tên chỉ cảnh báo | Luôn cảnh báo chỉ số trước ngày tính tiền; khác họ tên / ngày sinh ⇒ lỗi dòng — M03 RT-UC-10 |
-| A-5, A-11, B, C | Bỏ nợ hiện là đã thu; sửa chỉ số đã chốt; bảo mật / dữ liệu cá nhân; các điểm cần chủ trọ quyết | Chờ quyết định |
+| A-5 | Bỏ nợ hiện là "đã thu" | ✅ 18/10/2026: API tách thực thu / bỏ nợ (`collectedAmount`, `writtenOffAmount`) — M08 PM-BR-36 |
+| A-11 | Gõ sai chỉ số khi phiếu đã chốt / đã thu: phải đảo thu → hủy phiếu → sửa → chốt lại → thu lại | ✅ 18/10/2026: điều chỉnh chỉ số đã chốt, tự tạo khoản bù / phụ thu kỳ sau — M06 MT-UC-09, MT-BR-19 |
+| B, C | Bảo mật / dữ liệu cá nhân; các điểm cần chủ trọ quyết | Chờ quyết định |
 
 ### C3. Có trong plan, chưa code
 

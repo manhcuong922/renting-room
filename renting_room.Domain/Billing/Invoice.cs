@@ -68,11 +68,16 @@ public sealed record CalculatedLine(
     decimal Amount,
     int SortOrder)
 {
-    public (InvoiceLineType, Guid?) Key => (Type, FeeTypeId);
+    /// <summary>Nhận diện dòng hệ thống giữa các lần tính — gồm ngày đầu khoảng dịch vụ vì phiếu quyết toán có thể có 2 dòng cùng khoản (BL-BR-05).</summary>
+    public (InvoiceLineType, Guid?, DateOnly) Key => (Type, FeeTypeId, ServiceFrom);
 }
 
+/// <param name="RoomId">Phòng của công tơ — cùng <paramref name="RoomCode"/>, <paramref name="MeterSerial"/>, ngày 2 chỉ số là bản chụp để hiển thị
+/// từng phòng dưới dòng Điện nước (BL-BR-05).</param>
+/// <param name="UsageStart">Ngày đầu kỳ sử dụng của dòng chứa đoạn đo (= <see cref="CalculatedLine.ServiceFrom"/>).</param>
 public sealed record CalculatedSegment(
-    Guid FeeTypeId, Guid MeterId, string? MeterSerial, Guid StartReadingId, Guid EndReadingId, decimal StartValue, decimal EndValue);
+    Guid FeeTypeId, Guid MeterId, string? MeterSerial, Guid StartReadingId, Guid EndReadingId, decimal StartValue, decimal EndValue,
+    Guid? RoomId = null, string? RoomCode = null, DateOnly? StartDate = null, DateOnly? EndDate = null, DateOnly? UsageStart = null);
 
 /// <param name="RoundTotal">Khu bật làm tròn tổng phiếu (BL-BR-29) — phiếu ghi lại để sửa tay / thêm dòng sau vẫn làm tròn đúng.</param>
 public sealed record InvoiceCalculation(
@@ -148,6 +153,9 @@ public sealed class Invoice : TenantEntity
     /// <summary>Còn nợ (≥ 0) — phiếu tổng âm không bù trừ nợ của phiếu khác.</summary>
     public decimal Outstanding => Status == InvoiceStatus.Finalized ? Math.Max(TotalAmount - PaidAmount, 0) : 0;
 
+    /// <summary>PM-BR-36: thực thu = tiền người thuê trả thật (<see cref="PaidAmount"/> gồm cả phần bỏ nợ).</summary>
+    public decimal CollectedAmount => PaidAmount - WrittenOffAmount;
+
     /// <summary>Số chủ trọ còn phải trả lại người thuê (phiếu đã chốt, tổng âm, chưa xác nhận đã hoàn).</summary>
     public decimal RefundDue => Status == InvoiceStatus.Finalized && TotalAmount < 0 && RefundedOn is null ? -TotalAmount : 0;
 
@@ -189,7 +197,8 @@ public sealed class Invoice : TenantEntity
             return WrittenOffAmount > 0 ? InvoicePaymentStatus.WrittenOff : InvoicePaymentStatus.Paid;
         if (DueDate < today)
             return InvoicePaymentStatus.Overdue;
-        return PaidAmount > 0 ? InvoicePaymentStatus.PartiallyPaid : InvoicePaymentStatus.Unpaid;
+        // PM-BR-36: chỉ bỏ nợ một phần mà chưa thu đồng nào thì chưa phải "thu một phần".
+        return CollectedAmount > 0 ? InvoicePaymentStatus.PartiallyPaid : InvoicePaymentStatus.Unpaid;
     }
 
     /// <summary>
@@ -547,7 +556,7 @@ public sealed class InvoiceLine : TenantEntity
         IsSettled = isSettled;
     }
 
-    public (InvoiceLineType, Guid?) Key => (Type, FeeTypeId);
+    public (InvoiceLineType, Guid?, DateOnly) Key => (Type, FeeTypeId, ServiceFrom);
 
     internal static InvoiceLine FromCalculation(Guid invoiceId, CalculatedLine line)
     {
@@ -660,6 +669,12 @@ public sealed class InvoiceMeterSegment : TenantEntity
         StartValue = segment.StartValue;
         EndValue = segment.EndValue;
         Consumption = segment.EndValue - segment.StartValue;
+        RoomId = segment.RoomId;
+        RoomCode = segment.RoomCode;
+        MeterSerial = segment.MeterSerial;
+        StartDate = segment.StartDate;
+        EndDate = segment.EndDate;
+        UsageStart = segment.UsageStart;
     }
 
     public Guid InvoiceId { get; private set; }
@@ -671,6 +686,19 @@ public sealed class InvoiceMeterSegment : TenantEntity
     public decimal EndValue { get; private set; }
     public decimal Consumption { get; private set; }
     public bool Voided { get; private set; }
+
+    // Bản chụp để hiển thị từng phòng / công tơ dưới dòng Điện nước (BL-BR-05, 18/10/2026) — NULL ở đoạn đo lập trước khi có cột.
+    public Guid? RoomId { get; private set; }
+    public string? RoomCode { get; private set; }
+    public string? MeterSerial { get; private set; }
+    public DateOnly? StartDate { get; private set; }
+    public DateOnly? EndDate { get; private set; }
+
+    /// <summary>Ngày đầu kỳ sử dụng của dòng chứa đoạn đo — phiếu quyết toán có 2 dòng cùng khoản thì mỗi đoạn thuộc đúng 1 dòng.</summary>
+    public DateOnly? UsageStart { get; private set; }
+
+    /// <summary>Đoạn đo thuộc dòng Điện nước này (dữ liệu cũ không có <see cref="UsageStart"/> ⇒ theo khoản thu).</summary>
+    public bool BelongsTo(InvoiceLine line) => FeeTypeId == line.FeeTypeId && (UsageStart is null || UsageStart == line.ServiceFrom);
 
     internal void Void() => Voided = true;
 }
