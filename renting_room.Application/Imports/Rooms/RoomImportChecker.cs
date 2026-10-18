@@ -9,6 +9,7 @@ using renting_room.Domain.Properties;
 
 namespace renting_room.Application.Imports;
 
+// PR-UC-11: import phòng từ Excel — xem trước (không giữ) → sửa → lưu dòng hợp lệ
 /// <summary>Kiểm các dòng nhập phòng theo dữ liệu hiện tại — dùng chung cho xem trước và lưu (PR-UC-11).</summary>
 internal sealed class RoomImportChecker(IAppDbContext db, IValidator<CreateRoomCommand> roomValidator, IValidator<InstallMeterCommand> meterValidator)
 {

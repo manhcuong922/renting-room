@@ -2,6 +2,7 @@ using renting_room.Domain.Renters;
 
 namespace renting_room.Application.Renters;
 
+// RT-UC-05: ghi nhận đồng ý xử lý dữ liệu cá nhân
 public sealed record RenterConsentDto(
     Guid Id, Guid RenterId, string Purpose, ConsentMethod Method, DateOnly GivenAt, DateOnly? WithdrawnAt, string? Note, DateTimeOffset CreatedAt);
 

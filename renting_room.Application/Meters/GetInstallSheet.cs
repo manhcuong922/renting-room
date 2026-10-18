@@ -8,6 +8,7 @@ using renting_room.Domain.Meters;
 
 namespace renting_room.Application.Meters;
 
+// MT-UC-01: lưới lắp hàng loạt — phòng chưa có công tơ của khoản thu
 public sealed record InstallSheetRowDto(Guid RoomId, string RoomCode, string? Floor);
 
 public sealed record GetInstallSheetQuery(Guid PropertyId, Guid FeeTypeId) : IRequest<Result<IReadOnlyList<InstallSheetRowDto>>>;

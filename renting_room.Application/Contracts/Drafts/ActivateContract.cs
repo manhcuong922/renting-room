@@ -11,6 +11,7 @@ using renting_room.Domain.Properties;
 
 namespace renting_room.Application.Contracts;
 
+// Kích hoạt (bàn giao phòng)
 /// <param name="HandoverReadings">MT-BR-13: chỉ số nhận phòng cho mỗi công tơ của phòng; value null = "Dùng số mới nhất".</param>
 public sealed record ActivateContractCommand(
     Guid Id, IReadOnlyList<MeterReadingInput>? HandoverReadings = null) : IRequest<Result>;

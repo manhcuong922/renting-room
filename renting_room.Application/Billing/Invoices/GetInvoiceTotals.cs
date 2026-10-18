@@ -7,6 +7,7 @@ using renting_room.Domain.Common;
 
 namespace renting_room.Application.Billing;
 
+// Truy vấn
 /// <param name="TotalAmount">Tổng phải thu của phiếu đã chốt (phiếu tổng âm — chờ hoàn — không tính).</param>
 /// <param name="OverdueAmount">Phần còn nợ của phiếu đã quá hạn thanh toán.</param>
 /// <param name="DraftAmount">Tổng tạm tính của phiếu nháp — chưa phải số phải thu.</param>

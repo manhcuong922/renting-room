@@ -5,6 +5,7 @@ using renting_room.Application.Common.Interfaces;
 
 namespace renting_room.Application.Payments;
 
+// Danh sách
 public sealed record ListPaymentsQuery(Guid? ContractId, Guid? RoomId, Guid? InvoiceId) : IRequest<IReadOnlyList<PaymentDto>>;
 
 public sealed class ListPaymentsHandler(IAppDbContext db) : IRequestHandler<ListPaymentsQuery, IReadOnlyList<PaymentDto>>

@@ -6,6 +6,7 @@ using renting_room.Domain.Properties;
 
 namespace renting_room.Application.Billing;
 
+// Tạo phiếu nháp hàng loạt
 public sealed record PropertyGenerateResult(Guid PropertyId, string PropertyCode, GenerateInvoicesResult? Result, string? ErrorCode);
 
 /// <summary>BL-UC-01: tạo phiếu nháp tháng thu cho nhiều khu trong một lệnh; <paramref name="PropertyIds"/> trống = mọi khu đang dùng.</summary>

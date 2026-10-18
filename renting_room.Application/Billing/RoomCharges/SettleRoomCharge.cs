@@ -6,6 +6,7 @@ using renting_room.Domain.Contracts;
 
 namespace renting_room.Application.Billing;
 
+// Đánh dấu đã thanh toán / bỏ đánh dấu / hủy
 public sealed record SettleRoomChargeCommand(Guid Id, DateOnly SettledOn, PaymentMethod Method) : IRequest<Result<RoomChargeDto>>;
 
 public sealed class SettleRoomChargeCommandValidator : AbstractValidator<SettleRoomChargeCommand>

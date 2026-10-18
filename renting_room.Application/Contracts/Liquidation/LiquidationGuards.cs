@@ -4,6 +4,7 @@ using renting_room.Domain.Billing;
 
 namespace renting_room.Application.Contracts;
 
+// Thanh lý
 internal static class LiquidationGuards
 {
     /// <summary>CT-BR-11: còn phiếu (chưa hủy) của kỳ bắt đầu sau ngày trả phòng ⇒ phải hủy / xóa trước (tránh thu tiền kỳ sau khi đã trả phòng).</summary>

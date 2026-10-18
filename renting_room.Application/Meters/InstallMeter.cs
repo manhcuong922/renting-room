@@ -10,6 +10,7 @@ using renting_room.Domain.Properties;
 
 namespace renting_room.Application.Meters;
 
+// Lắp / thay / tháo
 public sealed record InstallMeterCommand(
     Guid RoomId, Guid FeeTypeId, string? SerialNo, DateOnly InstalledDate, decimal InitialValue, string? Note) : IRequest<Result<Guid>>;
 

@@ -8,6 +8,7 @@ using renting_room.Domain.Properties;
 
 namespace renting_room.Application.Rooms;
 
+// Sửa phòng
 public sealed record UpdateRoomCommand(Guid Id, string Code, RoomSpecInput Spec, uint Version) : IRequest<Result<RoomDto>>;
 
 public sealed class UpdateRoomCommandValidator : AbstractValidator<UpdateRoomCommand>

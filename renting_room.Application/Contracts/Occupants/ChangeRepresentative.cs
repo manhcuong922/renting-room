@@ -8,6 +8,7 @@ using renting_room.Domain.Renters;
 
 namespace renting_room.Application.Contracts;
 
+// Đổi người đứng tên (CT-BR-51)
 /// <param name="HouseholdHeadRenterId">Chủ hộ mới (phải đang ở); null = giữ chủ hộ hiện tại, không có thì người đứng tên mới.</param>
 /// <param name="OldRepresentativeMovesOut">Người đứng tên cũ rời đi cùng ngày ⇒ ghi chuyển đi + kết thúc xe của họ.</param>
 public sealed record ChangeRepresentativeCommand(

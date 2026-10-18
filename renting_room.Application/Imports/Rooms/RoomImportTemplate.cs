@@ -4,6 +4,7 @@ using renting_room.Domain.Common;
 
 namespace renting_room.Application.Imports;
 
+// PR-UC-11: import phòng từ Excel — xem trước (không giữ) → sửa → lưu dòng hợp lệ
 /// <param name="ElectricityReading">Chỉ số đầu kỳ hiện tại — công tơ tính là lắp từ ngày chốt kỳ hiện tại của khu.</param>
 public sealed record RoomImportRow(
     int RowNumber,

@@ -5,6 +5,7 @@ using renting_room.Domain.Common;
 
 namespace renting_room.Application.Billing;
 
+// Xóa nháp / chốt / hủy
 public sealed record DeleteDraftInvoiceCommand(Guid Id) : IRequest<Result>;
 
 public sealed class DeleteDraftInvoiceHandler(IAppDbContext db) : IRequestHandler<DeleteDraftInvoiceCommand, Result>

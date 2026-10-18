@@ -8,6 +8,7 @@ using renting_room.Domain.Common;
 
 namespace renting_room.Application.Contracts;
 
+// Thanh lý
 /// <summary>Quay lại Active ⇒ ngày kết thúc thực tế bỏ trống; nếu phòng đã có HĐ mới sau đó, EXCLUDE trong DB trả 409.</summary>
 public sealed record CancelLiquidationCommand(Guid ContractId) : IRequest<Result>;
 

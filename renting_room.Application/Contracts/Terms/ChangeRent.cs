@@ -7,6 +7,7 @@ using renting_room.Domain.Common;
 
 namespace renting_room.Application.Contracts;
 
+// Phụ lục: đổi giá, gia hạn, báo trả phòng
 /// <param name="EffectiveFrom">Bỏ trống ⇒ kỳ chưa chốt đầu tiên (CT-UC-05: sửa trực tiếp trên HĐ, lịch sử giá giữ nguyên).</param>
 public sealed record ChangeRentCommand(Guid ContractId, DateOnly? EffectiveFrom, decimal MonthlyRent, string? AddendumNo, string? Note)
     : IRequest<Result>;

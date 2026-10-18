@@ -8,6 +8,7 @@ using renting_room.Domain.Contracts;
 
 namespace renting_room.Application.Contracts;
 
+// Tạo / sửa / ngừng dùng
 public sealed record UpdateContractTemplateCommand(Guid Id, ContractTemplateInput Template, uint Version) : IRequest<Result<ContractTemplateDto>>;
 
 public sealed class UpdateContractTemplateCommandValidator : AbstractValidator<UpdateContractTemplateCommand>

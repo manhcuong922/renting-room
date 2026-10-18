@@ -9,6 +9,7 @@ using renting_room.Domain.Properties;
 
 namespace renting_room.Application.Imports;
 
+// RT-UC-10: import người thuê đang ở — chỉ tạo mới khi chuyển từ sổ sang phần mềm
 /// <param name="Errors">Lỗi của cả phòng (phòng không có / đang có HĐ, thiếu người đứng tên…); lỗi từng người nằm ở dòng.</param>
 public sealed record TenancyRoomDto(
     string RoomCode, IReadOnlyList<int> RowNumbers, bool IsValid, DateOnly? StartDate, DateOnly? BillingStartDate,

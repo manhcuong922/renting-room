@@ -8,6 +8,7 @@ using renting_room.Domain.Properties;
 
 namespace renting_room.Application.Properties;
 
+// Bên cho thuê (PR-BR-12 → 17)
 /// <summary>
 /// Xem số giấy tờ đầy đủ của bên cho thuê hiệu lực của khu (riêng của khu, không có thì của chủ trọ) — chỉ người có quyền (ID-BR-22),
 /// luôn ghi log ai xem (C-10, ID-BR-21).

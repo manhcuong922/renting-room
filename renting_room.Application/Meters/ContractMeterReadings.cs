@@ -7,6 +7,7 @@ using renting_room.Domain.Meters;
 
 namespace renting_room.Application.Meters;
 
+// Dùng từ M05: chỉ số nhận phòng / chỉ số cuối
 /// <param name="Value">null = "Dùng số mới nhất" (chỉ số gần nhất ≤ ngày) — chỉ cho chỉ số nhận phòng.</param>
 public sealed record MeterReadingInput(Guid MeterId, decimal? Value);
 

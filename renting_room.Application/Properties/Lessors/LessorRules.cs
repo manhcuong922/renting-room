@@ -7,6 +7,7 @@ using renting_room.Domain.Properties;
 
 namespace renting_room.Application.Properties;
 
+// Bên cho thuê (PR-BR-12 → 17)
 /// <summary>Các trường khai bên cho thuê — dùng chung cho bên cho thuê mặc định của tổ chức (chủ trọ) và bên cho thuê riêng của khu.</summary>
 public interface ILessorFields
 {
@@ -108,6 +109,7 @@ internal static class LessorRules
     }
 }
 
+// Ngân hàng & nội quy
 internal static class LessorErrors
 {
     public static readonly Error IdNumberRequired =

@@ -4,6 +4,7 @@ using renting_room.Application.Common.Interfaces;
 
 namespace renting_room.Application.Billing;
 
+// Xóa nháp / chốt / hủy
 public sealed record FinalizeResult(Guid InvoiceId, bool Success, string? InvoiceNo, string? ErrorCode, string? Message);
 
 public sealed record FinalizeInvoicesBatchCommand(IReadOnlyList<Guid> InvoiceIds) : IRequest<IReadOnlyList<FinalizeResult>>;

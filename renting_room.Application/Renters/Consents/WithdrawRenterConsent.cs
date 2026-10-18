@@ -6,6 +6,7 @@ using renting_room.Domain.Renters;
 
 namespace renting_room.Application.Renters;
 
+// RT-UC-05: ghi nhận đồng ý xử lý dữ liệu cá nhân
 public sealed record WithdrawRenterConsentCommand(Guid RenterId, Guid ConsentId, DateOnly WithdrawnOn) : IRequest<Result>;
 
 public sealed class WithdrawRenterConsentHandler(IAppDbContext db, TimeProvider clock) : IRequestHandler<WithdrawRenterConsentCommand, Result>

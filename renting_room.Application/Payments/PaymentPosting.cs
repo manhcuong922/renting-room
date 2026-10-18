@@ -8,6 +8,7 @@ using renting_room.Domain.Payments;
 
 namespace renting_room.Application.Payments;
 
+// Ghi thu
 /// <summary>
 /// Ghi phiếu thu và phân bổ trong transaction của người gọi (đã khóa HĐ): khóa các phiếu còn nợ theo id (C-07), cập nhật <c>paid_amount</c>
 /// cùng lúc (PM-BR-05). <c>amount</c> null ⇒ đúng tổng còn nợ ("Đã thu toàn bộ" / bỏ nợ khi hoàn tất thanh lý).

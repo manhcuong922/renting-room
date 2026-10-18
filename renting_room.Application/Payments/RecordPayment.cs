@@ -9,6 +9,7 @@ using renting_room.Domain.Payments;
 
 namespace renting_room.Application.Payments;
 
+// Ghi thu
 /// <param name="InvoiceId">Có ⇒ thu cho đúng phiếu này (nút "Đã thu"); null ⇒ phân bổ tự động phiếu cũ nhất trước (PM-BR-06).</param>
 public sealed record RecordPaymentCommand(
     Guid ContractId, decimal Amount, PaymentMethod Method, DateOnly PaidAt, Guid? InvoiceId, string? PayerName, string? Reference, string? Note)

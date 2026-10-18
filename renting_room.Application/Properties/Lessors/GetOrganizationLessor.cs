@@ -5,6 +5,7 @@ using renting_room.Domain.Common;
 
 namespace renting_room.Application.Properties;
 
+// Bên cho thuê (PR-BR-12 → 17)
 public sealed record GetOrganizationLessorQuery : IRequest<OrganizationLessorDto>;
 
 public sealed class GetOrganizationLessorHandler(IAppDbContext db, ICurrentUser currentUser, TimeProvider clock)

@@ -7,6 +7,7 @@ using renting_room.Domain.Contracts;
 
 namespace renting_room.Application.Contracts;
 
+// Thanh lý
 public sealed record StartLiquidationCommand(
     Guid ContractId, DateOnly ActualEndDate, TerminationReason Reason, TerminationGround? Ground, string? Note) : IRequest<Result>;
 

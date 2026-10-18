@@ -9,6 +9,7 @@ using renting_room.Domain.Fees;
 
 namespace renting_room.Application.Fees;
 
+// Tạo / sửa
 public sealed record UpdateFeeTypeCommand(
     Guid Id, string Name, string Unit, bool AutoAttach, decimal? DefaultQuantity, int SortOrder, uint Version, VehicleType? VehicleType = null)
     : IRequest<Result<FeeTypeDto>>;

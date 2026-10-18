@@ -8,6 +8,7 @@ using renting_room.Domain.Fees;
 
 namespace renting_room.Application.Imports;
 
+// PR-UC-11: import phòng từ Excel — xem trước (không giữ) → sửa → lưu dòng hợp lệ
 /// <summary>PR-UC-11 bước 2: nhận các dòng (đã sửa trên màn), kiểm lại toàn bộ, lưu dòng hợp lệ — mỗi dòng 1 transaction.</summary>
 public sealed record SaveRoomImportCommand(Guid PropertyId, IReadOnlyList<RoomImportRow> Rows) : IRequest<Result<ImportSaveResultDto>>;
 

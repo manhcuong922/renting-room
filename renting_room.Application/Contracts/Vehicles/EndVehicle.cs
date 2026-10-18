@@ -4,6 +4,7 @@ using renting_room.Domain.Common;
 
 namespace renting_room.Application.Contracts;
 
+// Xe gửi
 public sealed record EndVehicleCommand(Guid ContractId, Guid VehicleId, DateOnly EndDate) : IRequest<Result>;
 
 public sealed class EndVehicleHandler(IAppDbContext db) : IRequestHandler<EndVehicleCommand, Result>

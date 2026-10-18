@@ -6,6 +6,7 @@ using renting_room.Domain.Billing;
 
 namespace renting_room.Application.Billing;
 
+// Danh sách
 public sealed record ListRoomChargesQuery(Guid? RoomId, Guid? PropertyId, RoomChargeStatus? Status, DateOnly? From, DateOnly? To)
     : IRequest<IReadOnlyList<RoomChargeDto>>;
 

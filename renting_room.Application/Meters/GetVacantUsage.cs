@@ -8,6 +8,7 @@ using renting_room.Domain.Properties;
 
 namespace renting_room.Application.Meters;
 
+// MT-BR-14: sản lượng phòng trống (không tính cho người thuê nào)
 /// <summary>Một khoảng công tơ chạy khi phòng không có người thuê: từ chỉ số liền trước tới chỉ số nhận phòng của HĐ kế tiếp.</summary>
 public sealed record VacantUsageRow(
     Guid RoomId, string RoomCode, Guid MeterId, string? SerialNo, Guid FeeTypeId, string FeeTypeName, string Unit, DateOnly FromDate,

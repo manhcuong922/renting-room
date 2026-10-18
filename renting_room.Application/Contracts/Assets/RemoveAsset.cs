@@ -4,6 +4,7 @@ using renting_room.Domain.Common;
 
 namespace renting_room.Application.Contracts;
 
+// Tài sản bàn giao
 public sealed record RemoveAssetCommand(Guid ContractId, Guid AssetId) : IRequest<Result>;
 
 public sealed class RemoveAssetHandler(IAppDbContext db) : IRequestHandler<RemoveAssetCommand, Result>

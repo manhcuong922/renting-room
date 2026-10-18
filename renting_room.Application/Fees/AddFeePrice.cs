@@ -8,6 +8,7 @@ using renting_room.Domain.Fees;
 
 namespace renting_room.Application.Fees;
 
+// Bảng giá
 public sealed record AddFeePriceCommand(Guid FeeTypeId, FeePriceInput Price) : IRequest<Result<CreatedWithWarnings>>;
 
 public sealed class AddFeePriceCommandValidator : AbstractValidator<AddFeePriceCommand>

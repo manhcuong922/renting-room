@@ -6,6 +6,7 @@ using renting_room.Domain.Contracts;
 
 namespace renting_room.Application.Contracts;
 
+// Tạo / sửa / ngừng dùng
 public sealed record ChangeContractTemplateStateCommand(Guid Id, bool Archive) : IRequest<Result>;
 
 public sealed class ChangeContractTemplateStateHandler(IAppDbContext db, TimeProvider clock) : IRequestHandler<ChangeContractTemplateStateCommand, Result>

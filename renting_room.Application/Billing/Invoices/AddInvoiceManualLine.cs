@@ -6,6 +6,7 @@ using renting_room.Domain.Common;
 
 namespace renting_room.Application.Billing;
 
+// Sửa nháp: sửa tay, phụ thu / giảm tay, ghi chú
 /// <param name="Type"><c>Surcharge</c> (phụ thu), <c>ManualDiscount</c> (giảm tay) hoặc <c>Refund</c> (hoàn trả) — nhập số dương.</param>
 /// <param name="SourceInvoiceId">Bắt buộc với hoàn trả (BL-BR-27): phiếu đã chốt bị tính sai mà người thuê đã trả.</param>
 /// <param name="Settlement">Phụ thu / giảm trừ đã thanh toán / đã hoàn ngay (BL-BR-34) ⇒ dòng hiện trên phiếu, không tính vào tổng.</param>

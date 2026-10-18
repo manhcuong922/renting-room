@@ -10,6 +10,7 @@ using renting_room.Domain.Properties;
 
 namespace renting_room.Application.Billing;
 
+// Tạo khoản phát sinh
 /// <param name="Settlement">Có ⇒ khoản đã thanh toán / đã hoàn ngay (vẫn hiện trên phiếu, không tính vào tổng).</param>
 public sealed record CreateRoomChargeCommand(
     Guid RoomId, RoomChargeKind Kind, string Description, decimal Amount, DateOnly IncurredOn, string Reason, ChargeSettlement? Settlement)
