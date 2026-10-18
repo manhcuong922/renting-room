@@ -8,6 +8,7 @@ using renting_room.Domain.Renters;
 
 namespace renting_room.Application.Renters;
 
+// Tạo / sửa
 public sealed record CreateRenterCommand(RenterInput Renter) : IRequest<Result<Guid>>;
 
 public sealed class CreateRenterCommandValidator : AbstractValidator<CreateRenterCommand>

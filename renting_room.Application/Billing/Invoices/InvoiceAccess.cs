@@ -5,6 +5,7 @@ using renting_room.Domain.Common;
 
 namespace renting_room.Application.Billing;
 
+// DTO
 internal static class InvoiceAccess
 {
     public static Task<Invoice?> LoadAsync(IAppDbContext db, Guid id, CancellationToken ct) =>

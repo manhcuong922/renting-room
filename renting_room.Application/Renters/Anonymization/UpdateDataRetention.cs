@@ -6,6 +6,7 @@ using renting_room.Domain.Identity;
 
 namespace renting_room.Application.Renters;
 
+// Cài đặt lưu giữ của tổ chức
 public sealed record UpdateDataRetentionCommand(int RetentionMonths, bool AutoAnonymize) : IRequest<DataRetentionDto>;
 
 public sealed class UpdateDataRetentionCommandValidator : AbstractValidator<UpdateDataRetentionCommand>

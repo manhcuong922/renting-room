@@ -8,6 +8,7 @@ using renting_room.Domain.Identity;
 
 namespace renting_room.Application.Identity.Members;
 
+// Sửa / khóa / mở / cấp lại mật khẩu / gỡ (chỉ chủ trọ, chỉ phó quản lý)
 public sealed record UpdateManagerCommand(Guid Id, string FullName, string? Phone, string? Email, uint Version) : IRequest<Result<MemberDto>>;
 
 public sealed class UpdateManagerCommandValidator : AbstractValidator<UpdateManagerCommand>

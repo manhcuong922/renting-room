@@ -8,6 +8,7 @@ using renting_room.Domain.Properties;
 
 namespace renting_room.Application.Imports;
 
+// PR-UC-11: import phòng từ Excel — xem trước (không giữ) → sửa → lưu dòng hợp lệ
 public sealed record GetRoomImportTemplateQuery(Guid PropertyId) : IRequest<Result<ExportFile>>;
 
 public sealed class GetRoomImportTemplateHandler(IAppDbContext db, ISpreadsheetWriter writer)

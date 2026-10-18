@@ -1,5 +1,6 @@
 namespace renting_room.Application.Contracts;
 
+// Thanh lý
 /// <summary>CT-BR-12: còn nợ khi hoàn tất — thu nhanh toàn bộ hoặc bỏ nợ.</summary>
 public enum DebtSettlement
 {

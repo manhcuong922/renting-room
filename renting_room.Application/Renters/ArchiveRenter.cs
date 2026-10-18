@@ -6,6 +6,7 @@ using renting_room.Domain.Renters;
 
 namespace renting_room.Application.Renters;
 
+// Queries
 public sealed record ArchiveRenterCommand(Guid Id, bool Archived) : IRequest<Result>;
 
 /// <summary>RT-BR-05: ẩn / hiện lại hồ sơ. Người còn HĐ nháp / hiệu lực / thanh lý thì không ẩn được.</summary>

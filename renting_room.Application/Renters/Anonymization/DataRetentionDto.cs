@@ -3,6 +3,7 @@ using renting_room.Domain.Identity;
 
 namespace renting_room.Application.Renters;
 
+// Cài đặt lưu giữ của tổ chức
 /// <param name="RetentionMonths">Giữ dữ liệu cá nhân bao nhiêu tháng sau lần cuối gắn với HĐ (36–120).</param>
 /// <param name="AutoAnonymize">Tắt ⇒ không tự ẩn danh; chủ trọ tự chịu trách nhiệm lưu giữ.</param>
 public sealed record DataRetentionDto(int RetentionMonths, bool AutoAnonymize, IReadOnlyList<Warning> Warnings);

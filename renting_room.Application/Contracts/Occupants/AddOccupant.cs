@@ -8,6 +8,7 @@ using renting_room.Domain.Renters;
 
 namespace renting_room.Application.Contracts;
 
+// Người ở
 public sealed record AddOccupantCommand(
     Guid ContractId, Guid RenterId, DateOnly MoveInDate, DateOnly? ExpectedEndDate, string? Relationship, string? Note,
     OccupantRelationship? RelationshipType = null, bool GuardianConsent = false, OccupantRole Role = OccupantRole.Resident) : IRequest<Result>;

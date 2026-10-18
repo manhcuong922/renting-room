@@ -7,6 +7,7 @@ using renting_room.Domain.Contracts;
 
 namespace renting_room.Application.Billing;
 
+// Xác nhận đã hoàn tiền (phiếu tổng âm)
 public sealed record ConfirmInvoiceRefundCommand(Guid Id, DateOnly RefundedOn, PaymentMethod Method, string? Note) : IRequest<Result<InvoiceDetailDto>>;
 
 public sealed class ConfirmInvoiceRefundCommandValidator : AbstractValidator<ConfirmInvoiceRefundCommand>

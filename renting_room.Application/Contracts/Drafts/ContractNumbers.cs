@@ -4,6 +4,7 @@ using renting_room.Domain.Common;
 
 namespace renting_room.Application.Contracts;
 
+// Tạo nháp
 internal static class ContractNumbers
 {
     private const int MaxAttempts = 5;

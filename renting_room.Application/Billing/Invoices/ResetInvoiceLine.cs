@@ -6,6 +6,7 @@ using renting_room.Domain.Common;
 
 namespace renting_room.Application.Billing;
 
+// Sửa nháp: sửa tay, phụ thu / giảm tay, ghi chú
 /// <summary>Dòng hệ thống ⇒ bỏ sửa tay (về số hệ thống); phụ thu / giảm tay ⇒ xóa dòng.</summary>
 public sealed record ResetInvoiceLineCommand(Guid InvoiceId, Guid LineId) : IRequest<Result<InvoiceDetailDto>>;
 

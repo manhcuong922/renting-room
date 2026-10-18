@@ -8,6 +8,7 @@ using renting_room.Domain.Properties;
 
 namespace renting_room.Application.Imports;
 
+// RT-UC-10: import người thuê đang ở — chỉ tạo mới khi chuyển từ sổ sang phần mềm
 public sealed record GetTenancyImportTemplateQuery(Guid PropertyId) : IRequest<Result<ExportFile>>;
 
 public sealed class GetTenancyImportTemplateHandler(IAppDbContext db, ISpreadsheetWriter writer)

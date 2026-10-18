@@ -7,6 +7,7 @@ using renting_room.Domain.Properties;
 
 namespace renting_room.Application.Properties;
 
+// Bên cho thuê (PR-BR-12 → 17)
 /// <summary>PR-BR-17: chủ trọ khai thông tin của mình một lần — mọi khu không khai riêng dùng thông tin này.</summary>
 /// <param name="IdNumber">Null = giữ nguyên số giấy tờ đang lưu.</param>
 public sealed record UpdateOrganizationLessorCommand(

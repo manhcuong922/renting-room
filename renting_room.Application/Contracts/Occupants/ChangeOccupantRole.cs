@@ -6,6 +6,7 @@ using renting_room.Domain.Contracts;
 
 namespace renting_room.Application.Contracts;
 
+// Đồng thuê (CT-BR-49)
 public sealed record ChangeOccupantRoleCommand(Guid ContractId, Guid OccupantId, OccupantRole Role) : IRequest<Result>;
 
 public sealed class ChangeOccupantRoleCommandValidator : AbstractValidator<ChangeOccupantRoleCommand>

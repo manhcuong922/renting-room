@@ -7,6 +7,7 @@ using renting_room.Domain.Contracts;
 
 namespace renting_room.Application.Contracts;
 
+// Phụ lục: đổi giá, gia hạn, báo trả phòng
 /// <summary>
 /// CT-UC-21: ký lại cho người còn ở — trong 1 transaction: HĐ cũ bắt đầu thanh lý tại ngày bàn giao X, tạo HĐ nháp mới từ X+1
 /// (chép điều khoản, dịch vụ, người ở còn lại, xe của họ). Chủ trọ xem lại nháp rồi kích hoạt như bình thường.

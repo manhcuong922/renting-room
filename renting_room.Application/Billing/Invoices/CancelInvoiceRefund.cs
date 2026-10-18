@@ -4,6 +4,7 @@ using renting_room.Domain.Common;
 
 namespace renting_room.Application.Billing;
 
+// Xác nhận đã hoàn tiền (phiếu tổng âm)
 public sealed record CancelInvoiceRefundCommand(Guid Id) : IRequest<Result<InvoiceDetailDto>>;
 
 /// <summary>Bỏ xác nhận đã hoàn (nhập nhầm) — phải bỏ trước khi hủy phiếu.</summary>

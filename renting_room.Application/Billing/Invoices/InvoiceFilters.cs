@@ -5,6 +5,7 @@ using renting_room.Domain.Billing;
 
 namespace renting_room.Application.Billing;
 
+// Truy vấn
 internal static class InvoiceFilters
 {
     /// <summary>Bộ lọc dùng chung cho danh sách phiếu và số tổng hợp (BL-UC-02).</summary>

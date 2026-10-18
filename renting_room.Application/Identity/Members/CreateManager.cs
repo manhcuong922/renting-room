@@ -10,6 +10,7 @@ using renting_room.Domain.Identity;
 
 namespace renting_room.Application.Identity.Members;
 
+// Thêm phó quản lý (chỉ chủ trọ)
 public sealed record CreateManagerCommand(string FullName, string? Phone, string? Email) : IRequest<Result<TemporaryCredentials>>;
 
 public sealed class CreateManagerCommandValidator : AbstractValidator<CreateManagerCommand>

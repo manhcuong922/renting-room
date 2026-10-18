@@ -6,6 +6,7 @@ using renting_room.Domain.Properties;
 
 namespace renting_room.Application.Properties;
 
+// Ngừng dùng / khôi phục
 public sealed record RestorePropertyCommand(Guid Id) : IRequest<Result>;
 
 public sealed class RestorePropertyHandler(IAppDbContext db) : IRequestHandler<RestorePropertyCommand, Result>

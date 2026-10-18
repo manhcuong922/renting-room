@@ -7,6 +7,7 @@ using renting_room.Domain.Common;
 
 namespace renting_room.Application.Billing;
 
+// Truy vấn
 public sealed record GetInvoiceQuery(Guid Id) : IRequest<Result<InvoiceDetailDto>>;
 
 public sealed class GetInvoiceHandler(IAppDbContext db, TimeProvider clock) : IRequestHandler<GetInvoiceQuery, Result<InvoiceDetailDto>>

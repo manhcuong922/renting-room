@@ -6,6 +6,7 @@ using renting_room.Domain.Common;
 
 namespace renting_room.Application.Contracts;
 
+// Tài sản bàn giao
 /// <summary>CT-BR-23: ghi tình trạng tài sản lúc trả phòng — bồi thường (nếu có) thêm phụ thu trên phiếu quyết toán.</summary>
 public sealed record RecordAssetReturnCommand(Guid ContractId, Guid AssetId, string? ConditionAtReturn) : IRequest<Result>;
 

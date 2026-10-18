@@ -8,6 +8,7 @@ using renting_room.Domain.Common;
 
 namespace renting_room.Application.Billing;
 
+// Sửa nháp: sửa tay, phụ thu / giảm tay, ghi chú
 /// <param name="Amount">Bỏ trống ⇒ số lượng × đơn giá × hệ số prorate.</param>
 public sealed record EditInvoiceLineCommand(Guid InvoiceId, Guid LineId, decimal? Quantity, decimal? UnitPrice, decimal? Amount, string? Note)
     : IRequest<Result<InvoiceDetailDto>>;

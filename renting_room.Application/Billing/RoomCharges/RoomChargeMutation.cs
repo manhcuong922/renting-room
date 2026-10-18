@@ -7,6 +7,7 @@ using renting_room.Domain.Contracts;
 
 namespace renting_room.Application.Billing;
 
+// Đánh dấu đã thanh toán / bỏ đánh dấu / hủy
 internal static class RoomChargeMutation
 {
     /// <summary>

@@ -7,6 +7,7 @@ using renting_room.Domain.Identity;
 
 namespace renting_room.Application.Identity.Members;
 
+// Queries (chủ trọ + phó quản lý)
 public sealed record GetMemberQuery(Guid Id) : IRequest<Result<MemberDto>>;
 
 public sealed class GetMemberHandler(IAppDbContext db, ICurrentUser currentUser) : IRequestHandler<GetMemberQuery, Result<MemberDto>>

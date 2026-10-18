@@ -6,6 +6,7 @@ using renting_room.Domain.Identity;
 
 namespace renting_room.Application.Properties;
 
+// Bên cho thuê (PR-BR-12 → 17)
 /// <summary>Xem số giấy tờ đầy đủ của chủ trọ (bên cho thuê mặc định) — như <see cref="RevealLessorIdNumberQuery"/>.</summary>
 public sealed record RevealOrganizationLessorIdNumberQuery : IRequest<Result<string>>;
 

@@ -8,6 +8,7 @@ using renting_room.Domain.Contracts;
 
 namespace renting_room.Application.Contracts;
 
+// Tạo / sửa / ngừng dùng
 public sealed record CreateContractTemplateCommand(ContractTemplateInput Template) : IRequest<Result<Guid>>;
 
 public sealed class CreateContractTemplateCommandValidator : AbstractValidator<CreateContractTemplateCommand>

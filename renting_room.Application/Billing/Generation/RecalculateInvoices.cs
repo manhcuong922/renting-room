@@ -10,6 +10,7 @@ using renting_room.Domain.Contracts;
 
 namespace renting_room.Application.Billing;
 
+// Tính lại nháp theo phạm vi
 public sealed record RecalculateInvoicesResult(int Recalculated, int WithIssues, IReadOnlyList<Guid> NotDraft);
 
 /// <summary>BL-UC-06: phạm vi = danh sách phiếu, hoặc khu + tháng (lọc phòng / tầng). Mặc định giữ ô sửa tay.</summary>

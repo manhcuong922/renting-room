@@ -7,6 +7,7 @@ using renting_room.Domain.Renters;
 
 namespace renting_room.Application.Imports;
 
+// RT-UC-10: import người thuê đang ở — chỉ tạo mới khi chuyển từ sổ sang phần mềm
 public enum ImportRole
 {
     /// <summary>Đứng tên HĐ và ở trong phòng.</summary>

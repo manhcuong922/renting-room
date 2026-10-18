@@ -11,6 +11,7 @@ namespace renting_room.Application.Meters;
 
 public sealed record MeterRemovedDto(IReadOnlyList<Warning> Warnings);
 
+// Lắp / thay / tháo
 public sealed record RemoveMeterCommand(Guid MeterId, DateOnly Date, decimal FinalValue, string? Note) : IRequest<Result<MeterRemovedDto>>;
 
 public sealed class RemoveMeterCommandValidator : AbstractValidator<RemoveMeterCommand>

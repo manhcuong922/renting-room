@@ -8,6 +8,7 @@ using renting_room.Domain.Meters;
 
 namespace renting_room.Application.Meters;
 
+// Sửa chỉ số
 public sealed record VoidMeterReadingCommand(Guid ReadingId, string Reason) : IRequest<Result>;
 
 public sealed class VoidMeterReadingCommandValidator : AbstractValidator<VoidMeterReadingCommand>

@@ -8,6 +8,7 @@ using renting_room.Domain.Properties;
 
 namespace renting_room.Application.Rooms;
 
+// Bảo trì / ngừng dùng
 public sealed record ChangeRoomStateCommand(Guid Id, RoomAction Action, string? Note = null) : IRequest<Result>;
 
 public sealed class ChangeRoomStateCommandValidator : AbstractValidator<ChangeRoomStateCommand>

@@ -8,6 +8,7 @@ using renting_room.Domain.Properties;
 
 namespace renting_room.Application.Rooms;
 
+// Tạo phòng
 public sealed record BulkRoomFloor(string? Floor, IReadOnlyList<string> Codes);
 
 /// <summary>Tạo hàng loạt theo tầng — all-or-nothing: một mã trùng thì không tạo phòng nào.</summary>

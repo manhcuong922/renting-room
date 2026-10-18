@@ -8,6 +8,7 @@ using renting_room.Domain.Properties;
 
 namespace renting_room.Application.Fees;
 
+// Sao chép danh mục (FE-UC-06)
 public sealed record CopyFeeCatalogCommand(Guid SourcePropertyId, Guid TargetPropertyId, bool IncludePrices, DateOnly? EffectiveFrom)
     : IRequest<Result<CopyFeeCatalogResult>>;
 

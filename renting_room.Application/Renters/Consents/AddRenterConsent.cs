@@ -8,6 +8,7 @@ using renting_room.Domain.Renters;
 
 namespace renting_room.Application.Renters;
 
+// RT-UC-05: ghi nhận đồng ý xử lý dữ liệu cá nhân
 public sealed record AddRenterConsentCommand(Guid RenterId, string Purpose, ConsentMethod Method, DateOnly GivenAt, string? Note)
     : IRequest<Result<RenterConsentDto>>;
 

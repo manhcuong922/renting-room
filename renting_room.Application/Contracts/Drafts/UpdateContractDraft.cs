@@ -6,6 +6,7 @@ using renting_room.Domain.Common;
 
 namespace renting_room.Application.Contracts;
 
+// Sửa nháp / hủy nháp
 public sealed record UpdateContractDraftCommand(Guid Id, ContractInput Contract, uint Version) : IRequest<Result>;
 
 public sealed class UpdateContractDraftCommandValidator : AbstractValidator<UpdateContractDraftCommand>

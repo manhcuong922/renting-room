@@ -5,6 +5,7 @@ using renting_room.Domain.Properties;
 
 namespace renting_room.Application.Imports;
 
+// PR-UC-11: import phòng từ Excel — xem trước (không giữ) → sửa → lưu dòng hợp lệ
 internal static class ImportProperty
 {
     public static async Task<Result<Property>> LoadAsync(IAppDbContext db, Guid propertyId, CancellationToken ct)

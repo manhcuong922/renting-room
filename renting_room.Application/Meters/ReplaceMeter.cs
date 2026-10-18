@@ -7,6 +7,7 @@ using renting_room.Domain.Meters;
 
 namespace renting_room.Application.Meters;
 
+// Lắp / thay / tháo
 public sealed record ReplaceMeterCommand(
     Guid MeterId, DateOnly Date, decimal OldFinalValue, string? NewSerialNo, decimal NewInitialValue, string? Note) : IRequest<Result<Guid>>;
 

@@ -10,6 +10,7 @@ using renting_room.Domain.Properties;
 
 namespace renting_room.Application.Meters;
 
+// MT-UC-01: lắp công tơ hàng loạt cho nhiều phòng của khu
 public sealed record BulkInstallRowError(int Index, Guid RoomId, string Code, string Message);
 
 public sealed record BulkInstallResult(int Installed, IReadOnlyList<Guid> MeterIds);

@@ -9,6 +9,7 @@ using renting_room.Domain.Properties;
 
 namespace renting_room.Application.Properties;
 
+// Tạo / sửa khu
 public sealed record CreatePropertyCommand(
     string Code,
     string Name,

@@ -8,6 +8,7 @@ using renting_room.Domain.Properties;
 
 namespace renting_room.Application.Properties;
 
+// Ngân hàng & nội quy
 public sealed record UpdateHouseRulesCommand(Guid PropertyId, string? Text) : IRequest<Result<PropertyDetailDto>>;
 
 public sealed class UpdateHouseRulesCommandValidator : AbstractValidator<UpdateHouseRulesCommand>

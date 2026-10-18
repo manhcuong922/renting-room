@@ -6,6 +6,7 @@ using renting_room.Domain.Contracts;
 
 namespace renting_room.Application.Contracts;
 
+// Truy vấn
 public sealed record ListContractTemplatesQuery(ContractType? Type, bool IncludeArchived) : IRequest<IReadOnlyList<ContractTemplateDto>>;
 
 public sealed class ListContractTemplatesHandler(IAppDbContext db) : IRequestHandler<ListContractTemplatesQuery, IReadOnlyList<ContractTemplateDto>>
