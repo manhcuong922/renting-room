@@ -1,0 +1,11 @@
+# Commit chỉ di chuyển code (không đổi nội dung) — git blame bỏ qua để chỉ về commit viết code thật.
+# GitHub tự đọc file này. Máy local: git config blame.ignoreRevsFile .git-blame-ignore-revs
+
+# refactor(infrastructure): one concern per file
+80e7b15ae26f7dfe1713e413501f6029046ad065
+# refactor(application): one use case per file, grouped by feature folder
+fbed532b85f1af3619b1eed3abe479092e846c71
+# refactor(api): request records out of large endpoint files
+04793271ab0becf75c64c07523a273dd65f09831
+# refactor(domain): split Invoice.cs per type, Contract into partial files
+5df8881c5b585c298cae10683f37eba92f7271be
