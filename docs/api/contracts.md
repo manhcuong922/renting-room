@@ -635,7 +635,7 @@ Chi tiết HĐ có `deposit`:
   "notRefundedReminder": false }
 ```
 
-`status`: `Holding` (đang giữ) · `Refunded` (đã hoàn trả) · `Transferred` (chuyển sang HĐ ký lại) · `null` (HĐ không cọc — `amount` = 0).
+`status`: `Holding` (đang giữ) · `Refunded` (đã hoàn trả) · `Transferred` (chuyển sang HĐ ký lại — tự về `Holding` khi HĐ nháp ký lại bị hủy / HĐ cũ hủy thanh lý) · `null` (HĐ không cọc — `amount` = 0).
 `notRefundedReminder` = HĐ đã kết thúc mà chưa đánh dấu hoàn cọc ⇒ nhãn **"Chưa hoàn cọc"**; lọc `GET /contracts?depositNotRefunded=true`.
 
 | Thao tác | Endpoint | Ghi chú |
@@ -675,15 +675,26 @@ Chi tiết HĐ có `deposit`:
 `POST /contracts/{id}/transfer-room` — **Idempotency-Key**
 
 ```json
-{ "toRoomId": "…", "date": "2026-11-12",
+{ "toRoomId": "…",
   "oldRoomReadings": [ { "meterId": "…", "value": 4250 } ], "newRoomReadings": null,
   "monthlyRent": 3200000, "rentFrom": null, "removeFeeTypeIds": [ "…phí điều hòa" ], "note": null }
 ```
 
 → **200** `{ "warnings": [ { "code": "RESIDENCE_ROOM_CHANGED", … } ] }`. HĐ **đi theo người thuê**: giữ nguyên số HĐ, người ở, xe, dịch vụ, cọc;
-chỉ đổi phòng từ `date` (D):
-- `oldRoomReadings`: chỉ số cuối **mọi** công tơ phòng cũ tại D — thiếu → 422 `FINAL_READING_REQUIRED`.
-- `newRoomReadings`: chỉ số nhận phòng phòng mới tại D — null / `value` null = số mới nhất.
+chỉ đổi phòng **từ hôm nay** (D).
+
+**Đổi 17/10/2026 (UI cần sửa):**
+- **Không còn trường `date`** — ngày chuyển luôn là hôm nay (lúc chủ trọ bấm, sau khi chốt số công tơ phòng cũ). Body cũ còn gửi `date` thì
+  server bỏ qua. UI bỏ ô chọn ngày, hiện "Chuyển từ hôm nay dd/MM".
+- **Bỏ `POST /contracts/{id}/transfer-room/cancel`** (gọi sẽ 404) và hạn 3 ngày. Chuyển nhầm ⇒ **chuyển lại về phòng vừa rời ngay trong ngày**
+  (gọi lại chính API này với `toRoomId` = phòng cũ) — xem "Chuyển lại trong ngày" bên dưới. UI: trong ngày chuyển, nút "Chuyển phòng" gợi ý sẵn
+  "Chuyển lại về phòng <cũ>"; từ hôm sau là một lần chuyển bình thường.
+- **Không còn khoản chốt điện nước** của phòng cũ (`GET /room-charges` không có khoản `isSystem` mới). Sản lượng phòng cũ nằm trong **dòng điện
+  nước của phiếu** (xem bên dưới).
+
+Các trường:
+- `oldRoomReadings`: chỉ số cuối **mọi** công tơ phòng cũ hôm nay — thiếu → 422 `FINAL_READING_REQUIRED`.
+- `newRoomReadings`: chỉ số nhận phòng phòng mới hôm nay — null / `value` null = số mới nhất.
 - `monthlyRent`: giá thuê sau khi chuyển; **bỏ trống = lấy giá niêm yết của phòng mới** (phòng mới chưa có giá niêm yết thì giữ giá đang áp).
   Giá đổi theo mặc định này ⇒ cảnh báo `ROOM_TRANSFER_LISTED_RENT_APPLIED` (kèm giá mới trong `message`). Muốn giữ giá cũ thì gửi lại đúng giá cũ.
 - `rentFrom`: `CurrentPeriod` | `NextPeriod` — giá mới áp cho **cả kỳ**, không chia ngày theo từng phòng. Bỏ trống = tự chọn: đã ở phòng cũ
@@ -694,39 +705,29 @@ chỉ đổi phòng từ `date` (D):
   dịch vụ tính theo đầu người tương ứng).
 - Ngày D tính là còn ở **cả 2 phòng**; phòng cũ trống từ D+1. Chi tiết HĐ: `roomId` = phòng hiện tại, `roomSince`, `roomMoves[]`
   (`roomId`, `roomCode`, `fromDate`, `toDate`). Bản HĐ đã ký giữ phòng lúc ký.
-- **Điện nước phòng cũ chốt ngay tại D** (đổi 11/10/2026): mỗi công tơ phòng cũ sinh 1 **khoản phát sinh hệ thống** của HĐ
-  (`GET /room-charges?roomId=<phòng cũ>`): sản lượng = chỉ số cuối tại D − chỉ số cuối kỳ gần nhất HĐ đã ghi (không có thì chỉ số nhận
-  phòng), đơn giá = giá hiệu lực **tại D** (giá đổi sau D không tính lại). Khoản vào phiếu như khoản phát sinh khác (dòng `Surcharge` có
-  `feeTypeId`, `quantity`, `unitPrice`), đánh dấu "đã thu ngay" được; **không sửa / hủy tay** → 422 `ROOM_CHARGE_SYSTEM`; 2 chỉ số của
-  khoản bị khóa (`READING_LOCKED`).
-- **Phiếu** chỉ tính công tơ phòng HĐ đang ở, từ chỉ số nhận phòng của lần ở đó. Lưới ghi chỉ số chỉ còn công tơ phòng mới.
-- **Chuyển về phòng đã từng ở** (A → B → A) được.
+- **Điện nước** (CT-BR-47, đổi 17/10/2026): chỉ số cuối phòng cũ + chỉ số nhận phòng mới là sản lượng đã lưu. Phiếu của kỳ chứa D có **1 dòng
+  cho mỗi khoản** = phòng cũ (tới chỉ số lúc chuyển) + phòng mới (từ chỉ số nhận phòng); dòng có nhiều `segments` (mỗi công tơ / lần ở 1 đoạn),
+  giá bậc tính một lần trên tổng. Lưới ghi chỉ số chỉ hỏi công tơ phòng mới. Khu thu trước chuyển phòng khi chưa ghi chỉ số cuối kỳ trước của
+  phòng cũ ⇒ phiếu tính phòng cũ tới chỉ số lúc chuyển, không báo thiếu chỉ số.
+- **Chuyển về phòng đã từng ở** (A → B → A, các ngày khác nhau) được.
 
-`POST /contracts/{id}/transfer-room/cancel` — hủy **lần chuyển gần nhất** (nhập nhầm phòng / ngày / chỉ số) → **200**
-`{ "warnings": [ RESIDENCE_ROOM_CHANGED ] }`: HĐ về phòng cũ như chưa chuyển, khoản chốt điện nước bị hủy, chỉ số cuối phòng cũ và các chỉ số
-của HĐ trên công tơ phòng mới bị hủy.
-
-**Đổi 13/10/2026:**
-- **Chỉ hủy được trong 3 ngày** kể từ ngày chuyển (hôm nay ≤ ngày chuyển + 3). Quá hạn → 422 `ROOM_TRANSFER_CANCEL_EXPIRED` — muốn quay về thì
-  **chuyển phòng lại** (B → A) như một lần chuyển bình thường (chốt điện nước phòng B, hỏi giá / dịch vụ). UI: ẩn nút "Hủy chuyển phòng" khi
-  `hôm nay > roomSince + 3 ngày`, thay bằng gợi ý "Chuyển về phòng cũ".
-- **Hoàn nguyên trọn lần chuyển:** giá thuê trở lại như trước khi chuyển, dịch vụ đã bỏ lúc chuyển được gắn lại (số lượng / giá riêng cũ), khoản
-  "Chênh lệch tiền phòng" của lần chuyển bị hủy. Không cần sửa tay.
-- Chỉ khi có phần không hoàn được (giá / dịch vụ đã bị sửa tiếp sau lần chuyển, hoặc lần chuyển ghi trước 13/10/2026) mới có thêm cảnh báo
-  `ROOM_TRANSFER_CANCELLED_CHECK_RENT` — hiện câu nhắc kiểm tra giá thuê / dịch vụ.
-
-Lỗi: 422 `ROOM_TRANSFER_NOTHING_TO_CANCEL` (chưa chuyển lần nào), `ROOM_TRANSFER_ROOM_UNAVAILABLE` (phòng cũ đã có HĐ khác),
-`ROOM_TRANSFER_CANCEL_BILLED` (khoản chốt / khoản chênh lệch đã vào phiếu đã chốt, hoặc đã lập phiếu ở phòng mới — hủy / xóa phiếu đó trước),
-`ROOM_TRANSFER_CANCEL_EXPIRED` (quá 3 ngày).
+**Chuyển lại trong ngày** (thay lệnh hủy chuyển phòng): `toRoomId` = **đúng phòng vừa rời** và hôm nay = ngày của lần chuyển gần nhất ⇒ **200**
+`{ "warnings": [ RESIDENCE_ROOM_CHANGED ] }`, HĐ về phòng cũ **như chưa từng chuyển**: `roomSince` cũ, `roomMoves` mất lần đó, chỉ số cuối phòng
+cũ và chỉ số của HĐ trên công tơ phòng mới bị hủy, giá thuê trở lại như trước, dịch vụ đã bỏ được gắn lại, khoản "Chênh lệch tiền phòng" của lần
+chuyển bị hủy. Các trường khác trong body bị bỏ qua. Phần không hoàn được (giá / dịch vụ đã sửa tiếp sau lần chuyển) ⇒ thêm cảnh báo
+`ROOM_TRANSFER_CANCELLED_CHECK_RENT` — hiện câu nhắc kiểm tra. Muốn sang phòng khác nữa trong cùng ngày: chuyển lại về phòng cũ trước rồi mới
+chuyển tiếp (chuyển thẳng → 400 `ROOM_TRANSFER_INVALID_DATE`).
 
 | Lỗi | Khi nào |
 |-----|---------|
 | 422 `CONTRACT_NOT_ACTIVE` | HĐ không đang hiệu lực (nháp, đang thanh lý, đã kết thúc) |
 | 400 `ROOM_TRANSFER_SAME_ROOM` | Trùng phòng hiện tại |
 | 422 `ROOM_TRANSFER_OTHER_PROPERTY` | Phòng khu khác — dùng thanh lý + HĐ mới + chuyển cọc |
-| 422 `ROOM_TRANSFER_ROOM_UNAVAILABLE` | Phòng mới không trống từ D (có HĐ đang thuê / giữ chỗ / vừa chuyển đi), bảo trì hoặc ngừng dùng |
-| 400 `ROOM_TRANSFER_INVALID_DATE` | D không sau ngày vào phòng hiện tại, hoặc ở tương lai |
-| 422 `ROOM_TRANSFER_ALREADY_BILLED` | Điện nước phòng cũ đã lập phiếu tới sau D — hủy phiếu đó trước |
+| 422 `ROOM_TRANSFER_ROOM_UNAVAILABLE` | Phòng mới không trống từ hôm nay (có HĐ đang thuê / giữ chỗ / vừa chuyển đi), bảo trì hoặc ngừng dùng; chuyển lại: phòng cũ đã có HĐ khác |
+| 400 `ROOM_TRANSFER_INVALID_DATE` | Hôm nay HĐ vừa vào phòng hiện tại (vừa kích hoạt / vừa chuyển sang) — chưa chuyển tiếp được |
+| 422 `ROOM_TRANSFER_ALREADY_BILLED` | Điện nước phòng cũ đã lập phiếu tới sau hôm nay — hủy phiếu đó trước |
+| 422 `ROOM_TRANSFER_CANCEL_BILLED` | Chuyển lại trong ngày: đã lập phiếu (nháp / đã chốt) ở phòng mới, chỉ số đã bị phiếu đã chốt khóa, hoặc khoản chênh lệch đã vào phiếu đã chốt — xóa / hủy phiếu trước |
+| 422 `ROOM_TRANSFER_CANCEL_SETTLED` | Chuyển lại trong ngày: khoản chênh lệch tiền phòng đã đánh dấu đã thu / đã trả — bỏ đánh dấu trước |
 
 ## Ký lại cho người còn ở
 
@@ -737,12 +738,14 @@ Lỗi: 422 `ROOM_TRANSFER_NOTHING_TO_CANCEL` (chưa chuyển lần nào), `ROOM_
 ```
 
 `transferDeposit` (mặc định `true`): cọc của HĐ cũ ghi **"Đã chuyển sang HĐ mới"** (HĐ mới chép cọc thỏa thuận); `false` ⇒ HĐ cũ vẫn
-"Đang giữ cọc" để đánh dấu hoàn trả sau ([Tiền cọc](#tiền-cọc)).
+"Đang giữ cọc" để đánh dấu hoàn trả sau ([Tiền cọc](#tiền-cọc)). Ký lại không thành (17/10/2026): **hủy HĐ nháp mới** hoặc **hủy thanh lý
+HĐ cũ** ⇒ cọc HĐ cũ tự về `Holding` (UI tải lại chi tiết HĐ cũ).
 
 → **201** `{ "id": "<HĐ nháp mới>", "warnings": [] }`. Trong 1 thao tác:
 1. HĐ cũ **bắt đầu thanh lý** tại `handoverDate` (lý do `MutualAgreement`, ghi chú tự sinh).
 2. Tạo **HĐ nháp mới** từ `handoverDate + 1`, `previousContractId` = HĐ cũ, chép: giá thuê hiện hành, kỳ thu, cọc + điều khoản cọc,
-   mẫu / điều khoản / trường tùy biến, dịch vụ đang áp, người ở còn lại, xe của họ. `endDate` null = không thời hạn.
+   mẫu / điều khoản / trường tùy biến, dịch vụ đang áp, người ở còn lại, xe của họ (xe đó **kết thúc trên HĐ cũ tại `handoverDate`** — 17/10/2026,
+   trước đây báo 409 `PLATE_ALREADY_REGISTERED` khi xe có biển số). `endDate` null = không thời hạn.
 3. Quan hệ người ở giữ nguyên nếu chủ hộ còn ở; ngược lại bỏ trống → **mở nháp mới để khai lại quan hệ** rồi kích hoạt như bình thường.
 
 | Lỗi | Khi nào |
@@ -787,7 +790,7 @@ sequenceDiagram
 
 | Trường | Quy tắc |
 |--------|---------|
-| `actualEndDate` | ≥ `startDate`, ≥ ngày vào ở của mọi người ở, ≤ hôm nay + 60 ngày (căn cứ `IndefiniteTermNotice`: + 90 ngày). Được chọn ngày **quá khứ** (người thuê đã đi) |
+| `actualEndDate` | ≥ `startDate`, ≥ ngày vào ở của mọi người ở, ≥ `roomSince` (HĐ đã chuyển phòng — 422 `END_DATE_BEFORE_ROOM_TRANSFER`, 17/10/2026), ≤ hôm nay + 60 ngày (căn cứ `IndefiniteTermNotice`: + 90 ngày). Được chọn ngày **quá khứ** (người thuê đã đi) |
 | `reason` | `Expired` · `MutualAgreement` · `LesseeUnilateral` · `LessorUnilateral` · `RoomTransfer` · `Abandoned` (bỏ đi không báo) |
 | `ground` | Tùy chọn (nên chọn khi `LessorUnilateral`): `RentArrears3Months` · `WrongPurpose` · `UnauthorizedRenovation` · `IndefiniteTermNotice` (chỉ HĐ không thời hạn) · `Other` |
 | `note` | ≤ 1000; bắt buộc khi `ground = Other` hoặc `reason = Abandoned` |
@@ -797,6 +800,7 @@ Còn phiếu tiền phòng (chưa hủy) của kỳ bắt đầu **sau** `actual
 | Lỗi | Khi nào |
 |-----|---------|
 | 422 `EXPIRED_REASON_INVALID` | Chọn "Hết hạn" cho HĐ không thời hạn, hoặc ngày trả phòng trước ngày hết hạn |
+| 422 `END_DATE_BEFORE_ROOM_TRANSFER` | Ngày trả phòng trước ngày chuyển sang phòng hiện tại (trước 17/10/2026 trả 500) |
 | 422 `INDEFINITE_GROUND_ONLY` | `IndefiniteTermNotice` cho HĐ có thời hạn |
 | 422 `ABANDONED_NOTE_REQUIRED` | `Abandoned` mà không ghi chú |
 

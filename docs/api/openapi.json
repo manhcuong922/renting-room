@@ -1563,7 +1563,7 @@
         "tags": [
           "Contracts"
         ],
-        "summary": "Chuyển phòng (cùng khu): HĐ giữ nguyên, chỉ số cuối phòng cũ (chốt điện nước thành khoản phát sinh) + nhận phòng mới tại ngày chuyển; giá mới theo quy tắc nửa kỳ, bỏ dịch vụ không dùng ở phòng mới",
+        "summary": "Chuyển phòng (cùng khu) từ hôm nay: HĐ giữ nguyên, chỉ số cuối phòng cũ + nhận phòng mới (sản lượng phòng cũ cộng vào dòng điện nước của kỳ); giá mới theo quy tắc nửa kỳ, bỏ dịch vụ không dùng ở phòng mới. Về đúng phòng vừa rời trong ngày chuyển = xóa lần chuyển",
         "parameters": [
           {
             "name": "id",
@@ -1596,30 +1596,6 @@
           },
           "required": true
         },
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        }
-      }
-    },
-    "/api/v1/contracts/{id}/transfer-room/cancel": {
-      "post": {
-        "tags": [
-          "Contracts"
-        ],
-        "summary": "Hủy lần chuyển phòng gần nhất: trả HĐ về phòng cũ, hủy khoản chốt điện nước và các chỉ số của lần chuyển",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -6902,7 +6878,7 @@
           },
           "customFields": {
             "type": "object",
-            "additionalProperties": { },
+            "additionalProperties": {},
             "nullable": true
           },
           "householdHeadRenterId": {
@@ -8835,10 +8811,6 @@
             "type": "string",
             "format": "uuid"
           },
-          "date": {
-            "type": "string",
-            "format": "date"
-          },
           "oldRoomReadings": {
             "type": "array",
             "items": {
@@ -9334,7 +9306,7 @@
   },
   "security": [
     {
-      "Bearer": [ ]
+      "Bearer": []
     }
   ],
   "tags": [

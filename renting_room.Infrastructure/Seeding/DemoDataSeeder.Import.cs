@@ -101,6 +101,10 @@ public sealed partial class DemoDataSeeder
         await Send(new UpdatePropertyBillingCommand(propertyId,
             new PropertyBillingInput(5, ChargeMode.Postpaid, settings.PaymentDueDays, settings.ProrationMode, settings.NoticeDays,
                 RoundInvoiceTotal: false), null)); // H1: khu D tắt làm tròn tổng phiếu
+        // BL-BR-21: nháp chỉ lập khi đủ chỉ số — ghi chỉ số tháng này trước.
+        await SaveReadings(propertyId,
+            Reading(room.Electricity, contract, Month(0), Month(1), 95),
+            Reading(room.Water!.Value, contract, Month(0), Month(1), 4));
         await DraftAsync(propertyId, room.Id, contract, Month(0));
     }
 

@@ -579,10 +579,17 @@ public sealed class Contract : TenantEntity
     }
 
     /// <summary>CT-UC-21: xe đang đăng ký của những người được chép sang HĐ mới (xe không gắn chủ cũng chép).</summary>
-    public IReadOnlyList<VehicleInput> ResignVehicles(IReadOnlyCollection<Guid> renterIds, DateOnly start) =>
-        _vehicles.Where(v => v.IsActive && (v.RenterId is null || renterIds.Contains(v.RenterId.Value)))
-            .Select(v => new VehicleInput(v.RenterId, v.VehicleType, v.PlateNumber, v.BrandColor, start, v.Note))
-            .ToList();
+    /// <summary>
+    /// CT-UC-21: xe của người sang HĐ ký lại (và xe không gắn người) — kết thúc đăng ký trên HĐ này tại ngày bàn giao (một biển số chỉ đăng ký ở
+    /// một nơi), trả về bản đăng ký cho HĐ mới từ <paramref name="start"/>.
+    /// </summary>
+    public IReadOnlyList<VehicleInput> ResignVehicles(IReadOnlyCollection<Guid> renterIds, DateOnly handoverDate, DateOnly start)
+    {
+        var moving = _vehicles.Where(v => v.IsActive && (v.RenterId is null || renterIds.Contains(v.RenterId.Value))).ToList();
+        foreach (var vehicle in moving)
+            vehicle.End(handoverDate < vehicle.RegisteredFrom ? vehicle.RegisteredFrom : handoverDate);
+        return moving.Select(v => new VehicleInput(v.RenterId, v.VehicleType, v.PlateNumber, v.BrandColor, start, v.Note)).ToList();
+    }
 
     /// <summary>CT-BR-16: báo trước ít hơn số ngày thỏa thuận → trả cảnh báo, không chặn.</summary>
     public Result<NoticeResult> GiveNotice(DateOnly noticeDate, DateOnly plannedMoveOutDate)
@@ -688,6 +695,9 @@ public sealed class Contract : TenantEntity
             || _occupants.Any(o => o.MoveInDate > actualEndDate)
             || actualEndDate > today.AddDays(maxDaysAhead))
             return Result.Failure(ContractErrors.InvalidEndDate);
+        // CT-BR-11: đã chuyển phòng ⇒ không trả phòng trước ngày vào phòng hiện tại (khoảng ở phòng hiện tại phải hợp lệ).
+        if (actualEndDate < RoomSince)
+            return Result.Failure(ContractErrors.EndDateBeforeRoomTransfer);
         if (reason == Contracts.TerminationReason.Expired && (EndDate is not { } end || actualEndDate < end))
             return Result.Failure(ContractErrors.ExpiredReasonInvalid);
         if (reason == Contracts.TerminationReason.LessorUnilateral && ground == Contracts.TerminationGround.IndefiniteTermNotice && EndDate is not null)
@@ -770,8 +780,22 @@ public sealed class Contract : TenantEntity
         if (!HasDeposit || DepositStatus != DepositStatus.Holding)
             return;
         DepositStatus = DepositStatus.Transferred;
-        DepositNote = $"Chuyển sang hợp đồng {newContractNo}";
+        DepositNote = TransferredNote(newContractNo);
     }
+
+    /// <summary>
+    /// PM-BR-34: ký lại không thành — HĐ nháp nối tiếp bị hủy (<paramref name="newContractNo"/> = số HĐ đó) hoặc HĐ này hủy thanh lý (null) ⇒ cọc về
+    /// "Đang giữ" để còn nhắc hoàn cọc khi HĐ kết thúc.
+    /// </summary>
+    public void RevertDepositTransfer(string? newContractNo = null)
+    {
+        if (DepositStatus != DepositStatus.Transferred || (newContractNo is not null && DepositNote != TransferredNote(newContractNo)))
+            return;
+        DepositStatus = DepositStatus.Holding;
+        DepositNote = null;
+    }
+
+    private static string TransferredNote(string newContractNo) => $"Chuyển sang hợp đồng {newContractNo}";
 
     public Result SetSignedDocument(bool hasSignedDocument, string? note)
     {

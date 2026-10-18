@@ -291,7 +291,7 @@ Nguồn duy nhất cho "còn gì chưa làm". Từng plan chỉ ghi "chưa code"
 
 | # | Bất cập | Quyết định 13/10/2026 |
 |---|---------|------------------------|
-| L-1 | Thay công tơ rồi chuyển phòng cùng kỳ: khoản chốt mất phần công tơ cũ | ⏸ Để sau (ít xảy ra) |
+| L-1 ✅ | Thay công tơ rồi chuyển phòng cùng kỳ: khoản chốt mất phần công tơ cũ | ⏸ Để sau (ít xảy ra) → **hết 17/10/2026**: bỏ khoản chốt, sản lượng phòng cũ (gồm công tơ đã thay) cộng vào dòng của kỳ (M05 CT-BR-47) |
 | L-2 ✅ | `PUT /me` đổi tên đăng nhập không hỏi mật khẩu | Phó quản lý không tự sửa hồ sơ; chủ trọ đổi SĐT / email phải nhập mật khẩu hiện tại (M01 ID-UC-12) |
 | L-3 ✅ | HĐ hết hạn mang nhãn mãi | "Ở tiếp" = không thời hạn, hết nhãn; nhãn thời hạn không đưa lên phòng (M05 CT-BR-45, M02 PR-BR-16) |
 | L-4 ✅ | File xuất người thuê thiếu "Đồng thuê" | Thêm giá trị (M10 E1) |
@@ -300,8 +300,24 @@ Nguồn duy nhất cho "còn gì chưa làm". Từng plan chỉ ghi "chưa code"
 | L-7 | Khoản chênh lệch tiền phòng khi chuyển phòng sai với kỳ lẻ ngày / đã sửa tay | ⏸ Lượt sau |
 | L-8 ✅ | Lách trần khoản bù bằng bỏ đánh dấu đã thanh toán | Kiểm trần khi bỏ đánh dấu (M07 BL-BR-30) |
 | L-9 | Chuyển người không mang theo xe | Đã có sẵn: xe gắn với người đó tự chuyển theo (CT-BR-52); xe không gắn người thì ở lại HĐ cũ |
-| L-10 ✅ | Hủy chuyển phòng không trả lại giá / dịch vụ | Hủy trong 3 ngày và hoàn nguyên trọn lần chuyển; quá hạn thì chuyển ngược lại (M05 CT-BR-14) |
+| L-10 ✅ | Hủy chuyển phòng không trả lại giá / dịch vụ | Hủy trong 3 ngày và hoàn nguyên trọn lần chuyển; quá hạn thì chuyển ngược lại (M05 CT-BR-14) → **thay 17/10/2026**: bỏ lệnh hủy, chuyển lại về phòng cũ trong ngày = xóa lần chuyển (hoàn nguyên như cũ) |
 | L-11 | Phụ thu "đã thu ngay" không có phiếu thu | ❌ Không làm — cuối tháng đã tổng hợp vào hóa đơn |
+
+### C2c. Rà toàn bộ plan + code 13–14/10/2026 — quyết định 17/10/2026
+
+| # | Bất cập | Quyết định 17/10/2026 |
+|---|---------|------------------------|
+| A-1 | Hủy được phiếu tháng cuối khi đã có phiếu quyết toán (cùng kỳ) ⇒ mất tiền phòng kỳ cuối | Phiếu quyết toán chưa hủy là mới nhất — M07 BL-BR-22 |
+| A-2 | Nháp thiếu chỉ số vẫn lập được, kỳ sau gộp sản lượng 2 tháng (giá bậc thu dư) | Thiếu chỉ số ⇒ không tạo nháp `MISSING_READING`; kỳ trước nháp lỗi ⇒ `PREVIOUS_PERIOD_INCOMPLETE` — M07 BL-BR-21 |
+| A-3 | Thay / tháo công tơ lùi ngày vào kỳ đã chốt ⇒ mất phần sản lượng | Ca hiếm, chặn đơn giản `METER_PERIOD_LOCKED` — M06 MT-BR-09/10 |
+| A-4 | Hủy chuyển phòng hủy luôn khoản chốt "đã thu ngay" ⇒ thu 2 lần | Bỏ khoản chốt (CT-BR-47) + bỏ lệnh hủy; chuyển lại trong ngày = xóa lần chuyển — M05 CT-BR-14 |
+| A-6 | Cọc "đã chuyển" kẹt khi ký lại không thành | Hủy nháp ký lại / hủy thanh lý ⇒ cọc về đang giữ — M08 PM-BR-34 |
+| A-7 | Sửa dòng hoàn trả vượt số đã thu | Kiểm cả khi sửa dòng và khi chốt — M07 BL-BR-27 |
+| A-8 | Ký lại lỗi trùng biển số khi người ở lại có xe | Kết thúc xe ở HĐ cũ trong cùng giao dịch — M05 CT-UC-21 |
+| A-9 | Ngày trả phòng trước ngày chuyển phòng ⇒ lỗi 500 | Chuyển phòng luôn hôm nay; thanh lý ≥ ngày vào phòng hiện tại — M05 CT-BR-11, 14 |
+| A-10 | Giá bậc tính trên sản lượng gộp 2 kỳ | Phiếu quyết toán: mỗi kỳ sử dụng 1 dòng, tính riêng; chuyển phòng / thay công tơ cộng sản lượng vào dòng của kỳ — M07 BL-BR-05 (đổi thu trước → thu sau vẫn gộp: không có chỉ số mốc) |
+| A-12 | Nhập Excel: chỉ số cũ không cảnh báo; trùng giấy tờ khác tên chỉ cảnh báo | Luôn cảnh báo chỉ số trước ngày tính tiền; khác họ tên / ngày sinh ⇒ lỗi dòng — M03 RT-UC-10 |
+| A-5, A-11, B, C | Bỏ nợ hiện là đã thu; sửa chỉ số đã chốt; bảo mật / dữ liệu cá nhân; các điểm cần chủ trọ quyết | Chờ quyết định |
 
 ### C3. Có trong plan, chưa code
 

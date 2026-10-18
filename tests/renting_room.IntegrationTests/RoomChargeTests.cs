@@ -210,17 +210,15 @@ public sealed class RoomChargeTests(ApiFactory factory)
         (await _client.PostJsonAsync($"/api/v1/invoices/{finalId}/finalize", null, token)).StatusCode.Should().Be(HttpStatusCode.OK);
         (await (await CreateAsync(s, "Surcharge", 50_000, today)).ReadProblemCodeAsync()).Should().Be("ROOM_CHARGE_NO_OPEN_INVOICE");
 
-        // 10. Chuyển phòng: khoản của phòng cũ trước ngày chuyển thuộc HĐ đã chuyển đi; sau ngày chuyển phòng cũ trống.
+        // 10. Chuyển phòng (luôn hôm nay): khoản ghi ở phòng cũ trong ngày chuyển thuộc HĐ đã chuyển đi, đi theo HĐ vào phiếu tháng này.
         var t = await ArrangeAsync();
         var newRoom = await _client.CreateRoomAsync(t.Token, t.PropertyId);
-        var moveDate = t.FirstMonth.AddDays(10);
-        (await _client.PostJsonAsync($"/api/v1/contracts/{t.ContractId}/transfer-room", new { toRoomId = newRoom, date = moveDate }, t.Token))
+        (await _client.PostJsonAsync($"/api/v1/contracts/{t.ContractId}/transfer-room", new { toRoomId = newRoom }, t.Token))
             .StatusCode.Should().Be(HttpStatusCode.OK);
-        var before = await CreatedAsync(t, "Surcharge", 120_000, moveDate.AddDays(-3));
+        var before = await CreatedAsync(t, "Surcharge", 120_000, t.Today);
         before.GetProperty("contractId").GetGuid().Should().Be(t.ContractId);
-        (await (await CreateAsync(t, "Surcharge", 120_000, moveDate.AddDays(3))).ReadProblemCodeAsync())
-            .Should().Be("ROOM_CHARGE_NO_TENANT", "phòng cũ đã trống sau ngày chuyển");
-        var invoiceId = await GenerateAsync(t, t.FirstMonth);
+        await GenerateAsync(t, t.FirstMonth);
+        var invoiceId = await GenerateAsync(t, new DateOnly(t.Today.Year, t.Today.Month, 1));
         ChargeLine(await InvoiceAsync(t, invoiceId), before.GetProperty("id").GetGuid()).Should().NotBeNull("vào phiếu của HĐ đã chuyển sang phòng mới");
     }
 

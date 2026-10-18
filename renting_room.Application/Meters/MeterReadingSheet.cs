@@ -68,6 +68,37 @@ internal static class ReadingLocks
     }
 }
 
+/// <summary>
+/// MT-BR-09/10 (17/10/2026): công tơ đã có đoạn đo trên phiếu đã chốt ⇒ thay / tháo phải sau ngày cuối kỳ sử dụng của phiếu đó, nếu không
+/// phần sản lượng từ chỉ số cuối kỳ tới số tháo không phiếu nào tính (kỳ sau bỏ qua công tơ đã tháo trước đầu kỳ).
+/// </summary>
+internal static class MeterPeriodLocks
+{
+    public static async Task<Dictionary<Guid, DateOnly>> LockedUntilAsync(IAppDbContext db, IReadOnlyCollection<Guid> meterIds, CancellationToken ct)
+    {
+        var segments = await db.Invoices.Where(i => i.Status == InvoiceStatus.Finalized)
+            .SelectMany(i => i.Segments.Where(s => meterIds.Contains(s.MeterId) && !s.Voided).Select(s => new { s.MeterId, s.FeeTypeId, InvoiceId = i.Id }))
+            .ToListAsync(ct);
+        if (segments.Count == 0)
+            return [];
+        var invoiceIds = segments.Select(s => s.InvoiceId).Distinct().ToList();
+        var usageEnds = (await db.Invoices.Where(i => invoiceIds.Contains(i.Id))
+                .SelectMany(i => i.Lines.Where(l => l.Type == InvoiceLineType.Metered && l.FeeTypeId != null)
+                    .Select(l => new { InvoiceId = i.Id, FeeTypeId = l.FeeTypeId!.Value, l.ServiceTo }))
+                .ToListAsync(ct))
+            .GroupBy(l => (l.InvoiceId, l.FeeTypeId))
+            .ToDictionary(g => g.Key, g => g.Max(l => l.ServiceTo));
+        return segments
+            .Where(s => usageEnds.ContainsKey((s.InvoiceId, s.FeeTypeId)))
+            .GroupBy(s => s.MeterId)
+            .ToDictionary(g => g.Key, g => g.Max(s => usageEnds[(s.InvoiceId, s.FeeTypeId)]));
+    }
+
+    /// <summary>Lỗi nếu <paramref name="date"/> chưa qua kỳ đã chốt của công tơ.</summary>
+    public static Error? Check(IReadOnlyDictionary<Guid, DateOnly> locks, Guid meterId, DateOnly date) =>
+        locks.TryGetValue(meterId, out var until) && date <= until ? MeterErrors.PeriodLocked(until) : null;
+}
+
 // ============================================================ Lưới ghi chỉ số
 
 /// <param name="FeeTypeId">Chỉ các công tơ của khoản thu này (VD đi ghi riêng điện).</param>

@@ -127,15 +127,15 @@ public sealed partial class DemoDataSeeder
         // B05 — phòng trống.
         await Room("B05");
 
-        // B07 → B08 — chuyển phòng hôm nay ở khu thu trước, điện giá bậc: điện 30 kWh + nước 2 m³ của B07 chốt thành khoản phát sinh hệ thống
-        // (giá bậc tính riêng trên 30 kWh — CT-BR-47); giá thuê mới áp cho kỳ này nhưng kỳ này đã chốt tiền phòng ⇒ khoản phát sinh
-        // "Chênh lệch tiền phòng" 300k cho cả kỳ, mốc giá mới từ kỳ sau (CT-BR-48).
+        // B07 → B08 — chuyển phòng hôm nay ở khu thu trước, điện giá bậc: điện 30 kWh + nước 2 m³ của B07 là sản lượng đã lưu (chỉ số cuối
+        // lúc chuyển), phiếu tháng sau cộng vào cùng dòng với B08, giá bậc tính trên tổng (CT-BR-47); giá thuê mới áp cho kỳ này nhưng kỳ này
+        // đã chốt tiền phòng ⇒ khoản phát sinh "Chênh lệch tiền phòng" 300k cho cả kỳ, mốc giá mới từ kỳ sau (CT-BR-48).
         var b07 = await Room("B07");
         var b08 = await Room("B08");
         var c07 = await ContractAsync(b07.Id, await RenterAsync("Châu Văn Tài", new DateOnly(1993, 12, 1), Gender.Male, Phone(40)),
             Period(-1), PrepaidRent, b07.Meters, fees: standard);
         await History(b07, c07, -1, 0);
-        await Send(new TransferRoomCommand(c07, b08.Id, _today, [FinalReading(b07.Electricity, 30), FinalReading(b07.Water!.Value, 2)], null,
+        await Send(new TransferRoomCommand(c07, b08.Id, [FinalReading(b07.Electricity, 30), FinalReading(b07.Water!.Value, 2)], null,
             PrepaidRent + 300000, "Chuyển sang phòng có ban công", TransferRentFrom.CurrentPeriod));
 
         // B06 — Người đứng tên chuyển đi, người ở cùng ký lại HĐ mới từ mai ⇒ cọc chuyển sang HĐ nháp mới (PM-BR-27).

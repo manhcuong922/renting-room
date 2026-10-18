@@ -80,10 +80,11 @@ public sealed class Meter : TenantEntity
 
     /// <summary>
     /// Chỉ số cuối của HĐ trên công tơ này (MT-BR-04). HĐ có thể rời phòng rồi quay lại ⇒ <paramref name="since"/> = ngày vào phòng của lần ở
-    /// đang xét, để không lấy nhầm chỉ số cuối của lần ở trước.
+    /// đang xét, để không lấy nhầm chỉ số cuối của lần ở trước; <paramref name="until"/> = ngày rời phòng của lần ở đó (không lấy của lần ở sau).
     /// </summary>
-    public MeterReading? FindFinal(Guid contractId, DateOnly? since = null) =>
-        Ordered.LastOrDefault(r => r.Kind == ReadingKind.Final && r.ContractId == contractId && (since is null || r.ReadingDate >= since));
+    public MeterReading? FindFinal(Guid contractId, DateOnly? since = null, DateOnly? until = null) =>
+        Ordered.LastOrDefault(r => r.Kind == ReadingKind.Final && r.ContractId == contractId && (since is null || r.ReadingDate >= since)
+            && (until is null || r.ReadingDate <= until));
 
     /// <summary>Chỉ số nhận phòng của HĐ trên công tơ này trong lần ở [<paramref name="from"/>, <paramref name="to"/>] (MT-BR-13, MT-BR-04).</summary>
     public MeterReading? FindHandover(Guid contractId, DateOnly? from = null, DateOnly? to = null) =>
@@ -293,6 +294,12 @@ public static class MeterErrors
 
     public static readonly Error ReadingLocked = Error.BusinessRule("READING_LOCKED",
         "Chỉ số đã dùng cho phiếu đã chốt — hủy phiếu trước khi sửa.");
+
+    /// <summary>MT-BR-09/10: ngày thay / tháo thuộc kỳ sử dụng đã chốt phiếu ⇒ phần sản lượng sau chỉ số cuối kỳ sẽ không phiếu nào tính.</summary>
+    public static Error PeriodLocked(DateOnly lockedUntil) =>
+        Error.BusinessRule("METER_PERIOD_LOCKED",
+                $"Kỳ sử dụng tới {lockedUntil:dd/MM/yyyy} đã chốt phiếu — chọn ngày thay / tháo từ {lockedUntil.AddDays(1):dd/MM/yyyy}.")
+            .WithDetail("lockedUntil", lockedUntil);
 
     public static readonly Error UnknownMeter = Error.BusinessRule("METER_NOT_IN_ROOM", "Công tơ không thuộc phòng của hợp đồng hoặc không hoạt động tại ngày này.");
 }

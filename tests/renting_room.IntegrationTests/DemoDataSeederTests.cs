@@ -132,10 +132,8 @@ public sealed class DemoDataSeederTests(ApiFactory factory)
         var charges = await (await _client.GetAsync("/api/v1/room-charges", token)).ReadAsync<JsonElement>();
         charges.EnumerateArray().Select(c => c.GetProperty("status").GetString()).Should().Contain(["Pending", "OnDraft", "Billed"]);
         charges.EnumerateArray().Where(c => c.GetProperty("status").GetString() == "Pending").Select(c => c.GetProperty("roomCode").GetString())
-            .Should().BeEquivalentTo(["101", "102", "203", "203", "207", "207", "208", "208", "B07", "B07", "B08"],
-                "mỗi lần chuyển phòng, điện + nước phòng vừa rời chốt thành 2 khoản (CT-BR-47); B08 có khoản chênh lệch tiền phòng (CT-BR-48)");
-        charges.EnumerateArray().Where(c => c.GetProperty("roomCode").GetString() == "B07").Select(c => c.GetProperty("amount").GetDecimal())
-            .Should().BeEquivalentTo([59_520m, 30_000m], "điện 30 kWh ở bậc 1 (1.984đ) + nước 2 m³ × 15.000đ");
+            .Should().BeEquivalentTo(["101", "102", "B08"],
+                "chuyển phòng không còn tạo khoản chốt điện nước — sản lượng phòng cũ cộng vào dòng của kỳ (CT-BR-47); B08 có khoản chênh lệch tiền phòng (CT-BR-48)");
         charges.EnumerateArray().Single(c => c.GetProperty("roomCode").GetString() == "B08").GetProperty("amount").GetDecimal().Should().Be(300_000);
         (await DetailAsync("209", "Draft")).GetProperty("warnings").EnumerateArray().Select(w => w.GetProperty("code").GetString())
             .Should().Contain("REPRESENTATIVE_IS_RESIDENT_ELSEWHERE", "người đứng tên HĐ nháp đang là người ở thường của phòng 102 (CT-BR-50)");
@@ -143,8 +141,8 @@ public sealed class DemoDataSeederTests(ApiFactory factory)
             .Should().ContainSingle(o => o.GetProperty("role").GetString() == "CoTenant" && o.GetProperty("fullName").GetString() == "Bùi Văn Lực",
                 "nhập Excel 2 dòng Đứng tên cùng phòng ⇒ dòng sau là đồng thuê");
         var returned = await DetailAsync("207", "Active");
-        returned.GetProperty("roomMoves").EnumerateArray().Select(m => m.GetProperty("roomCode").GetString())
-            .Should().Equal(["207", "208"], "chuyển đi rồi chuyển về phòng đã từng ở (CT-BR-14)");
+        returned.GetProperty("roomMoves").GetArrayLength()
+            .Should().Be(0, "chuyển nhầm sang 208 rồi chuyển lại trong ngày ⇒ lần chuyển bị xóa (CT-BR-14)");
         returned.GetProperty("occupants").EnumerateArray().Should().Contain(o => o.GetProperty("role").GetString() == "CoTenant"
             && o.GetProperty("fullName").GetString() == "Ngô Văn Nam", "chuyển người từ 208 sang 207 với vai trò đồng thuê (CT-BR-52, 49)");
         var handedOver = await DetailAsync("208", "Active");

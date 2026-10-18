@@ -23,19 +23,19 @@ public static class ContractErrors
     public static readonly Error TransferRoomUnavailable = Error.BusinessRule("ROOM_TRANSFER_ROOM_UNAVAILABLE",
         "Phòng mới không trống từ ngày chuyển (đang thuê, có HĐ giữ chỗ, đang bảo trì hoặc ngừng dùng).");
     public static readonly Error TransferInvalidDate = Error.Validation("ROOM_TRANSFER_INVALID_DATE",
-        "Ngày chuyển phải sau ngày vào phòng hiện tại và không ở tương lai.");
+        "Hôm nay hợp đồng vừa vào phòng hiện tại — chưa chuyển tiếp được (chuyển nhầm thì chuyển lại về phòng vừa rời).");
     public static readonly Error TransferAlreadyBilled = Error.BusinessRule("ROOM_TRANSFER_ALREADY_BILLED",
-        "Điện nước phòng cũ đã ghi chỉ số / lập phiếu tới sau ngày chuyển — hủy phiếu đó trước hoặc chọn ngày chuyển muộn hơn.");
-    public static readonly Error TransferPriceMissing = Error.BusinessRule("ROOM_TRANSFER_PRICE_MISSING",
-        "Khoản điện nước của phòng cũ chưa có giá tại ngày chuyển — thêm giá trước khi chuyển phòng.");
-    public static readonly Error TransferUsageTooLarge = Error.Validation("ROOM_TRANSFER_USAGE_TOO_LARGE",
-        "Tiền điện nước phòng cũ tính ra quá lớn — kiểm tra lại chỉ số cuối.");
+        "Điện nước phòng cũ đã ghi chỉ số / lập phiếu tới sau hôm nay — hủy phiếu đó trước.");
     public static readonly Error TransferNothingToCancel = Error.BusinessRule("ROOM_TRANSFER_NOTHING_TO_CANCEL",
         "Hợp đồng chưa chuyển phòng lần nào.");
     public static readonly Error TransferCancelBilled = Error.BusinessRule("ROOM_TRANSFER_CANCEL_BILLED",
-        "Lần chuyển phòng đã có phiếu (khoản chốt điện nước đã vào phiếu đã chốt, hoặc đã lập phiếu ở phòng mới) — hủy / xóa phiếu đó trước.");
-    public static Error TransferCancelExpired(int days) => Error.BusinessRule("ROOM_TRANSFER_CANCEL_EXPIRED",
-        $"Chỉ hủy chuyển phòng được trong {days} ngày kể từ ngày chuyển — muốn quay về phòng cũ thì chuyển phòng lại.");
+        "Lần chuyển phòng hôm nay đã có phiếu ở phòng mới / chỉ số đã bị phiếu đã chốt khóa — xóa / hủy phiếu đó trước khi chuyển lại.");
+    public static readonly Error TransferCancelSettled = Error.BusinessRule("ROOM_TRANSFER_CANCEL_SETTLED",
+        "Khoản chênh lệch tiền phòng của lần chuyển đã đánh dấu đã thu / đã trả — bỏ đánh dấu trước khi chuyển lại.");
+
+    /// <summary>CT-BR-11: HĐ đã chuyển phòng không trả phòng trước ngày vào phòng hiện tại.</summary>
+    public static readonly Error EndDateBeforeRoomTransfer = Error.BusinessRule("END_DATE_BEFORE_ROOM_TRANSFER",
+        "Ngày trả phòng trước ngày chuyển sang phòng hiện tại — chọn ngày từ ngày chuyển phòng.");
 
     public static readonly Error RoomUnavailable = Error.BusinessRule("ROOM_UNAVAILABLE", "Phòng đã ngừng sử dụng hoặc đang bảo trì.");
     public static readonly Error RoomPeriodOverlap = Error.Conflict("ROOM_PERIOD_OVERLAP",

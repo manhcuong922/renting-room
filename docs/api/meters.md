@@ -106,7 +106,8 @@ Lưu: `POST /properties/{propertyId}/meters/bulk-replace` — **Idempotency-Key*
 Phòng đang có người thuê ⇒ cảnh báo `ROOM_HAS_OPEN_CONTRACT` (từ kỳ sau phiếu không còn dòng khoản này).
 
 Lỗi chung khi thay / tháo: 422 `METER_REMOVED` (đã tháo), `INVALID_READING_DATE` (ngày trước chỉ số đã ghi),
-`READING_NOT_MONOTONIC` (số cuối nhỏ hơn chỉ số trước).
+`READING_NOT_MONOTONIC` (số cuối nhỏ hơn chỉ số trước), `METER_PERIOD_LOCKED` (17/10/2026 — ngày thay / tháo thuộc kỳ sử dụng đã chốt phiếu;
+body có `lockedUntil`, UI gợi ý chọn từ `lockedUntil + 1`; thay hàng loạt: dòng lỗi trong `rowErrors`).
 
 ## Lịch sử & sửa chỉ số
 

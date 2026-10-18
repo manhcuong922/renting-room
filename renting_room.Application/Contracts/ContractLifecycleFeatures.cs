@@ -199,7 +199,10 @@ public sealed class ResignContractHandler(
 
             var next = Contract.CreateDraft(old.PropertyId, old.RoomId, contractNo, data.Value!, previousContractId: old.Id);
             var renterIds = data.Value!.Occupants.Select(o => o.RenterId).ToList();
-            foreach (var vehicle in old.ResignVehicles(renterIds, next.StartDate))
+            var vehicles = old.ResignVehicles(renterIds, request.HandoverDate, next.StartDate);
+            // Lưu việc kết thúc xe ở HĐ cũ trước khi đăng ký lại ở HĐ mới — unique "biển số đang đăng ký" kiểm từng câu lệnh.
+            await db.SaveChangesAsync(cancellationToken);
+            foreach (var vehicle in vehicles)
             {
                 var registered = next.RegisterVehicle(vehicle);
                 if (registered.IsFailure)
@@ -276,6 +279,8 @@ public sealed class CancelLiquidationHandler(IAppDbContext db, TimeProvider cloc
             var cancelled = contract.CancelLiquidation();
             if (cancelled.IsFailure)
                 return cancelled;
+            // PM-BR-34: thanh lý để ký lại bị hủy ⇒ cọc không còn chuyển sang HĐ mới.
+            contract.RevertDepositTransfer();
             if (final is not null)
                 db.Invoices.Remove(final);
             await ContractMeterReadings.VoidFinalAsync(db, contract, clock.GetUtcNow(), cancellationToken);

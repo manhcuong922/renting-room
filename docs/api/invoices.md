@@ -21,9 +21,12 @@ Quyền: chủ trọ và phó quản lý.
   (`roomChargeId`). Dòng `isSettled: true` (đã thu / đã trả ngay) hiện trên phiếu nhưng không cộng vào `totalAmount`.
 - **Kỳ**: mỗi tháng thu (`billingMonth` = tháng của kỳ chuẩn của khu chứa kỳ) tối đa 1 phiếu / hợp đồng. Tiền phòng kỳ lẻ (vào giữa kỳ, trả phòng
   giữa kỳ) tính theo ngày nếu khu chọn `Daily` (`prorationFactor` trên dòng); dịch vụ luôn trọn tháng.
-- **Điện nước trả sau / trả trước**: `Postpaid` — điện nước của chính kỳ; `Prepaid` — điện nước của **kỳ trước** (kỳ đầu không có),
-  riêng kỳ cuối (có ngày trả phòng) gộp luôn điện nước tới chỉ số cuối.
-- **Thay công tơ giữa kỳ**: hệ thống tự cộng phần công tơ cũ (`segments` có 2 đoạn). Cách khác: nhập tiền điện công tơ cũ thành phụ thu.
+- **Điện nước trả sau / trả trước**: `Postpaid` — điện nước của chính kỳ; `Prepaid` — điện nước của **kỳ trước** (kỳ đầu không có).
+  Phiếu quyết toán khu thu trước mà kỳ trước chưa thu ⇒ **2 dòng** cho mỗi khoản (17/10/2026): kỳ trước (tới chỉ số cuối kỳ) + kỳ cuối (tới chỉ số
+  trả phòng), `description` ghi khoảng ngày ("Điện (giá bậc) 05/10–04/11"), giá bậc tính riêng từng dòng; thiếu chỉ số cuối kỳ trước ⇒ `MISSING_READING`.
+- **Chuyển phòng giữa kỳ** (17/10/2026): **1 dòng** cho mỗi khoản = phòng cũ (tới chỉ số lúc chuyển) + phòng mới; `segments` có nhiều đoạn, giá bậc
+  tính trên tổng. Không còn dòng phụ thu "chốt điện nước" (dữ liệu trước 17/10/2026 vẫn giữ dòng cũ).
+- **Thay công tơ giữa kỳ**: hệ thống tự cộng phần công tơ cũ (`segments` có 2 đoạn), kể cả khi sau đó chuyển phòng trong cùng kỳ. Cách khác: nhập tiền điện công tơ cũ thành phụ thu.
 - **Giá theo phiên bản**: mọi khoản (điện nước, dịch vụ) lấy bản giá mới nhất có hiệu lực tới **ngày cuối** kỳ, áp cả kỳ — đổi giá giữa kỳ thì cả kỳ tính giá mới.
 - **Tiền phòng thu hằng tháng** (không có đóng nhiều tháng / lần).
 
@@ -97,8 +100,12 @@ Quyền: chủ trọ và phó quản lý.
 | `LATER_PERIOD_BILLED` | Đã có phiếu kỳ sau |
 | `NO_PERIOD_IN_MONTH` | HĐ không có kỳ thuộc tháng thu này |
 | `USE_FINAL_INVOICE` | Kỳ chứa ngày trả phòng — lập **phiếu quyết toán** thay phiếu thường |
+| `MISSING_READING` | (17/10/2026) Thiếu chỉ số cuối kỳ của công tơ đang hoạt động ⇒ **không tạo nháp**. UI: link sang lưới ghi chỉ số tháng đó, nhập xong bấm tạo lại (phòng khác vẫn được tạo) |
+| `PREVIOUS_PERIOD_INCOMPLETE` | (17/10/2026) Kỳ trước còn nháp mang lỗi `MISSING_READING` (chỉ số bị hủy sau khi lập) — nhập lại chỉ số, tính lại nháp kỳ trước rồi mới tạo kỳ này |
 
-`withIssues` = số phiếu còn **vấn đề chặn chốt** (`issues` có `severity: "Error"`): `MISSING_READING` (thiếu chỉ số — vào lưới ghi chỉ số),
+Nháp chỉ được tạo khi đủ chỉ số; xóa nháp không mất chỉ số đã ghi — tạo lại dùng tiếp. Tính lại từng phiếu / hàng loạt như cũ.
+
+`withIssues` = số phiếu còn **vấn đề chặn chốt** (`issues` có `severity: "Error"`): `MISSING_READING` (nháp đã có mà chỉ số bị hủy / sửa sau đó — vào lưới ghi chỉ số),
 `FEE_PRICE_MISSING` (khoản chưa có giá), `RENT_TERM_MISSING`, `NEGATIVE_TOTAL` (giảm trừ lớn hơn phần thu). Cảnh báo (`Warning`): `EDITED_BASE_CHANGED`,
 `RENT_OVERPAID` (phiếu quyết toán: tiền phòng kỳ cuối đã thu nhiều hơn số ngày ở — message ghi số thừa; thêm dòng Hoàn trả nếu trả lại),
 `UNUSUAL_USAGE` (điện nước bất thường — gấp ≥ 3 lần trung bình 3 kỳ trước và tăng ≥ 50, hoặc = 0 khi có người ở: kiểm lại chỉ số),
@@ -191,7 +198,7 @@ UI: ô có `isManuallyEdited` hiện nhãn **"Sửa tay"** và số hệ thống
 | Bỏ sửa tay / xóa phụ thu, giảm trừ, hoàn trả | `DELETE /invoices/{id}/lines/{lineId}` | Dòng hệ thống về số hệ thống; dòng tay bị xóa |
 | Thêm phụ thu / giảm trừ | `POST /invoices/{id}/manual-lines` `{ "type": "Surcharge", "description": "Thay khóa", "quantity": null, "unitPrice": null, "amount": 250000, "note": "Lý do", "feeTypeId": null, "settled": false, "settledOn": null, "method": null }` | `type`: `Surcharge` / `ManualDiscount`; `note` (lý do) bắt buộc. Tạo luôn **khoản phát sinh của phòng** ([room-charges.md](room-charges.md)); `settled: true` = đã thanh toán / đã hoàn ngay ⇒ dòng hiện trên phiếu, **không tính vào tổng** |
 | Thêm **hoàn trả** | `POST /invoices/{id}/manual-lines` `{ "type": "Refund", "description": "Hoàn tiền phòng 15 ngày chưa ở", "amount": 1500000, "note": "Trả phòng sớm", "sourceInvoiceId": "…phiếu đã thu" }` | Chỉ khi **phiếu đã chốt bị tính sai mà người thuê đã trả**: `sourceInvoiceId` bắt buộc (400), phiếu đã chốt của cùng HĐ (422 `REFUND_SOURCE_INVALID`); `amount` ≤ số đã thu thật của phiếu nguồn (đã thu − bỏ nợ) − các lần hoàn trước trỏ tới nó (422 `REFUND_EXCEEDS_PAID`, body `available`). Phiếu nguồn chưa thu mà tính sai ⇒ không hoàn — bỏ nợ phần sai ([payments.md](payments.md)) |
-| Sửa phụ thu / giảm trừ / hoàn trả | `PUT /invoices/{id}/lines/{lineId}` (như trên, `note` bắt buộc) | |
+| Sửa phụ thu / giảm trừ / hoàn trả | `PUT /invoices/{id}/lines/{lineId}` (như trên, `note` bắt buộc) | Hoàn trả: số mới vẫn ≤ số đã thu của phiếu nguồn (422 `REFUND_EXCEEDS_PAID` — 17/10/2026). Chốt phiếu cũng kiểm lại (phiếu nguồn có thể đã bị đảo thu) |
 | Ghi chú in trên phiếu | `PUT /invoices/{id}/note` `{ "note": "…" }` | |
 
 Mọi thao tác trả **chi tiết phiếu** sau khi sửa. Giảm trừ không được lớn hơn phần thu (422 `NEGATIVE_TOTAL`) — trả lại tiền cho người thuê thì dùng **Hoàn trả**.
@@ -245,7 +252,8 @@ thanh toán của HĐ). Sau khi chốt: chỉ số cuối kỳ bị khóa và th
 ## Hủy / xóa
 
 - `POST /invoices/{id}/void` `{ "reason": "Nhập sai chỉ số" }` → 200. Chỉ phiếu **đã chốt, chưa thu tiền** (422 `INVOICE_HAS_PAYMENTS` — đảo phiếu
-  thu trước; đã xác nhận hoàn tiền → 422 `REFUND_CONFIRMED` — bỏ xác nhận trước) và là **phiếu mới nhất** của HĐ (422 `NOT_LATEST_INVOICE` — hủy / xóa phiếu kỳ sau trước). Hủy xong lập lại được, chỉ số được mở khóa.
+  thu trước; đã xác nhận hoàn tiền → 422 `REFUND_CONFIRMED` — bỏ xác nhận trước) và là **phiếu mới nhất** của HĐ (422 `NOT_LATEST_INVOICE` — hủy / xóa phiếu kỳ sau trước). **Phiếu quyết toán chưa hủy luôn là mới nhất** (17/10/2026):
+  phiếu tháng cuối không hủy / xóa được khi còn phiếu quyết toán — xóa / hủy phiếu quyết toán trước. Hủy xong lập lại được, chỉ số được mở khóa.
 - `DELETE /invoices/{id}` → 204: xóa **nháp** (cũng chỉ phiếu mới nhất).
 
 ## Trạng thái thu tiền (`paymentStatus`, chỉ phiếu đã chốt)
