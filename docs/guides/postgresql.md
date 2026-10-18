@@ -53,7 +53,7 @@
 docker compose up -d
 
 # 3. Khai báo tài khoản quản trị đầu tiên (lưu ngoài repo, chỉ trên máy bạn)
-cd renting_room
+cd src/renting_room.Api
 dotnet user-secrets set "Bootstrap:Admin:Phone" "0900000001"
 dotnet user-secrets set "Bootstrap:Admin:Password" "<mật khẩu ≥ 12 ký tự>"
 # Khóa băm số CCCD (bắt buộc, ≥ 32 ký tự, KHÔNG được đổi sau khi đã có dữ liệu)
@@ -233,7 +233,7 @@ Khi DB chặn ghi, `GlobalExceptionHandler` đổi mã lỗi PostgreSQL thành P
 
 ## 8. Migration với EF Core
 
-Migration = file C# mô tả thay đổi cấu trúc DB, nằm ở `renting_room.Infrastructure/Persistence/Migrations`.
+Migration = file C# mô tả thay đổi cấu trúc DB, nằm ở `src/renting_room.Infrastructure/Persistence/Migrations`.
 
 Quy trình khi đổi entity / cấu hình:
 
@@ -241,16 +241,16 @@ Quy trình khi đổi entity / cấu hình:
 # 1. Sửa entity (Domain) hoặc cấu hình (Infrastructure/Persistence/Configurations)
 
 # 2. Tạo migration — đặt tên mô tả thay đổi
-dotnet ef migrations add AddProperties -p renting_room.Infrastructure -s renting_room.Infrastructure -o Persistence/Migrations
+dotnet ef migrations add AddProperties -p src/renting_room.Infrastructure -s src/renting_room.Infrastructure -o Persistence/Migrations
 
 # 3. XEM câu SQL sẽ chạy trước khi áp dụng (rất nên làm)
-dotnet ef migrations script -p renting_room.Infrastructure -s renting_room.Infrastructure
+dotnet ef migrations script -p src/renting_room.Infrastructure -s src/renting_room.Infrastructure
 
 # 4. Áp dụng vào DB dev (hoặc chỉ cần chạy API — Development tự migrate khi khởi động)
-dotnet ef database update -p renting_room.Infrastructure -s renting_room.Infrastructure
+dotnet ef database update -p src/renting_room.Infrastructure -s src/renting_room.Infrastructure
 ```
 
-Lỡ tạo sai migration **chưa áp dụng**: `dotnet ef migrations remove -p renting_room.Infrastructure -s renting_room.Infrastructure`.
+Lỡ tạo sai migration **chưa áp dụng**: `dotnet ef migrations remove -p src/renting_room.Infrastructure -s src/renting_room.Infrastructure`.
 
 Quy tắc:
 
@@ -258,7 +258,7 @@ Quy tắc:
 - ❌ Không xóa cột đang có dữ liệu trong một bước; làm 2 bước (ngừng dùng → xóa ở bản sau).
 - ✅ Production: sinh script idempotent rồi chạy trong pipeline deploy (cấu hình `Database:MigrateOnStartup=false`):
   ```powershell
-  dotnet ef migrations script --idempotent -o migrate.sql -p renting_room.Infrastructure -s renting_room.Infrastructure
+  dotnet ef migrations script --idempotent -o migrate.sql -p src/renting_room.Infrastructure -s src/renting_room.Infrastructure
   ```
 
 Lệnh `dotnet ef` tự dùng DB dev (`localhost:5432`). Trỏ DB khác:

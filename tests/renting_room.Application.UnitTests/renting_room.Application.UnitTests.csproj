@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
-    <ProjectReference Include="..\..\renting_room.Application\renting_room.Application.csproj" />
+    <ProjectReference Include="..\..\src\renting_room.Application\renting_room.Application.csproj" />
   </ItemGroup>
 
 </Project>

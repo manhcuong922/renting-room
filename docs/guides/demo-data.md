@@ -100,5 +100,5 @@ Không seed được HĐ "kết thúc hơn 36 tháng" (phần tính tiền khôn
 
 ## Quy tắc
 
-Mỗi tính năng / case nghiệp vụ mới ⇒ **thêm kịch bản** vào `renting_room.Infrastructure/Seeding/DemoDataSeeder.*.cs`, cập nhật bảng trên
+Mỗi tính năng / case nghiệp vụ mới ⇒ **thêm kịch bản** vào `src/renting_room.Infrastructure/Seeding/DemoDataSeeder.*.cs`, cập nhật bảng trên
 và `DemoDataSeederTests` (kiểm seed chạy được, không nhân đôi, đủ trạng thái HĐ / phiếu).

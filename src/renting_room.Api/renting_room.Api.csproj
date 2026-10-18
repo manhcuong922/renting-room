@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
   <PropertyGroup>
+    <RootNamespace>renting_room</RootNamespace>
     <UserSecretsId>be2baafd-acf4-4916-84f6-2cbd77d86fe2</UserSecretsId>
   </PropertyGroup>
 
