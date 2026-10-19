@@ -1,16 +1,17 @@
 using Mediator;
-using Microsoft.EntityFrameworkCore;
 using renting_room.Application.Common.Interfaces;
+using renting_room.Application.Identity.Organizations;
 
 namespace renting_room.Application.Renters;
 
 public sealed record GetDataRetentionQuery : IRequest<DataRetentionDto>;
 
-public sealed class GetDataRetentionHandler(IAppDbContext db, ICurrentUser currentUser) : IRequestHandler<GetDataRetentionQuery, DataRetentionDto>
+public sealed class GetDataRetentionHandler(IOrganizationQueries organizations, ICurrentUser currentUser)
+    : IRequestHandler<GetDataRetentionQuery, DataRetentionDto>
 {
     public async ValueTask<DataRetentionDto> Handle(GetDataRetentionQuery request, CancellationToken cancellationToken)
     {
-        var organization = await db.Organizations.AsNoTracking().FirstAsync(o => o.Id == currentUser.OrganizationId, cancellationToken);
+        var organization = (await organizations.GetAsync(currentUser.OrganizationId!.Value, cancellationToken))!;
         return DataRetentionMapping.ToDto(organization);
     }
 }

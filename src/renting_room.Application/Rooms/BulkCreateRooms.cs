@@ -1,10 +1,10 @@
 using FluentValidation;
 using Mediator;
-using Microsoft.EntityFrameworkCore;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Common.Validation;
 using renting_room.Domain.Common;
 using renting_room.Domain.Properties;
+using renting_room.Application.Properties;
 
 namespace renting_room.Application.Rooms;
 
@@ -47,19 +47,19 @@ public sealed class BulkCreateRoomsCommandValidator : AbstractValidator<BulkCrea
         floors.SelectMany(f => f.Codes ?? []).Select(TextNormalizer.NormalizeCode).ToList();
 }
 
-public sealed class BulkCreateRoomsHandler(IAppDbContext db) : IRequestHandler<BulkCreateRoomsCommand, Result<BulkCreateRoomsResult>>
+public sealed class BulkCreateRoomsHandler(IPropertyQueries properties, IRoomRepository roomRepository, IUnitOfWork unitOfWork)
+    : IRequestHandler<BulkCreateRoomsCommand, Result<BulkCreateRoomsResult>>
 {
     public async ValueTask<Result<BulkCreateRoomsResult>> Handle(BulkCreateRoomsCommand request, CancellationToken cancellationToken)
     {
-        var property = await db.Properties.AsNoTracking().FirstOrDefaultAsync(p => p.Id == request.PropertyId, cancellationToken);
+        var property = await properties.GetStatusAsync(request.PropertyId, cancellationToken);
         if (property is null)
             return PropertyErrors.PropertyNotFound;
         if (property.IsArchived)
             return PropertyErrors.PropertyArchived;
 
         var codes = BulkCreateRoomsCommandValidator.AllCodes(request.Floors);
-        var existing = await db.Rooms.Where(r => r.PropertyId == property.Id && codes.Contains(r.Code))
-            .Select(r => r.Code).ToListAsync(cancellationToken);
+        var existing = await roomRepository.GetExistingCodesAsync(property.Id, codes, cancellationToken);
         if (existing.Count > 0)
             return Error.Conflict(PropertyErrors.RoomCodeTaken.Code, $"Mã phòng đã tồn tại: {string.Join(", ", existing)}.");
 
@@ -68,8 +68,8 @@ public sealed class BulkCreateRoomsHandler(IAppDbContext db) : IRequestHandler<B
                 new RoomSpec(f.Floor, request.AreaM2, request.MaxOccupants, request.ListedRent, request.DefaultDeposit, request.Amenities ?? [], null))))
             .ToList();
 
-        db.Rooms.AddRange(rooms);
-        await db.SaveChangesAsync(cancellationToken);
+        roomRepository.AddRange(rooms);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
         return new BulkCreateRoomsResult(rooms.Count, rooms.Select(r => r.Id).ToList());
     }
 }

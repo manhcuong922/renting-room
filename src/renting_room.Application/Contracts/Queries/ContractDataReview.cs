@@ -1,6 +1,7 @@
 using Mediator;
-using Microsoft.EntityFrameworkCore;
-using renting_room.Application.Common.Interfaces;
+using renting_room.Application.Fees;
+using renting_room.Application.Meters;
+using renting_room.Application.Rooms;
 using renting_room.Domain.Common;
 using renting_room.Domain.Contracts;
 using renting_room.Domain.Fees;
@@ -18,34 +19,26 @@ public sealed record DataReviewIssue(
 /// </summary>
 public sealed record GetContractDataReviewQuery(Guid? PropertyId) : IRequest<IReadOnlyList<DataReviewIssue>>;
 
-public sealed class GetContractDataReviewHandler(IAppDbContext db, TimeProvider clock)
+public sealed class GetContractDataReviewHandler(
+    IContractQueries contractQueries, IRoomQueries rooms, IMeterQueries meters, IFeeQueries fees, OccupantChecks occupantChecks, TimeProvider clock)
     : IRequestHandler<GetContractDataReviewQuery, IReadOnlyList<DataReviewIssue>>
 {
-    private static readonly ContractStatus[] OpenStatuses = [ContractStatus.Active, ContractStatus.Liquidating];
-
     public async ValueTask<IReadOnlyList<DataReviewIssue>> Handle(GetContractDataReviewQuery request, CancellationToken cancellationToken)
     {
         var today = clock.GetUtcNow().ToBusinessDate();
-        var query = db.Contracts.AsNoTracking().Include(c => c.Occupants).Include(c => c.Fees).AsSplitQuery()
-            .Where(c => OpenStatuses.Contains(c.Status));
-        if (request.PropertyId is { } propertyId)
-            query = query.Where(c => c.PropertyId == propertyId);
-        var contracts = await query.ToListAsync(cancellationToken);
+        var contracts = (await contractQueries.ListOpenForReviewAsync(request.PropertyId, cancellationToken)).ToList();
         if (contracts.Count == 0)
             return [];
 
         var codes = await LoadCodesAsync(contracts, cancellationToken);
         var renterIds = contracts.SelectMany(c => c.Occupants.Select(o => o.RenterId).Append(c.RepresentativeRenterId).Append(c.ReferenceRenterId)).Distinct().ToList();
-        var people = await OccupantChecks.LoadPeopleAsync(db, renterIds, cancellationToken);
+        var people = await occupantChecks.LoadPeopleAsync(renterIds, cancellationToken);
         var feeIds = contracts.SelectMany(c => c.Fees.Select(f => f.FeeTypeId)).Distinct().ToList();
         var roomIds = contracts.Select(c => c.RoomId).Distinct().ToList();
-        var roomMeters = (await db.Meters.AsNoTracking().Where(m => roomIds.Contains(m.RoomId) && m.RemovedDate == null)
-                .Select(m => new { m.RoomId, m.FeeTypeId }).ToListAsync(cancellationToken))
+        var roomMeters = (await meters.ListUnremovedFeesAsync(roomIds, cancellationToken))
             .ToLookup(m => m.RoomId, m => m.FeeTypeId);
         feeIds.AddRange(roomMeters.SelectMany(g => g));
-        var feeTypes = await db.FeeTypes.AsNoTracking().Include(f => f.Prices)
-            .Where(f => feeIds.Contains(f.Id))
-            .ToDictionaryAsync(f => f.Id, cancellationToken);
+        var feeTypes = await fees.GetTypesWithPricesAsync(feeIds.Distinct().ToList(), cancellationToken);
 
         var issues = new List<DataReviewIssue>();
         foreach (var c in contracts)
@@ -87,10 +80,8 @@ public sealed class GetContractDataReviewHandler(IAppDbContext db, TimeProvider 
     private async Task<Dictionary<Guid, (string Property, string Room)>> LoadCodesAsync(List<Contract> contracts, CancellationToken ct)
     {
         var roomIds = contracts.Select(c => c.RoomId).Distinct().ToList();
-        var rooms = await db.Rooms.AsNoTracking().Where(r => roomIds.Contains(r.Id))
-            .Join(db.Properties, r => r.PropertyId, p => p.Id, (r, p) => new { r.Id, Room = r.Code, Property = p.Code })
-            .ToDictionaryAsync(x => x.Id, ct);
-        return contracts.ToDictionary(c => c.Id, c => (rooms[c.RoomId].Property, rooms[c.RoomId].Room));
+        var codes = await rooms.GetCodesWithPropertyAsync(roomIds, ct);
+        return contracts.ToDictionary(c => c.Id, c => (codes[c.RoomId].PropertyCode, codes[c.RoomId].RoomCode));
     }
 
     /// <summary>CT-BR-31 rà lại trên dữ liệu đã lưu (dữ liệu cũ trước khi có kiểm tra, hoặc nhập lùi ngày).</summary>

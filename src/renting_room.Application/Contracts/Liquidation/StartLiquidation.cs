@@ -1,6 +1,6 @@
 using FluentValidation;
 using Mediator;
-using renting_room.Application.Common.Interfaces;
+using renting_room.Application.Billing;
 using renting_room.Application.Common.Validation;
 using renting_room.Domain.Common;
 using renting_room.Domain.Contracts;
@@ -23,11 +23,11 @@ public sealed class StartLiquidationCommandValidator : AbstractValidator<StartLi
     }
 }
 
-public sealed class StartLiquidationHandler(IAppDbContext db, TimeProvider clock) : IRequestHandler<StartLiquidationCommand, Result>
+public sealed class StartLiquidationHandler(ContractMutation mutation, IInvoiceQueries invoices, TimeProvider clock) : IRequestHandler<StartLiquidationCommand, Result>
 {
     public ValueTask<Result> Handle(StartLiquidationCommand request, CancellationToken cancellationToken) =>
-        new(ContractMutation.RunAsync(db, request.ContractId, async contract =>
-            await LiquidationGuards.HasInvoiceAfterAsync(db, contract.Id, request.ActualEndDate, cancellationToken)
+        new(mutation.RunAsync(request.ContractId, async contract =>
+            await invoices.HasInvoiceAfterAsync(contract.Id, request.ActualEndDate, cancellationToken)
                 ? Result.Failure(ContractErrors.InvoiceAfterEndDate)
                 : contract.StartLiquidation(request.ActualEndDate, request.Reason, request.Ground, request.Note, clock.GetUtcNow().ToBusinessDate()),
             cancellationToken));

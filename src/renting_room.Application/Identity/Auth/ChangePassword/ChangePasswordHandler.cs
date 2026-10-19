@@ -1,5 +1,4 @@
 using Mediator;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Domain.Common;
@@ -8,7 +7,9 @@ using renting_room.Domain.Identity;
 namespace renting_room.Application.Identity.Auth.ChangePassword;
 
 public sealed class ChangePasswordHandler(
-    IAppDbContext db,
+    IUserRepository users,
+    IRefreshTokenRepository refreshTokens,
+    IUnitOfWork unitOfWork,
     ICurrentUser currentUser,
     IPasswordHasher passwordHasher,
     AuthTokenIssuer tokenIssuer,
@@ -20,7 +21,7 @@ public sealed class ChangePasswordHandler(
     public async ValueTask<Result<AuthTokens>> Handle(ChangePasswordCommand request, CancellationToken cancellationToken)
     {
         var userId = currentUser.RequireUserId();
-        var user = await db.Users.FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
+        var user = await users.GetForUpdateAsync(userId, cancellationToken);
         if (user is null)
             return IdentityErrors.UserNotFound;
 
@@ -32,7 +33,7 @@ public sealed class ChangePasswordHandler(
 
         if (passwordHasher.Verify(user.PasswordHash, request.CurrentPassword) == PasswordCheckResult.Failed)
         {
-            await FailedLoginTracker.RegisterFailureAsync(db, user.Id, now, cancellationToken);
+            await users.RegisterFailedLoginAsync(user.Id, now, cancellationToken);
             logger.LogWarning("Change password failed: wrong current password for user {UserId}", user.Id);
             return IdentityErrors.InvalidCurrentPassword;
         }
@@ -45,14 +46,13 @@ public sealed class ChangePasswordHandler(
 
         user.ChangePassword(passwordHasher.Hash(request.NewPassword), now);
 
-        await using var transaction = await db.BeginTransactionAsync(cancellationToken);
+        await using var transaction = await unitOfWork.BeginTransactionAsync(cancellationToken);
 
-        await RefreshTokenRevoker.RevokeAllForUserAsync(
-            db, user.Id, RefreshTokenRevokeReason.PasswordChanged, now, cancellationToken);
+        await refreshTokens.RevokeAllForUserAsync(user.Id, RefreshTokenRevokeReason.PasswordChanged, now, cancellationToken);
 
         var (tokens, refreshToken) = tokenIssuer.IssueNewSession(user, now, request.IpAddress);
-        db.RefreshTokens.Add(refreshToken);
-        await db.SaveChangesAsync(cancellationToken);
+        refreshTokens.Add(refreshToken);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
 
         await transaction.CommitAsync(cancellationToken);
         sessionStore.Invalidate(user.Id);

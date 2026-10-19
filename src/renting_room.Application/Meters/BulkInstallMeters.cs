@@ -1,6 +1,7 @@
 using FluentValidation;
 using Mediator;
-using Microsoft.EntityFrameworkCore;
+using renting_room.Application.Fees;
+using renting_room.Application.Rooms;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Common.Validation;
 using renting_room.Domain.Common;
@@ -35,11 +36,13 @@ public sealed class BulkInstallMetersCommandValidator : AbstractValidator<BulkIn
 }
 
 /// <summary>Mỗi dòng = đúng lệnh lắp công tơ đơn (MT-BR-01/02); kiểm hết các dòng — lỗi bất kỳ ⇒ không lưu dòng nào (MT-BR-07).</summary>
-public sealed class BulkInstallMetersHandler(IAppDbContext db) : IRequestHandler<BulkInstallMetersCommand, Result<BulkInstallResult>>
+public sealed class BulkInstallMetersHandler(
+    IFeeQueries fees, IRoomQueries rooms, IMeterRepository meterRepository, IMeterQueries meterQueries, IUnitOfWork unitOfWork)
+    : IRequestHandler<BulkInstallMetersCommand, Result<BulkInstallResult>>
 {
     public async ValueTask<Result<BulkInstallResult>> Handle(BulkInstallMetersCommand request, CancellationToken cancellationToken)
     {
-        var fee = await db.FeeTypes.AsNoTracking().FirstOrDefaultAsync(f => f.Id == request.FeeTypeId, cancellationToken);
+        var fee = await fees.FindTypeAsync(request.FeeTypeId, cancellationToken);
         if (fee is null || fee.PropertyId != request.PropertyId)
             return FeeErrors.NotInProperty;
         if (fee.Group != FeeGroup.Metered)
@@ -48,17 +51,15 @@ public sealed class BulkInstallMetersHandler(IAppDbContext db) : IRequestHandler
             return FeeErrors.Archived;
 
         var roomIds = request.Rows.Select(r => r.RoomId).ToList();
-        var rooms = await db.Rooms.AsNoTracking().Where(r => roomIds.Contains(r.Id) && r.PropertyId == request.PropertyId)
-            .ToDictionaryAsync(r => r.Id, cancellationToken);
-        var hasMeter = (await db.Meters.Where(m => roomIds.Contains(m.RoomId) && m.FeeTypeId == fee.Id && m.RemovedDate == null)
-            .Select(m => m.RoomId).ToListAsync(cancellationToken)).ToHashSet();
+        var roomsById = await rooms.ListInPropertyAsync(request.PropertyId, roomIds, cancellationToken);
+        var hasMeter = await meterQueries.GetMeteredRoomIdsAsync(roomIds, fee.Id, cancellationToken);
 
         var errors = new List<BulkInstallRowError>();
         var meters = new List<Meter>();
         for (var index = 0; index < request.Rows.Count; index++)
         {
             var row = request.Rows[index];
-            var error = !rooms.TryGetValue(row.RoomId, out var room) ? PropertyErrors.RoomNotFound
+            var error = !roomsById.TryGetValue(row.RoomId, out var room) ? PropertyErrors.RoomNotFound
                 : room.IsArchived ? PropertyErrors.RoomArchived
                 : hasMeter.Contains(row.RoomId) ? MeterErrors.AlreadyActive
                 : null;
@@ -70,8 +71,8 @@ public sealed class BulkInstallMetersHandler(IAppDbContext db) : IRequestHandler
         if (errors.Count > 0)
             return Error.BusinessRule("BULK_INSTALL_INVALID", "Có dòng lắp công tơ không hợp lệ — chưa lưu dòng nào.").WithDetail("rowErrors", errors);
 
-        db.Meters.AddRange(meters);
-        await db.SaveChangesAsync(cancellationToken);
+        meterRepository.AddRange(meters);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
         return new BulkInstallResult(meters.Count, meters.Select(m => m.Id).ToList());
     }
 }

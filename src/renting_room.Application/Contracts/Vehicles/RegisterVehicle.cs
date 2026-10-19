@@ -1,7 +1,6 @@
 using FluentValidation;
 using Mediator;
-using Microsoft.EntityFrameworkCore;
-using renting_room.Application.Common.Interfaces;
+using renting_room.Application.Fees;
 using renting_room.Application.Common.Models;
 using renting_room.Application.Common.Validation;
 using renting_room.Domain.Common;
@@ -29,14 +28,13 @@ public sealed class RegisterVehicleCommandValidator : AbstractValidator<Register
 }
 
 /// <summary>Một biển số chỉ đăng ký giữ ở 1 nơi trong tổ chức (unique index là chốt chặn khi gửi song song).</summary>
-public sealed class RegisterVehicleHandler(IAppDbContext db, TimeProvider clock) : IRequestHandler<RegisterVehicleCommand, Result<CreatedWithWarnings>>
+public sealed class RegisterVehicleHandler(ContractMutation mutation, IContractQueries contracts, IFeeQueries fees, TimeProvider clock) : IRequestHandler<RegisterVehicleCommand, Result<CreatedWithWarnings>>
 {
     public ValueTask<Result<CreatedWithWarnings>> Handle(RegisterVehicleCommand request, CancellationToken cancellationToken) =>
-        new(ContractMutation.RunAsync(db, request.ContractId, async contract =>
+        new(mutation.RunAsync(request.ContractId, async contract =>
         {
             var plate = ContractVehicle.NormalizePlate(request.PlateNumber);
-            if (plate is not null && await db.Contracts.SelectMany(c => c.Vehicles)
-                    .AnyAsync(v => v.PlateNumber == plate && v.RegisteredTo == null, cancellationToken))
+            if (plate is not null && await contracts.IsPlateRegisteredAsync(plate, cancellationToken))
                 return Result.Failure<CreatedWithWarnings>(ContractErrors.PlateAlreadyRegistered);
             if (request.RenterId is { } renterId && !contract.Occupants.Any(o => o.RenterId == renterId)
                 && contract.RepresentativeRenterId != renterId)
@@ -52,7 +50,7 @@ public sealed class RegisterVehicleHandler(IAppDbContext db, TimeProvider clock)
             var warnings = new List<Warning>();
             if (vehicle.PlateNumber is { } normalized && !ContractWarnings.IsUsualPlate(normalized))
                 warnings.Add(ContractWarnings.UnusualPlate(normalized));
-            var parkingFees = await ContractFeeRules.LoadParkingFeesAsync(db, contract.PropertyId, cancellationToken);
+            var parkingFees = await fees.ListParkingFeesAsync(contract.PropertyId, cancellationToken);
             warnings.AddRange(ContractWarnings.For(contract, parkingFees, clock.GetUtcNow().ToBusinessDate())
                 .Where(w => w.Code == "PARKING_QUANTITY_MISMATCH"));
             return Result.Success(new CreatedWithWarnings(vehicle.Id, warnings));

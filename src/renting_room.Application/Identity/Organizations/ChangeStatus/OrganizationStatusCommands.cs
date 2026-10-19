@@ -1,9 +1,7 @@
 using FluentValidation;
 using Mediator;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using renting_room.Application.Common.Interfaces;
-using renting_room.Application.Identity.Auth;
 using renting_room.Domain.Common;
 using renting_room.Domain.Identity;
 
@@ -26,7 +24,11 @@ public sealed class SuspendOrganizationCommandValidator : AbstractValidator<Susp
 /// để access token đang lưu hành bị từ chối (ID-BR-08).
 /// </summary>
 public sealed class SuspendOrganizationHandler(
-    IAppDbContext db,
+    IOrganizationRepository organizations,
+    IUserRepository users,
+    IUserQueries userQueries,
+    IRefreshTokenRepository refreshTokens,
+    IUnitOfWork unitOfWork,
     IUserSessionStore sessionStore,
     TimeProvider clock,
     ILogger<SuspendOrganizationHandler> logger)
@@ -34,7 +36,7 @@ public sealed class SuspendOrganizationHandler(
 {
     public async ValueTask<Result> Handle(SuspendOrganizationCommand request, CancellationToken cancellationToken)
     {
-        var organization = await db.Organizations.FirstOrDefaultAsync(o => o.Id == request.OrganizationId, cancellationToken);
+        var organization = await organizations.GetAsync(request.OrganizationId, cancellationToken);
         if (organization is null)
             return Result.Failure(IdentityErrors.OrganizationNotFound);
 
@@ -43,22 +45,17 @@ public sealed class SuspendOrganizationHandler(
             return suspended;
 
         var now = clock.GetUtcNow();
-        await using var transaction = await db.BeginTransactionAsync(cancellationToken);
+        await using var transaction = await unitOfWork.BeginTransactionAsync(cancellationToken);
 
-        await db.SaveChangesAsync(cancellationToken);
-        await RefreshTokenRevoker.RevokeAllForOrganizationAsync(
-            db, organization.Id, RefreshTokenRevokeReason.AdminAction, now, cancellationToken);
-        await db.Users
-            .Where(u => u.OrganizationId == organization.Id)
-            .ExecuteUpdateAsync(s => s.SetProperty(u => u.SecurityStamp, u => Guid.NewGuid()), cancellationToken);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+        await refreshTokens.RevokeAllForOrganizationAsync(organization.Id, RefreshTokenRevokeReason.AdminAction, now, cancellationToken);
+        await users.RotateSecurityStampsInOrganizationAsync(organization.Id, cancellationToken);
 
         await transaction.CommitAsync(cancellationToken);
 
-        var userIds = await db.Users
-            .Where(u => u.OrganizationId == organization.Id)
-            .Select(u => u.Id)
-            .ToListAsync(cancellationToken);
-        userIds.ForEach(sessionStore.Invalidate);
+        var userIds = await userQueries.ListIdsInOrganizationAsync(organization.Id, cancellationToken);
+        foreach (var userId in userIds)
+            sessionStore.Invalidate(userId);
 
         logger.LogWarning("Organization {OrganizationId} suspended", organization.Id);
         return Result.Success();
@@ -67,12 +64,13 @@ public sealed class SuspendOrganizationHandler(
 
 public sealed record ReactivateOrganizationCommand(Guid OrganizationId) : IRequest<Result>;
 
-public sealed class ReactivateOrganizationHandler(IAppDbContext db, ILogger<ReactivateOrganizationHandler> logger)
+public sealed class ReactivateOrganizationHandler(
+    IOrganizationRepository organizations, IUnitOfWork unitOfWork, ILogger<ReactivateOrganizationHandler> logger)
     : IRequestHandler<ReactivateOrganizationCommand, Result>
 {
     public async ValueTask<Result> Handle(ReactivateOrganizationCommand request, CancellationToken cancellationToken)
     {
-        var organization = await db.Organizations.FirstOrDefaultAsync(o => o.Id == request.OrganizationId, cancellationToken);
+        var organization = await organizations.GetAsync(request.OrganizationId, cancellationToken);
         if (organization is null)
             return Result.Failure(IdentityErrors.OrganizationNotFound);
 
@@ -80,7 +78,7 @@ public sealed class ReactivateOrganizationHandler(IAppDbContext db, ILogger<Reac
         if (reactivated.IsFailure)
             return reactivated;
 
-        await db.SaveChangesAsync(cancellationToken);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
         logger.LogInformation("Organization {OrganizationId} reactivated", organization.Id);
         return Result.Success();
     }

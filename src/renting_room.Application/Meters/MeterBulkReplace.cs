@@ -1,6 +1,8 @@
 using FluentValidation;
 using Mediator;
-using Microsoft.EntityFrameworkCore;
+using renting_room.Application.Billing;
+using renting_room.Application.Properties;
+using renting_room.Application.Rooms;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Common.Validation;
 using renting_room.Domain.Common;
@@ -15,19 +17,17 @@ public sealed record ReplaceSheetRowDto(Guid MeterId, Guid RoomId, string RoomCo
 public sealed record GetReplaceSheetQuery(Guid PropertyId, Guid FeeTypeId) : IRequest<Result<IReadOnlyList<ReplaceSheetRowDto>>>;
 
 /// <summary>MT-UC-08: lưới thay công tơ hàng loạt — mỗi phòng của khu có công tơ đang hoạt động của khoản thu (điện / nước).</summary>
-public sealed class GetReplaceSheetHandler(IAppDbContext db) : IRequestHandler<GetReplaceSheetQuery, Result<IReadOnlyList<ReplaceSheetRowDto>>>
+public sealed class GetReplaceSheetHandler(IPropertyQueries properties, IMeterQueries meterQueries, IRoomQueries roomQueries)
+    : IRequestHandler<GetReplaceSheetQuery, Result<IReadOnlyList<ReplaceSheetRowDto>>>
 {
     public async ValueTask<Result<IReadOnlyList<ReplaceSheetRowDto>>> Handle(GetReplaceSheetQuery request, CancellationToken cancellationToken)
     {
-        if (!await db.Properties.AnyAsync(p => p.Id == request.PropertyId, cancellationToken))
+        if (!await properties.ExistsAsync(request.PropertyId, cancellationToken))
             return PropertyErrors.PropertyNotFound;
 
-        var meters = await db.Meters.AsNoTracking().Include(m => m.Readings)
-            .Where(m => m.PropertyId == request.PropertyId && m.FeeTypeId == request.FeeTypeId && m.RemovedDate == null)
-            .ToListAsync(cancellationToken);
+        var meters = await meterQueries.ListActiveByFeeAsync(request.PropertyId, request.FeeTypeId, cancellationToken);
         var roomIds = meters.Select(m => m.RoomId).ToList();
-        var rooms = await db.Rooms.AsNoTracking().Where(r => roomIds.Contains(r.Id))
-            .ToDictionaryAsync(r => r.Id, r => new { r.Code, r.Floor }, cancellationToken);
+        var rooms = await roomQueries.ListAsync(roomIds, cancellationToken);
         return meters.Select(m =>
             {
                 var last = m.Ordered.LastOrDefault();
@@ -75,13 +75,14 @@ public sealed class BulkReplaceMetersCommandValidator : AbstractValidator<BulkRe
 /// Mỗi dòng = đúng lệnh thay công tơ đơn (MT-UC-02, MT-BR-09). Khóa công tơ theo id, kiểm hết các dòng — lỗi bất kỳ ⇒ 422 kèm danh sách dòng lỗi,
 /// không lưu dòng nào (MT-BR-07). Kỳ có thay: tính tiền tự cộng 2 công tơ (MT-BR-15); nháp của phòng ⇒ "Cần tính lại" (BL-BR-20).
 /// </summary>
-public sealed class BulkReplaceMetersHandler(IAppDbContext db) : IRequestHandler<BulkReplaceMetersCommand, Result<BulkReplaceResult>>
+public sealed class BulkReplaceMetersHandler(IMeterRepository meterRepository, IInvoiceQueries invoices, IUnitOfWork unitOfWork)
+    : IRequestHandler<BulkReplaceMetersCommand, Result<BulkReplaceResult>>
 {
     public async ValueTask<Result<BulkReplaceResult>> Handle(BulkReplaceMetersCommand request, CancellationToken cancellationToken)
     {
-        await using var transaction = await db.BeginTransactionAsync(cancellationToken);
-        var meters = (await MeterMapping.LockAndLoadAsync(db, request.Rows.Select(r => r.MeterId), cancellationToken)).ToDictionary(m => m.Id);
-        var locks = await MeterPeriodLocks.LockedUntilAsync(db, meters.Keys.ToList(), cancellationToken);
+        await using var transaction = await unitOfWork.BeginTransactionAsync(cancellationToken);
+        var meters = (await meterRepository.LockAndLoadAsync(request.Rows.Select(r => r.MeterId), cancellationToken)).ToDictionary(m => m.Id);
+        var locks = await invoices.GetMeterLockedUntilAsync(meters.Keys.ToList(), cancellationToken);
 
         var errors = new List<BulkReplaceRowError>();
         var created = new List<Meter>();
@@ -108,9 +109,9 @@ public sealed class BulkReplaceMetersHandler(IAppDbContext db) : IRequestHandler
             return Error.BusinessRule("BULK_REPLACE_INVALID", "Có dòng thay công tơ không hợp lệ — chưa lưu dòng nào.").WithDetail("rowErrors", errors);
 
         // Như thay đơn: tháo hết bản cũ trước rồi mới lắp bản mới — unique "1 công tơ hoạt động" kiểm từng câu lệnh.
-        await db.SaveChangesAsync(cancellationToken);
-        db.Meters.AddRange(created);
-        await db.SaveChangesAsync(cancellationToken);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+        meterRepository.AddRange(created);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return new BulkReplaceResult(created.Count, created.Select(m => m.Id).ToList());
     }

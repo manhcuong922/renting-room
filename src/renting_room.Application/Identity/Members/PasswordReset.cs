@@ -8,7 +8,8 @@ namespace renting_room.Application.Identity.Members;
 internal static class PasswordReset
 {
     public static async Task<Result<TemporaryCredentials>> ResetAsync(
-        IAppDbContext db, IPasswordHasher passwordHasher, IUserSessionStore sessionStore, TimeProvider clock, User user, CancellationToken ct)
+        IUnitOfWork unitOfWork, IRefreshTokenRepository refreshTokens, IPasswordHasher passwordHasher, IUserSessionStore sessionStore,
+        TimeProvider clock, User user, CancellationToken ct)
     {
         var now = clock.GetUtcNow();
         var temporaryPassword = TemporaryPasswordGenerator.Generate();
@@ -16,9 +17,9 @@ internal static class PasswordReset
         if (reset.IsFailure)
             return reset.Error!;
 
-        await using var transaction = await db.BeginTransactionAsync(ct);
-        await db.SaveChangesAsync(ct);
-        await AccountSessions.RevokeAllAsync(db, user.Id, now, ct);
+        await using var transaction = await unitOfWork.BeginTransactionAsync(ct);
+        await unitOfWork.SaveChangesAsync(ct);
+        await AccountSessions.RevokeAllAsync(refreshTokens, user.Id, now, ct);
         await transaction.CommitAsync(ct);
         sessionStore.Invalidate(user.Id);
 

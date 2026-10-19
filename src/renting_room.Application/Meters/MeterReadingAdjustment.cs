@@ -1,9 +1,10 @@
 using FluentValidation;
 using Mediator;
-using Microsoft.EntityFrameworkCore;
 using renting_room.Application.Billing;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Common.Validation;
+using renting_room.Application.Contracts;
+using renting_room.Application.Fees;
 using renting_room.Domain.Billing;
 using renting_room.Domain.Common;
 using renting_room.Domain.Contracts;
@@ -30,50 +31,43 @@ public sealed class AdjustMeterReadingCommandValidator : AbstractValidator<Adjus
 /// tạo khoản bù (thu dư) / phụ thu (thu thiếu) phần tiền chênh của dòng điện nước, vào phiếu kỳ sau. Phiếu đã chốt giữ nguyên làm chứng từ.
 /// 1 transaction, khóa HĐ → công tơ → nháp (C-07).
 /// </summary>
-public sealed class AdjustMeterReadingHandler(IAppDbContext db, TimeProvider clock) : IRequestHandler<AdjustMeterReadingCommand, Result<AdjustReadingResult>>
+public sealed class AdjustMeterReadingHandler(
+    IMeterRepository meters, IMeterQueries meterQueries, IInvoiceQueries invoices, IContractQueries contracts, IFeeQueries fees,
+    IRoomChargeRepository roomChargeRepository, RoomChargeBilling roomCharges, IUnitOfWork unitOfWork, TimeProvider clock)
+    : IRequestHandler<AdjustMeterReadingCommand, Result<AdjustReadingResult>>
 {
     public static readonly Warning LineManuallyEdited = new("LINE_MANUALLY_EDITED",
         "Dòng điện nước của phiếu đã chốt từng sửa tay — khoản chênh tính theo số hệ thống, kiểm tra và sửa khoản nếu cần.");
 
     public async ValueTask<Result<AdjustReadingResult>> Handle(AdjustMeterReadingCommand request, CancellationToken cancellationToken)
     {
-        var reading = await db.Meters.SelectMany(m => m.Readings).Where(r => r.Id == request.ReadingId && r.VoidedAt == null)
-            .Select(r => new { r.MeterId, r.Value }).FirstOrDefaultAsync(cancellationToken);
+        var reading = await meterQueries.GetActiveReadingAsync(request.ReadingId, cancellationToken);
         if (reading is null)
             return MeterErrors.ReadingNotFound;
-        var segment = await db.Invoices.Where(i => i.Status == InvoiceStatus.Finalized)
-            .SelectMany(i => i.Segments.Where(s => s.EndReadingId == request.ReadingId && !s.Voided)
-                .Select(s => new { InvoiceId = i.Id, i.ContractId, s.FeeTypeId, s.UsageStart }))
-            .FirstOrDefaultAsync(cancellationToken);
+        var segment = await invoices.FindFinalizedSegmentEndingAtAsync(request.ReadingId, cancellationToken);
         if (segment is null)
-            return (await ReadingLocks.LockedReadingIdsAsync(db, [reading.MeterId], cancellationToken)).Contains(request.ReadingId)
+            return (await invoices.GetLockedReadingIdsAsync([reading.MeterId], cancellationToken)).Contains(request.ReadingId)
                 ? MeterErrors.ReadingNotAdjustable
                 : MeterErrors.ReadingNotLocked;
-        if (await db.Invoices.Where(i => i.Status == InvoiceStatus.Finalized)
-                .AnyAsync(i => i.Segments.Any(s => s.StartReadingId == request.ReadingId && !s.Voided), cancellationToken))
+        if (await invoices.HasFinalizedSegmentStartingAtAsync(request.ReadingId, cancellationToken))
             return MeterErrors.ReadingNextPeriodFinalized;
         if (request.Value == reading.Value)
             return MeterErrors.ReadingUnchanged;
 
-        await using var transaction = await db.BeginTransactionAsync(cancellationToken);
-        await db.LockForUpdateAsync<Contract>(segment.ContractId, cancellationToken);
-        var contract = await db.Contracts.AsNoTracking().Where(c => c.Id == segment.ContractId)
-            .Select(c => new { c.Id, c.PropertyId, c.RoomId, c.Status }).FirstAsync(cancellationToken);
-        var finalClosed = await db.Invoices.AnyAsync(
-            i => i.ContractId == contract.Id && i.Type == InvoiceType.Final && i.Status == InvoiceStatus.Finalized, cancellationToken);
+        await using var transaction = await unitOfWork.BeginTransactionAsync(cancellationToken);
+        await unitOfWork.LockForUpdateAsync<Contract>(segment.ContractId, cancellationToken);
+        var contract = (await contracts.GetAsync(segment.ContractId, cancellationToken))!;
+        var finalClosed = await invoices.HasFinalizedFinalAsync(contract.Id, cancellationToken);
         if (contract.Status is not (ContractStatus.Active or ContractStatus.Liquidating) || finalClosed)
             return RoomChargeErrors.NoOpenInvoice;
 
-        var meter = (await MeterMapping.LockAndLoadAsync(db, [reading.MeterId], cancellationToken)).Single();
+        var meter = (await meters.LockAndLoadAsync([reading.MeterId], cancellationToken)).Single();
         var corrected = meter.Correct(request.ReadingId, request.Value, request.Reason);
         if (corrected.IsFailure)
             return corrected.Error!;
 
-        var line = await db.Invoices.Where(i => i.Id == segment.InvoiceId).SelectMany(i => i.Lines)
-            .Where(l => l.IsSystem && l.Type == InvoiceLineType.Metered && l.FeeTypeId == segment.FeeTypeId
-                && (segment.UsageStart == null || l.ServiceFrom == segment.UsageStart))
-            .FirstAsync(cancellationToken);
-        var fee = await db.FeeTypes.AsNoTracking().Include(f => f.Prices).FirstAsync(f => f.Id == segment.FeeTypeId, cancellationToken);
+        var line = await invoices.GetSystemMeteredLineAsync(segment.InvoiceId, segment.FeeTypeId, segment.UsageStart, cancellationToken);
+        var fee = (await fees.GetWithPricesAsync(segment.FeeTypeId, cancellationToken))!;
         if (fee.ResolvePrice(line.ServiceTo) is not { } price)
             return Error.BusinessRule("FEE_PRICE_MISSING", $"\"{fee.Name}\" chưa có giá cho kỳ của phiếu.");
 
@@ -92,14 +86,14 @@ public sealed class AdjustMeterReadingHandler(IAppDbContext db, TimeProvider clo
             charge = RoomCharge.Create(contract.PropertyId, contract.RoomId, contract.Id,
                 difference > 0 ? RoomChargeKind.Credit : RoomChargeKind.Surcharge, description, Math.Abs(difference),
                 clock.GetUtcNow().ToBusinessDate(), request.Reason);
-            db.RoomCharges.Add(charge);
-            if (await RoomChargeBilling.DraftForAsync(db, contract.Id, charge.IncurredOn, cancellationToken) is { } draft)
+            roomChargeRepository.Add(charge);
+            if (await roomCharges.DraftForAsync(contract.Id, charge.IncurredOn, cancellationToken) is { } draft)
                 RoomChargeBilling.Attach(draft, charge);
         }
 
-        await db.SaveChangesAsync(cancellationToken);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
-        var chargeDto = charge is null ? null : (await RoomChargeBilling.ToDtosAsync(db, [charge], cancellationToken))[0];
+        var chargeDto = charge is null ? null : (await roomCharges.ToDtosAsync([charge], cancellationToken))[0];
         return new AdjustReadingResult(corrected.Value!.ToDto(), chargeDto, warnings);
     }
 }

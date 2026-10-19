@@ -1,6 +1,5 @@
 using FluentValidation;
 using Mediator;
-using Microsoft.EntityFrameworkCore;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Common.Validation;
 using renting_room.Domain.Identity;
@@ -35,20 +34,21 @@ internal static class OrganizationInfoMapping
         new(o.Id, o.Code, o.Name, o.ContactName, o.ContactPhone, o.ContactEmail, o.TaxCode, o.Address);
 }
 
-public sealed class GetOrganizationInfoHandler(IAppDbContext db, ICurrentUser currentUser) : IRequestHandler<GetOrganizationInfoQuery, OrganizationInfoDto>
+public sealed class GetOrganizationInfoHandler(IOrganizationQueries organizations, ICurrentUser currentUser)
+    : IRequestHandler<GetOrganizationInfoQuery, OrganizationInfoDto>
 {
     public async ValueTask<OrganizationInfoDto> Handle(GetOrganizationInfoQuery request, CancellationToken cancellationToken) =>
-        (await db.Organizations.AsNoTracking().FirstAsync(o => o.Id == currentUser.OrganizationId, cancellationToken)).ToInfo();
+        (await organizations.GetAsync(currentUser.OrganizationId!.Value, cancellationToken))!.ToInfo();
 }
 
-public sealed class UpdateOrganizationInfoHandler(IAppDbContext db, ICurrentUser currentUser)
+public sealed class UpdateOrganizationInfoHandler(IOrganizationRepository organizations, IUnitOfWork unitOfWork, ICurrentUser currentUser)
     : IRequestHandler<UpdateOrganizationInfoCommand, OrganizationInfoDto>
 {
     public async ValueTask<OrganizationInfoDto> Handle(UpdateOrganizationInfoCommand request, CancellationToken cancellationToken)
     {
-        var organization = await db.Organizations.FirstAsync(o => o.Id == currentUser.OrganizationId, cancellationToken);
+        var organization = (await organizations.GetAsync(currentUser.OrganizationId!.Value, cancellationToken))!;
         organization.UpdateInfo(request.Name, request.ContactName, request.ContactPhone, request.ContactEmail, request.TaxCode, request.Address);
-        await db.SaveChangesAsync(cancellationToken);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
         return organization.ToInfo();
     }
 }

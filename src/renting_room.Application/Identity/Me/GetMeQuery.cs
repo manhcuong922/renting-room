@@ -1,5 +1,4 @@
 using Mediator;
-using Microsoft.EntityFrameworkCore;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Domain.Common;
 using renting_room.Domain.Identity;
@@ -22,31 +21,14 @@ public sealed record MeDto(
     bool CanViewSensitiveData,
     bool CanWriteOff = false);
 
-public sealed class GetMeHandler(IAppDbContext db, ICurrentUser currentUser)
+public sealed class GetMeHandler(IUserQueries users, ICurrentUser currentUser)
     : IRequestHandler<GetMeQuery, Result<MeDto>>
 {
     public async ValueTask<Result<MeDto>> Handle(GetMeQuery request, CancellationToken cancellationToken)
     {
         var userId = currentUser.RequireUserId();
 
-        var me = await db.Users
-            .AsNoTracking()
-            .Where(u => u.Id == userId)
-            .Select(u => new MeDto(
-                u.Id,
-                u.FullName,
-                u.PhoneNormalized,
-                u.EmailNormalized,
-                u.Role,
-                u.MustChangePassword,
-                u.LastLoginAt,
-                db.Organizations
-                    .Where(o => o.Id == u.OrganizationId)
-                    .Select(o => new MeOrganizationDto(o.Id, o.Code, o.Name))
-                    .FirstOrDefault(),
-                u.Role == UserRole.OrgOwner || (u.Role == UserRole.OrgManager && u.CanViewSensitiveData),
-                u.Role == UserRole.OrgOwner || (u.Role == UserRole.OrgManager && u.CanWriteOff)))
-            .FirstOrDefaultAsync(cancellationToken);
+        var me = await users.GetMeAsync(userId, cancellationToken);
 
         return me is null ? IdentityErrors.UserNotFound : me;
     }

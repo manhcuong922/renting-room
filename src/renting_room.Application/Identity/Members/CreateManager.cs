@@ -1,6 +1,5 @@
 using FluentValidation;
 using Mediator;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Common.Validation;
@@ -27,7 +26,10 @@ public sealed class CreateManagerCommandValidator : AbstractValidator<CreateMana
 }
 
 public sealed class CreateManagerHandler(
-    IAppDbContext db,
+    IUserRepository users,
+    IUserQueries userQueries,
+    IOrganizationQueries organizations,
+    IUnitOfWork unitOfWork,
     ICurrentUser currentUser,
     IPasswordHasher passwordHasher,
     TimeProvider clock,
@@ -40,18 +42,17 @@ public sealed class CreateManagerHandler(
         var phone = ContactNormalizer.NormalizePhone(request.Phone);
         var email = ContactNormalizer.NormalizeEmail(request.Email);
 
-        if (phone is not null && await db.Users.AnyAsync(u => u.PhoneNormalized == phone, cancellationToken))
+        if (phone is not null && await users.IsPhoneTakenAsync(phone, excludeId: null, cancellationToken))
             return IdentityErrors.PhoneTaken;
-        if (email is not null && await db.Users.AnyAsync(u => u.EmailNormalized == email, cancellationToken))
+        if (email is not null && await users.IsEmailTakenAsync(email, excludeId: null, cancellationToken))
             return IdentityErrors.EmailTaken;
 
-        await using var transaction = await db.BeginTransactionAsync(cancellationToken);
+        await using var transaction = await unitOfWork.BeginTransactionAsync(cancellationToken);
 
         // ID-BR-15: khóa hàng tổ chức ⇒ 2 request thêm song song không vượt giới hạn.
-        await db.LockForUpdateAsync<Organization>(organizationId, cancellationToken);
-        var maxManagers = await db.Organizations.Where(o => o.Id == organizationId).Select(o => o.MaxManagers).FirstAsync(cancellationToken);
-        var activeManagers = await db.Users.CountAsync(
-            u => u.OrganizationId == organizationId && u.Role == UserRole.OrgManager && u.Status != UserStatus.Removed, cancellationToken);
+        await unitOfWork.LockForUpdateAsync<Organization>(organizationId, cancellationToken);
+        var maxManagers = (await organizations.GetAsync(organizationId, cancellationToken))!.MaxManagers;
+        var activeManagers = await userQueries.CountActiveManagersAsync(organizationId, cancellationToken);
         if (activeManagers >= maxManagers)
             return IdentityErrors.ManagerLimitReached;
 
@@ -59,8 +60,8 @@ public sealed class CreateManagerHandler(
         var temporaryPassword = TemporaryPasswordGenerator.Generate();
         var manager = User.CreateOrgManager(organizationId, request.FullName, phone, email, passwordHasher.Hash(temporaryPassword), now);
 
-        db.Users.Add(manager);
-        await db.SaveChangesAsync(cancellationToken);
+        users.Add(manager);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
 
         logger.LogInformation("Manager {UserId} added to organization {OrganizationId} by {ActorId}",

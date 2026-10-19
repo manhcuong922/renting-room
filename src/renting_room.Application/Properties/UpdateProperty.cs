@@ -1,10 +1,10 @@
 using FluentValidation;
 using Mediator;
-using Microsoft.EntityFrameworkCore;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Common.Validation;
 using renting_room.Domain.Common;
 using renting_room.Domain.Properties;
+using renting_room.Application.Identity.Organizations;
 
 namespace renting_room.Application.Properties;
 
@@ -30,18 +30,20 @@ public sealed class UpdatePropertyCommandValidator : AbstractValidator<UpdatePro
 }
 
 /// <summary>Sửa thông tin khu. Cài đặt kỳ thu đổi qua <see cref="UpdatePropertyBillingCommand"/> (K4).</summary>
-public sealed class UpdatePropertyHandler(IAppDbContext db, TimeProvider clock) : IRequestHandler<UpdatePropertyCommand, Result<PropertyDetailDto>>
+public sealed class UpdatePropertyHandler(
+    IPropertyRepository properties, IOrganizationQueries organizations, IUnitOfWork unitOfWork, TimeProvider clock)
+    : IRequestHandler<UpdatePropertyCommand, Result<PropertyDetailDto>>
 {
     public async ValueTask<Result<PropertyDetailDto>> Handle(UpdatePropertyCommand request, CancellationToken cancellationToken)
     {
-        var property = await db.Properties.FirstOrDefaultAsync(p => p.Id == request.Id, cancellationToken);
+        var property = await properties.GetAsync(request.Id, cancellationToken);
         if (property is null)
             return PropertyErrors.PropertyNotFound;
 
-        db.SetExpectedVersion(property, request.Version);
+        unitOfWork.SetExpectedVersion(property, request.Version);
         property.UpdateInfo(request.Name, request.Address.ToDomain(), request.Description, request.EvnCustomerCode, request.Land.ToDomain());
-        await db.SaveChangesAsync(cancellationToken);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
 
-        return await property.ToDetailAsync(db, clock.GetUtcNow().ToBusinessDate(), cancellationToken);
+        return await property.ToDetailAsync(organizations, clock.GetUtcNow().ToBusinessDate(), cancellationToken);
     }
 }

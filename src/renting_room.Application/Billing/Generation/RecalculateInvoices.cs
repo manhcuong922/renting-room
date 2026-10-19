@@ -1,6 +1,5 @@
 using FluentValidation;
 using Mediator;
-using Microsoft.EntityFrameworkCore;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Contracts;
 using renting_room.Application.Properties;
@@ -29,26 +28,14 @@ public sealed class RecalculateInvoicesCommandValidator : AbstractValidator<Reca
     }
 }
 
-public sealed class RecalculateInvoicesHandler(IAppDbContext db) : IRequestHandler<RecalculateInvoicesCommand, Result<RecalculateInvoicesResult>>
+public sealed class RecalculateInvoicesHandler(
+    IUnitOfWork unitOfWork, IContractRepository contracts, IInvoiceRepository invoices, IInvoiceQueries invoiceQueries, IPropertyQueries properties,
+    InvoiceInputLoader inputs, RoomChargeBilling roomCharges)
+    : IRequestHandler<RecalculateInvoicesCommand, Result<RecalculateInvoicesResult>>
 {
     public async ValueTask<Result<RecalculateInvoicesResult>> Handle(RecalculateInvoicesCommand request, CancellationToken cancellationToken)
     {
-        var query = db.Invoices.AsNoTracking().Where(i => i.Status != InvoiceStatus.Void);
-        if (request.InvoiceIds is { Count: > 0 } ids)
-            query = query.Where(i => ids.Contains(i.Id));
-        else
-        {
-            query = query.Where(i => i.PropertyId == request.PropertyId);
-            if (BillingMonths.Parse(request.BillingMonth) is { } month)
-                query = query.Where(i => i.BillingMonth == month);
-            if (request.RoomIds is { Count: > 0 } roomIds)
-                query = query.Where(i => roomIds.Contains(i.RoomId));
-            if (!string.IsNullOrWhiteSpace(request.Floor))
-                query = query.Where(i => db.Rooms.Any(r => r.Id == i.RoomId && r.Floor == request.Floor.Trim()));
-        }
-        if (request.StaleOnly)
-            query = query.Where(i => i.Status == InvoiceStatus.Draft && i.IsStale);
-        var targets = await query.Select(i => new { i.Id, i.ContractId, i.Status }).ToListAsync(cancellationToken);
+        var targets = await invoiceQueries.ListRecalculationTargetsAsync(request, cancellationToken);
 
         int recalculated = 0, withIssues = 0;
         foreach (var target in targets.Where(t => t.Status == InvoiceStatus.Draft))
@@ -64,21 +51,21 @@ public sealed class RecalculateInvoicesHandler(IAppDbContext db) : IRequestHandl
 
     private async Task<bool> RecalculateOneAsync(Guid contractId, Guid invoiceId, bool keepManualEdits, CancellationToken ct)
     {
-        await using var transaction = await db.BeginTransactionAsync(ct);
-        await db.LockForUpdateAsync<Contract>(contractId, ct);
-        await db.LockForUpdateAsync<Invoice>(invoiceId, ct);
-        var contract = (await ContractMutation.LoadAsync(db, contractId, ct))!;
-        var invoice = await db.Invoices.Include(i => i.Lines).Include(i => i.Segments).AsSplitQuery().FirstAsync(i => i.Id == invoiceId, ct);
+        await using var transaction = await unitOfWork.BeginTransactionAsync(ct);
+        await unitOfWork.LockForUpdateAsync<Contract>(contractId, ct);
+        await unitOfWork.LockForUpdateAsync<Invoice>(invoiceId, ct);
+        var contract = (await contracts.GetForUpdateAsync(contractId, ct))!;
+        var invoice = (await invoices.GetForUpdateAsync(invoiceId, ct))!;
         if (invoice.Status != InvoiceStatus.Draft)
             return false;
 
-        var schedule = (await PropertyBilling.LoadAsync(db, contract.PropertyId, ct)).Schedule;
-        var period = InvoiceInputs.CurrentPeriod(contract, invoice, schedule)
+        var schedule = (await properties.GetBillingAsync(contract.PropertyId, ct)).Schedule;
+        var period = InvoiceInputLoader.CurrentPeriod(contract, invoice, schedule)
             ?? new BillingPeriod(invoice.PeriodStart, invoice.PeriodEnd, invoice.BillingMonth);
-        var calculation = InvoiceCalculator.Calculate(await InvoiceInputs.LoadAsync(db, contract, period, invoice.Id, ct, invoice.Type));
+        var calculation = InvoiceCalculator.Calculate(await inputs.LoadAsync(contract, period, invoice.Id, ct, invoice.Type));
         invoice.ApplyCalculation(calculation, keepManualEdits, period.End);
-        await RoomChargeBilling.AttachPendingAsync(db, invoice, ct);
-        await db.SaveChangesAsync(ct);
+        await roomCharges.AttachPendingAsync(invoice, ct);
+        await unitOfWork.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
         return invoice.HasBlockingIssues;
     }

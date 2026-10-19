@@ -1,6 +1,5 @@
 using FluentValidation;
 using Mediator;
-using Microsoft.EntityFrameworkCore;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Common.Validation;
 using renting_room.Domain.Common;
@@ -24,20 +23,20 @@ public sealed class AddRenterConsentCommandValidator : AbstractValidator<AddRent
     }
 }
 
-public sealed class AddRenterConsentHandler(IAppDbContext db) : IRequestHandler<AddRenterConsentCommand, Result<RenterConsentDto>>
+public sealed class AddRenterConsentHandler(IRenterQueries renters, IRenterConsentRepository consents, IUnitOfWork unitOfWork)
+    : IRequestHandler<AddRenterConsentCommand, Result<RenterConsentDto>>
 {
     public async ValueTask<Result<RenterConsentDto>> Handle(AddRenterConsentCommand request, CancellationToken cancellationToken)
     {
-        var renter = await db.Renters.AsNoTracking().Where(r => r.Id == request.RenterId).Select(r => new { r.AnonymizedAt })
-            .FirstOrDefaultAsync(cancellationToken);
-        if (renter is null)
+        var anonymized = await renters.IsAnonymizedAsync(request.RenterId, cancellationToken);
+        if (anonymized is null)
             return RenterErrors.RenterNotFound;
-        if (renter.AnonymizedAt is not null)
+        if (anonymized.Value)
             return RenterErrors.Anonymized;
 
         var consent = RenterConsent.Create(request.RenterId, request.Purpose, request.Method, request.GivenAt, request.Note);
-        db.RenterConsents.Add(consent);
-        await db.SaveChangesAsync(cancellationToken);
+        consents.Add(consent);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
         return consent.ToDto();
     }
 }

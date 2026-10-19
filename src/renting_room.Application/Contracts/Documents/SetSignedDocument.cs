@@ -1,6 +1,5 @@
 using FluentValidation;
 using Mediator;
-using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Common.Validation;
 using renting_room.Domain.Common;
 
@@ -14,9 +13,9 @@ public sealed class SetSignedDocumentCommandValidator : AbstractValidator<SetSig
     public SetSignedDocumentCommandValidator() => RuleFor(x => x.Note).OptionalText(300);
 }
 
-public sealed class SetSignedDocumentHandler(IAppDbContext db) : IRequestHandler<SetSignedDocumentCommand, Result>
+public sealed class SetSignedDocumentHandler(ContractMutation mutation) : IRequestHandler<SetSignedDocumentCommand, Result>
 {
     public ValueTask<Result> Handle(SetSignedDocumentCommand request, CancellationToken cancellationToken) =>
-        new(ContractMutation.RunAsync(db, request.ContractId,
+        new(mutation.RunAsync(request.ContractId,
             contract => Task.FromResult(contract.SetSignedDocument(request.HasSignedDocument, request.Note)), cancellationToken));
 }

@@ -1,10 +1,12 @@
 using FluentValidation;
 using Mediator;
-using Microsoft.EntityFrameworkCore;
-using renting_room.Application.Common.Interfaces;
+using renting_room.Application.Fees;
+using renting_room.Application.Meters;
+using renting_room.Application.Properties;
+using renting_room.Application.Renters;
+using renting_room.Application.Rooms;
 using renting_room.Domain.Common;
 using renting_room.Domain.Contracts;
-using renting_room.Domain.Fees;
 
 namespace renting_room.Application.Contracts;
 
@@ -13,47 +15,42 @@ public sealed record GetContractQuery(Guid Id) : IRequest<Result<ContractDetailD
 internal static class ContractMeterWarnings
 {
     /// <summary>MT-BR-11: HĐ đang hiệu lực mà phòng chưa có công tơ điện (khu có khoản Điện) ⇒ không tính được tiền điện.</summary>
-    public static async Task<IReadOnlyList<Warning>> ForAsync(IAppDbContext db, Contract contract, DateOnly today, CancellationToken ct)
+    public static async Task<IReadOnlyList<Warning>> ForAsync(
+        IFeeQueries fees, IMeterQueries meters, Contract contract, DateOnly today, CancellationToken ct)
     {
         if (contract.Status != ContractStatus.Active)
             return [];
-        var electricity = await db.FeeTypes.Where(f => f.PropertyId == contract.PropertyId && f.SystemCode == FeeSystemCodes.Electricity
-                && f.ArchivedAt == null)
-            .Select(f => (Guid?)f.Id).FirstOrDefaultAsync(ct);
-        if (electricity is null || await db.Meters.AnyAsync(m => m.RoomId == contract.RoomId && m.FeeTypeId == electricity
-                && (m.RemovedDate == null || m.RemovedDate > today), ct))
+        var electricity = await fees.FindElectricityIdAsync(contract.PropertyId, ct);
+        if (electricity is null || await meters.HasMeterOnAsync(contract.RoomId, electricity.Value, today, ct))
             return [];
         return [new Warning("ROOM_WITHOUT_METER", "Phòng chưa có công tơ điện — lắp công tơ (kèm chỉ số) để tính được tiền điện.")];
     }
 }
 
-public sealed class GetContractHandler(IAppDbContext db, TimeProvider clock) : IRequestHandler<GetContractQuery, Result<ContractDetailDto>>
+public sealed class GetContractHandler(
+    IContractQueries contracts, IRenterQueries renters, IPropertyQueries properties, IRoomQueries rooms, IFeeQueries fees, IMeterQueries meters,
+    ContractPaperWarnings paperWarnings, TimeProvider clock)
+    : IRequestHandler<GetContractQuery, Result<ContractDetailDto>>
 {
     private Task<IReadOnlyList<Warning>> MeterWarningsAsync(Contract contract, DateOnly today, CancellationToken ct) =>
-        ContractMeterWarnings.ForAsync(db, contract, today, ct);
+        ContractMeterWarnings.ForAsync(fees, meters, contract, today, ct);
 
     public async ValueTask<Result<ContractDetailDto>> Handle(GetContractQuery request, CancellationToken cancellationToken)
     {
-        var contract = await db.Contracts.AsNoTracking()
-            .Include(c => c.RentTerms).Include(c => c.Occupants).Include(c => c.Assets).Include(c => c.Vehicles).Include(c => c.Fees)
-            .Include(c => c.RoomMoves).Include(c => c.RepresentativeHistory)
-            .AsSplitQuery()
-            .FirstOrDefaultAsync(c => c.Id == request.Id, cancellationToken);
+        var contract = await contracts.GetDetailsAsync(request.Id, cancellationToken);
         if (contract is null)
             return ContractErrors.NotFound;
 
         var renterIds = contract.Occupants.Select(o => o.RenterId).Append(contract.RepresentativeRenterId)
             .Concat(contract.RepresentativeHistory.Select(h => h.RenterId)).Distinct().ToList();
-        var names = await db.Renters.AsNoTracking().Where(r => renterIds.Contains(r.Id))
-            .ToDictionaryAsync(r => r.Id, r => r.FullName, cancellationToken);
-        var property = await db.Properties.AsNoTracking().Where(p => p.Id == contract.PropertyId)
-            .Select(p => new { p.Code, p.BillingAnchorDay, p.ChargeMode, p.ProrationMode, p.PaymentDueDays }).FirstAsync(cancellationToken);
+        var names = await renters.GetNamesAsync(renterIds, cancellationToken);
+        var property = (await properties.GetAsync(contract.PropertyId, cancellationToken))!;
         var propertyCode = property.Code;
-        var roomCode = await db.Rooms.Where(r => r.Id == contract.RoomId).Select(r => r.Code).FirstAsync(cancellationToken);
+        var roomCode = (await rooms.GetCodeAsync(contract.RoomId, cancellationToken))!;
         var today = clock.GetUtcNow().ToBusinessDate();
         var snapshot = SigningSnapshot.FromJson(contract.SigningSnapshot);
         var movedFrom = contract.RoomMoves.Select(m => m.RoomId).ToList();
-        var movedCodes = await db.Rooms.AsNoTracking().Where(r => movedFrom.Contains(r.Id)).ToDictionaryAsync(r => r.Id, r => r.Code, cancellationToken);
+        var movedCodes = await rooms.GetCodesAsync(movedFrom, cancellationToken);
 
         return new ContractDetailDto(
             contract.Id, contract.ContractNo, contract.Status, contract.PropertyId, propertyCode, contract.RoomId, roomCode,
@@ -79,13 +76,13 @@ public sealed class GetContractHandler(IAppDbContext db, TimeProvider clock) : I
                 .Select(v => new VehicleDto(v.Id, v.RenterId, v.VehicleType, v.PlateNumber, v.BrandColor, v.RegisteredFrom, v.RegisteredTo,
                     v.Note)).ToList(),
             ContractDocumentDto.From(contract),
-            ContractWarnings.For(contract, await ContractFeeRules.LoadParkingFeesAsync(db, contract.PropertyId, cancellationToken), today)
+            ContractWarnings.For(contract, await fees.ListParkingFeesAsync(contract.PropertyId, cancellationToken), today)
                 .Concat(await MeterWarningsAsync(contract, today, cancellationToken))
-                .Concat(await ContractPaperWarnings.ForAsync(db, contract, today, cancellationToken)).ToList(),
+                .Concat(await paperWarnings.ForAsync(contract, today, cancellationToken)).ToList(),
             contract.HouseholdHeadRenterId,
-            await ContractFeeRules.ToDtosAsync(db, contract, today, cancellationToken),
+            await ContractFeeRules.ToDtosAsync(fees, meters, contract, today, cancellationToken),
             UtilityPriceSnapshotJson.FromJson(contract.UtilityPriceSnapshot)
-                ?? UtilityPriceSnapshotJson.Capture(contract, await ContractFeeRules.LoadTypesAsync(db, contract, cancellationToken)),
+                ?? UtilityPriceSnapshotJson.Capture(contract, await ContractFeeRules.LoadTypesAsync(fees, meters, contract, cancellationToken)),
             contract.Flags(today),
             contract.HoldoverSince,
             contract.HoldoverNote,

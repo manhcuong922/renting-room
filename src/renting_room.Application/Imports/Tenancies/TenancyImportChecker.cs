@@ -1,8 +1,9 @@
 using FluentValidation;
-using Microsoft.EntityFrameworkCore;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Contracts;
+using renting_room.Application.Meters;
 using renting_room.Application.Renters;
+using renting_room.Application.Rooms;
 using renting_room.Domain.Common;
 using renting_room.Domain.Contracts;
 using renting_room.Domain.Properties;
@@ -25,10 +26,9 @@ internal sealed record TenancyCheck(
 
 /// <summary>Kiểm các dòng theo dữ liệu hiện tại — dùng chung cho xem trước và lưu (RT-UC-10).</summary>
 internal sealed class TenancyImportChecker(
-    IAppDbContext db, ICurrentUser currentUser, IPersonalDataProtector protector, IValidator<CreateRenterCommand> renterValidator)
+    IRenterQueries renters, IContractQueries contracts, IRoomQueries roomQueries, IMeterQueries meters, ICurrentUser currentUser,
+    IPersonalDataProtector protector, IValidator<CreateRenterCommand> renterValidator)
 {
-    private static readonly ContractStatus[] OpenStatuses = [ContractStatus.Draft, ContractStatus.Active, ContractStatus.Liquidating];
-
     public async Task<TenancyCheck> CheckAsync(
         Property property, IReadOnlyList<TenancyImportRow> rows, IReadOnlyDictionary<int, List<ImportIssue>> parseErrors, DateOnly today,
         CancellationToken ct)
@@ -98,14 +98,9 @@ internal sealed class TenancyImportChecker(
         var hashes = rows.Where(r => r is { IdType: not null, IdNumber: not null })
             .ToDictionary(r => r.RowNumber, r => protector.ProtectIdNumber(organizationId, r.IdType!.Value, r.IdNumber!).Hash);
         var hashList = hashes.Values.Distinct().Select(h => (string?)h).ToList();
-        var existing = await db.Renters.AsNoTracking().Where(r => hashList.Contains(r.IdNumberHash))
-            .Select(r => new { r.Id, r.IdNumberHash, r.FullName, r.DateOfBirth, r.Phone }).ToListAsync(ct);
+        var existing = await renters.ListByIdNumberHashesAsync(hashList, ct);
         var existingIds = existing.Select(e => e.Id).ToList();
-        var stayingElsewhere = (await db.Contracts.AsNoTracking()
-                .Where(c => OpenStatuses.Contains(c.Status))
-                .SelectMany(c => c.Occupants.Where(o => existingIds.Contains(o.RenterId) && (o.MoveOutDate == null || o.MoveOutDate >= today))
-                    .Select(o => new { o.RenterId, c.ContractNo, RoomCode = db.Rooms.Where(r => r.Id == c.RoomId).Select(r => r.Code).First() }))
-                .ToListAsync(ct))
+        var stayingElsewhere = (await contracts.ListOpenStaysAsync(existingIds, today, ct))
             .GroupBy(x => x.RenterId).ToDictionary(g => g.Key, g => g.First());
         foreach (var row in rows.Where(r => hashes.ContainsKey(r.RowNumber)))
         {
@@ -127,23 +122,15 @@ internal sealed class TenancyImportChecker(
         // 4. Theo phòng.
         var periodStart = property.BillingSchedule.StandardPeriodContaining(today).Start;
         var roomCodes = rows.Where(r => r.RoomCode is not null).Select(r => r.RoomCode!).Distinct().ToList();
-        var roomsByCode = await db.Rooms.AsNoTracking().Where(r => r.PropertyId == property.Id && roomCodes.Contains(r.Code))
-            .Select(r => new { r.Id, r.Code, r.ArchivedAt }).ToDictionaryAsync(r => r.Code, ct);
+        var roomsByCode = await roomQueries.ListByCodesAsync(property.Id, roomCodes, ct);
         var roomIds = roomsByCode.Values.Select(r => r.Id).ToList();
-        var openContracts = (await db.Contracts.AsNoTracking().Where(c => roomIds.Contains(c.RoomId) && OpenStatuses.Contains(c.Status))
-                .Select(c => new { c.RoomId, c.ContractNo, c.Status, Name = db.Renters.Where(r => r.Id == c.RepresentativeRenterId).Select(r => r.FullName).First() })
-                .ToListAsync(ct))
+        var openContracts = (await contracts.ListOpenInRoomsAsync(roomIds, ct))
             .GroupBy(c => c.RoomId).ToDictionary(g => g.Key, g => g.First());
         // Phòng đã có HĐ khác ở tới ngày nào: HĐ đã kết thúc (ngày trả phòng) / đã chuyển đi (ngày chuyển — CT-BR-14). Bước kích hoạt chặn nếu
         // ngày đó ≥ ngày bắt đầu HĐ mới ⇒ xem trước phải báo cùng điều kiện.
-        var endedUntil = await db.Contracts.AsNoTracking().Where(c => roomIds.Contains(c.RoomId) && c.Status == ContractStatus.Ended)
-            .Select(c => new { c.RoomId, Until = c.ActualEndDate!.Value }).ToListAsync(ct);
-        var movedUntil = await db.Contracts.AsNoTracking().SelectMany(c => c.RoomMoves).Where(m => roomIds.Contains(m.RoomId))
-            .Select(m => new { m.RoomId, Until = m.ToDate }).ToListAsync(ct);
-        var occupiedUntil = endedUntil.Concat(movedUntil).GroupBy(x => x.RoomId).ToDictionary(g => g.Key, g => g.Max(x => x.Until));
-        var lastReadings = (await db.Meters.AsNoTracking().Where(m => roomIds.Contains(m.RoomId) && m.RemovedDate == null)
-                .Select(m => new { m.RoomId, m.SerialNo, Last = m.Readings.Max(r => (DateOnly?)r.ReadingDate) }).ToListAsync(ct))
-            .ToLookup(m => m.RoomId);
+        var occupiedUntil = (await contracts.ListOccupiedUntilAsync(roomIds, ct))
+            .GroupBy(x => x.RoomId).ToDictionary(g => g.Key, g => g.Max(x => x.Until));
+        var lastReadings = (await meters.ListLastReadingsAsync(roomIds, ct)).ToLookup(m => m.RoomId);
 
         var rooms = new List<TenancyRoomDto>();
         var plans = new List<TenancyPlan>();

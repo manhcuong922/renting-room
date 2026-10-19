@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Domain.Identity;
 using renting_room.Infrastructure.Jobs;
+using renting_room.Infrastructure.Persistence;
 using renting_room.IntegrationTests.Infrastructure;
 
 namespace renting_room.IntegrationTests;
@@ -66,7 +67,7 @@ public sealed class AccountSecurityTests(ApiFactory factory)
         var staleEvent = LoginEvent.Record(null, "0900000000", null, LoginOutcome.UnknownUser, longAgo);
         await using (var scope = factory.Services.CreateAsyncScope())
         {
-            var db = scope.ServiceProvider.GetRequiredService<IAppDbContext>();
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
             db.RefreshTokens.Add(staleToken);
             db.LoginEvents.Add(staleEvent);
             await db.SaveChangesAsync(CancellationToken.None);
@@ -77,7 +78,7 @@ public sealed class AccountSecurityTests(ApiFactory factory)
         purged.LoginEvents.Should().BeGreaterThanOrEqualTo(1);
 
         await using var check = factory.Services.CreateAsyncScope();
-        var after = check.ServiceProvider.GetRequiredService<IAppDbContext>();
+        var after = check.ServiceProvider.GetRequiredService<AppDbContext>();
         (await after.RefreshTokens.AnyAsync(t => t.Id == staleToken.Id)).Should().BeFalse();
         (await after.LoginEvents.AnyAsync(e => e.Id == staleEvent.Id)).Should().BeFalse();
         (await _client.GetAsync("/api/v1/me", owner.Tokens.AccessToken)).StatusCode.Should().Be(HttpStatusCode.OK, "phiên đang dùng không bị dọn");

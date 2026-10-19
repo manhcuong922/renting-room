@@ -1,6 +1,5 @@
 using FluentValidation;
-using Microsoft.EntityFrameworkCore;
-using renting_room.Application.Common.Interfaces;
+using renting_room.Application.Fees;
 using renting_room.Application.Meters;
 using renting_room.Application.Rooms;
 using renting_room.Domain.Common;
@@ -11,14 +10,15 @@ namespace renting_room.Application.Imports;
 
 // PR-UC-11: import phòng từ Excel — xem trước (không giữ) → sửa → lưu dòng hợp lệ
 /// <summary>Kiểm các dòng nhập phòng theo dữ liệu hiện tại — dùng chung cho xem trước và lưu (PR-UC-11).</summary>
-internal sealed class RoomImportChecker(IAppDbContext db, IValidator<CreateRoomCommand> roomValidator, IValidator<InstallMeterCommand> meterValidator)
+internal sealed class RoomImportChecker(
+    IRoomQueries rooms, IFeeQueries fees, IValidator<CreateRoomCommand> roomValidator, IValidator<InstallMeterCommand> meterValidator)
 {
     public async Task<IReadOnlyList<ImportRowResult<RoomImportRow>>> CheckAsync(
         Property property, IReadOnlyList<RoomImportRow> rows, IReadOnlyDictionary<int, List<ImportIssue>> parseErrors, DateOnly meterDate,
         CancellationToken ct)
     {
-        var existing = (await db.Rooms.Where(r => r.PropertyId == property.Id).Select(r => r.Code).ToListAsync(ct)).ToHashSet();
-        var meterFees = await MeterFeesAsync(db, property.Id, ct);
+        var existing = await rooms.GetCodeSetAsync(property.Id, ct);
+        var meterFees = await fees.GetSystemFeeIdsAsync(property.Id, ct);
         var duplicates = rows.Where(r => r.Code is not null).GroupBy(r => TextNormalizer.NormalizeCode(r.Code!))
             .Where(g => g.Count() > 1).Select(g => g.Key).ToHashSet();
 
@@ -60,10 +60,6 @@ internal sealed class RoomImportChecker(IAppDbContext db, IValidator<CreateRoomC
         }
         return results;
     }
-
-    public static Task<Dictionary<string, Guid>> MeterFeesAsync(IAppDbContext db, Guid propertyId, CancellationToken ct) =>
-        db.FeeTypes.Where(f => f.PropertyId == propertyId && f.SystemCode != null && f.ArchivedAt == null)
-            .ToDictionaryAsync(f => f.SystemCode!, f => f.Id, ct);
 
     /// <summary>Công tơ khai qua import tính là lắp từ ngày chốt kỳ hiện tại của khu (chỉ số đầu kỳ chủ trọ vẫn ghi sổ).</summary>
     public static DateOnly MeterDate(Property property, DateOnly today) => property.BillingSchedule.StandardPeriodContaining(today).Start;

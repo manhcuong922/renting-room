@@ -20,6 +20,15 @@ public static class DependencyInjection
         services.TryAddSingleton(TimeProvider.System);
         services.AddScoped<AuthTokenIssuer>();
         services.AddScoped<Renters.RenterAnonymizer>();
+        services.AddScoped<Payments.PaymentPosting>();
+        services.AddScoped<Billing.RoomChargeBilling>();
+        services.AddScoped<Billing.InvoiceInputLoader>();
+        services.AddScoped<Billing.InvoiceFinalizer>();
+        services.AddScoped<Meters.ContractMeterReadings>();
+        services.AddScoped<Contracts.ContractMutation>();
+        services.AddScoped<Contracts.OccupantChecks>();
+        services.AddScoped<Contracts.ContractPaperWarnings>();
+        services.AddScoped<Contracts.ContractDraftBuilder>();
 
         return services;
     }

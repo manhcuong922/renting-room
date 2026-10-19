@@ -1,7 +1,8 @@
 using FluentValidation;
 using Mediator;
-using Microsoft.EntityFrameworkCore;
 using renting_room.Application.Common.Interfaces;
+using renting_room.Application.Contracts;
+using renting_room.Application.Rooms;
 using renting_room.Application.Common.Validation;
 using renting_room.Domain.Billing;
 using renting_room.Domain.Common;
@@ -33,63 +34,59 @@ public sealed class CreateRoomChargeCommandValidator : AbstractValidator<CreateR
 /// BL-UC-15 / BL-BR-30..33: tạo phụ thu / bù cho phòng đang có người thuê tại ngày phát sinh; nháp nhận được khoản đã có ⇒ gắn ngay,
 /// chưa có ⇒ chờ. Khóa HĐ → phiếu (C-07).
 /// </summary>
-public sealed class CreateRoomChargeHandler(IAppDbContext db, TimeProvider clock) : IRequestHandler<CreateRoomChargeCommand, Result<RoomChargeDto>>
+public sealed class CreateRoomChargeHandler(
+    IUnitOfWork unitOfWork, IRoomQueries rooms, IContractQueries contracts, IInvoiceQueries invoiceQueries, IRoomChargeRepository roomChargeRepository,
+    IRoomChargeQueries roomChargeQueries, RoomChargeBilling roomCharges, TimeProvider clock)
+    : IRequestHandler<CreateRoomChargeCommand, Result<RoomChargeDto>>
 {
     public async ValueTask<Result<RoomChargeDto>> Handle(CreateRoomChargeCommand request, CancellationToken cancellationToken)
     {
-        var room = await db.Rooms.AsNoTracking().Where(r => r.Id == request.RoomId).Select(r => new { r.Id, r.PropertyId }).FirstOrDefaultAsync(cancellationToken);
-        if (room is null)
+        var propertyId = await rooms.GetPropertyIdAsync(request.RoomId, cancellationToken);
+        if (propertyId is null)
             return PropertyErrors.RoomNotFound;
 
         // HĐ đang ở phòng tại ngày phát sinh — kể cả HĐ đã chuyển sang phòng khác sau đó (M05 CT-BR-14).
         var date = request.IncurredOn;
-        var tenancy = await db.Contracts.AsNoTracking()
-            .Where(c => (c.Status == ContractStatus.Active || c.Status == ContractStatus.Liquidating || c.Status == ContractStatus.Ended)
-                && ((c.RoomId == room.Id && c.RoomSince <= date && (c.ActualEndDate == null || c.ActualEndDate >= date))
-                    || c.RoomMoves.Any(m => m.RoomId == room.Id && m.FromDate <= date && m.ToDate >= date)))
-            .OrderByDescending(c => c.StartDate).Select(c => new { c.Id, c.Status }).FirstOrDefaultAsync(cancellationToken);
+        var tenancy = await contracts.FindTenancyAsync(request.RoomId, date, cancellationToken);
         if (tenancy is null)
             return RoomChargeErrors.NoTenant;
 
-        await using var transaction = await db.BeginTransactionAsync(cancellationToken);
-        await db.LockForUpdateAsync<Contract>(tenancy.Id, cancellationToken);
-        var status = await db.Contracts.Where(c => c.Id == tenancy.Id).Select(c => c.Status).FirstAsync(cancellationToken);
-        var finalClosed = await db.Invoices.AnyAsync(
-            i => i.ContractId == tenancy.Id && i.Type == InvoiceType.Final && i.Status == InvoiceStatus.Finalized, cancellationToken);
+        await using var transaction = await unitOfWork.BeginTransactionAsync(cancellationToken);
+        await unitOfWork.LockForUpdateAsync<Contract>(tenancy.Id, cancellationToken);
+        var status = (await contracts.GetStatusAsync(tenancy.Id, cancellationToken))!.Value;
+        var finalClosed = await invoiceQueries.HasFinalizedFinalAsync(tenancy.Id, cancellationToken);
         if (status == ContractStatus.Ended || (status == ContractStatus.Liquidating && finalClosed))
             return RoomChargeErrors.NoOpenInvoice;
 
         // BL-BR-30 (G-01): khoản bù chưa trả không vượt một tháng tiền phòng ⇒ phiếu tháng luôn trừ được hết, không còn khoản bù treo.
         if (request.Kind == RoomChargeKind.Credit && request.Settlement is null
-            && await CreditLimitExceededAsync(db, tenancy.Id, date, request.Amount, cancellationToken) is { } limit)
+            && await CreditLimitExceededAsync(contracts, roomChargeQueries, tenancy.Id, date, request.Amount, cancellationToken) is { } limit)
             return RoomChargeErrors.CreditTooHigh(limit);
 
-        var charge = RoomCharge.Create(room.PropertyId, room.Id, tenancy.Id, request.Kind, request.Description, request.Amount, date, request.Reason);
+        var charge = RoomCharge.Create(propertyId.Value, request.RoomId, tenancy.Id, request.Kind, request.Description, request.Amount, date, request.Reason);
         if (request.Settlement is { } settlement)
         {
             var settled = charge.Settle(settlement.SettledOn, settlement.Method, clock.GetUtcNow().ToBusinessDate());
             if (settled.IsFailure)
                 return settled.Error!;
         }
-        db.RoomCharges.Add(charge);
-        if (await RoomChargeBilling.DraftForAsync(db, tenancy.Id, date, cancellationToken) is { } draft)
+        roomChargeRepository.Add(charge);
+        if (await roomCharges.DraftForAsync(tenancy.Id, date, cancellationToken) is { } draft)
             RoomChargeBilling.Attach(draft, charge);
 
-        await db.SaveChangesAsync(cancellationToken);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
-        return (await RoomChargeBilling.ToDtosAsync(db, [charge], cancellationToken))[0];
+        return (await roomCharges.ToDtosAsync([charge], cancellationToken))[0];
     }
 
     /// <summary>Trả giới hạn (1 tháng tiền phòng) nếu khoản bù mới + các khoản bù chưa trả chưa vào phiếu đã chốt vượt giới hạn; null = hợp lệ.</summary>
-    internal static async Task<decimal?> CreditLimitExceededAsync(IAppDbContext db, Guid contractId, DateOnly date, decimal amount, CancellationToken ct)
+    internal static async Task<decimal?> CreditLimitExceededAsync(
+        IContractQueries contracts, IRoomChargeQueries roomCharges, Guid contractId, DateOnly date, decimal amount, CancellationToken ct)
     {
-        var contract = await db.Contracts.AsNoTracking().Include(c => c.RentTerms).FirstAsync(c => c.Id == contractId, ct);
+        var contract = (await contracts.GetWithRentTermsAsync(contractId, ct))!;
         if (contract.CurrentRent(date) is not { } rent)
             return null;
-        var waiting = await db.RoomCharges
-            .Where(c => c.ContractId == contractId && c.Kind == RoomChargeKind.Credit && c.CancelledAt == null && !c.IsSettled
-                && (c.InvoiceId == null || db.Invoices.Any(i => i.Id == c.InvoiceId && i.Status == InvoiceStatus.Draft)))
-            .SumAsync(c => (decimal?)c.Amount, ct) ?? 0;
+        var waiting = await roomCharges.GetWaitingCreditTotalAsync(contractId, ct);
         return waiting + amount > rent ? rent : null;
     }
 }

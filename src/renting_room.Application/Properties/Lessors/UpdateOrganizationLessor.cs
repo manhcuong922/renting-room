@@ -1,9 +1,9 @@
 using FluentValidation;
 using Mediator;
-using Microsoft.EntityFrameworkCore;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Domain.Common;
 using renting_room.Domain.Properties;
+using renting_room.Application.Identity.Organizations;
 
 namespace renting_room.Application.Properties;
 
@@ -32,17 +32,19 @@ public sealed class UpdateOrganizationLessorCommandValidator : AbstractValidator
     public UpdateOrganizationLessorCommandValidator(TimeProvider clock) => this.Lessor(clock);
 }
 
-public sealed class UpdateOrganizationLessorHandler(IAppDbContext db, ICurrentUser currentUser, IPersonalDataProtector protector, TimeProvider clock)
+public sealed class UpdateOrganizationLessorHandler(
+    IOrganizationRepository organizations, IUnitOfWork unitOfWork, ICurrentUser currentUser, IPersonalDataProtector protector, TimeProvider clock)
     : IRequestHandler<UpdateOrganizationLessorCommand, Result<OrganizationLessorDto>>
 {
     public async ValueTask<Result<OrganizationLessorDto>> Handle(UpdateOrganizationLessorCommand request, CancellationToken cancellationToken)
     {
-        var organization = await db.Organizations.FirstAsync(o => o.Id == currentUser.OrganizationId, cancellationToken);
+        var organization = await organizations.GetAsync(currentUser.OrganizationId!.Value, cancellationToken)
+            ?? throw new InvalidOperationException("Organization of the current user not found.");
         var lessor = LessorRules.Build(request, organization.DefaultLessor, protector, organization.Id);
         if (lessor.IsFailure)
             return lessor.Error!;
         organization.UpdateDefaultLessor(lessor.Value!);
-        await db.SaveChangesAsync(cancellationToken);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
         return organization.ToLessorDto(clock.GetUtcNow().ToBusinessDate());
     }
 }

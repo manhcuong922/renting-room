@@ -1,6 +1,5 @@
 using FluentValidation;
 using Mediator;
-using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Common.Validation;
 using renting_room.Domain.Common;
 using renting_room.Domain.Contracts;
@@ -29,13 +28,13 @@ public sealed class AddOccupantCommandValidator : AbstractValidator<AddOccupantC
 /// CT-BR-28..30: quan hệ với người đứng tên hợp lệ; CT-BR-31: HĐ đang hiệu lực ⇒ người mới không đang ở phòng khác;
 /// CT-BR-49: đồng thuê phải có giấy tờ; CT-BR-50: không vừa là người ở thường ở đây vừa đứng tên HĐ khác.
 /// </summary>
-public sealed class AddOccupantHandler(IAppDbContext db)
+public sealed class AddOccupantHandler(ContractMutation mutation, OccupantChecks occupantChecks)
     : IRequestHandler<AddOccupantCommand, Result>
 {
     public ValueTask<Result> Handle(AddOccupantCommand request, CancellationToken cancellationToken) =>
-        new(ContractMutation.RunAsync(db, request.ContractId, async contract =>
+        new(mutation.RunAsync(request.ContractId, async contract =>
         {
-            var people = await OccupantChecks.LoadPeopleAsync(db, [request.RenterId, contract.ReferenceRenterId], cancellationToken);
+            var people = await occupantChecks.LoadPeopleAsync([request.RenterId, contract.ReferenceRenterId], cancellationToken);
             if (!people.ContainsKey(request.RenterId))
                 return Result.Failure(RenterErrors.RenterNotFound);
 
@@ -43,12 +42,12 @@ public sealed class AddOccupantHandler(IAppDbContext db)
             var input = new OccupantInput(request.RenterId, request.MoveInDate, request.ExpectedEndDate, request.Relationship, request.Note,
                 isReference ? null : request.RelationshipType, request.GuardianConsent, request.Role);
             if (request.Role == OccupantRole.CoTenant && request.RenterId != contract.RepresentativeRenterId
-                && !await OccupantChecks.HasIdNumberAsync(db, request.RenterId, cancellationToken))
+                && !await occupantChecks.HasIdNumberAsync(request.RenterId, cancellationToken))
                 return Result.Failure(ContractErrors.CoTenantIdRequired);
 
             if (contract.Status == ContractStatus.Active)
             {
-                var elsewhere = await OccupantChecks.FindLivingElsewhereAsync(db, contract,
+                var elsewhere = await occupantChecks.FindLivingElsewhereAsync(contract,
                     [(request.RenterId, request.MoveInDate, null)], people.ToDictionary(p => p.Key, p => p.Value.Name), cancellationToken);
                 if (elsewhere is not null)
                     return Result.Failure(elsewhere);
@@ -57,6 +56,6 @@ public sealed class AddOccupantHandler(IAppDbContext db)
             var added = contract.AddOccupant(input);
             if (added.IsFailure || contract.Status != ContractStatus.Active)
                 return added;
-            return await OccupantChecks.FindRoleConflictAsync(db, contract, cancellationToken) is { } conflict ? Result.Failure(conflict) : added;
+            return await occupantChecks.FindRoleConflictAsync(contract, cancellationToken) is { } conflict ? Result.Failure(conflict) : added;
         }, cancellationToken));
 }

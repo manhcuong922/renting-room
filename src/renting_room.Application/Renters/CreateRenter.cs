@@ -1,6 +1,5 @@
 using FluentValidation;
 using Mediator;
-using Microsoft.EntityFrameworkCore;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Common.Validation;
 using renting_room.Domain.Common;
@@ -21,7 +20,7 @@ public sealed class CreateRenterCommandValidator : AbstractValidator<CreateRente
 }
 
 /// <summary>RT-BR-02: cùng số giấy tờ trong tổ chức ⇒ 409, dùng lại hồ sơ cũ (unique index là chốt chặn khi gửi song song).</summary>
-public sealed class CreateRenterHandler(IAppDbContext db, ICurrentUser currentUser, IPersonalDataProtector protector)
+public sealed class CreateRenterHandler(IRenterRepository renters, IUnitOfWork unitOfWork, ICurrentUser currentUser, IPersonalDataProtector protector)
     : IRequestHandler<CreateRenterCommand, Result<Guid>>
 {
     public async ValueTask<Result<Guid>> Handle(CreateRenterCommand request, CancellationToken cancellationToken)
@@ -30,12 +29,12 @@ public sealed class CreateRenterHandler(IAppDbContext db, ICurrentUser currentUs
             ? protector.ProtectIdNumber(currentUser.OrganizationId!.Value, request.Renter.IdType!.Value, number)
             : null;
         if (idNumber is not null
-            && await db.Renters.Where(r => r.IdNumberHash == idNumber.Hash).Select(r => (Guid?)r.Id).FirstOrDefaultAsync(cancellationToken) is { } existing)
+            && await renters.FindIdByIdNumberHashAsync(idNumber.Hash, excludeId: null, cancellationToken) is { } existing)
             return RenterErrors.IdNumberExistsFor(existing);
 
         var renter = Renter.Create(request.Renter.ToProfile(), idNumber);
-        db.Renters.Add(renter);
-        await db.SaveChangesAsync(cancellationToken);
+        renters.Add(renter);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
         return renter.Id;
     }
 }

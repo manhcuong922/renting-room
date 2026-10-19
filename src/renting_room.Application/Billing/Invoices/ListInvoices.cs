@@ -1,7 +1,5 @@
 using FluentValidation;
 using Mediator;
-using Microsoft.EntityFrameworkCore;
-using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Common.Models;
 using renting_room.Application.Common.Validation;
 using renting_room.Domain.Billing;
@@ -25,16 +23,12 @@ public sealed class ListInvoicesQueryValidator : AbstractValidator<ListInvoicesQ
 }
 
 /// <summary>BL-UC-02 / BL-UC-14: danh sách phiếu theo khu / tháng / phòng / HĐ, mới nhất trước.</summary>
-public sealed class ListInvoicesHandler(IAppDbContext db, TimeProvider clock) : IRequestHandler<ListInvoicesQuery, PagedResult<InvoiceSummaryDto>>
+public sealed class ListInvoicesHandler(IInvoiceQueries invoices, TimeProvider clock) : IRequestHandler<ListInvoicesQuery, PagedResult<InvoiceSummaryDto>>
 {
     public async ValueTask<PagedResult<InvoiceSummaryDto>> Handle(ListInvoicesQuery request, CancellationToken cancellationToken)
     {
-        var query = InvoiceFilters.Apply(db, request);
-        var total = await query.CountAsync(cancellationToken);
-        var items = await query.OrderByDescending(i => i.PeriodStart).ThenBy(i => i.SnapshotRoomCode)
-            .Skip((request.Page - 1) * request.PageSize).Take(request.PageSize)
-            .ToListAsync(cancellationToken);
+        var page = await invoices.ListAsync(request, cancellationToken);
         var today = clock.GetUtcNow().ToBusinessDate();
-        return new PagedResult<InvoiceSummaryDto>(items.Select(i => i.ToSummary(today)).ToList(), request.Page, request.PageSize, total);
+        return new PagedResult<InvoiceSummaryDto>(page.Items.Select(i => i.ToSummary(today)).ToList(), page.Page, page.PageSize, page.TotalCount);
     }
 }

@@ -1,6 +1,6 @@
 using Mediator;
-using Microsoft.EntityFrameworkCore;
-using renting_room.Application.Common.Interfaces;
+using renting_room.Application.Billing;
+using renting_room.Application.Contracts;
 using renting_room.Domain.Billing;
 using renting_room.Domain.Common;
 using renting_room.Domain.Contracts;
@@ -28,30 +28,27 @@ public sealed record ContractBalanceDto(
 public sealed record GetContractBalanceQuery(Guid ContractId) : IRequest<Result<ContractBalanceDto>>;
 
 /// <summary>PM-UC-09: số nợ của một hợp đồng cho màn "thu theo hợp đồng" — cùng cách tính với giới hạn của lệnh ghi thu (PM-BR-03).</summary>
-public sealed class GetContractBalanceHandler(IAppDbContext db, TimeProvider clock) : IRequestHandler<GetContractBalanceQuery, Result<ContractBalanceDto>>
+public sealed class GetContractBalanceHandler(
+    IContractQueries contracts, IInvoiceQueries invoiceQueries, IRoomChargeQueries roomCharges, TimeProvider clock)
+    : IRequestHandler<GetContractBalanceQuery, Result<ContractBalanceDto>>
 {
     public async ValueTask<Result<ContractBalanceDto>> Handle(GetContractBalanceQuery request, CancellationToken cancellationToken)
     {
-        var contract = await db.Contracts.AsNoTracking().Where(c => c.Id == request.ContractId)
-            .Select(c => new { c.Id, c.ContractNo, c.Status }).FirstOrDefaultAsync(cancellationToken);
+        var contract = await contracts.GetHeaderAsync(request.ContractId, cancellationToken);
         if (contract is null)
             return ContractErrors.NotFound;
 
         var today = clock.GetUtcNow().ToBusinessDate();
-        var invoices = await db.Invoices.AsNoTracking().Where(i => i.ContractId == contract.Id && i.Status != InvoiceStatus.Void)
-            .OrderBy(i => i.PeriodStart)
-            .Select(i => new { i.Id, i.InvoiceNo, i.BillingMonth, i.Type, i.Status, i.TotalAmount, i.PaidAmount, i.WrittenOffAmount, i.DueDate })
-            .ToListAsync(cancellationToken);
+        var invoices = await invoiceQueries.ListForBalanceAsync(contract.Id, cancellationToken);
         var unpaid = invoices.Where(i => i.Status == InvoiceStatus.Finalized && i.PaidAmount < i.TotalAmount)
             .Select(i => new ContractUnpaidInvoiceDto(i.Id, i.InvoiceNo, $"{i.BillingMonth:yyyy-MM}", i.Type, i.TotalAmount, i.PaidAmount,
                 i.TotalAmount - i.PaidAmount, i.DueDate, i.DueDate < today, i.PaidAmount - i.WrittenOffAmount, i.WrittenOffAmount))
             .ToList();
-        var pendingCharges = await db.RoomCharges.CountAsync(c => c.ContractId == contract.Id && c.InvoiceId == null && c.CancelledAt == null,
-            cancellationToken);
+        var pendingCharges = await roomCharges.CountPendingAsync(contract.Id, cancellationToken);
 
         return new ContractBalanceDto(
             contract.Id, contract.ContractNo, contract.Status, unpaid.Sum(i => i.Outstanding), unpaid.Where(i => i.IsOverdue).Sum(i => i.Outstanding),
-            await PaymentPosting.RefundDueAsync(db, contract.Id, cancellationToken), unpaid,
+            await invoiceQueries.GetRefundDueAsync(contract.Id, cancellationToken), unpaid,
             invoices.Count(i => i.Status == InvoiceStatus.Draft), pendingCharges);
     }
 }

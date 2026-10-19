@@ -1,6 +1,5 @@
 using FluentValidation;
 using Mediator;
-using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Common.Validation;
 using renting_room.Domain.Billing;
 using renting_room.Domain.Common;
@@ -15,10 +14,11 @@ public sealed class CancelRoomChargeCommandValidator : AbstractValidator<CancelR
 }
 
 /// <summary>BL-BR-35: hủy khoản chưa nằm trên phiếu đã chốt; đang trên nháp ⇒ xóa dòng.</summary>
-public sealed class CancelRoomChargeHandler(IAppDbContext db, TimeProvider clock) : IRequestHandler<CancelRoomChargeCommand, Result<RoomChargeDto>>
+public sealed class CancelRoomChargeHandler(RoomChargeBilling roomCharges, TimeProvider clock)
+    : IRequestHandler<CancelRoomChargeCommand, Result<RoomChargeDto>>
 {
     public async ValueTask<Result<RoomChargeDto>> Handle(CancelRoomChargeCommand request, CancellationToken cancellationToken) =>
-        await RoomChargeMutation.RunAsync(db, request.Id, (charge, draft) =>
+        await roomCharges.MutateAsync(request.Id, (charge, draft) =>
         {
             if (charge.IsSystem)
                 return Result.Failure(RoomChargeErrors.System);

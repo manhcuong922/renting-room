@@ -1,6 +1,5 @@
 using FluentValidation;
 using Mediator;
-using Microsoft.EntityFrameworkCore;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Domain.Common;
 
@@ -12,12 +11,12 @@ namespace renting_room.Application.Identity.Members;
 /// </summary>
 public sealed record SetSensitiveDataAccessCommand(Guid Id, bool Allowed) : IRequest<Result<MemberDto>>;
 
-public sealed class SetSensitiveDataAccessHandler(IAppDbContext db, ICurrentUser currentUser)
+public sealed class SetSensitiveDataAccessHandler(IUserRepository users, IUserQueries userQueries, IUnitOfWork unitOfWork, ICurrentUser currentUser)
     : IRequestHandler<SetSensitiveDataAccessCommand, Result<MemberDto>>
 {
     public async ValueTask<Result<MemberDto>> Handle(SetSensitiveDataAccessCommand request, CancellationToken cancellationToken)
     {
-        var manager = await ManagerLookup.FindAsync(db, currentUser, request.Id, cancellationToken);
+        var manager = await ManagerLookup.FindAsync(users, currentUser, request.Id, cancellationToken);
         if (manager.IsFailure)
             return manager.Error!;
 
@@ -26,7 +25,7 @@ public sealed class SetSensitiveDataAccessHandler(IAppDbContext db, ICurrentUser
         if (changed.IsFailure)
             return changed.Error!;
 
-        await db.SaveChangesAsync(cancellationToken);
-        return await db.Users.AsNoTracking().Where(u => u.Id == user.Id).ToDto().FirstAsync(cancellationToken);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+        return (await userQueries.GetMemberAsync(user.Id, user.OrganizationId, cancellationToken))!;
     }
 }

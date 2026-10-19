@@ -1,5 +1,5 @@
 using Mediator;
-using Microsoft.EntityFrameworkCore;
+using renting_room.Application.Identity.Organizations;
 using Microsoft.Extensions.Logging;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Domain.Common;
@@ -8,7 +8,12 @@ using renting_room.Domain.Identity;
 namespace renting_room.Application.Identity.Auth.Login;
 
 public sealed class LoginHandler(
-    IAppDbContext db,
+    IUserRepository users,
+    IUserQueries userQueries,
+    IOrganizationQueries organizations,
+    IRefreshTokenRepository refreshTokens,
+    ILoginEventRepository loginEvents,
+    IUnitOfWork unitOfWork,
     IPasswordHasher passwordHasher,
     AuthTokenIssuer tokenIssuer,
     TimeProvider clock,
@@ -22,8 +27,8 @@ public sealed class LoginHandler(
         var (result, outcome) = await AttemptAsync(request, user, now, cancellationToken);
 
         // M01 §11: mỗi lần đăng nhập thành công / thất bại ghi 1 dòng nhật ký (không lưu tên đăng nhập gõ vào).
-        db.LoginEvents.Add(LoginEvent.Record(user, request.Username, request.IpAddress, outcome, now));
-        await db.SaveChangesAsync(cancellationToken);
+        loginEvents.Add(LoginEvent.Record(user, request.Username, request.IpAddress, outcome, now));
+        await unitOfWork.SaveChangesAsync(cancellationToken);
         return result;
     }
 
@@ -49,7 +54,7 @@ public sealed class LoginHandler(
 
         if (verification == PasswordCheckResult.Failed)
         {
-            await FailedLoginTracker.RegisterFailureAsync(db, user.Id, now, cancellationToken);
+            await users.RegisterFailedLoginAsync(user.Id, now, cancellationToken);
             logger.LogInformation("Login failed: wrong password for user {UserId} from {IpAddress}", user.Id, request.IpAddress);
             return (IdentityErrors.InvalidCredentials, LoginOutcome.WrongPassword);
         }
@@ -60,10 +65,7 @@ public sealed class LoginHandler(
 
         if (user.OrganizationId is { } organizationId)
         {
-            var organizationStatus = await db.Organizations
-                .Where(o => o.Id == organizationId)
-                .Select(o => o.Status)
-                .FirstAsync(cancellationToken);
+            var organizationStatus = (await organizations.GetStatusAsync(organizationId, cancellationToken))!.Value;
 
             if (organizationStatus != OrganizationStatus.Active)
                 return (IdentityErrors.OrganizationSuspended, LoginOutcome.OrganizationSuspended);
@@ -72,15 +74,10 @@ public sealed class LoginHandler(
         if (verification == PasswordCheckResult.SuccessRehashNeeded)
             await UpgradePasswordHashAsync(user, request.Password, cancellationToken);
 
-        await db.Users
-            .Where(u => u.Id == user.Id)
-            .ExecuteUpdateAsync(s => s
-                .SetProperty(u => u.FailedLoginCount, 0)
-                .SetProperty(u => u.LockoutEnd, (DateTimeOffset?)null)
-                .SetProperty(u => u.LastLoginAt, now), cancellationToken);
+        await users.RecordSuccessfulLoginAsync(user.Id, now, cancellationToken);
 
         var (tokens, refreshToken) = tokenIssuer.IssueNewSession(user, now, request.IpAddress);
-        db.RefreshTokens.Add(refreshToken);
+        refreshTokens.Add(refreshToken);
 
         logger.LogInformation("User {UserId} logged in from {IpAddress}", user.Id, request.IpAddress);
         return (tokens, LoginOutcome.Success);
@@ -95,9 +92,7 @@ public sealed class LoginHandler(
         var verifiedHash = user.PasswordHash;
         var upgradedHash = passwordHasher.Hash(password);
 
-        return db.Users
-            .Where(u => u.Id == user.Id && u.PasswordHash == verifiedHash)
-            .ExecuteUpdateAsync(s => s.SetProperty(u => u.PasswordHash, upgradedHash), cancellationToken);
+        return users.UpgradePasswordHashAsync(user.Id, verifiedHash, upgradedHash, cancellationToken);
     }
 
     private Task<User?> FindUserAsync(string username, CancellationToken cancellationToken)
@@ -107,12 +102,12 @@ public sealed class LoginHandler(
             var email = ContactNormalizer.NormalizeEmail(username);
             return email is null
                 ? Task.FromResult<User?>(null)
-                : db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.EmailNormalized == email, cancellationToken);
+                : userQueries.FindByEmailAsync(email, cancellationToken);
         }
 
         var phone = ContactNormalizer.NormalizePhone(username);
         return phone is null
             ? Task.FromResult<User?>(null)
-            : db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.PhoneNormalized == phone, cancellationToken);
+            : userQueries.FindByPhoneAsync(phone, cancellationToken);
     }
 }

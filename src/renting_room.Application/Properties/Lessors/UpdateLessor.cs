@@ -1,9 +1,9 @@
 using FluentValidation;
 using Mediator;
-using Microsoft.EntityFrameworkCore;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Domain.Common;
 using renting_room.Domain.Properties;
+using renting_room.Application.Identity.Organizations;
 
 namespace renting_room.Application.Properties;
 
@@ -33,12 +33,14 @@ public sealed class UpdateLessorCommandValidator : AbstractValidator<UpdateLesso
     public UpdateLessorCommandValidator(TimeProvider clock) => this.Lessor(clock);
 }
 
-public sealed class UpdateLessorHandler(IAppDbContext db, ICurrentUser currentUser, IPersonalDataProtector protector, TimeProvider clock)
+public sealed class UpdateLessorHandler(
+    IPropertyRepository properties, IOrganizationQueries organizations, IUnitOfWork unitOfWork, ICurrentUser currentUser,
+    IPersonalDataProtector protector, TimeProvider clock)
     : IRequestHandler<UpdateLessorCommand, Result<PropertyDetailDto>>
 {
     public async ValueTask<Result<PropertyDetailDto>> Handle(UpdateLessorCommand request, CancellationToken cancellationToken)
     {
-        var property = await db.Properties.FirstOrDefaultAsync(p => p.Id == request.PropertyId, cancellationToken);
+        var property = await properties.GetAsync(request.PropertyId, cancellationToken);
         if (property is null)
             return PropertyErrors.PropertyNotFound;
 
@@ -46,7 +48,7 @@ public sealed class UpdateLessorHandler(IAppDbContext db, ICurrentUser currentUs
         if (lessor.IsFailure)
             return lessor.Error!;
         property.UpdateLessor(lessor.Value!);
-        await db.SaveChangesAsync(cancellationToken);
-        return await property.ToDetailAsync(db, clock.GetUtcNow().ToBusinessDate(), cancellationToken);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+        return await property.ToDetailAsync(organizations, clock.GetUtcNow().ToBusinessDate(), cancellationToken);
     }
 }

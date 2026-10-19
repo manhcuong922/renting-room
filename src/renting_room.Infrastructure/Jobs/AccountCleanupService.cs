@@ -1,7 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using renting_room.Application.Common.Interfaces;
+using renting_room.Application.Identity;
 using renting_room.Application.Identity.Members;
 
 namespace renting_room.Infrastructure.Jobs;
@@ -33,7 +33,9 @@ public sealed class AccountCleanupService(IServiceScopeFactory scopeFactory, Tim
     public async Task<(int Tokens, int LoginEvents)> RunAsync(DateTimeOffset now, CancellationToken cancellationToken)
     {
         await using var scope = scopeFactory.CreateAsyncScope();
-        var purged = await AccountCleanup.PurgeAsync(scope.ServiceProvider.GetRequiredService<IAppDbContext>(), now, cancellationToken);
+        var purged = await AccountCleanup.PurgeAsync(
+            scope.ServiceProvider.GetRequiredService<IRefreshTokenRepository>(), scope.ServiceProvider.GetRequiredService<ILoginEventRepository>(),
+            now, cancellationToken);
         if (purged.Tokens > 0 || purged.LoginEvents > 0)
             logger.LogInformation("Account cleanup: deleted {Tokens} expired refresh token(s), {Events} old login event(s)", purged.Tokens, purged.LoginEvents);
         return purged;

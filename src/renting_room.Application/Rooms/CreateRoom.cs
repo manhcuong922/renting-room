@@ -1,10 +1,10 @@
 using FluentValidation;
 using Mediator;
-using Microsoft.EntityFrameworkCore;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Common.Validation;
 using renting_room.Domain.Common;
 using renting_room.Domain.Properties;
+using renting_room.Application.Properties;
 
 namespace renting_room.Application.Rooms;
 
@@ -20,23 +20,24 @@ public sealed class CreateRoomCommandValidator : AbstractValidator<CreateRoomCom
     }
 }
 
-public sealed class CreateRoomHandler(IAppDbContext db) : IRequestHandler<CreateRoomCommand, Result<Guid>>
+public sealed class CreateRoomHandler(IPropertyQueries properties, IRoomRepository rooms, IUnitOfWork unitOfWork)
+    : IRequestHandler<CreateRoomCommand, Result<Guid>>
 {
     public async ValueTask<Result<Guid>> Handle(CreateRoomCommand request, CancellationToken cancellationToken)
     {
-        var property = await db.Properties.AsNoTracking().FirstOrDefaultAsync(p => p.Id == request.PropertyId, cancellationToken);
+        var property = await properties.GetStatusAsync(request.PropertyId, cancellationToken);
         if (property is null)
             return PropertyErrors.PropertyNotFound;
         if (property.IsArchived)
             return PropertyErrors.PropertyArchived;
 
         var code = TextNormalizer.NormalizeCode(request.Code);
-        if (await db.Rooms.AnyAsync(r => r.PropertyId == property.Id && r.Code == code, cancellationToken))
+        if (await rooms.IsCodeTakenAsync(property.Id, code, excludeId: null, cancellationToken))
             return PropertyErrors.RoomCodeTaken;
 
         var room = Room.Create(property.Id, code, request.Spec.ToDomain());
-        db.Rooms.Add(room);
-        await db.SaveChangesAsync(cancellationToken);
+        rooms.Add(room);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
         return room.Id;
     }
 }

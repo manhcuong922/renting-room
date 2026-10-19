@@ -1,6 +1,7 @@
 using FluentValidation;
 using Mediator;
-using Microsoft.EntityFrameworkCore;
+using renting_room.Application.Fees;
+using renting_room.Application.Rooms;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Common.Validation;
 using renting_room.Domain.Common;
@@ -26,29 +27,31 @@ public sealed class InstallMeterCommandValidator : AbstractValidator<InstallMete
 }
 
 /// <summary>MT-UC-01: lắp công tơ cho phòng — khoản thu phải là điện nước theo công tơ, cùng khu, chưa ngừng dùng (MT-BR-01/02).</summary>
-public sealed class InstallMeterHandler(IAppDbContext db) : IRequestHandler<InstallMeterCommand, Result<Guid>>
+public sealed class InstallMeterHandler(
+    IRoomQueries rooms, IFeeQueries fees, IMeterRepository meters, IMeterQueries meterQueries, IUnitOfWork unitOfWork)
+    : IRequestHandler<InstallMeterCommand, Result<Guid>>
 {
     public async ValueTask<Result<Guid>> Handle(InstallMeterCommand request, CancellationToken cancellationToken)
     {
-        var room = await db.Rooms.AsNoTracking().FirstOrDefaultAsync(r => r.Id == request.RoomId, cancellationToken);
+        var room = await rooms.FindAsync(request.RoomId, cancellationToken);
         if (room is null)
             return PropertyErrors.RoomNotFound;
         if (room.IsArchived)
             return PropertyErrors.RoomArchived;
 
-        var fee = await db.FeeTypes.AsNoTracking().FirstOrDefaultAsync(f => f.Id == request.FeeTypeId, cancellationToken);
+        var fee = await fees.FindTypeAsync(request.FeeTypeId, cancellationToken);
         if (fee is null || fee.PropertyId != room.PropertyId)
             return FeeErrors.NotInProperty;
         if (fee.Group != FeeGroup.Metered)
             return MeterErrors.FeeNotMetered;
         if (fee.IsArchived)
             return FeeErrors.Archived;
-        if (await db.Meters.AnyAsync(m => m.RoomId == room.Id && m.FeeTypeId == fee.Id && m.RemovedDate == null, cancellationToken))
+        if (await meterQueries.HasActiveAsync(room.Id, fee.Id, cancellationToken))
             return MeterErrors.AlreadyActive;
 
         var meter = Meter.Install(room.PropertyId, room.Id, fee.Id, request.SerialNo, request.InstalledDate, request.InitialValue, request.Note);
-        db.Meters.Add(meter);
-        await db.SaveChangesAsync(cancellationToken); // unique "1 công tơ hoạt động" là chốt chặn khi 2 request song song
+        meters.Add(meter);
+        await unitOfWork.SaveChangesAsync(cancellationToken); // unique "1 công tơ hoạt động" là chốt chặn khi 2 request song song
         return meter.Id;
     }
 }

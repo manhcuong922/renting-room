@@ -1,7 +1,7 @@
 using FluentValidation;
 using Mediator;
-using Microsoft.EntityFrameworkCore;
 using renting_room.Application.Common.Interfaces;
+using renting_room.Application.Identity.Organizations;
 using renting_room.Domain.Identity;
 
 namespace renting_room.Application.Renters;
@@ -16,13 +16,14 @@ public sealed class UpdateDataRetentionCommandValidator : AbstractValidator<Upda
 }
 
 /// <summary>RT-BR-06: chủ trọ đặt thời gian giữ / tắt ẩn danh tự động — thay đổi được audit (ai, lúc nào, giá trị cũ → mới).</summary>
-public sealed class UpdateDataRetentionHandler(IAppDbContext db, ICurrentUser currentUser) : IRequestHandler<UpdateDataRetentionCommand, DataRetentionDto>
+public sealed class UpdateDataRetentionHandler(IOrganizationRepository organizations, IUnitOfWork unitOfWork, ICurrentUser currentUser)
+    : IRequestHandler<UpdateDataRetentionCommand, DataRetentionDto>
 {
     public async ValueTask<DataRetentionDto> Handle(UpdateDataRetentionCommand request, CancellationToken cancellationToken)
     {
-        var organization = await db.Organizations.FirstAsync(o => o.Id == currentUser.OrganizationId, cancellationToken);
+        var organization = (await organizations.GetAsync(currentUser.OrganizationId!.Value, cancellationToken))!;
         organization.UpdateDataRetention(request.RetentionMonths, request.AutoAnonymize);
-        await db.SaveChangesAsync(cancellationToken);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
         return DataRetentionMapping.ToDto(organization);
     }
 }

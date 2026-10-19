@@ -1,6 +1,5 @@
 using FluentValidation;
 using Mediator;
-using Microsoft.EntityFrameworkCore;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Common.Validation;
 using renting_room.Domain.Billing;
@@ -25,12 +24,15 @@ public sealed class EditInvoiceLineCommandValidator : AbstractValidator<EditInvo
     }
 }
 
-public sealed class EditInvoiceLineHandler(IAppDbContext db, TimeProvider clock) : IRequestHandler<EditInvoiceLineCommand, Result<InvoiceDetailDto>>
+public sealed class EditInvoiceLineHandler(
+    IUnitOfWork unitOfWork, IInvoiceRepository invoices, IInvoiceQueries invoiceQueries, IRoomChargeRepository roomCharges,
+    IRoomChargeQueries roomChargeQueries, TimeProvider clock)
+    : IRequestHandler<EditInvoiceLineCommand, Result<InvoiceDetailDto>>
 {
     public async ValueTask<Result<InvoiceDetailDto>> Handle(EditInvoiceLineCommand request, CancellationToken cancellationToken) =>
-        await InvoiceAccess.MutateAsync(db, request.InvoiceId, clock.GetUtcNow().ToBusinessDate(), async invoice =>
+        await InvoiceAccess.MutateAsync(unitOfWork, invoices, request.InvoiceId, clock.GetUtcNow().ToBusinessDate(), async invoice =>
         {
-            if (await IsSystemChargeLineAsync(db, invoice, request.LineId, cancellationToken))
+            if (await IsSystemChargeLineAsync(roomChargeQueries, invoice, request.LineId, cancellationToken))
                 return Result.Failure(RoomChargeErrors.System);
             var edited = invoice.EditLine(request.LineId, request.Quantity, request.UnitPrice, request.Amount, request.Note);
             if (edited.IsFailure)
@@ -39,18 +41,18 @@ public sealed class EditInvoiceLineHandler(IAppDbContext db, TimeProvider clock)
             // BL-BR-27: sửa số tiền hoàn trả cũng không vượt số đã thu của phiếu nguồn.
             if (line is { Type: InvoiceLineType.Refund, SourceInvoiceId: { } sourceId } && sourceId != invoice.Id)
             {
-                var allowed = await RefundSource.CheckAsync(db, invoice, sourceId, Math.Abs(line.Amount), cancellationToken, line.Id);
+                var allowed = await RefundSource.CheckAsync(invoiceQueries, invoice, sourceId, Math.Abs(line.Amount), cancellationToken, line.Id);
                 if (allowed.IsFailure)
                     return allowed;
             }
             // BL-BR-34: sửa dòng phụ thu / giảm trừ trên nháp ⇒ sửa khoản phát sinh của phòng.
             if (line.RoomChargeId is { } chargeId)
-                (await db.RoomCharges.FirstAsync(c => c.Id == chargeId, cancellationToken)).Update(Math.Abs(line.Amount), line.Note!);
+                (await roomCharges.GetForUpdateAsync(chargeId, cancellationToken))!.Update(Math.Abs(line.Amount), line.Note!);
             return edited;
         }, cancellationToken);
 
     /// <summary>BL-BR-38: dòng của khoản chốt điện nước khi chuyển phòng — không sửa / xóa tay.</summary>
-    internal static async Task<bool> IsSystemChargeLineAsync(IAppDbContext db, Invoice invoice, Guid lineId, CancellationToken ct) =>
+    internal static async Task<bool> IsSystemChargeLineAsync(IRoomChargeQueries roomCharges, Invoice invoice, Guid lineId, CancellationToken ct) =>
         invoice.Lines.FirstOrDefault(l => l.Id == lineId)?.RoomChargeId is { } chargeId
-        && await db.RoomCharges.AnyAsync(c => c.Id == chargeId && c.MeterId != null, ct);
+        && await roomCharges.IsMeterClosingAsync(chargeId, ct);
 }

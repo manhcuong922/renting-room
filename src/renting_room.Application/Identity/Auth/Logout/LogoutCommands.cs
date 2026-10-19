@@ -1,6 +1,5 @@
 using FluentValidation;
 using Mediator;
-using Microsoft.EntityFrameworkCore;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Domain.Common;
 using renting_room.Domain.Identity;
@@ -23,22 +22,18 @@ public sealed class LogoutCommandValidator : AbstractValidator<LogoutCommand>
     }
 }
 
-public sealed class LogoutHandler(IAppDbContext db, ITokenService tokenService, IUserSessionStore sessionStore, TimeProvider clock)
+public sealed class LogoutHandler(IRefreshTokenRepository refreshTokens, ITokenService tokenService, IUserSessionStore sessionStore, TimeProvider clock)
     : IRequestHandler<LogoutCommand, Result>
 {
     public async ValueTask<Result> Handle(LogoutCommand request, CancellationToken cancellationToken)
     {
         var tokenHash = tokenService.HashRefreshToken(request.RefreshToken);
 
-        var familyId = await db.RefreshTokens
-            .Where(t => t.TokenHash == tokenHash)
-            .Select(t => (Guid?)t.FamilyId)
-            .FirstOrDefaultAsync(cancellationToken);
+        var familyId = await refreshTokens.FindFamilyIdByHashAsync(tokenHash, cancellationToken);
 
         if (familyId is not null)
         {
-            await RefreshTokenRevoker.RevokeFamilyAsync(
-                db, familyId.Value, RefreshTokenRevokeReason.Logout, clock.GetUtcNow(), cancellationToken);
+            await refreshTokens.RevokeFamilyAsync(familyId.Value, RefreshTokenRevokeReason.Logout, clock.GetUtcNow(), cancellationToken);
             sessionStore.InvalidateSession(familyId.Value);
         }
 
@@ -50,7 +45,9 @@ public sealed class LogoutHandler(IAppDbContext db, ITokenService tokenService, 
 public sealed record LogoutAllCommand : IRequest<Result>;
 
 public sealed class LogoutAllHandler(
-    IAppDbContext db,
+    IUserRepository users,
+    IRefreshTokenRepository refreshTokens,
+    IUnitOfWork unitOfWork,
     ICurrentUser currentUser,
     IUserSessionStore sessionStore,
     TimeProvider clock)
@@ -59,16 +56,15 @@ public sealed class LogoutAllHandler(
     public async ValueTask<Result> Handle(LogoutAllCommand request, CancellationToken cancellationToken)
     {
         var userId = currentUser.RequireUserId();
-        var user = await db.Users.FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
+        var user = await users.GetForUpdateAsync(userId, cancellationToken);
         if (user is null)
             return Result.Failure(IdentityErrors.UserNotFound);
 
-        await using var transaction = await db.BeginTransactionAsync(cancellationToken);
+        await using var transaction = await unitOfWork.BeginTransactionAsync(cancellationToken);
 
-        await RefreshTokenRevoker.RevokeAllForUserAsync(
-            db, userId, RefreshTokenRevokeReason.Logout, clock.GetUtcNow(), cancellationToken);
+        await refreshTokens.RevokeAllForUserAsync(userId, RefreshTokenRevokeReason.Logout, clock.GetUtcNow(), cancellationToken);
         user.RotateSecurityStamp();
-        await db.SaveChangesAsync(cancellationToken);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
 
         await transaction.CommitAsync(cancellationToken);
         sessionStore.Invalidate(userId);

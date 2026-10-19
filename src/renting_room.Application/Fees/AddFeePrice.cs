@@ -1,6 +1,5 @@
 using FluentValidation;
 using Mediator;
-using Microsoft.EntityFrameworkCore;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Common.Models;
 using renting_room.Domain.Common;
@@ -16,15 +15,13 @@ public sealed class AddFeePriceCommandValidator : AbstractValidator<AddFeePriceC
     public AddFeePriceCommandValidator(TimeProvider clock) => this.PriceRules(x => x.Price, _ => null, "", clock);
 }
 
-public sealed class AddFeePriceHandler(IAppDbContext db, IFeePriceLockReader locks, IFeeSettings settings)
+public sealed class AddFeePriceHandler(IFeeTypeRepository fees, IUnitOfWork unitOfWork, IFeePriceLockReader locks, IFeeSettings settings)
     : IRequestHandler<AddFeePriceCommand, Result<CreatedWithWarnings>>
 {
     public async ValueTask<Result<CreatedWithWarnings>> Handle(AddFeePriceCommand request, CancellationToken cancellationToken)
     {
-        await using var transaction = await db.BeginTransactionAsync(cancellationToken);
-        await db.LockForUpdateAsync<FeeType>(request.FeeTypeId, cancellationToken);
-
-        var fee = await db.FeeTypes.Include(f => f.Prices).FirstOrDefaultAsync(f => f.Id == request.FeeTypeId, cancellationToken);
+        await using var transaction = await unitOfWork.BeginTransactionAsync(cancellationToken);
+        var fee = await fees.GetForUpdateAsync(request.FeeTypeId, cancellationToken);
         if (fee is null)
             return FeeErrors.NotFound;
         var price = request.Price;
@@ -36,7 +33,7 @@ public sealed class AddFeePriceHandler(IAppDbContext db, IFeePriceLockReader loc
         if (added.IsFailure)
             return added.Error!;
 
-        await db.SaveChangesAsync(cancellationToken);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return new CreatedWithWarnings(added.Value!.Id, FeeWarnings.ForPrice(fee, added.Value!, settings));
     }

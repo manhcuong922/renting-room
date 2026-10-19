@@ -3,6 +3,8 @@ using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Common.Security;
 using renting_room.Domain.Common;
 using renting_room.Domain.Identity;
+using renting_room.Application.Identity;
+using renting_room.Application.Identity.Organizations;
 
 namespace renting_room.Application.Properties;
 
@@ -11,16 +13,16 @@ namespace renting_room.Application.Properties;
 public sealed record RevealOrganizationLessorIdNumberQuery : IRequest<Result<string>>;
 
 public sealed class RevealOrganizationLessorIdNumberHandler(
-    IAppDbContext db, ICurrentUser currentUser, IPersonalDataProtector protector, IAuditTrail auditTrail)
+    IOrganizationQueries organizations, IUserQueries users, ICurrentUser currentUser, IPersonalDataProtector protector, IAuditTrail auditTrail)
     : IRequestHandler<RevealOrganizationLessorIdNumberQuery, Result<string>>
 {
     public async ValueTask<Result<string>> Handle(RevealOrganizationLessorIdNumberQuery request, CancellationToken cancellationToken)
     {
-        if (!await SensitiveDataAccess.CanViewAsync(db, currentUser, cancellationToken))
+        if (!await SensitiveDataAccess.CanViewAsync(users, currentUser, cancellationToken))
             return IdentityErrors.SensitiveDataForbidden;
 
         var organizationId = currentUser.OrganizationId!.Value;
-        var lessor = await LessorSource.OrganizationLessorAsync(db, organizationId, cancellationToken);
+        var lessor = await organizations.GetDefaultLessorAsync(organizationId, cancellationToken);
         if (lessor?.IdNumberEncrypted is null)
             return string.Empty;
 

@@ -1,11 +1,12 @@
 using FluentValidation;
 using Mediator;
-using Microsoft.EntityFrameworkCore;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Properties;
 using renting_room.Domain.Common;
 using renting_room.Domain.Contracts;
 using renting_room.Domain.Fees;
+using renting_room.Application.Fees;
+using renting_room.Application.Meters;
 
 namespace renting_room.Application.Contracts;
 
@@ -56,18 +57,16 @@ internal static class ContractFeeRules
     /// <paramref name="requested"/> null ⇒ gắn các khoản "tự gắn" của khu (FE-UC-01); danh sách rỗng ⇒ không khoản nào.
     /// </summary>
     public static async Task<Result<IReadOnlyCollection<ContractFeeInput>>> ResolveAsync(
-        IAppDbContext db, Guid propertyId, IReadOnlyList<ContractFeeRequest>? requested, CancellationToken ct)
+        IFeeQueries feeQueries, Guid propertyId, IReadOnlyList<ContractFeeRequest>? requested, CancellationToken ct)
     {
         if (requested is null)
         {
-            var auto = await db.FeeTypes.AsNoTracking()
-                .Where(f => f.PropertyId == propertyId && f.AutoAttach && f.Group != FeeGroup.Metered && f.ArchivedAt == null)
-                .OrderBy(f => f.SortOrder).ToListAsync(ct);
+            var auto = await feeQueries.ListAutoAttachAsync(propertyId, ct);
             return auto.Select(f => new ContractFeeInput(f.Id, f.AttachQuantity, null)).ToList();
         }
 
         var ids = requested.Select(r => r.FeeTypeId).Distinct().ToList();
-        var fees = await db.FeeTypes.AsNoTracking().Where(f => ids.Contains(f.Id)).ToDictionaryAsync(f => f.Id, ct);
+        var fees = await feeQueries.GetTypesAsync(ids, ct);
         var inputs = new List<ContractFeeInput>();
         foreach (var r in requested)
         {
@@ -83,28 +82,21 @@ internal static class ContractFeeRules
     /// Khoản thu gắn với HĐ + điện / nước theo công tơ mà <b>phòng thực có công tơ</b> trong thời gian HĐ (FE-BR-17, M06) —
     /// phòng tính nước theo đầu người không có công tơ nước nên không có dòng nước theo công tơ.
     /// </summary>
-    public static async Task<IReadOnlyDictionary<Guid, FeeType>> LoadTypesAsync(IAppDbContext db, Contract contract, CancellationToken ct)
+    public static async Task<IReadOnlyDictionary<Guid, FeeType>> LoadTypesAsync(
+        IFeeQueries fees, IMeterQueries meters, Contract contract, CancellationToken ct)
     {
         var ids = contract.Fees.Select(f => f.FeeTypeId).ToList();
-        ids.AddRange(await MeteredFeeIdsAsync(db, contract.RoomId, contract.StartDate, ct));
+        ids.AddRange(await meters.ListFeeIdsInRoomAsync(contract.RoomId, contract.StartDate, ct));
         ids = ids.Distinct().ToList();
-        return await db.FeeTypes.AsNoTracking().Include(f => f.Prices).Where(f => ids.Contains(f.Id)).ToDictionaryAsync(f => f.Id, ct);
+        return await fees.GetTypesWithPricesAsync(ids, ct);
     }
 
-    /// <summary>Khoản điện nước có công tơ của phòng còn đo từ ngày <paramref name="from"/>.</summary>
-    public static async Task<List<Guid>> MeteredFeeIdsAsync(IAppDbContext db, Guid roomId, DateOnly from, CancellationToken ct) =>
-        await db.Meters.Where(m => m.RoomId == roomId && (m.RemovedDate == null || m.RemovedDate > from))
-            .Select(m => m.FeeTypeId).Distinct().ToListAsync(ct);
-
-    /// <summary>Khoản phí giữ xe (có loại xe) của khu — đối chiếu số xe đăng ký (CT-BR-22).</summary>
-    public static async Task<IReadOnlyCollection<FeeType>> LoadParkingFeesAsync(IAppDbContext db, Guid propertyId, CancellationToken ct) =>
-        await db.FeeTypes.AsNoTracking().Where(f => f.PropertyId == propertyId && f.VehicleType != null).ToListAsync(ct);
-
-    public static async Task<IReadOnlyList<ContractFeeDto>> ToDtosAsync(IAppDbContext db, Contract contract, DateOnly today, CancellationToken ct)
+    public static async Task<IReadOnlyList<ContractFeeDto>> ToDtosAsync(
+        IFeeQueries fees, IMeterQueries meters, Contract contract, DateOnly today, CancellationToken ct)
     {
         if (contract.Fees.Count == 0)
             return [];
-        var types = await LoadTypesAsync(db, contract, ct);
+        var types = await LoadTypesAsync(fees, meters, contract, ct);
 
         return contract.Fees
             .OrderBy(f => types[f.FeeTypeId].SortOrder).ThenBy(f => f.FeeTypeId).ThenBy(f => f.EffectiveFrom)
@@ -137,31 +129,33 @@ public sealed class ChangeContractFeeCommandValidator : AbstractValidator<Change
 }
 
 /// <summary>CT-BR-06: đổi số lượng / giá riêng hoặc gắn thêm khoản thu từ đầu một kỳ chưa chốt phiếu.</summary>
-public sealed class ChangeContractFeeHandler(IAppDbContext db, IInvoiceLockReader invoiceLocks) : IRequestHandler<ChangeContractFeeCommand, Result>
+public sealed class ChangeContractFeeHandler(ContractMutation mutation, IFeeQueries fees, IPropertyQueries properties, IInvoiceLockReader invoiceLocks)
+    : IRequestHandler<ChangeContractFeeCommand, Result>
 {
     public ValueTask<Result> Handle(ChangeContractFeeCommand request, CancellationToken cancellationToken) =>
-        new(ContractMutation.RunAsync(db, request.ContractId, async contract =>
+        new(mutation.RunAsync(request.ContractId, async contract =>
         {
-            var fee = await db.FeeTypes.AsNoTracking().FirstOrDefaultAsync(f => f.Id == request.FeeTypeId, cancellationToken);
+            var fee = await fees.FindTypeAsync(request.FeeTypeId, cancellationToken);
             var input = ContractFeeRules.ToInput(fee, contract.PropertyId, request.Quantity, request.UnitPriceOverride);
             if (input.IsFailure)
                 return Result.Failure(input.Error!);
 
             var firstOpen = await invoiceLocks.GetFirstOpenPeriodStartAsync(contract.Id, cancellationToken);
-            var schedule = (await PropertyBilling.LoadAsync(db, contract.PropertyId, cancellationToken)).Schedule;
+            var schedule = (await properties.GetBillingAsync(contract.PropertyId, cancellationToken)).Schedule;
             return contract.ChangeFee(input.Value!, request.EffectiveFrom ?? firstOpen ?? contract.StartDate, firstOpen, schedule);
         }, cancellationToken));
 }
 
 public sealed record RemoveContractFeeCommand(Guid ContractId, Guid FeeTypeId, DateOnly? EffectiveFrom) : IRequest<Result>;
 
-public sealed class RemoveContractFeeHandler(IAppDbContext db, IInvoiceLockReader invoiceLocks) : IRequestHandler<RemoveContractFeeCommand, Result>
+public sealed class RemoveContractFeeHandler(ContractMutation mutation, IPropertyQueries properties, IInvoiceLockReader invoiceLocks)
+    : IRequestHandler<RemoveContractFeeCommand, Result>
 {
     public ValueTask<Result> Handle(RemoveContractFeeCommand request, CancellationToken cancellationToken) =>
-        new(ContractMutation.RunAsync(db, request.ContractId, async contract =>
+        new(mutation.RunAsync(request.ContractId, async contract =>
         {
             var firstOpen = await invoiceLocks.GetFirstOpenPeriodStartAsync(contract.Id, cancellationToken);
-            var schedule = (await PropertyBilling.LoadAsync(db, contract.PropertyId, cancellationToken)).Schedule;
+            var schedule = (await properties.GetBillingAsync(contract.PropertyId, cancellationToken)).Schedule;
             return contract.RemoveFee(request.FeeTypeId, request.EffectiveFrom ?? firstOpen ?? contract.StartDate, firstOpen, schedule);
         }, cancellationToken));
 }

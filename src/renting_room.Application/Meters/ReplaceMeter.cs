@@ -1,5 +1,6 @@
 using FluentValidation;
 using Mediator;
+using renting_room.Application.Billing;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Common.Validation;
 using renting_room.Domain.Common;
@@ -23,15 +24,16 @@ public sealed class ReplaceMeterCommandValidator : AbstractValidator<ReplaceMete
 }
 
 /// <summary>MT-UC-02 / MT-BR-09: thay công tơ (phiên bản) — số cuối công tơ cũ + số ban đầu công tơ mới, 1 transaction.</summary>
-public sealed class ReplaceMeterHandler(IAppDbContext db) : IRequestHandler<ReplaceMeterCommand, Result<Guid>>
+public sealed class ReplaceMeterHandler(IMeterRepository meters, IInvoiceQueries invoices, IUnitOfWork unitOfWork)
+    : IRequestHandler<ReplaceMeterCommand, Result<Guid>>
 {
     public async ValueTask<Result<Guid>> Handle(ReplaceMeterCommand request, CancellationToken cancellationToken)
     {
-        await using var transaction = await db.BeginTransactionAsync(cancellationToken);
-        var old = (await MeterMapping.LockAndLoadAsync(db, [request.MeterId], cancellationToken)).FirstOrDefault();
+        await using var transaction = await unitOfWork.BeginTransactionAsync(cancellationToken);
+        var old = (await meters.LockAndLoadAsync([request.MeterId], cancellationToken)).FirstOrDefault();
         if (old is null)
             return MeterErrors.NotFound;
-        if (MeterPeriodLocks.Check(await MeterPeriodLocks.LockedUntilAsync(db, [old.Id], cancellationToken), old.Id, request.Date) is { } locked)
+        if (MeterPeriodLocks.Check(await invoices.GetMeterLockedUntilAsync([old.Id], cancellationToken), old.Id, request.Date) is { } locked)
             return locked;
 
         var next = old.ReplaceWith(request.Date, request.OldFinalValue, request.NewSerialNo, request.NewInitialValue, request.Note);
@@ -39,9 +41,9 @@ public sealed class ReplaceMeterHandler(IAppDbContext db) : IRequestHandler<Repl
             return next.Error!;
 
         // Lưu 2 lần: tháo bản cũ trước rồi mới lắp bản mới — unique "1 công tơ hoạt động" kiểm từng câu lệnh.
-        await db.SaveChangesAsync(cancellationToken);
-        db.Meters.Add(next.Value!);
-        await db.SaveChangesAsync(cancellationToken);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+        meters.Add(next.Value!);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return next.Value!.Id;
     }

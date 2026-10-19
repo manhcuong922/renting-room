@@ -1,6 +1,6 @@
 using FluentValidation;
 using Mediator;
-using Microsoft.EntityFrameworkCore;
+using renting_room.Application.Properties;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Exports;
 using renting_room.Domain.Common;
@@ -11,12 +11,12 @@ namespace renting_room.Application.Imports;
 // RT-UC-10: import người thuê đang ở — chỉ tạo mới khi chuyển từ sổ sang phần mềm
 public sealed record GetTenancyImportTemplateQuery(Guid PropertyId) : IRequest<Result<ExportFile>>;
 
-public sealed class GetTenancyImportTemplateHandler(IAppDbContext db, ISpreadsheetWriter writer)
+public sealed class GetTenancyImportTemplateHandler(IPropertyQueries properties, ISpreadsheetWriter writer)
     : IRequestHandler<GetTenancyImportTemplateQuery, Result<ExportFile>>
 {
     public async ValueTask<Result<ExportFile>> Handle(GetTenancyImportTemplateQuery request, CancellationToken cancellationToken)
     {
-        var code = await db.Properties.Where(p => p.Id == request.PropertyId).Select(p => p.Code).FirstOrDefaultAsync(cancellationToken);
+        var code = await properties.GetCodeAsync(request.PropertyId, cancellationToken);
         if (code is null)
             return PropertyErrors.PropertyNotFound;
 

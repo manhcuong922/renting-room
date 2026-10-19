@@ -21,7 +21,7 @@ public class AppDbContext(
     DbContextOptions<AppDbContext> options,
     ICurrentUser currentUser,
     TimeProvider clock)
-    : DbContext(options), IAppDbContext
+    : DbContext(options)
 {
     public DbSet<Organization> Organizations => Set<Organization>();
     public DbSet<User> Users => Set<User>();
@@ -40,7 +40,7 @@ public class AppDbContext(
     public DbSet<Payment> Payments => Set<Payment>();
     public DbSet<Contract> Contracts => Set<Contract>();
 
-    /// <summary>Bảng kỹ thuật — không đưa vào IAppDbContext để tầng Application không thao tác trực tiếp.</summary>
+    /// <summary>Bảng kỹ thuật — chỉ Infrastructure dùng, không có repository cho tầng Application.</summary>
     public DbSet<IdempotencyRecord> IdempotencyRecords => Set<IdempotencyRecord>();
 
     /// <summary>C-10 — Application ghi qua <see cref="IAuditTrail"/>; thay đổi entity được ghi tự động khi SaveChanges.</summary>

@@ -1,7 +1,6 @@
 using System.Data;
 using FluentValidation;
 using Mediator;
-using Microsoft.EntityFrameworkCore;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Common.Security;
 using renting_room.Application.Common.Validation;
@@ -10,6 +9,9 @@ using renting_room.Domain.Identity;
 using renting_room.Domain.Contracts;
 using renting_room.Domain.Properties;
 using renting_room.Domain.Renters;
+using renting_room.Application.Identity;
+using renting_room.Application.Properties;
+using renting_room.Application.Rooms;
 
 namespace renting_room.Application.Exports;
 
@@ -68,7 +70,11 @@ public static class ExportErrors
 /// (cùng một snapshot) — có người sửa dữ liệu giữa chừng thì file vẫn nhất quán và không vượt giới hạn đã kiểm.
 /// </summary>
 public sealed class ExportRentersHandler(
-    IAppDbContext db,
+    IExportQueries exports,
+    IPropertyQueries properties,
+    IRoomQueries rooms,
+    IUnitOfWork unitOfWork,
+    IUserQueries users,
     ICurrentUser currentUser,
     IPersonalDataProtector protector,
     ISpreadsheetWriter writer,
@@ -82,7 +88,7 @@ public sealed class ExportRentersHandler(
         if (missing is not null)
             return missing;
 
-        if (request.IncludeSensitive && !await SensitiveDataAccess.CanViewAsync(db, currentUser, cancellationToken))
+        if (request.IncludeSensitive && !await SensitiveDataAccess.CanViewAsync(users, currentUser, cancellationToken))
             return IdentityErrors.SensitiveDataForbidden;
 
         var now = clock.GetUtcNow();
@@ -90,11 +96,10 @@ public sealed class ExportRentersHandler(
         var from = request.FromDate ?? request.ToDate ?? today;
         var to = request.ToDate ?? request.FromDate ?? today;
 
-        await using var snapshot = await db.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, cancellationToken);
-        var query = RenterExportQuery.Build(db, request, from, to);
-        if (await query.CountAsync(cancellationToken) > ExportErrors.MaxRows)
+        await using var snapshot = await unitOfWork.BeginTransactionAsync(IsolationLevel.RepeatableRead, cancellationToken);
+        if (await exports.CountRentersAsync(request, from, to, cancellationToken) > ExportErrors.MaxRows)
             return ExportErrors.TooLarge;
-        var loaded = await query.ToListAsync(cancellationToken);
+        var loaded = await exports.ListRentersAsync(request, from, to, cancellationToken);
         await snapshot.CommitAsync(cancellationToken);
 
         // Trong mỗi hợp đồng: chủ hộ trước, rồi người đứng tên, sau đó theo thứ tự quan hệ như sổ hộ (vợ/chồng → cha mẹ → con → …).
@@ -125,19 +130,19 @@ public sealed class ExportRentersHandler(
         if (request.PropertyIds is { Count: > 0 } propertyIds)
         {
             var ids = propertyIds.Distinct().ToList();
-            if (await db.Properties.CountAsync(p => ids.Contains(p.Id), ct) != ids.Count)
+            if (await properties.CountAsync(ids, ct) != ids.Count)
                 return PropertyErrors.PropertyNotFound;
         }
         if (request.RoomGroupIds is { Count: > 0 } groupIds)
         {
             var ids = groupIds.Distinct().ToList();
-            if (await db.RoomGroups.CountAsync(g => ids.Contains(g.Id), ct) != ids.Count)
+            if (await rooms.CountGroupsAsync(ids, ct) != ids.Count)
                 return PropertyErrors.RoomGroupNotFound;
         }
         if (request.RoomIds is { Count: > 0 } roomIds)
         {
             var ids = roomIds.Distinct().ToList();
-            if (await db.Rooms.CountAsync(r => ids.Contains(r.Id), ct) != ids.Count)
+            if (await rooms.CountAsync(ids, ct) != ids.Count)
                 return PropertyErrors.RoomNotFound;
         }
         return null;
@@ -145,7 +150,7 @@ public sealed class ExportRentersHandler(
 }
 
 /// <summary>Một dòng = một người ở trong một hợp đồng (người ở nhiều lần ⇒ nhiều dòng).</summary>
-internal sealed class RenterExportRow
+public sealed class RenterExportRow
 {
     public Guid PropertyId { get; init; }
     public string PropertyCode { get; init; } = null!;
@@ -178,53 +183,4 @@ internal sealed class RenterExportRow
     public DateOnly? MoveOutDate { get; init; }
     public string? EmergencyContactName { get; init; }
     public string? EmergencyContactPhone { get; init; }
-}
-
-internal static class RenterExportQuery
-{
-    private static readonly ContractStatus[] LivedStatuses = [ContractStatus.Active, ContractStatus.Liquidating, ContractStatus.Ended];
-
-    /// <summary>Người ở có thời gian ở giao với [from, to] trong HĐ đã bàn giao (nháp / đã hủy không tính).</summary>
-    public static IQueryable<RenterExportRow> Build(IAppDbContext db, ExportRentersQuery request, DateOnly fromDate, DateOnly toDate)
-    {
-        var query =
-            from c in db.Contracts
-            where LivedStatuses.Contains(c.Status)
-            from o in c.Occupants
-            // Đang thanh lý: ngày chuyển đi chỉ ghi khi hoàn tất ⇒ dùng ngày trả phòng của HĐ.
-            let moveOut = o.MoveOutDate ?? c.ActualEndDate
-            where o.MoveInDate <= toDate && (moveOut == null || moveOut >= fromDate)
-            join r in db.Renters on o.RenterId equals r.Id
-            join room in db.Rooms on c.RoomId equals room.Id
-            join p in db.Properties on c.PropertyId equals p.Id
-            select new RenterExportRow
-            {
-                PropertyId = p.Id, PropertyCode = p.Code, PropertyName = p.Name,
-                RoomId = room.Id, RoomCode = room.Code, Floor = room.Floor,
-                ContractNo = c.ContractNo, ContractStatus = c.Status, IsRepresentative = c.RepresentativeRenterId == r.Id,
-                IsCoTenant = o.Role == OccupantRole.CoTenant,
-                IsHouseholdHead = (c.HouseholdHeadRenterId ?? c.RepresentativeRenterId) == r.Id,
-                FullName = r.FullName, DateOfBirth = r.DateOfBirth, Gender = r.Gender, Phone = r.Phone,
-                IdType = r.IdType, IdNumberLast4 = r.IdNumberLast4, IdNumberEncrypted = r.IdNumberEncrypted,
-                IdIssueDate = r.IdIssueDate, IdIssuePlace = r.IdIssuePlace, Nationality = r.Nationality,
-                PermanentAddress = r.PermanentAddress, Occupation = r.Occupation, Workplace = r.Workplace,
-                Relationship = o.Relationship, RelationshipType = o.RelationshipType, GuardianConsent = o.GuardianConsent,
-                MoveInDate = o.MoveInDate, MoveOutDate = moveOut,
-                EmergencyContactName = r.EmergencyContactName, EmergencyContactPhone = r.EmergencyContactPhone
-            };
-
-        if (request.PropertyIds is { Count: > 0 } propertyIds)
-            query = query.Where(x => propertyIds.Contains(x.PropertyId));
-        if (request.RoomIds is { Count: > 0 } roomIds)
-            query = query.Where(x => roomIds.Contains(x.RoomId));
-        if (request.Floors is { Count: > 0 } floors)
-        {
-            var normalized = floors.Select(f => f.Trim()).ToList();
-            query = query.Where(x => x.Floor != null && normalized.Contains(x.Floor));
-        }
-        if (request.RoomGroupIds is { Count: > 0 } groupIds)
-            query = query.Where(x => db.RoomGroups.Any(g => groupIds.Contains(g.Id) && g.Members.Any(m => m.RoomId == x.RoomId)));
-
-        return query;
-    }
 }

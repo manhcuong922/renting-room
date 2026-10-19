@@ -1,10 +1,10 @@
 using FluentValidation;
 using Mediator;
-using Microsoft.EntityFrameworkCore;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Common.Validation;
 using renting_room.Domain.Common;
 using renting_room.Domain.Properties;
+using renting_room.Application.Properties;
 
 namespace renting_room.Application.Rooms;
 
@@ -16,14 +16,14 @@ public sealed class ChangeRoomStateCommandValidator : AbstractValidator<ChangeRo
 }
 
 /// <summary>PR-BR-03/05: khóa hàng phòng ⇒ không chạy song song với kích hoạt hợp đồng trên cùng phòng.</summary>
-public sealed class ChangeRoomStateHandler(IAppDbContext db, TimeProvider clock) : IRequestHandler<ChangeRoomStateCommand, Result>
+public sealed class ChangeRoomStateHandler(
+    IRoomRepository rooms, IRoomQueries queries, IPropertyQueries properties, IUnitOfWork unitOfWork, TimeProvider clock)
+    : IRequestHandler<ChangeRoomStateCommand, Result>
 {
     public async ValueTask<Result> Handle(ChangeRoomStateCommand request, CancellationToken cancellationToken)
     {
-        await using var transaction = await db.BeginTransactionAsync(cancellationToken);
-        await db.LockForUpdateAsync<Room>(request.Id, cancellationToken);
-
-        var room = await db.Rooms.FirstOrDefaultAsync(r => r.Id == request.Id, cancellationToken);
+        await using var transaction = await unitOfWork.BeginTransactionAsync(cancellationToken);
+        var room = await rooms.GetForUpdateAsync(request.Id, cancellationToken);
         if (room is null)
             return Result.Failure(PropertyErrors.RoomNotFound);
 
@@ -31,7 +31,7 @@ public sealed class ChangeRoomStateHandler(IAppDbContext db, TimeProvider clock)
         switch (request.Action)
         {
             case RoomAction.StartMaintenance:
-                if (await db.HasOpenContractAsync(room.Id, includeDraft: false, clock.GetUtcNow().ToBusinessDate(), cancellationToken))
+                if (await queries.HasOpenContractAsync(room.Id, includeDraft: false, clock.GetUtcNow().ToBusinessDate(), cancellationToken))
                     return Result.Failure(PropertyErrors.RoomOccupied);
                 result = room.StartMaintenance(request.Note);
                 break;
@@ -39,12 +39,12 @@ public sealed class ChangeRoomStateHandler(IAppDbContext db, TimeProvider clock)
                 result = room.EndMaintenance();
                 break;
             case RoomAction.Archive:
-                if (await db.HasOpenContractAsync(room.Id, includeDraft: true, clock.GetUtcNow().ToBusinessDate(), cancellationToken))
+                if (await queries.HasOpenContractAsync(room.Id, includeDraft: true, clock.GetUtcNow().ToBusinessDate(), cancellationToken))
                     return Result.Failure(PropertyErrors.RoomHasContracts);
                 result = room.Archive(clock.GetUtcNow());
                 break;
             default:
-                var propertyArchived = await db.Properties.AnyAsync(p => p.Id == room.PropertyId && p.ArchivedAt != null, cancellationToken);
+                var propertyArchived = (await properties.GetStatusAsync(room.PropertyId, cancellationToken))?.IsArchived == true;
                 result = propertyArchived ? Result.Failure(PropertyErrors.PropertyArchived) : room.Restore();
                 break;
         }
@@ -52,7 +52,7 @@ public sealed class ChangeRoomStateHandler(IAppDbContext db, TimeProvider clock)
         if (result.IsFailure)
             return result;
 
-        await db.SaveChangesAsync(cancellationToken);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return Result.Success();
     }

@@ -1,6 +1,6 @@
-using Microsoft.EntityFrameworkCore;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Domain.Identity;
+using renting_room.Application.Identity;
 
 namespace renting_room.Application.Common.Security;
 
@@ -10,14 +10,13 @@ namespace renting_room.Application.Common.Security;
 /// </summary>
 public static class SensitiveDataAccess
 {
-    public static async Task<bool> CanViewAsync(IAppDbContext db, ICurrentUser currentUser, CancellationToken ct)
+    public static async Task<bool> CanViewAsync(IUserQueries users, ICurrentUser currentUser, CancellationToken ct)
     {
         if (currentUser.Role == UserRole.OrgOwner)
             return true;
         if (currentUser.Role != UserRole.OrgManager || currentUser.UserId is not { } userId)
             return false;
 
-        return await db.Users.AsNoTracking()
-            .AnyAsync(u => u.Id == userId && u.Status == UserStatus.Active && u.CanViewSensitiveData, ct);
+        return await users.HasSensitiveDataAccessAsync(userId, ct);
     }
 }

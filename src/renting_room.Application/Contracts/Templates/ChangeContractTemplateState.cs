@@ -1,5 +1,4 @@
 using Mediator;
-using Microsoft.EntityFrameworkCore;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Domain.Common;
 using renting_room.Domain.Contracts;
@@ -8,11 +7,12 @@ namespace renting_room.Application.Contracts;
 
 public sealed record ChangeContractTemplateStateCommand(Guid Id, bool Archive) : IRequest<Result>;
 
-public sealed class ChangeContractTemplateStateHandler(IAppDbContext db, TimeProvider clock) : IRequestHandler<ChangeContractTemplateStateCommand, Result>
+public sealed class ChangeContractTemplateStateHandler(IContractTemplateRepository templates, IUnitOfWork unitOfWork, TimeProvider clock)
+    : IRequestHandler<ChangeContractTemplateStateCommand, Result>
 {
     public async ValueTask<Result> Handle(ChangeContractTemplateStateCommand request, CancellationToken cancellationToken)
     {
-        var template = await db.ContractTemplates.FirstOrDefaultAsync(t => t.Id == request.Id, cancellationToken);
+        var template = await templates.GetForUpdateAsync(request.Id, cancellationToken);
         if (template is null)
             return Result.Failure(ContractTemplateErrors.NotFound);
 
@@ -20,7 +20,7 @@ public sealed class ChangeContractTemplateStateHandler(IAppDbContext db, TimePro
         if (result.IsFailure)
             return result;
 
-        await db.SaveChangesAsync(cancellationToken);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
         return Result.Success();
     }
 }

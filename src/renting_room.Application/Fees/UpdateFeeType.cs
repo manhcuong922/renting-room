@@ -1,6 +1,5 @@
 using FluentValidation;
 using Mediator;
-using Microsoft.EntityFrameworkCore;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Common.Validation;
 using renting_room.Domain.Common;
@@ -27,24 +26,24 @@ public sealed class UpdateFeeTypeCommandValidator : AbstractValidator<UpdateFeeT
 }
 
 /// <summary>FE-BR-02: không đổi nhóm / cách tính — muốn đổi thì tạo khoản mới và ngừng dùng khoản cũ.</summary>
-public sealed class UpdateFeeTypeHandler(IAppDbContext db, TimeProvider clock) : IRequestHandler<UpdateFeeTypeCommand, Result<FeeTypeDto>>
+public sealed class UpdateFeeTypeHandler(IFeeTypeRepository fees, IUnitOfWork unitOfWork, TimeProvider clock)
+    : IRequestHandler<UpdateFeeTypeCommand, Result<FeeTypeDto>>
 {
     public async ValueTask<Result<FeeTypeDto>> Handle(UpdateFeeTypeCommand request, CancellationToken cancellationToken)
     {
-        var fee = await db.FeeTypes.Include(f => f.Prices).FirstOrDefaultAsync(f => f.Id == request.Id, cancellationToken);
+        var fee = await fees.GetAsync(request.Id, cancellationToken);
         if (fee is null)
             return FeeErrors.NotFound;
         if (!fee.IsPerUnit && (request.DefaultQuantity is not null || request.VehicleType is not null))
             return Error.Validation("INVALID_DEFAULT_QUANTITY", "Chỉ dịch vụ theo số gói mới có số gói mặc định / loại xe.");
 
         var normalized = FeeType.NormalizeName(request.Name);
-        if (!fee.IsArchived && await db.FeeTypes.AnyAsync(f => f.PropertyId == fee.PropertyId && f.NameNormalized == normalized
-                && f.ArchivedAt == null && f.Id != fee.Id, cancellationToken))
+        if (!fee.IsArchived && await fees.IsNameTakenAsync(fee.PropertyId, normalized, systemCode: null, excludeId: fee.Id, cancellationToken))
             return FeeErrors.NameTaken;
 
-        db.SetExpectedVersion(fee, request.Version);
+        unitOfWork.SetExpectedVersion(fee, request.Version);
         fee.Update(request.Name, request.Unit, request.AutoAttach, request.DefaultQuantity, request.SortOrder, request.VehicleType);
-        await db.SaveChangesAsync(cancellationToken);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
         return FeeTypeDto.From(fee, clock.GetUtcNow().ToBusinessDate());
     }
 }

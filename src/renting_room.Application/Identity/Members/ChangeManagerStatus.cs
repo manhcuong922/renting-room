@@ -15,13 +15,13 @@ public enum ManagerAction
 public sealed record ChangeManagerStatusCommand(Guid Id, ManagerAction Action) : IRequest<Result>;
 
 public sealed class ChangeManagerStatusHandler(
-    IAppDbContext db, ICurrentUser currentUser, IUserSessionStore sessionStore, TimeProvider clock,
-    ILogger<ChangeManagerStatusHandler> logger)
+    IUserRepository users, IRefreshTokenRepository refreshTokens, IUnitOfWork unitOfWork, ICurrentUser currentUser,
+    IUserSessionStore sessionStore, TimeProvider clock, ILogger<ChangeManagerStatusHandler> logger)
     : IRequestHandler<ChangeManagerStatusCommand, Result>
 {
     public async ValueTask<Result> Handle(ChangeManagerStatusCommand request, CancellationToken cancellationToken)
     {
-        var manager = await ManagerLookup.FindAsync(db, currentUser, request.Id, cancellationToken);
+        var manager = await ManagerLookup.FindAsync(users, currentUser, request.Id, cancellationToken);
         if (manager.IsFailure)
             return Result.Failure(manager.Error!);
 
@@ -36,10 +36,10 @@ public sealed class ChangeManagerStatusHandler(
         if (result.IsFailure)
             return result;
 
-        await using var transaction = await db.BeginTransactionAsync(cancellationToken);
-        await db.SaveChangesAsync(cancellationToken);
+        await using var transaction = await unitOfWork.BeginTransactionAsync(cancellationToken);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
         if (request.Action != ManagerAction.Unlock)
-            await AccountSessions.RevokeAllAsync(db, user.Id, now, cancellationToken);
+            await AccountSessions.RevokeAllAsync(refreshTokens, user.Id, now, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         sessionStore.Invalidate(user.Id);
 
