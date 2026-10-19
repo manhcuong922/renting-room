@@ -13,6 +13,8 @@ public static class ProblemResponses
 {
     public const string CodeKey = "code";
     public const string TraceIdKey = "traceId";
+    public const string InvalidRequestCode = "INVALID_REQUEST";
+    public const string InvalidRequestDetail = "Yêu cầu không đúng định dạng (JSON sai cú pháp, thiếu body hoặc sai kiểu dữ liệu).";
 
     public static IServiceCollection AddApiProblemDetails(this IServiceCollection services) =>
         services.AddProblemDetails(options => options.CustomizeProblemDetails = context =>

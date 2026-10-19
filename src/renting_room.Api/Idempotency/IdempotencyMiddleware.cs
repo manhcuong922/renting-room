@@ -8,20 +8,20 @@ using renting_room.Infrastructure.Idempotency;
 
 namespace renting_room.Idempotency;
 
-/// <summary>Đánh dấu endpoint hỗ trợ / bắt buộc header <c>Idempotency-Key</c>.</summary>
-public sealed record IdempotentMetadata(bool IsRequired);
+/// <summary>
+/// Đánh dấu action hỗ trợ / bắt buộc header <c>Idempotency-Key</c>. <paramref name="required"/> = true: thiếu header → 400.
+/// Dùng cho thao tác tạo mới / tài chính, nơi gửi trùng gây hậu quả.
+/// </summary>
+[AttributeUsage(AttributeTargets.Method)]
+public sealed class IdempotentAttribute(bool required = true) : Attribute
+{
+    public bool IsRequired { get; } = required;
+}
 
 public static partial class IdempotencyEndpointExtensions
 {
     public const string HeaderName = "Idempotency-Key";
     public const string ReplayedHeaderName = "Idempotent-Replayed";
-
-    /// <summary>
-    /// <paramref name="required"/> = true: thiếu header → 400. Dùng cho thao tác tạo mới / tài chính, nơi gửi trùng gây hậu quả.
-    /// </summary>
-    public static TBuilder WithIdempotency<TBuilder>(this TBuilder builder, bool required = true)
-        where TBuilder : IEndpointConventionBuilder =>
-        builder.WithMetadata(new IdempotentMetadata(required));
 
     [GeneratedRegex("^[A-Za-z0-9_-]{8,64}$")]
     internal static partial Regex KeyFormat();
@@ -43,7 +43,7 @@ internal sealed class IdempotencyMiddleware(RequestDelegate next, ILogger<Idempo
     public async Task InvokeAsync(
         HttpContext context, IIdempotencyStore store, ICurrentUser currentUser, IOptions<IdempotencyOptions> options)
     {
-        var metadata = context.GetEndpoint()?.Metadata.GetMetadata<IdempotentMetadata>();
+        var metadata = context.GetEndpoint()?.Metadata.GetMetadata<IdempotentAttribute>();
         if (metadata is null || HttpMethods.IsGet(context.Request.Method) || HttpMethods.IsHead(context.Request.Method))
         {
             await next(context);

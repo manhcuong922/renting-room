@@ -6,11 +6,13 @@ using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.OpenApi;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Errors;
+using renting_room.Http;
 using renting_room.Idempotency;
 using renting_room.Infrastructure.Identity;
 using renting_room.Infrastructure.Jobs;
 using renting_room.Infrastructure.Persistence;
 using renting_room.Middleware;
+using renting_room.OpenApi;
 using renting_room.Security;
 
 namespace renting_room;
@@ -28,15 +30,25 @@ internal static class ApiSetup
             // "version" trả ra dạng chuỗi (xmin) — client gửi lại nguyên chuỗi đó khi cập nhật.
             options.SerializerOptions.NumberHandling = JsonNumberHandling.AllowReadingFromString;
         });
-        // Swagger mô tả enum theo JsonOptions của MVC — khai báo cùng converter để openapi.json ghi enum dạng chuỗi như response thật.
-        services.Configure<Microsoft.AspNetCore.Mvc.JsonOptions>(options =>
-            options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
-
-        // JSON sai cú pháp / thiếu body → ném BadHttpRequestException để GlobalExceptionHandler trả ProblemDetails.
-        services.Configure<RouteHandlerOptions>(options => options.ThrowOnBadRequest = true);
-
+        // Đăng ký TRƯỚC controller: bộ ghi ProblemDetails mặc định được chọn trước bộ ghi của MVC ⇒ mọi lỗi cùng một định dạng.
         services.AddApiProblemDetails();
         services.AddExceptionHandler<GlobalExceptionHandler>();
+
+        // Controller đọc body bằng JsonOptions của MVC — cấu hình giống hệt phần trên. Swagger cũng mô tả enum theo cấu hình này.
+        services.AddControllers(options =>
+            {
+                options.SuppressImplicitRequiredAttributeForNonNullableReferenceTypes = true;
+                options.ModelMetadataDetailsProviders.Add(new RequiredParameterMetadataProvider());
+            })
+            .AddJsonOptions(options =>
+            {
+                options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+                options.JsonSerializerOptions.NumberHandling = JsonNumberHandling.AllowReadingFromString;
+            })
+            // JSON sai cú pháp / thiếu body / tham số sai kiểu hoặc thiếu → BadHttpRequestException ⇒ GlobalExceptionHandler trả
+            // 400 INVALID_REQUEST. Kiểm tra nghiệp vụ do FluentValidation làm.
+            .ConfigureApiBehaviorOptions(options => options.InvalidModelStateResponseFactory = _ =>
+                throw new BadHttpRequestException(ProblemResponses.InvalidRequestDetail));
 
         services.AddHttpContextAccessor();
         // Job nền đặt người dùng hệ thống của tổ chức qua CurrentUserOverride; còn lại là người dùng của request.
@@ -95,6 +107,8 @@ internal static class ApiSetup
                 [new OpenApiSecuritySchemeReference("Bearer", document)] = []
             });
             options.OperationFilter<IdempotencyHeaderOperationFilter>();
+            options.ParameterFilter<RequiredFromMetadataFilter>();
+            options.RequestBodyFilter<RequiredFromMetadataFilter>();
         });
 
         return services;

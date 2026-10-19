@@ -14,7 +14,7 @@ internal static class Layers
     public const string DomainNamespace = "renting_room.Domain";
     public const string ApplicationNamespace = "renting_room.Application";
     public const string InfrastructureNamespace = "renting_room.Infrastructure";
-    public const string EndpointsNamespace = "renting_room.Endpoints";
+    public const string ControllersNamespace = "renting_room.Controllers";
 
     /// <summary>Kiểu do code dự án viết (bỏ kiểu compiler sinh như lambda/closure và kiểu source generator của Mediator sinh).</summary>
     public static IEnumerable<Type> ProjectTypes(this Assembly assembly) =>

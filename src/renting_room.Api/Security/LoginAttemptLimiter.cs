@@ -9,7 +9,7 @@ namespace renting_room.Security;
 /// Không làm được bằng policy của RateLimiter middleware: khóa cần username trong body mà partitioner chạy trước model binding
 /// ⇒ endpoint login gọi trực tiếp sau khi đã đọc body. Giới hạn theo IP vẫn do policy <c>login</c> đảm nhận.
 /// </summary>
-internal sealed class LoginAttemptLimiter : IDisposable
+public sealed class LoginAttemptLimiter : IDisposable
 {
     private readonly PartitionedRateLimiter<string> _limiter;
 

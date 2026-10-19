@@ -1,6 +1,5 @@
 using renting_room;
 using renting_room.Application;
-using renting_room.Endpoints;
 using renting_room.Infrastructure;
 using renting_room.Infrastructure.Persistence;
 
@@ -20,23 +19,7 @@ builder.Services
 var app = builder.Build();
 
 app.UseApi();
-app.MapAuthEndpoints();
-app.MapAdminOrganizationEndpoints();
-app.MapMemberEndpoints();
-app.MapPropertyEndpoints();
-app.MapOrganizationLessorEndpoints();
-app.MapRoomEndpoints();
-app.MapRenterEndpoints();
-app.MapContractEndpoints();
-app.MapContractTemplateEndpoints();
-app.MapExportEndpoints();
-app.MapImportEndpoints();
-app.MapFeeEndpoints();
-app.MapMeterEndpoints();
-app.MapBillingEndpoints();
-app.MapRoomChargeEndpoints();
-app.MapAuditEndpoints();
-app.MapDataRetentionEndpoints();
+app.MapControllers();
 
 await app.Services.InitializeDatabaseAsync();
 await app.RunAsync();
