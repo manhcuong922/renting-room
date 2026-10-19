@@ -35,8 +35,8 @@ internal sealed class GlobalExceptionHandler(
             ValidationException validation => FromValidation(validation),
             BadHttpRequestException { StatusCode: StatusCodes.Status413PayloadTooLarge } => Problem(
                 StatusCodes.Status413PayloadTooLarge, "PAYLOAD_TOO_LARGE", "Dữ liệu gửi lên vượt quá dung lượng cho phép."),
-            BadHttpRequestException badRequest => Problem(badRequest.StatusCode, "INVALID_REQUEST",
-                "Yêu cầu không đúng định dạng (JSON sai cú pháp, thiếu body hoặc sai kiểu dữ liệu)."),
+            BadHttpRequestException badRequest => Problem(badRequest.StatusCode, ProblemResponses.InvalidRequestCode,
+                ProblemResponses.InvalidRequestDetail),
             DomainException domain => Problem(StatusCodes.Status422UnprocessableEntity, domain.Code, domain.Message),
             DbUpdateConcurrencyException => Problem(StatusCodes.Status409Conflict, "CONCURRENCY_CONFLICT",
                 "Dữ liệu đã bị người khác thay đổi. Vui lòng tải lại và thử lại."),

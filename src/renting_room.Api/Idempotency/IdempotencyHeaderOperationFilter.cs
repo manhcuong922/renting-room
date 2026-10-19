@@ -8,7 +8,7 @@ internal sealed class IdempotencyHeaderOperationFilter : IOperationFilter
 {
     public void Apply(OpenApiOperation operation, OperationFilterContext context)
     {
-        var metadata = context.ApiDescription.ActionDescriptor.EndpointMetadata.OfType<IdempotentMetadata>().FirstOrDefault();
+        var metadata = context.ApiDescription.ActionDescriptor.EndpointMetadata.OfType<IdempotentAttribute>().FirstOrDefault();
         if (metadata is null)
             return;
 
