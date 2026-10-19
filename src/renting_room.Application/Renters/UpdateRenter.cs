@@ -1,6 +1,5 @@
 using FluentValidation;
 using Mediator;
-using Microsoft.EntityFrameworkCore;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Domain.Common;
 using renting_room.Domain.Renters;
@@ -15,12 +14,14 @@ public sealed class UpdateRenterCommandValidator : AbstractValidator<UpdateRente
         RuleFor(x => x.Renter).NotNull().SetValidator(new RenterInputValidator(clock, idNumberRequired: false));
 }
 
-public sealed class UpdateRenterHandler(IAppDbContext db, ICurrentUser currentUser, IPersonalDataProtector protector, TimeProvider clock)
+public sealed class UpdateRenterHandler(
+    IRenterRepository renters, IRenterQueries renterQueries, IUnitOfWork unitOfWork, ICurrentUser currentUser, IPersonalDataProtector protector,
+    TimeProvider clock)
     : IRequestHandler<UpdateRenterCommand, Result<RenterDto>>
 {
     public async ValueTask<Result<RenterDto>> Handle(UpdateRenterCommand request, CancellationToken cancellationToken)
     {
-        var renter = await db.Renters.FirstOrDefaultAsync(r => r.Id == request.Id, cancellationToken);
+        var renter = await renters.GetForUpdateAsync(request.Id, cancellationToken);
         if (renter is null)
             return RenterErrors.RenterNotFound;
         if (renter.IsAnonymized)
@@ -42,14 +43,13 @@ public sealed class UpdateRenterHandler(IAppDbContext db, ICurrentUser currentUs
             return Error.Validation("ID_NUMBER_REQUIRED", "Đổi loại giấy tờ thì phải nhập lại số giấy tờ.");
 
         if (idNumber is not null && idNumber.Hash != renter.IdNumberHash
-            && await db.Renters.Where(r => r.IdNumberHash == idNumber.Hash && r.Id != renter.Id)
-                .Select(r => (Guid?)r.Id).FirstOrDefaultAsync(cancellationToken) is { } existing)
+            && await renters.FindIdByIdNumberHashAsync(idNumber.Hash, renter.Id, cancellationToken) is { } existing)
             return RenterErrors.IdNumberExistsFor(existing);
 
-        db.SetExpectedVersion(renter, request.Version);
+        unitOfWork.SetExpectedVersion(renter, request.Version);
         renter.Update(request.Renter.ToProfile(), idNumber);
-        await db.SaveChangesAsync(cancellationToken);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
 
-        return await db.Renters.AsNoTracking().Where(r => r.Id == renter.Id).ToDto().FirstAsync(cancellationToken);
+        return (await renterQueries.GetAsync(renter.Id, cancellationToken))!;
     }
 }

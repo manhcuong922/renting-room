@@ -87,9 +87,9 @@ internal static class ImportFiles
     }
 
     /// <summary>Lưu từng đơn vị trong transaction riêng; lỗi ⇒ rollback đơn vị đó và xóa theo dõi để không dính sang đơn vị sau.</summary>
-    public static async Task<IReadOnlyList<ImportIssue>> SaveUnitAsync(IAppDbContext db, Func<Task<Error?>> save, CancellationToken ct)
+    public static async Task<IReadOnlyList<ImportIssue>> SaveUnitAsync(IUnitOfWork unitOfWork, Func<Task<Error?>> save, CancellationToken ct)
     {
-        await using var transaction = await db.BeginTransactionAsync(ct);
+        await using var transaction = await unitOfWork.BeginTransactionAsync(ct);
         Error? failure;
         try
         {
@@ -99,7 +99,7 @@ internal static class ImportFiles
         {
             failure = Error.Validation(ex.Errors.FirstOrDefault()?.ErrorCode ?? "INVALID", ex.Errors.FirstOrDefault()?.ErrorMessage ?? ex.Message);
         }
-        catch (Microsoft.EntityFrameworkCore.DbUpdateException)
+        catch (Exception ex) when (unitOfWork.IsSaveFailure(ex))
         {
             // Dữ liệu vừa đổi (VD ai đó vừa tạo phòng trùng mã / HĐ trùng thời gian) — ràng buộc DB chặn.
             failure = Error.Conflict("IMPORT_UNIT_CONFLICT", "Dữ liệu vừa thay đổi (trùng mã / trùng thời gian ở) — tải lại và kiểm tra.");
@@ -107,11 +107,11 @@ internal static class ImportFiles
         if (failure is null)
         {
             await transaction.CommitAsync(ct);
-            db.ChangeTracker.Clear();
+            unitOfWork.ClearTracking();
             return [];
         }
         await transaction.RollbackAsync(ct);
-        db.ChangeTracker.Clear();
+        unitOfWork.ClearTracking();
         return [new ImportIssue(failure.Code, failure.Message)];
     }
 }

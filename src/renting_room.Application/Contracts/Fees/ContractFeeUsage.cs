@@ -1,7 +1,8 @@
 using FluentValidation;
 using Mediator;
-using Microsoft.EntityFrameworkCore;
-using renting_room.Application.Common.Interfaces;
+using renting_room.Application.Fees;
+using renting_room.Application.Renters;
+using renting_room.Application.Rooms;
 using renting_room.Application.Common.Validation;
 using renting_room.Domain.Common;
 using renting_room.Domain.Contracts;
@@ -27,25 +28,20 @@ public sealed record FeeUsageRowDto(
 
 public sealed record GetFeeUsageQuery(Guid FeeTypeId) : IRequest<Result<IReadOnlyList<FeeUsageRowDto>>>;
 
-public sealed class GetFeeUsageHandler(IAppDbContext db, TimeProvider clock) : IRequestHandler<GetFeeUsageQuery, Result<IReadOnlyList<FeeUsageRowDto>>>
+public sealed class GetFeeUsageHandler(IFeeQueries fees, IRoomQueries roomQueries, IContractQueries contractQueries, IRenterQueries renters, TimeProvider clock)
+    : IRequestHandler<GetFeeUsageQuery, Result<IReadOnlyList<FeeUsageRowDto>>>
 {
     public async ValueTask<Result<IReadOnlyList<FeeUsageRowDto>>> Handle(GetFeeUsageQuery request, CancellationToken cancellationToken)
     {
-        var fee = await db.FeeTypes.AsNoTracking().FirstOrDefaultAsync(f => f.Id == request.FeeTypeId, cancellationToken);
+        var fee = await fees.FindTypeAsync(request.FeeTypeId, cancellationToken);
         if (fee is null)
             return FeeErrors.NotFound;
 
         var today = clock.GetUtcNow().ToBusinessDate();
-        var rooms = await db.Rooms.AsNoTracking().Where(r => r.PropertyId == fee.PropertyId && r.ArchivedAt == null)
-            .Select(r => new { r.Id, r.Code, r.Floor }).ToListAsync(cancellationToken);
-        var contracts = await db.Contracts.AsNoTracking().Include(c => c.Fees)
-            .Where(c => c.PropertyId == fee.PropertyId
-                && (c.Status == ContractStatus.Active || c.Status == ContractStatus.Liquidating)
-                && (c.ActualEndDate == null || c.ActualEndDate >= today))
-            .ToListAsync(cancellationToken);
-        var representativeIds = contracts.Select(c => c.RepresentativeRenterId).ToList();
-        var names = await db.Renters.AsNoTracking().Where(r => representativeIds.Contains(r.Id))
-            .ToDictionaryAsync(r => r.Id, r => r.FullName, cancellationToken);
+        var rooms = (await roomQueries.ListByPropertyAsync(fee.PropertyId, null, cancellationToken)).Where(r => !r.IsArchived).ToList();
+        var contracts = await contractQueries.ListActiveWithFeesAsync(fee.PropertyId, today, cancellationToken);
+        var representativeIds = contracts.Select(c => c.RepresentativeRenterId).Distinct().ToList();
+        var names = await renters.GetNamesAsync(representativeIds, cancellationToken);
 
         var rows = rooms.Select(room =>
             {
@@ -91,12 +87,12 @@ public sealed class BulkContractFeeCommandValidator : AbstractValidator<BulkCont
     }
 }
 
-public sealed class BulkContractFeeHandler(IAppDbContext db, ISender sender)
+public sealed class BulkContractFeeHandler(IFeeQueries fees, ISender sender)
     : IRequestHandler<BulkContractFeeCommand, Result<IReadOnlyList<FeeUsageResultRow>>>
 {
     public async ValueTask<Result<IReadOnlyList<FeeUsageResultRow>>> Handle(BulkContractFeeCommand request, CancellationToken cancellationToken)
     {
-        if (!await db.FeeTypes.AnyAsync(f => f.Id == request.FeeTypeId, cancellationToken))
+        if (await fees.FindTypeAsync(request.FeeTypeId, cancellationToken) is null)
             return FeeErrors.NotFound;
 
         var results = new List<FeeUsageResultRow>();

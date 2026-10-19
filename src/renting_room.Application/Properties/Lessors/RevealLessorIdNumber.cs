@@ -1,10 +1,11 @@
 using Mediator;
-using Microsoft.EntityFrameworkCore;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Common.Security;
 using renting_room.Domain.Common;
 using renting_room.Domain.Identity;
 using renting_room.Domain.Properties;
+using renting_room.Application.Identity;
+using renting_room.Application.Identity.Organizations;
 
 namespace renting_room.Application.Properties;
 
@@ -16,18 +17,19 @@ namespace renting_room.Application.Properties;
 public sealed record RevealLessorIdNumberQuery(Guid PropertyId) : IRequest<Result<string>>;
 
 public sealed class RevealLessorIdNumberHandler(
-    IAppDbContext db, ICurrentUser currentUser, IPersonalDataProtector protector, IAuditTrail auditTrail)
+    IPropertyQueries properties, IOrganizationQueries organizations, IUserQueries users, ICurrentUser currentUser,
+    IPersonalDataProtector protector, IAuditTrail auditTrail)
     : IRequestHandler<RevealLessorIdNumberQuery, Result<string>>
 {
     public async ValueTask<Result<string>> Handle(RevealLessorIdNumberQuery request, CancellationToken cancellationToken)
     {
-        if (!await SensitiveDataAccess.CanViewAsync(db, currentUser, cancellationToken))
+        if (!await SensitiveDataAccess.CanViewAsync(users, currentUser, cancellationToken))
             return IdentityErrors.SensitiveDataForbidden;
 
-        var property = await db.Properties.AsNoTracking().FirstOrDefaultAsync(p => p.Id == request.PropertyId, cancellationToken);
+        var property = await properties.GetAsync(request.PropertyId, cancellationToken);
         if (property is null)
             return PropertyErrors.PropertyNotFound;
-        var (lessor, _) = await LessorSource.EffectiveAsync(db, property, cancellationToken);
+        var (lessor, _) = await LessorSource.EffectiveAsync(organizations, property, cancellationToken);
         if (lessor?.IdNumberEncrypted is null)
             return string.Empty;
 

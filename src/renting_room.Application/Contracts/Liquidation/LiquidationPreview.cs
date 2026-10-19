@@ -1,8 +1,6 @@
 using Mediator;
-using Microsoft.EntityFrameworkCore;
-using renting_room.Application.Common.Interfaces;
+using renting_room.Application.Billing;
 using renting_room.Application.Meters;
-using renting_room.Application.Payments;
 using renting_room.Domain.Billing;
 using renting_room.Domain.Common;
 using renting_room.Domain.Contracts;
@@ -25,26 +23,26 @@ public sealed record GetLiquidationPreviewQuery(Guid ContractId) : IRequest<Resu
 /// <summary>
 /// CT-UC-08: tổng hợp một lần những gì cần xem trước khi hoàn tất thanh lý — cùng các điều kiện mà lệnh hoàn tất kiểm (CT-BR-12), chỉ đọc.
 /// </summary>
-public sealed class GetLiquidationPreviewHandler(IAppDbContext db, TimeProvider clock)
+public sealed class GetLiquidationPreviewHandler(
+    IContractQueries contracts, IInvoiceQueries invoiceQueries, IRoomChargeQueries roomCharges, ContractMeterReadings meterReadings, TimeProvider clock)
     : IRequestHandler<GetLiquidationPreviewQuery, Result<LiquidationPreviewDto>>
 {
     public async ValueTask<Result<LiquidationPreviewDto>> Handle(GetLiquidationPreviewQuery request, CancellationToken cancellationToken)
     {
-        var contract = await db.Contracts.AsNoTracking().Include(c => c.RoomMoves).FirstOrDefaultAsync(c => c.Id == request.ContractId, cancellationToken);
+        var contract = await contracts.GetWithRoomMovesAsync(request.ContractId, cancellationToken);
         if (contract is null)
             return ContractErrors.NotFound;
 
         var today = clock.GetUtcNow().ToBusinessDate();
-        var invoices = await db.Invoices.AsNoTracking().Where(i => i.ContractId == contract.Id && i.Status != InvoiceStatus.Void)
-            .Select(i => new { i.Id, i.InvoiceNo, i.BillingMonth, i.Type, i.Status, i.TotalAmount, i.PaidAmount, i.PeriodStart }).ToListAsync(cancellationToken);
+        var invoices = await invoiceQueries.ListForBalanceAsync(contract.Id, cancellationToken);
         var unpaid = invoices.Where(i => i.Status == InvoiceStatus.Finalized && i.PaidAmount < i.TotalAmount).OrderBy(i => i.PeriodStart)
             .Select(i => new LiquidationUnpaidInvoiceDto(i.Id, i.InvoiceNo, $"{i.BillingMonth:yyyy-MM}", i.Type, i.TotalAmount - i.PaidAmount)).ToList();
-        var outstanding = await PaymentPosting.OutstandingAsync(db, contract.Id, cancellationToken);
-        var refundDue = await PaymentPosting.RefundDueAsync(db, contract.Id, cancellationToken);
-        var missing = await ContractMeterReadings.MissingFinalAsync(db, contract, contract.ActualEndDate ?? today, cancellationToken);
+        var outstanding = await invoiceQueries.GetContractOutstandingAsync(contract.Id, cancellationToken);
+        var refundDue = await invoiceQueries.GetRefundDueAsync(contract.Id, cancellationToken);
+        var missing = await meterReadings.MissingFinalAsync(contract, contract.ActualEndDate ?? today, cancellationToken);
         var final = invoices.FirstOrDefault(i => i.Type == InvoiceType.Final);
         var otherDrafts = invoices.Any(i => i.Status == InvoiceStatus.Draft && i.Type != InvoiceType.Final);
-        var pendingCharges = await db.RoomCharges.CountAsync(c => c.ContractId == contract.Id && c.InvoiceId == null && c.CancelledAt == null, cancellationToken);
+        var pendingCharges = await roomCharges.CountPendingAsync(contract.Id, cancellationToken);
 
         var blockers = new List<string>();
         if (contract.Status != ContractStatus.Liquidating)

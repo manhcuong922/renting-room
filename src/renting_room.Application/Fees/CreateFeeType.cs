@@ -1,7 +1,7 @@
 using FluentValidation;
 using Mediator;
-using Microsoft.EntityFrameworkCore;
 using renting_room.Application.Common.Interfaces;
+using renting_room.Application.Properties;
 using renting_room.Application.Common.Models;
 using renting_room.Application.Common.Validation;
 using renting_room.Domain.Common;
@@ -48,18 +48,19 @@ public sealed class CreateFeeTypeCommandValidator : AbstractValidator<CreateFeeT
     }
 }
 
-public sealed class CreateFeeTypeHandler(IAppDbContext db, IFeeSettings settings) : IRequestHandler<CreateFeeTypeCommand, Result<CreatedWithWarnings>>
+public sealed class CreateFeeTypeHandler(IPropertyQueries properties, IFeeTypeRepository fees, IUnitOfWork unitOfWork, IFeeSettings settings)
+    : IRequestHandler<CreateFeeTypeCommand, Result<CreatedWithWarnings>>
 {
     public async ValueTask<Result<CreatedWithWarnings>> Handle(CreateFeeTypeCommand request, CancellationToken cancellationToken)
     {
-        var property = await db.Properties.AsNoTracking().FirstOrDefaultAsync(p => p.Id == request.PropertyId, cancellationToken);
+        var property = await properties.GetStatusAsync(request.PropertyId, cancellationToken);
         if (property is null)
             return PropertyErrors.PropertyNotFound;
         if (property.IsArchived)
             return PropertyErrors.PropertyArchived;
 
         var normalized = FeeType.NormalizeName(request.Name);
-        if (await db.FeeTypes.AnyAsync(f => f.PropertyId == request.PropertyId && f.NameNormalized == normalized && f.ArchivedAt == null, cancellationToken))
+        if (await fees.IsNameTakenAsync(request.PropertyId, normalized, systemCode: null, excludeId: null, cancellationToken))
             return FeeErrors.NameTaken;
 
         var fee = FeeType.Create(request.PropertyId, request.Name, request.Group, request.ChargeBasis, request.Unit, request.AutoAttach,
@@ -73,8 +74,8 @@ public sealed class CreateFeeTypeHandler(IAppDbContext db, IFeeSettings settings
             warnings = FeeWarnings.ForPrice(fee, added.Value!, settings);
         }
 
-        db.FeeTypes.Add(fee);
-        await db.SaveChangesAsync(cancellationToken);
+        fees.Add(fee);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
         return new CreatedWithWarnings(fee.Id, warnings);
     }
 }

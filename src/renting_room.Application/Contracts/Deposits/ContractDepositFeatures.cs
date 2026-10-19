@@ -1,6 +1,5 @@
 using FluentValidation;
 using Mediator;
-using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Common.Validation;
 using renting_room.Domain.Common;
 
@@ -19,18 +18,18 @@ public sealed class RefundDepositCommandValidator : AbstractValidator<RefundDepo
 }
 
 /// <summary>M08 PM-BR-33: "Đã hoàn trả cọc" — cọc chỉ để theo dõi, không ghi tiền vào / ra, không trừ vào phiếu.</summary>
-public sealed class RefundDepositHandler(IAppDbContext db, TimeProvider clock) : IRequestHandler<RefundDepositCommand, Result>
+public sealed class RefundDepositHandler(ContractMutation mutation, TimeProvider clock) : IRequestHandler<RefundDepositCommand, Result>
 {
     public ValueTask<Result> Handle(RefundDepositCommand request, CancellationToken cancellationToken) =>
-        new(ContractMutation.RunAsync(db, request.ContractId, contract => Task.FromResult(
+        new(mutation.RunAsync(request.ContractId, contract => Task.FromResult(
             contract.RefundDeposit(request.RefundedOn, request.Amount, request.Note, clock.GetUtcNow().ToBusinessDate())), cancellationToken));
 }
 
 public sealed record CancelDepositRefundCommand(Guid ContractId) : IRequest<Result>;
 
 /// <summary>Bỏ đánh dấu hoàn trả / chuyển cọc (nhập nhầm) ⇒ "Đang giữ cọc".</summary>
-public sealed class CancelDepositRefundHandler(IAppDbContext db) : IRequestHandler<CancelDepositRefundCommand, Result>
+public sealed class CancelDepositRefundHandler(ContractMutation mutation) : IRequestHandler<CancelDepositRefundCommand, Result>
 {
     public ValueTask<Result> Handle(CancelDepositRefundCommand request, CancellationToken cancellationToken) =>
-        new(ContractMutation.RunAsync(db, request.ContractId, contract => Task.FromResult(contract.CancelDepositRefund()), cancellationToken));
+        new(mutation.RunAsync(request.ContractId, contract => Task.FromResult(contract.CancelDepositRefund()), cancellationToken));
 }

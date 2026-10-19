@@ -1,7 +1,5 @@
 using FluentValidation;
 using Mediator;
-using Microsoft.EntityFrameworkCore;
-using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Common.Validation;
 using renting_room.Domain.Common;
 using renting_room.Domain.Renters;
@@ -19,19 +17,18 @@ public sealed class AnonymizeRenterCommandValidator : AbstractValidator<Anonymiz
     public AnonymizeRenterCommandValidator() => RuleFor(x => x.Reason).RequiredText(300, "Lý do");
 }
 
-public sealed class AnonymizeRenterHandler(IAppDbContext db, RenterAnonymizer anonymizer) : IRequestHandler<AnonymizeRenterCommand, Result>
+public sealed class AnonymizeRenterHandler(IRenterQueries renters, RenterAnonymizer anonymizer) : IRequestHandler<AnonymizeRenterCommand, Result>
 {
     public async ValueTask<Result> Handle(AnonymizeRenterCommand request, CancellationToken cancellationToken)
     {
-        var renter = await db.Renters.AsNoTracking().Where(r => r.Id == request.Id)
-            .Select(r => new { r.AnonymizedAt }).FirstOrDefaultAsync(cancellationToken);
-        if (renter is null)
+        var anonymized = await renters.IsAnonymizedAsync(request.Id, cancellationToken);
+        if (anonymized is null)
             return Result.Failure(RenterErrors.RenterNotFound);
-        if (renter.AnonymizedAt is not null)
+        if (anonymized.Value)
             return Result.Failure(RenterErrors.Anonymized);
-        if (await RenterAnonymizer.HasOpenContractAsync(db, request.Id, cancellationToken))
+        if (await renters.HasOpenContractAsync(request.Id, cancellationToken))
             return Result.Failure(RenterErrors.HasOpenContract);
-        if (await RenterAnonymizer.HasUnsettledInvoiceAsync(db, request.Id, cancellationToken))
+        if (await renters.HasUnsettledInvoiceAsync(request.Id, cancellationToken))
             return Result.Failure(RenterErrors.HasUnsettledInvoices);
 
         await anonymizer.AnonymizeAsync(request.Id, request.Reason.Trim(), cancellationToken);

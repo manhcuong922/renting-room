@@ -1,10 +1,12 @@
 using FluentValidation;
 using Mediator;
-using Microsoft.EntityFrameworkCore;
 using renting_room.Application.Billing;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Contracts;
+using renting_room.Application.Fees;
 using renting_room.Application.Properties;
+using renting_room.Application.Renters;
+using renting_room.Application.Rooms;
 using renting_room.Domain.Billing;
 using renting_room.Domain.Common;
 using renting_room.Domain.Contracts;
@@ -46,54 +48,12 @@ public sealed record MeterReadingSheetRow(
 
 public sealed record MeterReadingSheetDto(string BillingMonth, IReadOnlyList<MeterReadingSheetRow> Rows);
 
-internal static class ReadingLocks
-{
-    /// <summary>
-    /// MT-BR-06: chỉ số là đầu / cuối của đoạn đo trên phiếu đã chốt (chưa hủy), hoặc của khoản chốt điện nước khi chuyển phòng chưa hủy
-    /// (BL-BR-38).
-    /// </summary>
-    public static async Task<HashSet<Guid>> LockedReadingIdsAsync(IAppDbContext db, IReadOnlyCollection<Guid> meterIds, CancellationToken ct)
-    {
-        var segments = await db.Invoices.Where(i => i.Status == InvoiceStatus.Finalized)
-            .SelectMany(i => i.Segments)
-            .Where(s => meterIds.Contains(s.MeterId) && !s.Voided)
-            .Select(s => new { s.StartReadingId, s.EndReadingId })
-            .ToListAsync(ct);
-        var closings = await db.RoomCharges.Where(c => c.MeterId != null && meterIds.Contains(c.MeterId.Value) && c.CancelledAt == null)
-            .Select(c => new { c.StartReadingId, c.EndReadingId })
-            .ToListAsync(ct);
-        return segments.SelectMany(s => new[] { s.StartReadingId, s.EndReadingId })
-            .Concat(closings.SelectMany(c => new[] { c.StartReadingId!.Value, c.EndReadingId!.Value }))
-            .ToHashSet();
-    }
-}
-
 /// <summary>
 /// MT-BR-09/10 (17/10/2026): công tơ đã có đoạn đo trên phiếu đã chốt ⇒ thay / tháo phải sau ngày cuối kỳ sử dụng của phiếu đó, nếu không
 /// phần sản lượng từ chỉ số cuối kỳ tới số tháo không phiếu nào tính (kỳ sau bỏ qua công tơ đã tháo trước đầu kỳ).
 /// </summary>
 internal static class MeterPeriodLocks
 {
-    public static async Task<Dictionary<Guid, DateOnly>> LockedUntilAsync(IAppDbContext db, IReadOnlyCollection<Guid> meterIds, CancellationToken ct)
-    {
-        var segments = await db.Invoices.Where(i => i.Status == InvoiceStatus.Finalized)
-            .SelectMany(i => i.Segments.Where(s => meterIds.Contains(s.MeterId) && !s.Voided).Select(s => new { s.MeterId, s.FeeTypeId, InvoiceId = i.Id }))
-            .ToListAsync(ct);
-        if (segments.Count == 0)
-            return [];
-        var invoiceIds = segments.Select(s => s.InvoiceId).Distinct().ToList();
-        var usageEnds = (await db.Invoices.Where(i => invoiceIds.Contains(i.Id))
-                .SelectMany(i => i.Lines.Where(l => l.Type == InvoiceLineType.Metered && l.FeeTypeId != null)
-                    .Select(l => new { InvoiceId = i.Id, FeeTypeId = l.FeeTypeId!.Value, l.ServiceTo }))
-                .ToListAsync(ct))
-            .GroupBy(l => (l.InvoiceId, l.FeeTypeId))
-            .ToDictionary(g => g.Key, g => g.Max(l => l.ServiceTo));
-        return segments
-            .Where(s => usageEnds.ContainsKey((s.InvoiceId, s.FeeTypeId)))
-            .GroupBy(s => s.MeterId)
-            .ToDictionary(g => g.Key, g => g.Max(s => usageEnds[(s.InvoiceId, s.FeeTypeId)]));
-    }
-
     /// <summary>Lỗi nếu <paramref name="date"/> chưa qua kỳ đã chốt của công tơ.</summary>
     public static Error? Check(IReadOnlyDictionary<Guid, DateOnly> locks, Guid meterId, DateOnly date) =>
         locks.TryGetValue(meterId, out var until) && date <= until ? MeterErrors.PeriodLocked(until) : null;
@@ -112,42 +72,31 @@ public sealed class GetMeterReadingSheetQueryValidator : AbstractValidator<GetMe
 /// MT-UC-04 / §3.4: mỗi dòng = (phòng, HĐ, công tơ) có kỳ sử dụng ứng với tháng thu — Postpaid: kỳ của tháng; Prepaid: kỳ liền trước.
 /// Công tơ đã tháo trong kỳ không cần nhập (số tháo là số cuối).
 /// </summary>
-public sealed class GetMeterReadingSheetHandler(IAppDbContext db) : IRequestHandler<GetMeterReadingSheetQuery, Result<MeterReadingSheetDto>>
+public sealed class GetMeterReadingSheetHandler(
+    IPropertyQueries properties, IRoomQueries roomQueries, IContractQueries contractQueries, IMeterQueries meterQueries, IFeeQueries feeQueries,
+    IRenterQueries renters, IInvoiceQueries invoices)
+    : IRequestHandler<GetMeterReadingSheetQuery, Result<MeterReadingSheetDto>>
 {
     public async ValueTask<Result<MeterReadingSheetDto>> Handle(GetMeterReadingSheetQuery request, CancellationToken cancellationToken)
     {
-        if (!await db.Properties.AnyAsync(p => p.Id == request.PropertyId, cancellationToken))
+        if (!await properties.ExistsAsync(request.PropertyId, cancellationToken))
             return PropertyErrors.PropertyNotFound;
 
         var month = BillingMonths.Parse(request.BillingMonth)!.Value;
         var monthEnd = month.AddMonths(1).AddDays(-1);
-        var rooms = await db.Rooms.AsNoTracking().Where(r => r.PropertyId == request.PropertyId
-                && (string.IsNullOrWhiteSpace(request.Floor) || r.Floor == request.Floor.Trim()))
-            .ToDictionaryAsync(r => r.Id, cancellationToken);
+        var rooms = (await roomQueries.ListByPropertyAsync(request.PropertyId, request.Floor, cancellationToken)).ToDictionary(r => r.Id);
         var roomIds = rooms.Keys.ToList();
-        var contracts = await db.Contracts.AsNoTracking().Include(c => c.RentTerms).Include(c => c.Occupants).Include(c => c.RoomMoves)
-            .AsSplitQuery()
-            .Where(c => roomIds.Contains(c.RoomId)
-                && (c.Status == ContractStatus.Active || c.Status == ContractStatus.Liquidating || c.Status == ContractStatus.Ended)
-                && c.BillingStartDate <= monthEnd.AddMonths(1))
-            .ToListAsync(cancellationToken);
-        var meters = await db.Meters.AsNoTracking().Include(m => m.Readings).Where(m => roomIds.Contains(m.RoomId)).ToListAsync(cancellationToken);
+        var contracts = await contractQueries.ListForMeterSheetAsync(roomIds, monthEnd, cancellationToken);
+        var meters = await meterQueries.ListByRoomsAsync(roomIds, cancellationToken);
         var feeIds = meters.Select(m => m.FeeTypeId).Distinct().ToList();
-        var fees = await db.FeeTypes.AsNoTracking().Where(f => feeIds.Contains(f.Id)).ToDictionaryAsync(f => f.Id, cancellationToken);
-        var names = await RenterNamesAsync(contracts.Select(c => c.RepresentativeRenterId), cancellationToken);
-        var locked = await ReadingLocks.LockedReadingIdsAsync(db, meters.Select(m => m.Id).ToList(), cancellationToken);
+        var fees = await feeQueries.GetTypesAsync(feeIds, cancellationToken);
+        var names = await renters.GetNamesAsync(contracts.Select(c => c.RepresentativeRenterId).Distinct().ToList(), cancellationToken);
+        var locked = await invoices.GetLockedReadingIdsAsync(meters.Select(m => m.Id).ToList(), cancellationToken);
         var contractIds = contracts.Select(c => c.Id).ToList();
-        var segments = await db.Invoices.AsNoTracking()
-            .Where(i => contractIds.Contains(i.ContractId) && i.Status != InvoiceStatus.Void)
-            .SelectMany(i => i.Segments.Select(s => new { i.ContractId, i.PeriodStart, s.MeterId, s.EndReadingId }))
-            .ToListAsync(cancellationToken);
+        var segments = await invoices.ListSegmentEndsAsync(contractIds, cancellationToken);
 
-        var schedule = (await PropertyBilling.LoadAsync(db, request.PropertyId, cancellationToken)).Schedule;
-        var history = (await db.Invoices.AsNoTracking()
-                .Where(i => contractIds.Contains(i.ContractId) && i.Status != InvoiceStatus.Void && i.Type == InvoiceType.Regular)
-                .SelectMany(i => i.Lines.Where(l => l.Type == InvoiceLineType.Metered && l.FeeTypeId != null)
-                    .Select(l => new { i.ContractId, FeeTypeId = l.FeeTypeId!.Value, i.PeriodStart, l.Quantity }))
-                .ToListAsync(cancellationToken))
+        var schedule = (await properties.GetBillingAsync(request.PropertyId, cancellationToken)).Schedule;
+        var history = (await invoices.ListMeteredUsageAsync(contractIds, cancellationToken))
             .ToLookup(x => (x.ContractId, x.FeeTypeId));
         var rows = new List<MeterReadingSheetRow>();
         foreach (var contract in contracts)
@@ -189,12 +138,6 @@ public sealed class GetMeterReadingSheetHandler(IAppDbContext db) : IRequestHand
     }
 
     private static SheetReadingDto? ToDto(MeterReading? r) => r is null ? null : new SheetReadingDto(r.Id, r.Kind, r.ReadingDate, r.Value);
-
-    private Task<Dictionary<Guid, string>> RenterNamesAsync(IEnumerable<Guid> ids, CancellationToken ct)
-    {
-        var list = ids.Distinct().ToList();
-        return db.Renters.AsNoTracking().Where(r => list.Contains(r.Id)).ToDictionaryAsync(r => r.Id, r => r.FullName, ct);
-    }
 }
 
 public sealed record PeriodicReadingInput(Guid MeterId, Guid ContractId, DateOnly ClosingPeriodStart, DateOnly ReadingDate, decimal Value);
@@ -227,18 +170,19 @@ public sealed class SaveMeterReadingsCommandValidator : AbstractValidator<SaveMe
 /// MT-UC-04 / MT-BR-07: lưu chỉ số cuối kỳ hàng loạt — có dòng lỗi thì không lưu dòng nào (422 READINGS_INVALID kèm <c>rowErrors</c>).
 /// Đã có chỉ số của kỳ đó ⇒ sửa giá trị (chưa khóa). Khóa công tơ theo id (C-07).
 /// </summary>
-public sealed class SaveMeterReadingsHandler(IAppDbContext db) : IRequestHandler<SaveMeterReadingsCommand, Result<SaveMeterReadingsResult>>
+public sealed class SaveMeterReadingsHandler(
+    IMeterRepository meterRepository, IContractQueries contractQueries, IInvoiceQueries invoices, IPropertyQueries properties, IUnitOfWork unitOfWork)
+    : IRequestHandler<SaveMeterReadingsCommand, Result<SaveMeterReadingsResult>>
 {
     public async ValueTask<Result<SaveMeterReadingsResult>> Handle(SaveMeterReadingsCommand request, CancellationToken cancellationToken)
     {
-        await using var transaction = await db.BeginTransactionAsync(cancellationToken);
-        var meters = (await MeterMapping.LockAndLoadAsync(db, request.Readings.Select(r => r.MeterId), cancellationToken))
+        await using var transaction = await unitOfWork.BeginTransactionAsync(cancellationToken);
+        var meters = (await meterRepository.LockAndLoadAsync(request.Readings.Select(r => r.MeterId), cancellationToken))
             .ToDictionary(m => m.Id);
         var contractIds = request.Readings.Select(r => r.ContractId).Distinct().ToList();
-        var contracts = await db.Contracts.AsNoTracking().Include(c => c.RentTerms).Where(c => contractIds.Contains(c.Id))
-            .ToDictionaryAsync(c => c.Id, cancellationToken);
-        var locked = await ReadingLocks.LockedReadingIdsAsync(db, meters.Keys.ToList(), cancellationToken);
-        var billing = await PropertyBilling.LoadManyAsync(db, contracts.Values.Select(c => c.PropertyId), cancellationToken);
+        var contracts = await contractQueries.ListWithRentTermsAsync(contractIds, cancellationToken);
+        var locked = await invoices.GetLockedReadingIdsAsync(meters.Keys.ToList(), cancellationToken);
+        var billing = await properties.GetBillingsAsync(contracts.Values.Select(c => c.PropertyId), cancellationToken);
 
         var errors = new List<ReadingRowError>();
         var warnings = new List<ReadingRowWarning>();
@@ -256,7 +200,7 @@ public sealed class SaveMeterReadingsHandler(IAppDbContext db) : IRequestHandler
         if (errors.Count > 0)
             return Error.BusinessRule("READINGS_INVALID", "Có dòng chỉ số không hợp lệ — chưa lưu dòng nào.").WithDetail("rowErrors", errors);
 
-        await db.SaveChangesAsync(cancellationToken);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return new SaveMeterReadingsResult(request.Readings.Count, warnings);
     }

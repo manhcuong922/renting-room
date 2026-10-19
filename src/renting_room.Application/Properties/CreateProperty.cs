@@ -1,11 +1,11 @@
 using FluentValidation;
 using Mediator;
-using Microsoft.EntityFrameworkCore;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Common.Validation;
 using renting_room.Domain.Common;
 using renting_room.Domain.Fees;
 using renting_room.Domain.Properties;
+using renting_room.Application.Fees;
 
 namespace renting_room.Application.Properties;
 
@@ -32,22 +32,24 @@ public sealed class CreatePropertyCommandValidator : AbstractValidator<CreatePro
     }
 }
 
-public sealed class CreatePropertyHandler(IAppDbContext db) : IRequestHandler<CreatePropertyCommand, Result<Guid>>
+public sealed class CreatePropertyHandler(IPropertyRepository properties, IFeeTypeRepository fees, IUnitOfWork unitOfWork)
+    : IRequestHandler<CreatePropertyCommand, Result<Guid>>
 {
     public async ValueTask<Result<Guid>> Handle(CreatePropertyCommand request, CancellationToken cancellationToken)
     {
         var code = TextNormalizer.NormalizeCode(request.Code);
-        if (await db.Properties.AnyAsync(p => p.Code == code, cancellationToken))
+        if (await properties.IsCodeTakenAsync(code, cancellationToken))
             return PropertyErrors.PropertyCodeTaken;
 
         var property = Property.Create(
             code, request.Name, request.Address.ToDomain(), request.Billing?.ToDomain() ?? BillingSettings.Standard);
         property.UpdateInfo(request.Name, request.Address.ToDomain(), request.Description, request.EvnCustomerCode, request.Land.ToDomain());
 
-        db.Properties.Add(property);
+        properties.Add(property);
         // FE-UC-01: khu mới có sẵn Điện + Nước theo công tơ (chưa có giá), tự gắn vào HĐ mới.
-        db.FeeTypes.AddRange(FeeType.DefaultsFor(property.Id));
-        await db.SaveChangesAsync(cancellationToken);
+        foreach (var fee in FeeType.DefaultsFor(property.Id))
+            fees.Add(fee);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
         return property.Id;
     }
 }

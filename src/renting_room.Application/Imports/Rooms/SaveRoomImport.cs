@@ -1,7 +1,9 @@
 using FluentValidation;
 using Mediator;
 using renting_room.Application.Common.Interfaces;
+using renting_room.Application.Fees;
 using renting_room.Application.Meters;
+using renting_room.Application.Properties;
 using renting_room.Application.Rooms;
 using renting_room.Domain.Common;
 using renting_room.Domain.Fees;
@@ -19,19 +21,19 @@ public sealed class SaveRoomImportCommandValidator : AbstractValidator<SaveRoomI
 }
 
 public sealed class SaveRoomImportHandler(
-    IAppDbContext db, ISender sender, IAuditTrail auditTrail, IValidator<CreateRoomCommand> roomValidator,
+    IPropertyQueries properties, IRoomQueries rooms, IFeeQueries fees, IUnitOfWork unitOfWork, ISender sender, IAuditTrail auditTrail, IValidator<CreateRoomCommand> roomValidator,
     IValidator<InstallMeterCommand> meterValidator, TimeProvider clock)
     : IRequestHandler<SaveRoomImportCommand, Result<ImportSaveResultDto>>
 {
     public async ValueTask<Result<ImportSaveResultDto>> Handle(SaveRoomImportCommand request, CancellationToken cancellationToken)
     {
-        var property = await ImportProperty.LoadAsync(db, request.PropertyId, cancellationToken);
+        var property = await ImportProperty.LoadAsync(properties, request.PropertyId, cancellationToken);
         if (property.IsFailure)
             return property.Error!;
         var meterDate = RoomImportChecker.MeterDate(property.Value!, clock.GetUtcNow().ToBusinessDate());
-        var checks = await new RoomImportChecker(db, roomValidator, meterValidator)
+        var checks = await new RoomImportChecker(rooms, fees, roomValidator, meterValidator)
             .CheckAsync(property.Value!, request.Rows, new Dictionary<int, List<ImportIssue>>(), meterDate, cancellationToken);
-        var meterFees = await RoomImportChecker.MeterFeesAsync(db, request.PropertyId, cancellationToken);
+        var meterFees = await fees.GetSystemFeeIdsAsync(request.PropertyId, cancellationToken);
 
         var units = new List<ImportUnitResult>();
         foreach (var check in checks)
@@ -43,7 +45,7 @@ public sealed class SaveRoomImportHandler(
                 units.Add(new ImportUnitResult(key, [row.RowNumber], ImportOutcome.Invalid, check.Errors));
                 continue;
             }
-            var failure = await ImportFiles.SaveUnitAsync(db, async () =>
+            var failure = await ImportFiles.SaveUnitAsync(unitOfWork, async () =>
             {
                 var created = await sender.Send(new CreateRoomCommand(request.PropertyId, row.Code!, RoomImportTemplate.Spec(row)), cancellationToken);
                 if (created.IsFailure)
@@ -65,6 +67,6 @@ public sealed class SaveRoomImportHandler(
             }, cancellationToken);
             units.Add(new ImportUnitResult(key, [row.RowNumber], failure.Count == 0 ? ImportOutcome.Saved : ImportOutcome.Failed, failure));
         }
-        return await ImportPreview.RecordAsync(db, auditTrail, request.PropertyId, "Rooms", units, cancellationToken);
+        return await ImportPreview.RecordAsync(unitOfWork, auditTrail, request.PropertyId, "Rooms", units, cancellationToken);
     }
 }

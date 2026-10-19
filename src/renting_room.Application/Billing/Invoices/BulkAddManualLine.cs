@@ -1,7 +1,7 @@
 using FluentValidation;
 using Mediator;
-using Microsoft.EntityFrameworkCore;
 using renting_room.Application.Common.Interfaces;
+using renting_room.Application.Rooms;
 using renting_room.Domain.Billing;
 using renting_room.Domain.Common;
 
@@ -38,46 +38,32 @@ public sealed class BulkAddManualLineCommandValidator : AbstractValidator<BulkAd
 }
 
 /// <summary>BL-UC-05: thêm phụ thu / giảm trừ / hoàn trả cho 1 phòng hay nhiều phòng một lúc — mỗi phiếu 1 transaction, trả kết quả từng phiếu.</summary>
-public sealed class BulkAddManualLineHandler(IAppDbContext db, TimeProvider clock)
+public sealed class BulkAddManualLineHandler(
+    IUnitOfWork unitOfWork, IInvoiceRepository invoices, IInvoiceQueries invoiceQueries, IRoomQueries rooms, RoomChargeBilling roomCharges,
+    TimeProvider clock)
     : IRequestHandler<BulkAddManualLineCommand, Result<BulkManualLineResult>>
 {
     public async ValueTask<Result<BulkManualLineResult>> Handle(BulkAddManualLineCommand request, CancellationToken cancellationToken)
     {
-        var targets = await Scope(request).Select(i => new { i.Id, i.RoomId, i.SnapshotRoomCode, i.Status }).ToListAsync(cancellationToken);
+        var targets = await invoiceQueries.ListManualLineTargetsAsync(request, cancellationToken);
         var results = new List<BulkManualLineOutcome>();
-        foreach (var target in targets.OrderBy(t => t.SnapshotRoomCode))
+        foreach (var target in targets.OrderBy(t => t.RoomCode))
         {
             var added = target.Status == InvoiceStatus.Draft
                 ? await TryAddOneAsync(target.Id, request, cancellationToken)
                 : Result.Failure(BillingErrors.NotDraft);
-            results.Add(new BulkManualLineOutcome(target.Id, target.RoomId, target.SnapshotRoomCode, added.IsSuccess,
+            results.Add(new BulkManualLineOutcome(target.Id, target.RoomId, target.RoomCode, added.IsSuccess,
                 added.Error?.Code, added.Error?.Message));
         }
 
         if (request.InvoiceIds is not { Count: > 0 } && request.RoomIds is { Count: > 0 } roomIds)
         {
             var covered = targets.Select(t => t.RoomId).ToHashSet();
-            var missing = await db.Rooms.Where(r => roomIds.Contains(r.Id) && !covered.Contains(r.Id))
-                .Select(r => new { r.Id, r.Code }).ToListAsync(cancellationToken);
+            var missing = await rooms.ListCodesAsync(roomIds, covered, cancellationToken);
             results.AddRange(missing.Select(r => new BulkManualLineOutcome(null, r.Id, r.Code, false, "NO_DRAFT_INVOICE",
                 "Phòng chưa có phiếu nháp tháng này — tạo phiếu trước.")));
         }
         return new BulkManualLineResult(results.Count(r => r.Success), results);
-    }
-
-    private IQueryable<Invoice> Scope(BulkAddManualLineCommand request)
-    {
-        var query = db.Invoices.AsNoTracking().Where(i => i.Status != InvoiceStatus.Void);
-        if (request.InvoiceIds is { Count: > 0 } ids)
-            return query.Where(i => ids.Contains(i.Id));
-
-        var month = BillingMonths.Parse(request.BillingMonth)!.Value;
-        query = query.Where(i => i.PropertyId == request.PropertyId && i.BillingMonth == month);
-        if (request.RoomIds is { Count: > 0 } roomIds)
-            query = query.Where(i => roomIds.Contains(i.RoomId));
-        if (!string.IsNullOrWhiteSpace(request.Floor))
-            query = query.Where(i => db.Rooms.Any(r => r.Id == i.RoomId && r.Floor == request.Floor.Trim()));
-        return query;
     }
 
     /// <summary>Lỗi lưu của 1 phiếu (xung đột, ràng buộc DB) thành kết quả của phiếu đó — các phiếu đã lưu trước vẫn giữ.</summary>
@@ -87,32 +73,30 @@ public sealed class BulkAddManualLineHandler(IAppDbContext db, TimeProvider cloc
         {
             return await AddOneAsync(invoiceId, request, ct);
         }
-        catch (DbUpdateConcurrencyException)
-        {
-            return Result.Failure(BillingErrors.ConcurrencyConflict);
-        }
-        catch (DbUpdateException)
-        {
-            return Result.Failure(BillingErrors.SaveFailed);
-        }
         finally
         {
-            db.ChangeTracker.Clear();
+            unitOfWork.ClearTracking();
         }
     }
 
     private async Task<Result> AddOneAsync(Guid invoiceId, BulkAddManualLineCommand request, CancellationToken ct)
     {
-        await using var transaction = await db.BeginTransactionAsync(ct);
-        await db.LockForUpdateAsync<Invoice>(invoiceId, ct);
-        var invoice = await InvoiceAccess.LoadAsync(db, invoiceId, ct);
+        await using var transaction = await unitOfWork.BeginTransactionAsync(ct);
+        await unitOfWork.LockForUpdateAsync<Invoice>(invoiceId, ct);
+        var invoice = await invoices.GetForUpdateAsync(invoiceId, ct);
         if (invoice is null)
             return Result.Failure(BillingErrors.NotFound);
-        var added = RoomChargeBilling.AddManualLine(db, invoice, request.Type, request.Description, request.Quantity, request.UnitPrice,
+        var added = roomCharges.AddManualLine(invoice, request.Type, request.Description, request.Quantity, request.UnitPrice,
             request.Amount, request.Note, request.FeeTypeId, null, request.Settlement, clock.GetUtcNow().ToBusinessDate());
         if (added.IsFailure)
             return Result.Failure(added.Error!);
-        await db.SaveChangesAsync(ct);
+        switch (await unitOfWork.TrySaveChangesAsync(ct))
+        {
+            case SaveOutcome.Conflict:
+                return Result.Failure(BillingErrors.ConcurrencyConflict);
+            case SaveOutcome.Failed:
+                return Result.Failure(BillingErrors.SaveFailed);
+        }
         await transaction.CommitAsync(ct);
         return Result.Success();
     }

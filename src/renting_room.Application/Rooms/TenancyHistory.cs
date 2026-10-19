@@ -1,10 +1,11 @@
 using FluentValidation;
 using Mediator;
-using Microsoft.EntityFrameworkCore;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Domain.Common;
 using renting_room.Domain.Contracts;
 using renting_room.Domain.Properties;
+using renting_room.Application.Contracts;
+using renting_room.Application.Renters;
 
 namespace renting_room.Application.Rooms;
 
@@ -48,8 +49,6 @@ public sealed class SearchTenancyHistoryQueryValidator : AbstractValidator<Searc
 
 internal static class TenancyHistoryRules
 {
-    public static readonly ContractStatus[] LivedStatuses = [ContractStatus.Active, ContractStatus.Liquidating, ContractStatus.Ended];
-
     /// <summary>Ai đứng tên HĐ theo thời gian (CT-BR-51): những người đứng tên trước, rồi người hiện tại.</summary>
     public static IEnumerable<(Guid RenterId, DateOnly From, DateOnly? To)> Representatives(Contract contract) =>
         contract.RepresentativeHistory.OrderBy(h => h.FromDate)
@@ -86,22 +85,19 @@ internal static class TenancyHistoryRules
 }
 
 /// <summary>RT-UC-04: ai đã / đang ở phòng này — theo từng lần ở của từng HĐ (tính cả lịch sử chuyển phòng), mới nhất trước.</summary>
-public sealed class GetRoomTenancyHistoryHandler(IAppDbContext db, TimeProvider clock)
+public sealed class GetRoomTenancyHistoryHandler(IRoomQueries rooms, IContractQueries contractQueries, IRenterQueries renters, TimeProvider clock)
     : IRequestHandler<GetRoomTenancyHistoryQuery, Result<IReadOnlyList<RoomTenancyDto>>>
 {
     public async ValueTask<Result<IReadOnlyList<RoomTenancyDto>>> Handle(GetRoomTenancyHistoryQuery request, CancellationToken cancellationToken)
     {
-        if (!await db.Rooms.AnyAsync(r => r.Id == request.RoomId, cancellationToken))
+        if (!await rooms.ExistsAsync(request.RoomId, cancellationToken))
             return PropertyErrors.RoomNotFound;
 
-        var contracts = await db.Contracts.AsNoTracking().Include(c => c.Occupants).Include(c => c.RoomMoves).Include(c => c.RepresentativeHistory).AsSplitQuery()
-            .Where(c => TenancyHistoryRules.LivedStatuses.Contains(c.Status)
-                && (c.RoomId == request.RoomId || c.RoomMoves.Any(m => m.RoomId == request.RoomId)))
-            .ToListAsync(cancellationToken);
+        var contracts = await contractQueries.ListLivedInRoomAsync(request.RoomId, cancellationToken);
         var renterIds = contracts
             .SelectMany(c => c.Occupants.Select(o => o.RenterId).Append(c.RepresentativeRenterId).Concat(c.RepresentativeHistory.Select(h => h.RenterId)))
             .Distinct().ToList();
-        var names = await db.Renters.AsNoTracking().Where(r => renterIds.Contains(r.Id)).ToDictionaryAsync(r => r.Id, r => r.FullName, cancellationToken);
+        var names = await renters.GetNamesAsync(renterIds, cancellationToken);
         var today = clock.GetUtcNow().ToBusinessDate();
 
         return contracts
@@ -122,7 +118,8 @@ public sealed class GetRoomTenancyHistoryHandler(IAppDbContext db, TimeProvider 
 }
 
 /// <summary>RT-UC-04: tìm theo tên — người đó đã ở (hoặc đứng tên) phòng nào, HĐ nào, từ ngày nào tới ngày nào.</summary>
-public sealed class SearchTenancyHistoryHandler(IAppDbContext db) : IRequestHandler<SearchTenancyHistoryQuery, IReadOnlyList<PersonTenancyDto>>
+public sealed class SearchTenancyHistoryHandler(IRenterQueries renters, IContractQueries contractQueries, IRoomQueries rooms)
+    : IRequestHandler<SearchTenancyHistoryQuery, IReadOnlyList<PersonTenancyDto>>
 {
     private const int MaxPeople = 50;
     private const int MaxRows = 200;
@@ -130,20 +127,14 @@ public sealed class SearchTenancyHistoryHandler(IAppDbContext db) : IRequestHand
     public async ValueTask<IReadOnlyList<PersonTenancyDto>> Handle(SearchTenancyHistoryQuery request, CancellationToken cancellationToken)
     {
         var text = TextNormalizer.ToSearchText(request.Search);
-        var people = await db.Renters.AsNoTracking().Where(r => r.FullNameSearch.Contains(text)).OrderBy(r => r.FullNameSearch).Take(MaxPeople)
-            .ToDictionaryAsync(r => r.Id, r => r.FullName, cancellationToken);
+        var people = await renters.SearchNamesAsync(text, MaxPeople, cancellationToken);
         if (people.Count == 0)
             return [];
 
         var ids = people.Keys.ToList();
-        var contracts = await db.Contracts.AsNoTracking().Include(c => c.Occupants).Include(c => c.RoomMoves).Include(c => c.RepresentativeHistory).AsSplitQuery()
-            .Where(c => TenancyHistoryRules.LivedStatuses.Contains(c.Status)
-                && (request.PropertyId == null || c.PropertyId == request.PropertyId)
-                && (ids.Contains(c.RepresentativeRenterId) || c.Occupants.Any(o => ids.Contains(o.RenterId))
-                    || c.RepresentativeHistory.Any(h => ids.Contains(h.RenterId))))
-            .ToListAsync(cancellationToken);
+        var contracts = await contractQueries.ListLivedByRentersAsync(ids, request.PropertyId, cancellationToken);
         var roomIds = contracts.SelectMany(c => c.RoomStays.Select(s => s.RoomId)).Distinct().ToList();
-        var roomCodes = await db.Rooms.AsNoTracking().Where(r => roomIds.Contains(r.Id)).ToDictionaryAsync(r => r.Id, r => r.Code, cancellationToken);
+        var roomCodes = await rooms.GetCodesAsync(roomIds, cancellationToken);
 
         var rows = new List<PersonTenancyDto>();
         foreach (var contract in contracts)

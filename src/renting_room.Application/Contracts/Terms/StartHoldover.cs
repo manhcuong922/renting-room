@@ -1,6 +1,5 @@
 using FluentValidation;
 using Mediator;
-using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Common.Validation;
 using renting_room.Domain.Common;
 
@@ -14,9 +13,9 @@ public sealed class StartHoldoverCommandValidator : AbstractValidator<StartHoldo
     public StartHoldoverCommandValidator() => RuleFor(x => x.Note).OptionalText(500);
 }
 
-public sealed class StartHoldoverHandler(IAppDbContext db, TimeProvider clock) : IRequestHandler<StartHoldoverCommand, Result>
+public sealed class StartHoldoverHandler(ContractMutation mutation, TimeProvider clock) : IRequestHandler<StartHoldoverCommand, Result>
 {
     public ValueTask<Result> Handle(StartHoldoverCommand request, CancellationToken cancellationToken) =>
-        new(ContractMutation.RunAsync(db, request.ContractId,
+        new(mutation.RunAsync(request.ContractId,
             contract => Task.FromResult(contract.StartHoldover(clock.GetUtcNow().ToBusinessDate(), request.Note)), cancellationToken));
 }

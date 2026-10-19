@@ -1,6 +1,5 @@
 using FluentValidation;
 using Mediator;
-using Microsoft.EntityFrameworkCore;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Common.Validation;
 using renting_room.Domain.Common;
@@ -25,31 +24,31 @@ public sealed class UpdateManagerCommandValidator : AbstractValidator<UpdateMana
 }
 
 public sealed class UpdateManagerHandler(
-    IAppDbContext db, ICurrentUser currentUser, IUserSessionStore sessionStore)
+    IUserRepository users, IUserQueries userQueries, IUnitOfWork unitOfWork, ICurrentUser currentUser, IUserSessionStore sessionStore)
     : IRequestHandler<UpdateManagerCommand, Result<MemberDto>>
 {
     public async ValueTask<Result<MemberDto>> Handle(UpdateManagerCommand request, CancellationToken cancellationToken)
     {
-        var manager = await ManagerLookup.FindAsync(db, currentUser, request.Id, cancellationToken);
+        var manager = await ManagerLookup.FindAsync(users, currentUser, request.Id, cancellationToken);
         if (manager.IsFailure)
             return manager.Error!;
 
         var user = manager.Value!;
         var phone = ContactNormalizer.NormalizePhone(request.Phone);
         var email = ContactNormalizer.NormalizeEmail(request.Email);
-        if (phone is not null && await db.Users.AnyAsync(u => u.PhoneNormalized == phone && u.Id != user.Id, cancellationToken))
+        if (phone is not null && await users.IsPhoneTakenAsync(phone, user.Id, cancellationToken))
             return IdentityErrors.PhoneTaken;
-        if (email is not null && await db.Users.AnyAsync(u => u.EmailNormalized == email && u.Id != user.Id, cancellationToken))
+        if (email is not null && await users.IsEmailTakenAsync(email, user.Id, cancellationToken))
             return IdentityErrors.EmailTaken;
 
-        db.SetExpectedVersion(user, request.Version);
+        unitOfWork.SetExpectedVersion(user, request.Version);
         var updated = user.UpdateProfile(request.FullName, phone, email);
         if (updated.IsFailure)
             return updated.Error!;
 
-        await db.SaveChangesAsync(cancellationToken);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
         sessionStore.Invalidate(user.Id);
 
-        return await db.Users.AsNoTracking().Where(u => u.Id == user.Id).ToDto().FirstAsync(cancellationToken);
+        return (await userQueries.GetMemberAsync(user.Id, user.OrganizationId, cancellationToken))!;
     }
 }

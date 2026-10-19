@@ -1,11 +1,9 @@
 using FluentValidation;
 using Mediator;
-using Microsoft.EntityFrameworkCore;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Common.Models;
 using renting_room.Application.Common.Validation;
 using renting_room.Domain.Common;
-using renting_room.Domain.Contracts;
 
 namespace renting_room.Application.Renters;
 
@@ -29,49 +27,31 @@ public sealed class SearchRentersQueryValidator : AbstractValidator<SearchRenter
 }
 
 /// <summary>Tìm theo tên (không dấu) / SĐT; số giấy tờ tìm CHÍNH XÁC qua hash (không quét dữ liệu đã mã hóa).</summary>
-public sealed class SearchRentersHandler(IAppDbContext db, ICurrentUser currentUser, IPersonalDataProtector protector, TimeProvider clock)
+public sealed class SearchRentersHandler(IRenterQueries renters, ICurrentUser currentUser, IPersonalDataProtector protector, TimeProvider clock)
     : IRequestHandler<SearchRentersQuery, PagedResult<RenterDto>>
 {
     public async ValueTask<PagedResult<RenterDto>> Handle(SearchRentersQuery request, CancellationToken cancellationToken)
     {
-        var query = db.Renters.AsNoTracking();
-        if (!request.IncludeArchived)
-            query = query.Where(r => r.ArchivedAt == null);
-        if (request.PropertyId is { } propertyId)
-            query = query.Where(r => db.Contracts.Any(c => c.PropertyId == propertyId && c.Status != ContractStatus.Cancelled
-                && (c.RepresentativeRenterId == r.Id || c.Occupants.Any(o => o.RenterId == r.Id))));
-        if (request.Staying is { } staying)
-        {
-            var today = clock.GetUtcNow().ToBusinessDate();
-            query = query.Where(r => db.Contracts.Any(c => (c.Status == ContractStatus.Active || c.Status == ContractStatus.Liquidating)
-                && c.Occupants.Any(o => o.RenterId == r.Id && o.MoveInDate <= today && (o.MoveOutDate == null || o.MoveOutDate >= today))) == staying);
-        }
-
+        List<string?>? hashes = null;
         if (!string.IsNullOrWhiteSpace(request.IdNumber))
         {
             // Hash gồm cả loại giấy tờ ⇒ không chọn loại thì thử mọi loại (hộ chiếu người nước ngoài vẫn tìm được).
             var types = request.IdType is { } type ? [type] : Enum.GetValues<IdDocumentType>();
-            var hashes = types
+            hashes = types
                 .Select(t => (string?)protector.ProtectIdNumber(currentUser.OrganizationId!.Value, t, request.IdNumber).Hash)
                 .ToList();
-            query = query.Where(r => hashes.Contains(r.IdNumberHash));
         }
 
+        string? text = null, phone = null;
         if (!string.IsNullOrWhiteSpace(request.Q))
         {
-            var text = TextNormalizer.ToSearchText(request.Q);
-            var phone = RenterProjection.NormalizePhone(request.Q);
-            query = query.Where(r => r.FullNameSearch.Contains(text) || (phone != null && r.Phone == phone));
+            text = TextNormalizer.ToSearchText(request.Q);
+            phone = RenterProjection.NormalizePhone(request.Q);
         }
 
-        var total = await query.CountAsync(cancellationToken);
-        var items = await query
-            .OrderBy(r => r.FullNameSearch)
-            .Skip((request.Page - 1) * request.PageSize)
-            .Take(request.PageSize)
-            .ToDto()
-            .ToListAsync(cancellationToken);
-
-        return new PagedResult<RenterDto>(items, request.Page, request.PageSize, total);
+        var search = new RenterSearch(
+            request.IncludeArchived, request.PropertyId, request.Staying, clock.GetUtcNow().ToBusinessDate(), hashes, text, phone,
+            request.Page, request.PageSize);
+        return await renters.SearchAsync(search, cancellationToken);
     }
 }

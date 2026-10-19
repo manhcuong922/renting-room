@@ -1,8 +1,9 @@
 using FluentValidation;
 using Mediator;
-using Microsoft.EntityFrameworkCore;
+using renting_room.Application.Billing;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Common.Validation;
+using renting_room.Application.Identity;
 using renting_room.Application.Meters;
 using renting_room.Application.Payments;
 using renting_room.Domain.Billing;
@@ -38,11 +39,12 @@ public sealed class CompleteLiquidationCommandValidator : AbstractValidator<Comp
 /// CT-BR-12: có chỉ số cuối mọi công tơ → không còn phiếu nháp → phiếu quyết toán đã chốt → không còn phiếu chờ hoàn → còn nợ thì
 /// "Đã thu toàn bộ" / "Bỏ nợ" theo lựa chọn của chủ trọ → kết thúc HĐ, đóng người ở và xe. Cọc không chặn (chỉ nhắc — PM-BR-35).
 /// </summary>
-public sealed class CompleteLiquidationHandler(IAppDbContext db, IDocumentNumberGenerator numbers, ICurrentUser currentUser, TimeProvider clock)
+public sealed class CompleteLiquidationHandler(
+    ContractMutation mutation, ContractMeterReadings meterReadings, IInvoiceQueries invoiceQueries, IUserQueries users, PaymentPosting posting, ICurrentUser currentUser, TimeProvider clock)
     : IRequestHandler<CompleteLiquidationCommand, Result>
 {
     public ValueTask<Result> Handle(CompleteLiquidationCommand request, CancellationToken cancellationToken) =>
-        new(ContractMutation.RunAsync(db, request.ContractId, async contract =>
+        new(mutation.RunAsync(request.ContractId, async contract =>
         {
             var now = clock.GetUtcNow();
             if (contract.Status != ContractStatus.Liquidating)
@@ -50,27 +52,26 @@ public sealed class CompleteLiquidationHandler(IAppDbContext db, IDocumentNumber
             if (now.ToBusinessDate() < contract.ActualEndDate)
                 return Result.Failure(ContractErrors.LiquidationBeforeEndDate);
 
-            var missing = await ContractMeterReadings.MissingFinalAsync(db, contract, contract.ActualEndDate!.Value, cancellationToken);
+            var missing = await meterReadings.MissingFinalAsync(contract, contract.ActualEndDate!.Value, cancellationToken);
             if (missing.Count > 0)
                 return Result.Failure(MeterErrors.FinalReadingRequired(missing));
-            var invoices = db.Invoices.Where(i => i.ContractId == contract.Id && i.Status != InvoiceStatus.Void);
-            if (await invoices.AnyAsync(i => i.Status == InvoiceStatus.Draft, cancellationToken))
+            if (await invoiceQueries.HasDraftAsync(contract.Id, cancellationToken))
                 return Result.Failure(BillingErrors.DraftExists);
-            if (!await invoices.AnyAsync(i => i.Type == InvoiceType.Final && i.Status == InvoiceStatus.Finalized, cancellationToken))
+            if (!await invoiceQueries.HasFinalizedFinalAsync(contract.Id, cancellationToken))
                 return Result.Failure(BillingErrors.FinalRequired);
-            var refundDue = await PaymentPosting.RefundDueAsync(db, contract.Id, cancellationToken);
+            var refundDue = await invoiceQueries.GetRefundDueAsync(contract.Id, cancellationToken);
             if (refundDue > 0)
                 return Result.Failure(BillingErrors.RefundPending(refundDue));
 
-            var outstanding = await PaymentPosting.OutstandingAsync(db, contract.Id, cancellationToken);
+            var outstanding = await invoiceQueries.GetContractOutstandingAsync(contract.Id, cancellationToken);
             if (outstanding > 0)
             {
                 if (request.Settlement is null)
                     return Result.Failure(BillingErrors.HasDebt(outstanding));
                 var writeOff = request.Settlement == DebtSettlement.WriteOff;
-                if (writeOff && !await WriteOffGuard.IsAllowedAsync(db, currentUser, cancellationToken))
+                if (writeOff && !await WriteOffGuard.IsAllowedAsync(users, currentUser, cancellationToken))
                     return Result.Failure(WriteOffErrors.NotAllowed);
-                var posted = await PaymentPosting.PostAsync(db, numbers, currentUser, clock, contract, null,
+                var posted = await posting.PostAsync(contract, null,
                     request.Method ?? PaymentMethod.Cash, request.PaidAt ?? now.ToBusinessDate(), null, null, null,
                     writeOff ? request.Reason : request.Reason ?? "Thu toàn bộ khi trả phòng",
                     writeOff ? PaymentKind.WriteOff : PaymentKind.Receipt, cancellationToken);

@@ -1,6 +1,5 @@
 using FluentValidation;
 using Mediator;
-using Microsoft.EntityFrameworkCore;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Common.Validation;
 using renting_room.Domain.Common;
@@ -20,19 +19,20 @@ public sealed class CreateContractTemplateCommandValidator : AbstractValidator<C
     }
 }
 
-public sealed class CreateContractTemplateHandler(IAppDbContext db) : IRequestHandler<CreateContractTemplateCommand, Result<Guid>>
+public sealed class CreateContractTemplateHandler(IContractTemplateRepository templates, IUnitOfWork unitOfWork)
+    : IRequestHandler<CreateContractTemplateCommand, Result<Guid>>
 {
     public async ValueTask<Result<Guid>> Handle(CreateContractTemplateCommand request, CancellationToken cancellationToken)
     {
         var input = request.Template;
         var name = input.Name.Trim();
-        if (await db.ContractTemplates.AnyAsync(t => t.Name == name, cancellationToken))
+        if (await templates.IsNameTakenAsync(name, excludeId: null, cancellationToken))
             return ContractTemplateErrors.NameTaken;
 
         var template = ContractTemplate.Create(name, input.ContractType, input.Title,
             ContractDocumentJson.ToJson(input.Clauses) ?? "[]", ContractDocumentJson.ToJson(input.Fields) ?? "[]", input.NoDeposit);
-        db.ContractTemplates.Add(template);
-        await db.SaveChangesAsync(cancellationToken);
+        templates.Add(template);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
         return template.Id;
     }
 }

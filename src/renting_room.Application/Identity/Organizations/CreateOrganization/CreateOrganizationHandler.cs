@@ -1,5 +1,4 @@
 using Mediator;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Domain.Common;
@@ -8,7 +7,9 @@ using renting_room.Domain.Identity;
 namespace renting_room.Application.Identity.Organizations.CreateOrganization;
 
 public sealed class CreateOrganizationHandler(
-    IAppDbContext db,
+    IOrganizationRepository organizations,
+    IUserRepository users,
+    IUnitOfWork unitOfWork,
     IPasswordHasher passwordHasher,
     TimeProvider clock,
     ILogger<CreateOrganizationHandler> logger)
@@ -22,11 +23,11 @@ public sealed class CreateOrganizationHandler(
         var email = ContactNormalizer.NormalizeEmail(request.Owner.Email);
 
         // Kiểm tra trước để trả mã lỗi rõ ràng; unique index trong DB vẫn là chốt chặn cuối khi chạy song song.
-        if (await db.Organizations.AnyAsync(o => o.Code == code, cancellationToken))
+        if (await organizations.IsCodeTakenAsync(code, cancellationToken))
             return IdentityErrors.OrganizationCodeTaken;
-        if (phone is not null && await db.Users.AnyAsync(u => u.PhoneNormalized == phone, cancellationToken))
+        if (phone is not null && await users.IsPhoneTakenAsync(phone, excludeId: null, cancellationToken))
             return IdentityErrors.PhoneTaken;
-        if (email is not null && await db.Users.AnyAsync(u => u.EmailNormalized == email, cancellationToken))
+        if (email is not null && await users.IsEmailTakenAsync(email, excludeId: null, cancellationToken))
             return IdentityErrors.EmailTaken;
 
         var organization = Organization.Create(
@@ -49,9 +50,9 @@ public sealed class CreateOrganizationHandler(
             clock.GetUtcNow());
 
         // Một SaveChanges = một transaction: không bao giờ có tổ chức thiếu chủ (M01 §10).
-        db.Organizations.Add(organization);
-        db.Users.Add(owner);
-        await db.SaveChangesAsync(cancellationToken);
+        organizations.Add(organization);
+        users.Add(owner);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
 
         logger.LogInformation(
             "Organization {OrganizationId} ({Code}) created with owner {UserId}", organization.Id, code, owner.Id);

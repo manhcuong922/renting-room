@@ -1,6 +1,7 @@
 using FluentValidation;
 using Mediator;
 using renting_room.Application.Common.Interfaces;
+using renting_room.Application.Contracts;
 using renting_room.Application.Common.Validation;
 using renting_room.Domain.Common;
 using renting_room.Domain.Contracts;
@@ -20,12 +21,14 @@ public sealed class ConfirmInvoiceRefundCommandValidator : AbstractValidator<Con
 }
 
 /// <summary>BL-BR-27: chủ trọ xác nhận đã trả lại người thuê phần tổng âm của phiếu đã chốt (ngày, cách hoàn, ghi chú).</summary>
-public sealed class ConfirmInvoiceRefundHandler(IAppDbContext db, TimeProvider clock) : IRequestHandler<ConfirmInvoiceRefundCommand, Result<InvoiceDetailDto>>
+public sealed class ConfirmInvoiceRefundHandler(
+    IUnitOfWork unitOfWork, IInvoiceRepository invoices, IInvoiceQueries invoiceQueries, IContractQueries contracts, TimeProvider clock)
+    : IRequestHandler<ConfirmInvoiceRefundCommand, Result<InvoiceDetailDto>>
 {
     public async ValueTask<Result<InvoiceDetailDto>> Handle(ConfirmInvoiceRefundCommand request, CancellationToken cancellationToken)
     {
         var today = clock.GetUtcNow().ToBusinessDate();
-        return await RefundMutation.RunAsync(db, request.Id, today,
+        return await RefundMutation.RunAsync(unitOfWork, invoices, invoiceQueries, contracts, request.Id, today,
             invoice => invoice.ConfirmRefund(request.RefundedOn, request.Method, request.Note, today), cancellationToken);
     }
 }

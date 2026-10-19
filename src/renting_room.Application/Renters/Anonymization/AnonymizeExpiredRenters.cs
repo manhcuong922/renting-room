@@ -1,9 +1,8 @@
 using FluentValidation;
 using Mediator;
-using Microsoft.EntityFrameworkCore;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Domain.Common;
-using renting_room.Domain.Contracts;
+using renting_room.Application.Identity.Organizations;
 
 namespace renting_room.Application.Renters;
 
@@ -24,13 +23,13 @@ public sealed record AnonymizeExpiredRentersCommand(DateOnly AsOf) : IRequest<in
 /// của HĐ đã kết thúc, ngày hủy HĐ nháp, hoặc ngày tạo hồ sơ nếu chưa từng có HĐ) đã quá thời gian giữ của tổ chức; (3) các HĐ người này
 /// đứng tên không còn phiếu nợ chưa thu / phiếu chờ hoàn. Mỗi hồ sơ 1 transaction.
 /// </summary>
-public sealed class AnonymizeExpiredRentersHandler(IAppDbContext db, ICurrentUser currentUser, RenterAnonymizer anonymizer)
+public sealed class AnonymizeExpiredRentersHandler(
+    IRenterQueries renters, IOrganizationQueries organizations, IUnitOfWork unitOfWork, ICurrentUser currentUser, RenterAnonymizer anonymizer)
     : IRequestHandler<AnonymizeExpiredRentersCommand, int>
 {
     public async ValueTask<int> Handle(AnonymizeExpiredRentersCommand request, CancellationToken cancellationToken)
     {
-        var settings = await db.Organizations.AsNoTracking().Where(o => o.Id == currentUser.OrganizationId)
-            .Select(o => new { o.AutoAnonymizeEnabled, o.PersonalDataRetentionMonths }).FirstOrDefaultAsync(cancellationToken);
+        var settings = currentUser.OrganizationId is { } organizationId ? await organizations.GetAsync(organizationId, cancellationToken) : null;
         if (settings is not { AutoAnonymizeEnabled: true })
             return 0;
 
@@ -39,26 +38,14 @@ public sealed class AnonymizeExpiredRentersHandler(IAppDbContext db, ICurrentUse
         foreach (var renterId in renterIds)
         {
             await anonymizer.AnonymizeAsync(renterId, reason: null, cancellationToken);
-            db.ChangeTracker.Clear();
+            unitOfWork.ClearTracking();
         }
         return renterIds.Count;
     }
 
     private async Task<List<Guid>> EligibleAsync(DateOnly cutoff, CancellationToken ct)
     {
-        var candidates = await RenterAnonymizer.WithoutBlockers(db, db.Renters.AsNoTracking().Where(r => r.AnonymizedAt == null))
-            .Select(r => new
-            {
-                r.Id,
-                r.CreatedAt,
-                LastEnded = db.Contracts
-                    .Where(c => (c.RepresentativeRenterId == r.Id || c.Occupants.Any(o => o.RenterId == r.Id) || c.RepresentativeHistory.Any(h => h.RenterId == r.Id)) && c.Status == ContractStatus.Ended)
-                    .Max(c => c.ActualEndDate),
-                LastCancelled = db.Contracts
-                    .Where(c => (c.RepresentativeRenterId == r.Id || c.Occupants.Any(o => o.RenterId == r.Id) || c.RepresentativeHistory.Any(h => h.RenterId == r.Id)) && c.Status == ContractStatus.Cancelled)
-                    .Max(c => c.CancelledAt)
-            })
-            .ToListAsync(ct);
+        var candidates = await renters.ListAnonymizationCandidatesAsync(ct);
 
         return candidates
             .Select(c => (c.Id, Last: new[] { c.CreatedAt.ToBusinessDate(), c.LastEnded ?? DateOnly.MinValue, c.LastCancelled?.ToBusinessDate() ?? DateOnly.MinValue }.Max()))

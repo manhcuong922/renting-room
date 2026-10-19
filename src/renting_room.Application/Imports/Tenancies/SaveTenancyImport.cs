@@ -1,10 +1,11 @@
 using FluentValidation;
 using Mediator;
-using Microsoft.EntityFrameworkCore;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Contracts;
 using renting_room.Application.Meters;
+using renting_room.Application.Properties;
 using renting_room.Application.Renters;
+using renting_room.Application.Rooms;
 using renting_room.Domain.Common;
 using renting_room.Domain.Contracts;
 
@@ -24,16 +25,17 @@ public sealed class SaveTenancyImportCommandValidator : AbstractValidator<SaveTe
 }
 
 public sealed class SaveTenancyImportHandler(
-    IAppDbContext db, ICurrentUser currentUser, IPersonalDataProtector protector, ISender sender, IAuditTrail auditTrail,
+    IPropertyQueries properties, IRenterQueries renterQueries, IRenterRepository renters, IContractQueries contracts, IRoomQueries rooms,
+    IMeterQueries meters, IUnitOfWork unitOfWork, ICurrentUser currentUser, IPersonalDataProtector protector, ISender sender, IAuditTrail auditTrail,
     IValidator<CreateRenterCommand> renterValidator, TimeProvider clock)
     : IRequestHandler<SaveTenancyImportCommand, Result<ImportSaveResultDto>>
 {
     public async ValueTask<Result<ImportSaveResultDto>> Handle(SaveTenancyImportCommand request, CancellationToken cancellationToken)
     {
-        var property = await ImportProperty.LoadAsync(db, request.PropertyId, cancellationToken);
+        var property = await ImportProperty.LoadAsync(properties, request.PropertyId, cancellationToken);
         if (property.IsFailure)
             return property.Error!;
-        var check = await new TenancyImportChecker(db, currentUser, protector, renterValidator)
+        var check = await new TenancyImportChecker(renterQueries, contracts, rooms, meters, currentUser, protector, renterValidator)
             .CheckAsync(property.Value!, request.Rows, new Dictionary<int, List<ImportIssue>>(), clock.GetUtcNow().ToBusinessDate(), cancellationToken);
 
         var units = new List<ImportUnitResult>();
@@ -46,12 +48,12 @@ public sealed class SaveTenancyImportHandler(
                 continue;
             }
             var plan = check.Plans.Single(p => p.RoomCode == room.RoomCode);
-            var failure = await ImportFiles.SaveUnitAsync(db, () => SaveAsync(plan, cancellationToken), cancellationToken);
+            var failure = await ImportFiles.SaveUnitAsync(unitOfWork, () => SaveAsync(plan, cancellationToken), cancellationToken);
             units.Add(new ImportUnitResult(room.RoomCode, room.RowNumbers, failure.Count == 0 ? ImportOutcome.Saved : ImportOutcome.Failed, failure));
         }
         foreach (var orphan in check.Rows.Where(r => r.Row.RoomCode is null))
             units.Add(new ImportUnitResult($"#{orphan.Row.RowNumber}", [orphan.Row.RowNumber], ImportOutcome.Invalid, orphan.Errors));
-        return await ImportPreview.RecordAsync(db, auditTrail, request.PropertyId, "Tenancies", units, cancellationToken);
+        return await ImportPreview.RecordAsync(unitOfWork, auditTrail, request.PropertyId, "Tenancies", units, cancellationToken);
     }
 
     private async Task<Error?> SaveAsync(TenancyPlan plan, CancellationToken ct)
@@ -80,10 +82,8 @@ public sealed class SaveTenancyImportHandler(
             return created.Error;
 
         // Chỉ số nhận phòng = số mới nhất của từng công tơ đang đo tại ngày tính tiền (chỉ số khai ở form phòng).
-        var meters = await db.Meters.AsNoTracking()
-            .Where(m => m.RoomId == plan.RoomId && m.InstalledDate <= plan.BillingStartDate && (m.RemovedDate == null || m.RemovedDate > plan.BillingStartDate))
-            .Select(m => m.Id).ToListAsync(ct);
-        var activated = await sender.Send(new ActivateContractCommand(created.Value!.Id, meters.Select(m => new MeterReadingInput(m, null)).ToList()), ct);
+        var meterIds = await meters.ListActiveIdsInRoomAsync(plan.RoomId, plan.BillingStartDate, ct);
+        var activated = await sender.Send(new ActivateContractCommand(created.Value!.Id, meterIds.Select(m => new MeterReadingInput(m, null)).ToList()), ct);
         return activated.IsFailure ? activated.Error : null;
     }
 
@@ -93,7 +93,7 @@ public sealed class SaveTenancyImportHandler(
         if (row is { IdType: { } type, IdNumber: { } number })
         {
             var hash = protector.ProtectIdNumber(currentUser.OrganizationId!.Value, type, number).Hash;
-            if (await db.Renters.Where(r => r.IdNumberHash == hash).Select(r => (Guid?)r.Id).FirstOrDefaultAsync(ct) is { } existing)
+            if (await renters.FindIdByIdNumberHashAsync(hash, excludeId: null, ct) is { } existing)
                 return existing;
         }
         return await sender.Send(new CreateRenterCommand(TenancyImportTemplate.Renter(row)), ct);

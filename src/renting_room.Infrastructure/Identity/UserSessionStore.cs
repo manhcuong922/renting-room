@@ -3,6 +3,7 @@ using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Domain.Identity;
+using renting_room.Infrastructure.Persistence;
 
 namespace renting_room.Infrastructure.Identity;
 
@@ -10,7 +11,7 @@ namespace renting_room.Infrastructure.Identity;
 /// Phiên hợp lệ khi: user tồn tại, không bị admin khóa, tổ chức (nếu có) đang Active, và security stamp trong token
 /// khớp DB. Cache trong bộ nhớ (mặc định 60 giây) — nhiều instance thì độ trễ áp dụng tối đa bằng TTL (ID-BR-08).
 /// </summary>
-public sealed class UserSessionStore(IAppDbContext db, IMemoryCache cache, IOptions<JwtOptions> options)
+public sealed class UserSessionStore(AppDbContext db, IMemoryCache cache, IOptions<JwtOptions> options)
     : IUserSessionStore
 {
     private sealed record SessionSnapshot(Guid SecurityStamp, bool IsActive);

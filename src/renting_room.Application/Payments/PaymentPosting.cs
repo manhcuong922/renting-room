@@ -1,5 +1,5 @@
 using FluentValidation;
-using Microsoft.EntityFrameworkCore;
+using renting_room.Application.Billing;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Domain.Billing;
 using renting_room.Domain.Common;
@@ -12,33 +12,20 @@ namespace renting_room.Application.Payments;
 /// Ghi phiếu thu và phân bổ trong transaction của người gọi (đã khóa HĐ): khóa các phiếu còn nợ theo id (C-07), cập nhật <c>paid_amount</c>
 /// cùng lúc (PM-BR-05). <c>amount</c> null ⇒ đúng tổng còn nợ ("Đã thu toàn bộ" / bỏ nợ khi hoàn tất thanh lý).
 /// </summary>
-internal static class PaymentPosting
+public sealed class PaymentPosting(
+    IInvoiceRepository invoices, IInvoiceQueries invoiceQueries, IPaymentRepository payments, IDocumentNumberGenerator numbers,
+    ICurrentUser currentUser, TimeProvider clock)
 {
     public const int MaxDaysBeforeStart = 60;
 
-    /// <summary>Còn nợ của HĐ — chỉ phiếu chưa thu đủ; phiếu tổng âm (phải hoàn) không bù trừ nợ.</summary>
-    public static async Task<decimal> OutstandingAsync(IAppDbContext db, Guid contractId, CancellationToken ct) =>
-        await db.Invoices.Where(i => i.ContractId == contractId && i.Status == InvoiceStatus.Finalized && i.PaidAmount < i.TotalAmount)
-            .SumAsync(i => (decimal?)(i.TotalAmount - i.PaidAmount), ct) ?? 0;
-
-    /// <summary>Số chủ trọ còn phải trả lại người thuê (phiếu đã chốt tổng âm, chưa xác nhận đã hoàn — BL-BR-27).</summary>
-    public static async Task<decimal> RefundDueAsync(IAppDbContext db, Guid contractId, CancellationToken ct) =>
-        -(await db.Invoices.Where(i => i.ContractId == contractId && i.Status == InvoiceStatus.Finalized && i.TotalAmount < 0 && i.RefundedOn == null)
-            .SumAsync(i => (decimal?)i.TotalAmount, ct) ?? 0);
-
-    public static async Task<Result<Payment>> PostAsync(
-        IAppDbContext db, IDocumentNumberGenerator numbers, ICurrentUser currentUser, TimeProvider clock, Contract contract,
-        decimal? amount, PaymentMethod method, DateOnly paidAt, Guid? invoiceId, string? payerName, string? reference, string? note,
-        PaymentKind kind, CancellationToken ct)
+    public async Task<Result<Payment>> PostAsync(
+        Contract contract, decimal? amount, PaymentMethod method, DateOnly paidAt, Guid? invoiceId, string? payerName, string? reference,
+        string? note, PaymentKind kind, CancellationToken ct)
     {
-        var openIds = await db.Invoices.Where(i => i.ContractId == contract.Id && i.Status == InvoiceStatus.Finalized && i.PaidAmount < i.TotalAmount)
-            .Select(i => i.Id).OrderBy(id => id).ToListAsync(ct);
-        foreach (var id in openIds)
-            await db.LockForUpdateAsync<Invoice>(id, ct);
-        var open = await db.Invoices.Where(i => openIds.Contains(i.Id)).ToListAsync(ct);
+        var open = await invoices.LockOpenForUpdateAsync(contract.Id, ct);
 
         var total = amount ?? open.Sum(i => i.Outstanding);
-        var allocations = await AllocateAsync(db, contract.Id, total, invoiceId, open, ct);
+        var allocations = await AllocateAsync(contract.Id, total, invoiceId, open, ct);
         if (allocations.IsFailure)
             return allocations.Error!;
 
@@ -48,20 +35,19 @@ internal static class PaymentPosting
             allocations.Value!, kind);
         foreach (var (id, part) in allocations.Value!)
             open.Single(i => i.Id == id).ApplyPayment(part, kind == PaymentKind.WriteOff);
-        db.Payments.Add(payment);
+        payments.Add(payment);
         return payment;
     }
 
-    private static async Task<Result<IReadOnlyList<(Guid InvoiceId, decimal Amount)>>> AllocateAsync(
-        IAppDbContext db, Guid contractId, decimal amount, Guid? invoiceId, List<Invoice> open, CancellationToken ct)
+    private async Task<Result<IReadOnlyList<(Guid InvoiceId, decimal Amount)>>> AllocateAsync(
+        Guid contractId, decimal amount, Guid? invoiceId, IReadOnlyList<Invoice> open, CancellationToken ct)
     {
         if (invoiceId is { } targetId)
         {
             var target = open.FirstOrDefault(i => i.Id == targetId);
             if (target is null)
             {
-                var status = await db.Invoices.Where(i => i.Id == targetId && i.ContractId == contractId)
-                    .Select(i => (InvoiceStatus?)i.Status).FirstOrDefaultAsync(ct);
+                var status = await invoiceQueries.GetStatusAsync(targetId, contractId, ct);
                 return status is null ? BillingErrors.NotFound
                     : status == InvoiceStatus.Finalized ? PaymentErrors.ExceedsDebt
                     : BillingErrors.NotFinalized;

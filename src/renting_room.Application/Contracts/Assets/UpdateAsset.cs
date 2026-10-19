@@ -1,6 +1,5 @@
 using FluentValidation;
 using Mediator;
-using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Common.Validation;
 using renting_room.Domain.Common;
 
@@ -17,9 +16,9 @@ public sealed class UpdateAssetCommandValidator : AbstractValidator<UpdateAssetC
     }
 }
 
-public sealed class UpdateAssetHandler(IAppDbContext db) : IRequestHandler<UpdateAssetCommand, Result>
+public sealed class UpdateAssetHandler(ContractMutation mutation) : IRequestHandler<UpdateAssetCommand, Result>
 {
     public ValueTask<Result> Handle(UpdateAssetCommand request, CancellationToken cancellationToken) =>
-        new(ContractMutation.RunAsync(db, request.ContractId,
+        new(mutation.RunAsync(request.ContractId,
             contract => Task.FromResult(contract.UpdateAsset(request.AssetId, request.Asset.ToDomain())), cancellationToken));
 }

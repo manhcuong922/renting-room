@@ -21,13 +21,13 @@ public sealed class ChangeRentCommandValidator : AbstractValidator<ChangeRentCom
     }
 }
 
-public sealed class ChangeRentHandler(IAppDbContext db, IInvoiceLockReader invoiceLocks) : IRequestHandler<ChangeRentCommand, Result>
+public sealed class ChangeRentHandler(ContractMutation mutation, IPropertyQueries properties, IInvoiceLockReader invoiceLocks) : IRequestHandler<ChangeRentCommand, Result>
 {
     public ValueTask<Result> Handle(ChangeRentCommand request, CancellationToken cancellationToken) =>
-        new(ContractMutation.RunAsync(db, request.ContractId, async contract =>
+        new(mutation.RunAsync(request.ContractId, async contract =>
         {
             var firstOpenPeriod = await invoiceLocks.GetFirstOpenPeriodStartAsync(contract.Id, cancellationToken);
-            var schedule = (await PropertyBilling.LoadAsync(db, contract.PropertyId, cancellationToken)).Schedule;
+            var schedule = (await properties.GetBillingAsync(contract.PropertyId, cancellationToken)).Schedule;
             return contract.ChangeRent(request.EffectiveFrom ?? firstOpenPeriod ?? contract.StartDate, request.MonthlyRent, request.AddendumNo,
                 request.Note, firstOpenPeriod, schedule);
         }, cancellationToken));

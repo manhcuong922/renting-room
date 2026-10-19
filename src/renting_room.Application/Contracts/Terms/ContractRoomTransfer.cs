@@ -1,12 +1,13 @@
 using System.Text.Json;
 using FluentValidation;
 using Mediator;
-using Microsoft.EntityFrameworkCore;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Billing;
 using renting_room.Application.Common.Validation;
+using renting_room.Application.Fees;
 using renting_room.Application.Meters;
 using renting_room.Application.Properties;
+using renting_room.Application.Rooms;
 using renting_room.Domain.Billing;
 using renting_room.Domain.Common;
 using renting_room.Domain.Contracts;
@@ -95,23 +96,27 @@ public sealed class TransferRoomCommandValidator : AbstractValidator<TransferRoo
 /// vào cùng dòng (CT-BR-47). Về đúng phòng vừa rời ngay trong ngày chuyển ⇒ xóa lần chuyển như chưa từng chuyển (thay lệnh hủy chuyển phòng).
 /// Nháp đã lập ⇒ "Cần tính lại".
 /// </summary>
-public sealed class TransferRoomHandler(IAppDbContext db, ISender sender, IInvoiceLockReader invoiceLocks, TimeProvider clock)
+public sealed class TransferRoomHandler(
+    IUnitOfWork unitOfWork, IContractRepository contracts, IContractQueries contractQueries, IRoomQueries rooms, IPropertyQueries properties,
+    IFeeQueries fees, IMeterRepository meterRepository, IMeterQueries meterQueries, IInvoiceRepository invoices, IInvoiceQueries invoiceQueries,
+    IRoomChargeRepository roomChargeRepository, RoomChargeBilling roomCharges, ContractMeterReadings meterReadings, ISender sender,
+    IInvoiceLockReader invoiceLocks, TimeProvider clock)
     : IRequestHandler<TransferRoomCommand, Result<IReadOnlyList<Warning>>>
 {
     private const string UndoReason = "Chuyển lại về phòng cũ trong ngày";
 
     public async ValueTask<Result<IReadOnlyList<Warning>>> Handle(TransferRoomCommand request, CancellationToken cancellationToken)
     {
-        var fromRoomId = await db.Contracts.Where(c => c.Id == request.ContractId).Select(c => (Guid?)c.RoomId).FirstOrDefaultAsync(cancellationToken);
+        var fromRoomId = await contractQueries.GetRoomIdAsync(request.ContractId, cancellationToken);
         if (fromRoomId is null)
             return ContractErrors.NotFound;
         var today = clock.GetUtcNow().ToBusinessDate();
 
-        await using var transaction = await db.BeginTransactionAsync(cancellationToken);
+        await using var transaction = await unitOfWork.BeginTransactionAsync(cancellationToken);
         foreach (var id in new[] { fromRoomId.Value, request.ToRoomId }.Distinct().Order())
-            await db.LockForUpdateAsync<Room>(id, cancellationToken);
-        await db.LockForUpdateAsync<Contract>(request.ContractId, cancellationToken);
-        var contract = (await ContractMutation.LoadAsync(db, request.ContractId, cancellationToken))!;
+            await unitOfWork.LockForUpdateAsync<Room>(id, cancellationToken);
+        await unitOfWork.LockForUpdateAsync<Contract>(request.ContractId, cancellationToken);
+        var contract = (await contracts.GetForUpdateAsync(request.ContractId, cancellationToken))!;
         if (contract.Status != ContractStatus.Active)
             return ContractErrors.NotActive;
 
@@ -122,7 +127,7 @@ public sealed class TransferRoomHandler(IAppDbContext db, ISender sender, IInvoi
             : await TransferAsync(contract, fromRoomId.Value, request, today, cancellationToken);
         if (result.IsFailure)
             return result;
-        await db.SaveChangesAsync(cancellationToken);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return result;
     }
@@ -137,19 +142,18 @@ public sealed class TransferRoomHandler(IAppDbContext db, ISender sender, IInvoi
             return ContractErrors.TransferAlreadyBilled;
 
         // CT-BR-47: chỉ số cuối phòng cũ + chỉ số nhận phòng mới là sản lượng đã lưu — phiếu của kỳ cộng vào dòng điện nước.
-        var closing = await ContractMeterReadings.RecordAsync(db, contract, ReadingKind.Final, today, request.OldRoomReadings, ct);
+        var closing = await meterReadings.RecordAsync(contract, ReadingKind.Final, today, request.OldRoomReadings, ct);
         if (closing.IsFailure)
             return closing.Error!;
         var moved = contract.TransferRoom(request.ToRoomId, today, today);
         if (moved.IsFailure)
             return moved.Error!;
-        var newMeters = request.NewRoomReadings ?? await db.Meters
-            .Where(m => m.RoomId == request.ToRoomId && m.InstalledDate <= today && (m.RemovedDate == null || m.RemovedDate > today))
-            .Select(m => new MeterReadingInput(m.Id, null)).ToListAsync(ct);
-        var handover = await ContractMeterReadings.RecordAsync(db, contract, ReadingKind.Handover, today, newMeters, ct);
+        var newMeters = request.NewRoomReadings
+            ?? (await meterQueries.ListActiveIdsInRoomAsync(request.ToRoomId, today, ct)).Select(id => new MeterReadingInput(id, null)).ToList();
+        var handover = await meterReadings.RecordAsync(contract, ReadingKind.Handover, today, newMeters, ct);
         if (handover.IsFailure)
             return handover.Error!;
-        await db.SaveChangesAsync(ct);
+        await unitOfWork.SaveChangesAsync(ct);
 
         var warnings = new List<Warning> { RoomTransferWarnings.ResidenceRoomChanged };
         warnings.AddRange(await MeterWarningsAsync(fromRoomId, request.ToRoomId, today, ct));
@@ -189,7 +193,7 @@ public sealed class TransferRoomHandler(IAppDbContext db, ISender sender, IInvoi
     private async Task<Result> ApplyRentAsync(
         Contract contract, TransferRoomCommand request, DateOnly date, List<Warning> warnings, TransferRentChange change, CancellationToken ct)
     {
-        var room = await db.Rooms.Where(r => r.Id == request.ToRoomId).Select(r => new { r.Code, r.ListedRent }).FirstAsync(ct);
+        var room = (await rooms.FindAsync(request.ToRoomId, ct))!;
         // Không gửi giá ⇒ lấy giá niêm yết phòng mới (phòng chưa có giá niêm yết thì giữ giá đang áp).
         if ((request.MonthlyRent ?? room.ListedRent) is not { } rent)
             return Result.Success();
@@ -197,7 +201,7 @@ public sealed class TransferRoomHandler(IAppDbContext db, ISender sender, IInvoi
             warnings.Add(RoomTransferWarnings.ListedRentApplied(rent));
 
         var note = request.Note ?? $"Chuyển sang phòng {room.Code}";
-        var schedule = (await PropertyBilling.LoadAsync(db, contract.PropertyId, ct)).Schedule;
+        var schedule = (await properties.GetBillingAsync(contract.PropertyId, ct)).Schedule;
         var period = contract.BillingPeriods(schedule, date).LastOrDefault(p => p.Start <= date && date <= p.End);
         if (period is null)
         {
@@ -231,27 +235,25 @@ public sealed class TransferRoomHandler(IAppDbContext db, ISender sender, IInvoi
             rent > billed ? RoomChargeKind.Surcharge : RoomChargeKind.Credit,
             $"Chênh lệch tiền phòng kỳ {period.Start:dd/MM}–{period.End:dd/MM} (chuyển phòng)", Math.Abs(rent - billed), date,
             "Giá phòng mới áp cho cả kỳ chuyển phòng");
-        db.RoomCharges.Add(charge);
+        roomChargeRepository.Add(charge);
         change.ChargeId = charge.Id;
-        if (await RoomChargeBilling.DraftForAsync(db, contract.Id, date, ct) is { } draft)
+        if (await roomCharges.DraftForAsync(contract.Id, date, ct) is { } draft)
             RoomChargeBilling.Attach(draft, charge);
-        await db.SaveChangesAsync(ct);
+        await unitOfWork.SaveChangesAsync(ct);
         return Result.Success();
     }
 
     /// <summary>CT-BR-48: phòng cũ có công tơ của một khoản mà phòng mới không có (hoặc ngược lại) ⇒ nhắc đổi dịch vụ tính theo đầu người.</summary>
     private async Task<IReadOnlyList<Warning>> MeterWarningsAsync(Guid oldRoomId, Guid newRoomId, DateOnly date, CancellationToken ct)
     {
-        var meters = await db.Meters
-            .Where(m => (m.RoomId == oldRoomId || m.RoomId == newRoomId) && m.InstalledDate <= date && (m.RemovedDate == null || m.RemovedDate > date))
-            .Select(m => new { m.RoomId, m.FeeTypeId }).ToListAsync(ct);
+        var meters = await meterQueries.ListActiveFeesAsync([oldRoomId, newRoomId], date, ct);
         var inOld = meters.Where(m => m.RoomId == oldRoomId).Select(m => m.FeeTypeId).ToHashSet();
         var inNew = meters.Where(m => m.RoomId == newRoomId).Select(m => m.FeeTypeId).ToHashSet();
         var differing = inOld.Union(inNew).Where(id => inOld.Contains(id) != inNew.Contains(id)).ToList();
         if (differing.Count == 0)
             return [];
 
-        var names = await db.FeeTypes.Where(f => differing.Contains(f.Id)).OrderBy(f => f.SortOrder).Select(f => new { f.Id, f.Name }).ToListAsync(ct);
+        var names = await fees.ListNamesAsync(differing, ct);
         return names.Select(f => inOld.Contains(f.Id) ? RoomTransferWarnings.MeterMissingInNewRoom(f.Name) : RoomTransferWarnings.MeterOnlyInNewRoom(f.Name))
             .ToList();
     }
@@ -261,7 +263,7 @@ public sealed class TransferRoomHandler(IAppDbContext db, ISender sender, IInvoi
     {
         if (roomId == contract.RoomId)
             return Result.Failure(ContractErrors.TransferSameRoom);
-        var room = await db.Rooms.AsNoTracking().FirstOrDefaultAsync(r => r.Id == roomId, ct);
+        var room = await rooms.FindAsync(roomId, ct);
         if (room is null)
             return Result.Failure(PropertyErrors.RoomNotFound);
         if (room.PropertyId != contract.PropertyId)
@@ -273,21 +275,16 @@ public sealed class TransferRoomHandler(IAppDbContext db, ISender sender, IInvoi
     }
 
     /// <summary>Phòng có HĐ khác chiếm từ ngày <paramref name="date"/> (hiệu lực / giữ chỗ / lịch sử chuyển phòng).</summary>
-    private async Task<bool> RoomTakenAsync(Guid contractId, Guid roomId, DateOnly date, CancellationToken ct) =>
-        await db.Contracts.AnyAsync(c => c.Id != contractId && c.RoomId == roomId
-            && (c.Status == ContractStatus.Draft
-                || ((c.Status == ContractStatus.Active || c.Status == ContractStatus.Liquidating || c.Status == ContractStatus.Ended)
-                    && (c.ActualEndDate == null || c.ActualEndDate >= date))), ct)
-        || await db.Contracts.AnyAsync(c => c.Id != contractId && c.RoomMoves.Any(m => m.RoomId == roomId && m.ToDate >= date), ct);
+    private Task<bool> RoomTakenAsync(Guid contractId, Guid roomId, DateOnly date, CancellationToken ct) =>
+        contractQueries.IsRoomTakenAsync(contractId, roomId, date, ct);
 
     /// <summary>Đoạn đo đã lập phiếu (chưa hủy) trên công tơ phòng cũ kết thúc sau D ⇒ không chèn được chỉ số cuối tại D.</summary>
     private async Task<bool> BilledAfterAsync(Contract contract, DateOnly date, CancellationToken ct)
     {
-        var meterIds = await db.Meters.Where(m => m.RoomId == contract.RoomId).Select(m => m.Id).ToListAsync(ct);
-        var endIds = await db.Invoices.Where(i => i.ContractId == contract.Id && i.Status != InvoiceStatus.Void)
-            .SelectMany(i => i.Segments).Where(s => !s.Voided && meterIds.Contains(s.MeterId)).Select(s => s.EndReadingId).ToListAsync(ct);
+        var meterIds = await meterQueries.ListIdsInRoomAsync(contract.RoomId, ct);
+        var endIds = await invoiceQueries.ListSegmentEndReadingIdsAsync(contract.Id, meterIds, ct);
         return endIds.Count > 0
-            && await db.Meters.SelectMany(m => m.Readings).AnyAsync(r => endIds.Contains(r.Id) && r.ReadingDate > date, ct);
+            && await meterQueries.AnyReadingAfterAsync(endIds, date, ct);
     }
 
     /// <summary>
@@ -301,8 +298,7 @@ public sealed class TransferRoomHandler(IAppDbContext db, ISender sender, IInvoi
         if (await RoomTakenAsync(contract.Id, oldRoomId, date, ct))
             return ContractErrors.TransferRoomUnavailable;
         // Đã lập phiếu (nháp / đã chốt) cho phòng mới từ ngày chuyển ⇒ xóa nháp / hủy phiếu đó trước.
-        if (await db.Invoices.AnyAsync(i => i.ContractId == contract.Id && i.Status != InvoiceStatus.Void && i.RoomId == newRoomId
-                && i.PeriodEnd >= date, ct))
+        if (await invoiceQueries.HasInvoiceForRoomFromAsync(contract.Id, newRoomId, date, ct))
             return ContractErrors.TransferCancelBilled;
 
         var undo = TransferUndo.Parse(last.UndoSnapshot);
@@ -340,18 +336,15 @@ public sealed class TransferRoomHandler(IAppDbContext db, ISender sender, IInvoi
     private async Task<Result> CancelTransferChargesAsync(
         Guid contractId, Guid oldRoomId, DateOnly date, Guid? rentChargeId, DateTimeOffset now, CancellationToken ct)
     {
-        var charges = await db.RoomCharges
-            .Where(c => c.ContractId == contractId && c.CancelledAt == null
-                && ((c.MeterId != null && c.RoomId == oldRoomId && c.IncurredOn == date) || c.Id == rentChargeId))
-            .ToListAsync(ct);
+        var charges = await roomChargeRepository.ListTransferChargesAsync(contractId, oldRoomId, date, rentChargeId, ct);
         if (charges.Any(c => c.IsSettled))
             return Result.Failure(ContractErrors.TransferCancelSettled);
         foreach (var charge in charges)
         {
             if (charge.InvoiceId is { } invoiceId)
             {
-                await db.LockForUpdateAsync<Invoice>(invoiceId, ct);
-                var invoice = await InvoiceAccess.LoadAsync(db, invoiceId, ct);
+                await unitOfWork.LockForUpdateAsync<Invoice>(invoiceId, ct);
+                var invoice = await invoices.GetForUpdateAsync(invoiceId, ct);
                 if (invoice is not { Status: InvoiceStatus.Draft })
                     return Result.Failure(ContractErrors.TransferCancelBilled);
                 var removed = invoice.RemoveChargeLine(charge.Id);
@@ -368,10 +361,10 @@ public sealed class TransferRoomHandler(IAppDbContext db, ISender sender, IInvoi
     /// <summary>Hủy chỉ số cuối phòng cũ tại ngày chuyển và mọi chỉ số của HĐ trên công tơ phòng mới từ ngày chuyển (chưa bị phiếu đã chốt khóa).</summary>
     private async Task<Result> VoidReadingsAsync(Guid contractId, Guid oldRoomId, Guid newRoomId, DateOnly date, DateTimeOffset now, CancellationToken ct)
     {
-        var meterRooms = await db.Meters.Where(m => m.RoomId == oldRoomId || m.RoomId == newRoomId).Select(m => new { m.Id, m.RoomId }).ToListAsync(ct);
+        var meterRooms = await meterQueries.ListRoomMetersAsync([oldRoomId, newRoomId], ct);
         var newMeterIds = meterRooms.Where(m => m.RoomId == newRoomId).Select(m => m.Id).ToList();
-        var locked = await ReadingLocks.LockedReadingIdsAsync(db, newMeterIds, ct);
-        foreach (var meter in await MeterMapping.LockAndLoadAsync(db, meterRooms.Select(m => m.Id), ct))
+        var locked = await invoiceQueries.GetLockedReadingIdsAsync(newMeterIds, ct);
+        foreach (var meter in await meterRepository.LockAndLoadAsync(meterRooms.Select(m => m.Id), ct))
         {
             var isNewRoom = meter.RoomId == newRoomId;
             var targets = meter.Ordered

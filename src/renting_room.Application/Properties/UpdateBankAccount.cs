@@ -1,10 +1,10 @@
 using FluentValidation;
 using Mediator;
-using Microsoft.EntityFrameworkCore;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Common.Validation;
 using renting_room.Domain.Common;
 using renting_room.Domain.Properties;
+using renting_room.Application.Identity.Organizations;
 
 namespace renting_room.Application.Properties;
 
@@ -27,19 +27,20 @@ public sealed class UpdateBankAccountCommandValidator : AbstractValidator<Update
     }
 }
 
-public sealed class UpdateBankAccountHandler(IAppDbContext db, TimeProvider clock)
+public sealed class UpdateBankAccountHandler(
+    IPropertyRepository properties, IOrganizationQueries organizations, IUnitOfWork unitOfWork, TimeProvider clock)
     : IRequestHandler<UpdateBankAccountCommand, Result<PropertyDetailDto>>
 {
     public async ValueTask<Result<PropertyDetailDto>> Handle(UpdateBankAccountCommand request, CancellationToken cancellationToken)
     {
-        var property = await db.Properties.FirstOrDefaultAsync(p => p.Id == request.PropertyId, cancellationToken);
+        var property = await properties.GetAsync(request.PropertyId, cancellationToken);
         if (property is null)
             return PropertyErrors.PropertyNotFound;
 
         property.UpdateBankAccount(request.AccountNo is null
             ? null
             : new BankAccount(request.BankName!, request.AccountNo, request.AccountName!));
-        await db.SaveChangesAsync(cancellationToken);
-        return await property.ToDetailAsync(db, clock.GetUtcNow().ToBusinessDate(), cancellationToken);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+        return await property.ToDetailAsync(organizations, clock.GetUtcNow().ToBusinessDate(), cancellationToken);
     }
 }

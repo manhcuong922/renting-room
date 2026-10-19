@@ -1,7 +1,5 @@
 using FluentValidation;
 using Mediator;
-using Microsoft.EntityFrameworkCore;
-using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Common.Models;
 using renting_room.Domain.Common;
 using renting_room.Domain.Identity;
@@ -60,77 +58,23 @@ public sealed class ListOrganizationsQueryValidator : AbstractValidator<ListOrga
     }
 }
 
-public sealed class ListOrganizationsHandler(IAppDbContext db)
+public sealed class ListOrganizationsHandler(IOrganizationQueries organizations)
     : IRequestHandler<ListOrganizationsQuery, PagedResult<OrganizationSummaryDto>>
 {
     public async ValueTask<PagedResult<OrganizationSummaryDto>> Handle(
-        ListOrganizationsQuery request, CancellationToken cancellationToken)
-    {
-        var query = db.Organizations.AsNoTracking();
-
-        if (!string.IsNullOrWhiteSpace(request.Search))
-        {
-            var term = request.Search.Trim().ToLower();
-            query = query.Where(o => o.Name.ToLower().Contains(term) || o.Code.ToLower().Contains(term));
-        }
-
-        if (request.Status is { } status)
-            query = query.Where(o => o.Status == status);
-
-        var totalCount = await query.CountAsync(cancellationToken);
-        var items = await query
-            .OrderByDescending(o => o.CreatedAt)
-            .ThenBy(o => o.Id)
-            .Skip((request.Page - 1) * request.PageSize)
-            .Take(request.PageSize)
-            // ID-UC-02: số khu / phòng chưa ngừng dùng — đếm on-demand. SystemAdmin không thuộc tổ chức nào nên phải bỏ bộ lọc theo tổ chức.
-            .Select(o => new OrganizationSummaryDto(
-                o.Id, o.Code, o.Name, o.Status, o.ContactName, o.ContactPhone, o.CreatedAt,
-                db.Properties.IgnoreQueryFilters().Count(p => p.OrganizationId == o.Id && p.ArchivedAt == null),
-                db.Rooms.IgnoreQueryFilters().Count(r => r.OrganizationId == o.Id && r.ArchivedAt == null)))
-            .ToListAsync(cancellationToken);
-
-        return new PagedResult<OrganizationSummaryDto>(items, request.Page, request.PageSize, totalCount);
-    }
+        ListOrganizationsQuery request, CancellationToken cancellationToken) =>
+        await organizations.ListAsync(request, cancellationToken);
 }
 
 public sealed record GetOrganizationQuery(Guid Id) : IRequest<Result<OrganizationDetailDto>>;
 
-public sealed class GetOrganizationHandler(IAppDbContext db)
+public sealed class GetOrganizationHandler(IOrganizationQueries organizations)
     : IRequestHandler<GetOrganizationQuery, Result<OrganizationDetailDto>>
 {
     public async ValueTask<Result<OrganizationDetailDto>> Handle(
         GetOrganizationQuery request, CancellationToken cancellationToken)
     {
-        var organization = await db.Organizations
-            .AsNoTracking()
-            .FirstOrDefaultAsync(o => o.Id == request.Id, cancellationToken);
-
-        if (organization is null)
-            return IdentityErrors.OrganizationNotFound;
-
-        var users = await db.Users
-            .AsNoTracking()
-            .Where(u => u.OrganizationId == organization.Id)
-            .OrderBy(u => u.Role).ThenBy(u => u.FullName)
-            .Select(u => new OrganizationUserDto(
-                u.Id, u.FullName, u.PhoneNormalized, u.EmailNormalized, u.Role, u.Status,
-                u.MustChangePassword, u.LastLoginAt))
-            .ToListAsync(cancellationToken);
-
-        return new OrganizationDetailDto(
-            organization.Id,
-            organization.Code,
-            organization.Name,
-            organization.Status,
-            organization.SuspendedReason,
-            organization.ContactName,
-            organization.ContactPhone,
-            organization.ContactEmail,
-            organization.TaxCode,
-            organization.Note,
-            organization.CreatedAt,
-            organization.Version.ToString(),
-            users);
+        var organization = await organizations.GetDetailAsync(request.Id, cancellationToken);
+        return organization is null ? IdentityErrors.OrganizationNotFound : organization;
     }
 }

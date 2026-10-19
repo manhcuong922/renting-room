@@ -2,6 +2,7 @@ using renting_room.Application.Common.Interfaces;
 using renting_room.Domain.Common;
 using renting_room.Domain.Identity;
 using renting_room.Domain.Properties;
+using renting_room.Application.Identity.Organizations;
 
 namespace renting_room.Application.Properties;
 
@@ -74,9 +75,9 @@ public sealed record PropertyDetailDto(
 internal static class PropertyMapping
 {
     /// <summary><c>lessor</c> = bên cho thuê hiệu lực (PR-BR-17): riêng của khu, không có thì của chủ trọ (<c>LessorInherited</c>).</summary>
-    public static async Task<PropertyDetailDto> ToDetailAsync(this Property p, IAppDbContext db, DateOnly today, CancellationToken ct)
+    public static async Task<PropertyDetailDto> ToDetailAsync(this Property p, IOrganizationQueries organizations, DateOnly today, CancellationToken ct)
     {
-        var (lessor, inherited) = await LessorSource.EffectiveAsync(db, p, ct);
+        var (lessor, inherited) = await LessorSource.EffectiveAsync(organizations, p, ct);
         return p.ToDetail(today, lessor, inherited);
     }
 

@@ -1,6 +1,5 @@
 using FluentValidation;
 using Mediator;
-using Microsoft.EntityFrameworkCore;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Common.Validation;
 using renting_room.Domain.Common;
@@ -29,17 +28,14 @@ public sealed class MoveOccupantCommandValidator : AbstractValidator<MoveOccupan
 /// CT-UC-26 / CT-BR-52: người đi, HĐ ở lại — 1 transaction, khóa 2 HĐ theo id (C-07): ghi chuyển đi ở HĐ nguồn, thêm vào HĐ đích đang hiệu lực
 /// cùng ngày, xe của người đó chuyển theo. Khoản thu chi không đi theo người.
 /// </summary>
-public sealed class MoveOccupantHandler(IAppDbContext db, ISender sender) : IRequestHandler<MoveOccupantCommand, Result>
+public sealed class MoveOccupantHandler(IContractQueries contracts, IUnitOfWork unitOfWork, ISender sender) : IRequestHandler<MoveOccupantCommand, Result>
 {
     public async ValueTask<Result> Handle(MoveOccupantCommand request, CancellationToken cancellationToken)
     {
         if (request.ToContractId == request.ContractId)
             return Result.Failure(ContractErrors.MoveSameContract);
-        var source = await db.Contracts.Where(c => c.Id == request.ContractId)
-            .Select(c => new { RenterId = c.Occupants.Where(o => o.Id == request.OccupantId).Select(o => (Guid?)o.RenterId).FirstOrDefault() })
-            .FirstOrDefaultAsync(cancellationToken);
-        var targetStatus = await db.Contracts.Where(c => c.Id == request.ToContractId).Select(c => (ContractStatus?)c.Status)
-            .FirstOrDefaultAsync(cancellationToken);
+        var source = await contracts.FindOccupantAsync(request.ContractId, request.OccupantId, cancellationToken);
+        var targetStatus = await contracts.GetStatusAsync(request.ToContractId, cancellationToken);
         if (source is null || targetStatus is null)
             return Result.Failure(ContractErrors.NotFound);
         if (source.RenterId is not { } renterId)
@@ -47,9 +43,9 @@ public sealed class MoveOccupantHandler(IAppDbContext db, ISender sender) : IReq
         if (targetStatus != ContractStatus.Active)
             return Result.Failure(ContractErrors.NotActive);
 
-        await using var transaction = await db.BeginTransactionAsync(cancellationToken);
+        await using var transaction = await unitOfWork.BeginTransactionAsync(cancellationToken);
         foreach (var id in new[] { request.ContractId, request.ToContractId }.Order())
-            await db.LockForUpdateAsync<Contract>(id, cancellationToken);
+            await unitOfWork.LockForUpdateAsync<Contract>(id, cancellationToken);
 
         var left = await sender.Send(new EndOccupancyCommand(request.ContractId, request.OccupantId, request.Date), cancellationToken);
         if (left.IsFailure)
@@ -59,9 +55,7 @@ public sealed class MoveOccupantHandler(IAppDbContext db, ISender sender) : IReq
         if (arrived.IsFailure)
             return arrived;
 
-        var vehicles = await db.Contracts.Where(c => c.Id == request.ContractId).SelectMany(c => c.Vehicles)
-            .Where(v => v.RenterId == renterId && v.RegisteredTo == null)
-            .Select(v => new { v.Id, v.VehicleType, v.PlateNumber, v.BrandColor, v.Note }).ToListAsync(cancellationToken);
+        var vehicles = await contracts.ListOpenVehiclesAsync(request.ContractId, renterId, cancellationToken);
         foreach (var vehicle in vehicles)
         {
             var ended = await sender.Send(new EndVehicleCommand(request.ContractId, vehicle.Id, request.Date), cancellationToken);

@@ -1,6 +1,5 @@
 using FluentValidation;
 using Mediator;
-using Microsoft.EntityFrameworkCore;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Common.Validation;
 using renting_room.Application.Identity.Auth;
@@ -32,7 +31,8 @@ public sealed class UpdateMeCommandValidator : AbstractValidator<UpdateMeCommand
 /// mọi phiên bị vô hiệu, phải đăng nhập lại.
 /// </summary>
 public sealed class UpdateMeHandler(
-    IAppDbContext db, ICurrentUser currentUser, IUserSessionStore sessionStore, IPasswordHasher passwordHasher, TimeProvider clock)
+    IUserRepository users, IUnitOfWork unitOfWork, ICurrentUser currentUser, IUserSessionStore sessionStore, IPasswordHasher passwordHasher,
+    TimeProvider clock)
     : IRequestHandler<UpdateMeCommand, Result>
 {
     public async ValueTask<Result> Handle(UpdateMeCommand request, CancellationToken cancellationToken)
@@ -41,7 +41,7 @@ public sealed class UpdateMeHandler(
             return Result.Failure(IdentityErrors.ProfileManagedByOwner);
 
         var userId = currentUser.RequireUserId();
-        var user = await db.Users.FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
+        var user = await users.GetForUpdateAsync(userId, cancellationToken);
         if (user is null)
             return Result.Failure(IdentityErrors.UserNotFound);
 
@@ -53,16 +53,16 @@ public sealed class UpdateMeHandler(
             if (confirmed.IsFailure)
                 return confirmed;
         }
-        if (phone is not null && await db.Users.AnyAsync(u => u.PhoneNormalized == phone && u.Id != user.Id, cancellationToken))
+        if (phone is not null && await users.IsPhoneTakenAsync(phone, user.Id, cancellationToken))
             return Result.Failure(IdentityErrors.PhoneTaken);
-        if (email is not null && await db.Users.AnyAsync(u => u.EmailNormalized == email && u.Id != user.Id, cancellationToken))
+        if (email is not null && await users.IsEmailTakenAsync(email, user.Id, cancellationToken))
             return Result.Failure(IdentityErrors.EmailTaken);
 
         var updated = user.UpdateProfile(request.FullName, phone, email);
         if (updated.IsFailure)
             return updated;
 
-        await db.SaveChangesAsync(cancellationToken);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
         sessionStore.Invalidate(user.Id);
         return updated;
     }
@@ -78,7 +78,7 @@ public sealed class UpdateMeHandler(
         if (passwordHasher.Verify(user.PasswordHash, currentPassword) != PasswordCheckResult.Failed)
             return Result.Success();
 
-        await FailedLoginTracker.RegisterFailureAsync(db, user.Id, now, ct);
+        await users.RegisterFailedLoginAsync(user.Id, now, ct);
         return Result.Failure(IdentityErrors.InvalidCurrentPassword);
     }
 }

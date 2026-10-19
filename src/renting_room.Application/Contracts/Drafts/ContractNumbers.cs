@@ -1,4 +1,3 @@
-using Microsoft.EntityFrameworkCore;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Domain.Common;
 
@@ -10,7 +9,7 @@ internal static class ContractNumbers
 
     /// <summary>Số tự sinh có thể trùng số người dùng đã tự nhập trước đó (VD tự gõ "HD2026-0005") ⇒ lấy số kế tiếp.</summary>
     public static async Task<string> NextAsync(
-        IAppDbContext db, IContractNumberGenerator generator, ICurrentUser currentUser, TimeProvider clock, CancellationToken ct)
+        IContractQueries contracts, IContractNumberGenerator generator, ICurrentUser currentUser, TimeProvider clock, CancellationToken ct)
     {
         string contractNo;
         var attempt = 0;
@@ -18,7 +17,7 @@ internal static class ContractNumbers
         {
             contractNo = await generator.NextAsync(currentUser.OrganizationId!.Value, clock.GetUtcNow().ToBusinessDate().Year, ct);
         }
-        while (++attempt < MaxAttempts && await db.Contracts.AnyAsync(c => c.ContractNo == contractNo, ct));
+        while (++attempt < MaxAttempts && await contracts.IsContractNoTakenAsync(contractNo, ct));
         return contractNo;
     }
 }

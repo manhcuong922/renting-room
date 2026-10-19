@@ -25,6 +25,6 @@ public sealed class LayerDependencyTests
         Layers.ShouldNotDependOnAny(
             dependency => Types.InAssembly(Layers.Api).That().ResideInNamespace(Layers.ControllersNamespace).ShouldNot().HaveDependencyOn(dependency),
             "controller chỉ map HTTP ↔ command/query rồi gửi qua Mediator; truy cập dữ liệu thuộc về handler",
-            Layers.InfrastructureNamespace, "Microsoft.EntityFrameworkCore", "renting_room.Application.Common.Interfaces.IAppDbContext");
+            Layers.InfrastructureNamespace, "Microsoft.EntityFrameworkCore");
     }
 }

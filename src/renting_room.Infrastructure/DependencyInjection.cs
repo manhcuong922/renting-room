@@ -3,14 +3,27 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using renting_room.Application.Common.Interfaces;
+using renting_room.Application.Billing;
+using renting_room.Application.Contracts;
+using renting_room.Application.Fees;
+using renting_room.Application.Identity;
+using renting_room.Application.Identity.Organizations;
+using renting_room.Application.Meters;
+using renting_room.Application.Payments;
+using renting_room.Application.Properties;
+using renting_room.Application.Renters;
+using renting_room.Application.Rooms;
 using renting_room.Infrastructure.Auditing;
 using renting_room.Infrastructure.Jobs;
 using renting_room.Infrastructure.Seeding;
+using renting_room.Application.Exports;
 using renting_room.Infrastructure.Exports;
 using renting_room.Infrastructure.Fees;
 using renting_room.Infrastructure.Idempotency;
 using renting_room.Infrastructure.Identity;
 using renting_room.Infrastructure.Persistence;
+using renting_room.Infrastructure.Persistence.Queries;
+using renting_room.Infrastructure.Persistence.Repositories;
 
 namespace renting_room.Infrastructure;
 
@@ -27,7 +40,6 @@ public static class DependencyInjection
                 $"Set ConnectionStrings__{ConnectionStringName} via environment variable or user-secrets.");
 
         services.AddDbContext<AppDbContext>(options => ConfigureDbContext(options, connectionString));
-        services.AddScoped<IAppDbContext>(sp => sp.GetRequiredService<AppDbContext>());
 
         services.AddOptions<DatabaseOptions>().Bind(configuration.GetSection(DatabaseOptions.SectionName));
         services.AddOptions<BootstrapAdminOptions>().Bind(configuration.GetSection(BootstrapAdminOptions.SectionName));
@@ -58,6 +70,37 @@ public static class DependencyInjection
         services.AddOptions<FeeOptions>().Bind(configuration.GetSection(FeeOptions.SectionName));
         services.AddSingleton<IFeeSettings, FeeSettings>();
         services.AddScoped<IFeePriceLockReader, FeePriceLockReader>();
+
+        services.AddScoped<IUnitOfWork, UnitOfWork>();
+        services.AddScoped<IContractRepository, ContractRepository>();
+        services.AddScoped<IContractQueries, ContractQueries>();
+        services.AddScoped<IContractTemplateRepository, ContractTemplateRepository>();
+        services.AddScoped<IContractTemplateQueries, ContractTemplateQueries>();
+        services.AddScoped<IExportQueries, ExportQueries>();
+        services.AddScoped<IFeeTypeRepository, FeeTypeRepository>();
+        services.AddScoped<IFeeQueries, FeeQueries>();
+        services.AddScoped<IInvoiceRepository, InvoiceRepository>();
+        services.AddScoped<IInvoiceQueries, InvoiceQueries>();
+        services.AddScoped<IMeterRepository, MeterRepository>();
+        services.AddScoped<IMeterQueries, MeterQueries>();
+        services.AddScoped<IOrganizationRepository, OrganizationRepository>();
+        services.AddScoped<IOrganizationQueries, OrganizationQueries>();
+        services.AddScoped<IPaymentRepository, PaymentRepository>();
+        services.AddScoped<IPaymentQueries, PaymentQueries>();
+        services.AddScoped<IPropertyRepository, PropertyRepository>();
+        services.AddScoped<IPropertyQueries, PropertyQueries>();
+        services.AddScoped<IRenterRepository, RenterRepository>();
+        services.AddScoped<IRenterConsentRepository, RenterConsentRepository>();
+        services.AddScoped<IRenterQueries, RenterQueries>();
+        services.AddScoped<IRoomChargeRepository, RoomChargeRepository>();
+        services.AddScoped<IRoomChargeQueries, RoomChargeQueries>();
+        services.AddScoped<IRoomRepository, RoomRepository>();
+        services.AddScoped<IRoomGroupRepository, RoomGroupRepository>();
+        services.AddScoped<IRoomQueries, RoomQueries>();
+        services.AddScoped<IUserRepository, UserRepository>();
+        services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
+        services.AddScoped<ILoginEventRepository, LoginEventRepository>();
+        services.AddScoped<IUserQueries, UserQueries>();
 
         services.AddOptions<IdempotencyOptions>()
             .Bind(configuration.GetSection(IdempotencyOptions.SectionName))

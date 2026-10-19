@@ -1,8 +1,8 @@
 using Mediator;
-using Microsoft.EntityFrameworkCore;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Domain.Common;
 using renting_room.Domain.Properties;
+using renting_room.Application.Identity.Organizations;
 
 namespace renting_room.Application.Properties;
 
@@ -10,17 +10,18 @@ namespace renting_room.Application.Properties;
 /// <summary>Bỏ bên cho thuê riêng của khu ⇒ dùng lại thông tin chủ trọ (PR-BR-17). HĐ đã kích hoạt giữ bản chụp.</summary>
 public sealed record ClearPropertyLessorCommand(Guid PropertyId) : IRequest<Result<PropertyDetailDto>>;
 
-public sealed class ClearPropertyLessorHandler(IAppDbContext db, TimeProvider clock)
+public sealed class ClearPropertyLessorHandler(
+    IPropertyRepository properties, IOrganizationQueries organizations, IUnitOfWork unitOfWork, TimeProvider clock)
     : IRequestHandler<ClearPropertyLessorCommand, Result<PropertyDetailDto>>
 {
     public async ValueTask<Result<PropertyDetailDto>> Handle(ClearPropertyLessorCommand request, CancellationToken cancellationToken)
     {
-        var property = await db.Properties.FirstOrDefaultAsync(p => p.Id == request.PropertyId, cancellationToken);
+        var property = await properties.GetAsync(request.PropertyId, cancellationToken);
         if (property is null)
             return PropertyErrors.PropertyNotFound;
 
         property.ClearLessor();
-        await db.SaveChangesAsync(cancellationToken);
-        return await property.ToDetailAsync(db, clock.GetUtcNow().ToBusinessDate(), cancellationToken);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+        return await property.ToDetailAsync(organizations, clock.GetUtcNow().ToBusinessDate(), cancellationToken);
     }
 }

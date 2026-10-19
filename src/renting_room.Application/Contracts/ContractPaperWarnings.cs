@@ -1,8 +1,8 @@
-using Microsoft.EntityFrameworkCore;
-using renting_room.Application.Common.Interfaces;
+using renting_room.Application.Identity.Organizations;
+using renting_room.Application.Properties;
+using renting_room.Application.Renters;
 using renting_room.Domain.Common;
 using renting_room.Domain.Contracts;
-using renting_room.Application.Properties;
 using renting_room.Domain.Properties;
 using renting_room.Domain.Renters;
 
@@ -14,27 +14,27 @@ namespace renting_room.Application.Contracts;
 /// SĐT / chưa đủ 18 tuổi tại ngày ký, quan hệ người ở chưa khai / chưa hợp lý, người chưa thành niên thiếu đồng ý của người giám hộ
 /// (CT-BR-18, 19, 28–30). "Chưa có bản HĐ ký" là cờ <see cref="ContractFlag.MissingSignedDocument"/>.
 /// </summary>
-internal static class ContractPaperWarnings
+public sealed class ContractPaperWarnings(
+    OccupantChecks occupantChecks, IPropertyQueries properties, IOrganizationQueries organizations, IRenterQueries renters)
 {
     private static readonly ContractStatus[] OpenStatuses = [ContractStatus.Draft, ContractStatus.Active, ContractStatus.Liquidating];
 
-    public static async Task<IReadOnlyList<Warning>> ForAsync(IAppDbContext db, Contract contract, DateOnly today, CancellationToken ct)
+    public async Task<IReadOnlyList<Warning>> ForAsync(Contract contract, DateOnly today, CancellationToken ct)
     {
         if (!OpenStatuses.Contains(contract.Status))
             return [];
 
         var warnings = new List<Warning>();
         // CT-BR-50: HĐ nháp chưa bị chặn — báo trước điều sẽ chặn khi kích hoạt.
-        if (contract.Status == ContractStatus.Draft && await OccupantChecks.FindRoleConflictAsync(db, contract, ct) is { } conflict)
+        if (contract.Status == ContractStatus.Draft && await occupantChecks.FindRoleConflictAsync(contract, ct) is { } conflict)
             warnings.Add(new Warning(conflict.Code, conflict.Message));
-        var property = await db.Properties.AsNoTracking().FirstAsync(p => p.Id == contract.PropertyId, ct);
-        if ((await LessorSource.EffectiveAsync(db, property, ct)).Lessor?.IsComplete(today) != true)
+        var property = (await properties.GetAsync(contract.PropertyId, ct))!;
+        if ((await LessorSource.EffectiveAsync(organizations, property, ct)).Lessor?.IsComplete(today) != true)
             warnings.Add(new Warning("LESSOR_INFO_INCOMPLETE",
                 "Chưa đủ thông tin bên cho thuê (thông tin chủ trọ) — chưa in được hợp đồng đầy đủ. Không ảnh hưởng thu tiền."));
 
-        var representative = await db.Renters.AsNoTracking().Where(r => r.Id == contract.RepresentativeRenterId)
-            .Select(r => new { r.Phone, r.DateOfBirth, r.AnonymizedAt }).FirstOrDefaultAsync(ct);
-        if (representative is { AnonymizedAt: null })
+        var representative = await renters.GetContactAsync(contract.RepresentativeRenterId, ct);
+        if (representative is { IsAnonymized: false })
         {
             if (representative.Phone is null)
                 warnings.Add(new Warning("REPRESENTATIVE_PHONE_MISSING", "Người đứng tên chưa có số điện thoại — khó liên hệ khi nhắc tiền."));
@@ -47,12 +47,10 @@ internal static class ContractPaperWarnings
         var staying = contract.Occupants.Where(o => o.MoveOutDate is null || o.MoveOutDate >= today).ToList();
         // RT-BR-01: người ở từ 14 tuổi chưa có giấy tờ (VD vừa qua 14 tuổi) ⇒ nhắc bổ sung.
         var stayingIds = staying.Select(o => o.RenterId).ToList();
-        var missingId = await db.Renters.AsNoTracking()
-            .Where(r => stayingIds.Contains(r.Id) && r.IdNumberHash == null && r.AnonymizedAt == null)
-            .Select(r => new { r.FullName, r.DateOfBirth }).ToListAsync(ct);
+        var missingId = await renters.ListMissingIdNumberAsync(stayingIds, ct);
         warnings.AddRange(missingId.Where(r => r.DateOfBirth.AgeOn(today) >= Renter.IdRequiredAge)
             .Select(r => new Warning("OCCUPANT_ID_MISSING", $"{r.FullName}: từ {Renter.IdRequiredAge} tuổi phải có số giấy tờ — bổ sung ở hồ sơ người thuê.")));
-        var people = await OccupantChecks.LoadPeopleAsync(db, staying.Select(o => o.RenterId).Append(contract.ReferenceRenterId), ct);
+        var people = await occupantChecks.LoadPeopleAsync(staying.Select(o => o.RenterId).Append(contract.ReferenceRenterId), ct);
         if (people.TryGetValue(contract.ReferenceRenterId, out var reference))
         {
             var known = staying.Where(o => people.ContainsKey(o.RenterId)).ToList();

@@ -1,6 +1,4 @@
 using FluentValidation;
-using Microsoft.EntityFrameworkCore;
-using renting_room.Application.Common.Interfaces;
 using renting_room.Domain.Common;
 using renting_room.Domain.Fees;
 using renting_room.Domain.Meters;
@@ -43,13 +41,4 @@ internal static class MeterMapping
     public static IRuleBuilderOptions<T, DateOnly> ReadingDate<T>(this IRuleBuilder<T, DateOnly> rule, TimeProvider clock) =>
         rule.Must(d => d <= clock.GetUtcNow().ToBusinessDate().AddDays(1))
             .WithErrorCode("INVALID_READING_DATE").WithMessage("Ngày ghi chỉ số không được quá hôm nay + 1.");
-
-    /// <summary>Khóa công tơ (sắp theo id — tránh deadlock C-07) rồi nạp kèm chỉ số.</summary>
-    public static async Task<List<Meter>> LockAndLoadAsync(IAppDbContext db, IEnumerable<Guid> meterIds, CancellationToken ct)
-    {
-        var ids = meterIds.Distinct().OrderBy(id => id).ToList();
-        foreach (var id in ids)
-            await db.LockForUpdateAsync<Meter>(id, ct);
-        return await db.Meters.Include(m => m.Readings).Where(m => ids.Contains(m.Id)).ToListAsync(ct);
-    }
 }

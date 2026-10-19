@@ -1,7 +1,6 @@
 using FluentValidation;
 using Mediator;
-using Microsoft.EntityFrameworkCore;
-using renting_room.Application.Common.Interfaces;
+using renting_room.Application.Properties;
 using renting_room.Domain.Properties;
 
 namespace renting_room.Application.Billing;
@@ -22,14 +21,12 @@ public sealed class GenerateInvoicesBulkCommandValidator : AbstractValidator<Gen
 }
 
 /// <summary>Mỗi khu chạy như lệnh tạo phiếu của riêng khu đó — khu lỗi (VD không thuộc tổ chức) trả mã lỗi, không làm hỏng khu khác.</summary>
-public sealed class GenerateInvoicesBulkHandler(IAppDbContext db, ISender sender)
+public sealed class GenerateInvoicesBulkHandler(IPropertyQueries properties, ISender sender)
     : IRequestHandler<GenerateInvoicesBulkCommand, IReadOnlyList<PropertyGenerateResult>>
 {
     public async ValueTask<IReadOnlyList<PropertyGenerateResult>> Handle(GenerateInvoicesBulkCommand request, CancellationToken cancellationToken)
     {
-        var properties = db.Properties.AsNoTracking();
-        properties = request.PropertyIds is { Count: > 0 } ids ? properties.Where(p => ids.Contains(p.Id)) : properties.Where(p => p.ArchivedAt == null);
-        var codes = await properties.OrderBy(p => p.Code).Select(p => new { p.Id, p.Code }).ToListAsync(cancellationToken);
+        var codes = await properties.ListCodesAsync(request.PropertyIds, cancellationToken);
 
         var results = new List<PropertyGenerateResult>();
         foreach (var missing in (request.PropertyIds ?? []).Where(id => codes.All(c => c.Id != id)))

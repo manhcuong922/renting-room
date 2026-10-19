@@ -1,6 +1,5 @@
 using FluentValidation;
 using Mediator;
-using Microsoft.EntityFrameworkCore;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Common.Validation;
 using renting_room.Domain.Billing;
@@ -17,19 +16,21 @@ public sealed class VoidInvoiceCommandValidator : AbstractValidator<VoidInvoiceC
 }
 
 /// <summary>BL-BR-15/22: hủy phiếu đã chốt chưa thu tiền, chỉ phiếu mới nhất của HĐ — chỉ số được giải phóng để lập lại.</summary>
-public sealed class VoidInvoiceHandler(IAppDbContext db, TimeProvider clock) : IRequestHandler<VoidInvoiceCommand, Result<InvoiceDetailDto>>
+public sealed class VoidInvoiceHandler(
+    IUnitOfWork unitOfWork, IInvoiceRepository invoices, IInvoiceQueries invoiceQueries, RoomChargeBilling roomCharges, TimeProvider clock)
+    : IRequestHandler<VoidInvoiceCommand, Result<InvoiceDetailDto>>
 {
     public async ValueTask<Result<InvoiceDetailDto>> Handle(VoidInvoiceCommand request, CancellationToken cancellationToken)
     {
-        var contractId = await db.Invoices.Where(i => i.Id == request.Id).Select(i => (Guid?)i.ContractId).FirstOrDefaultAsync(cancellationToken);
+        var contractId = await invoiceQueries.GetContractIdAsync(request.Id, cancellationToken);
         if (contractId is null)
             return BillingErrors.NotFound;
 
-        await using var transaction = await db.BeginTransactionAsync(cancellationToken);
-        await db.LockForUpdateAsync<Contract>(contractId.Value, cancellationToken);
-        await db.LockForUpdateAsync<Invoice>(request.Id, cancellationToken);
-        var invoice = (await InvoiceAccess.LoadAsync(db, request.Id, cancellationToken))!;
-        if (invoice.Status == InvoiceStatus.Finalized && await InvoiceAccess.HasLaterInvoiceAsync(db, invoice, cancellationToken))
+        await using var transaction = await unitOfWork.BeginTransactionAsync(cancellationToken);
+        await unitOfWork.LockForUpdateAsync<Contract>(contractId.Value, cancellationToken);
+        await unitOfWork.LockForUpdateAsync<Invoice>(request.Id, cancellationToken);
+        var invoice = (await invoices.GetForUpdateAsync(request.Id, cancellationToken))!;
+        if (invoice.Status == InvoiceStatus.Finalized && await invoiceQueries.HasLaterInvoiceAsync(invoice, cancellationToken))
             return BillingErrors.NotLatest;
 
         var now = clock.GetUtcNow();
@@ -37,8 +38,8 @@ public sealed class VoidInvoiceHandler(IAppDbContext db, TimeProvider clock) : I
         if (voided.IsFailure)
             return voided.Error!;
         // BL-BR-35: khoản phát sinh của phiếu bị hủy quay về chờ, vào phiếu lập lại.
-        await RoomChargeBilling.DetachAllAsync(db, invoice.Id, cancellationToken);
-        await db.SaveChangesAsync(cancellationToken);
+        await roomCharges.DetachAllAsync(invoice.Id, cancellationToken);
+        await unitOfWork.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return invoice.ToDetail(now.ToBusinessDate());
     }

@@ -1,5 +1,6 @@
 using FluentValidation;
 using Mediator;
+using renting_room.Application.Billing;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Common.Models;
 using renting_room.Domain.Common;
@@ -28,21 +29,22 @@ public sealed class ResignContractCommandValidator : AbstractValidator<ResignCon
 }
 
 public sealed class ResignContractHandler(
-    IAppDbContext db, ICurrentUser currentUser, IContractNumberGenerator numberGenerator, TimeProvider clock)
+    ContractMutation mutation, IUnitOfWork unitOfWork, IContractRepository contracts, IContractQueries contractQueries, IInvoiceQueries invoices,
+    OccupantChecks occupantChecks, ICurrentUser currentUser, IContractNumberGenerator numberGenerator, TimeProvider clock)
     : IRequestHandler<ResignContractCommand, Result<CreatedWithWarnings>>
 {
     public ValueTask<Result<CreatedWithWarnings>> Handle(ResignContractCommand request, CancellationToken cancellationToken) =>
-        new(ContractMutation.RunAsync<CreatedWithWarnings>(db, request.ContractId, async old =>
+        new(mutation.RunAsync<CreatedWithWarnings>(request.ContractId, async old =>
         {
             var data = old.ResignDraft(request.HandoverDate, request.RepresentativeRenterId, request.EndDate);
             if (data.IsFailure)
                 return data.Error!;
-            if (!await OccupantChecks.HasIdNumberAsync(db, request.RepresentativeRenterId, cancellationToken))
+            if (!await occupantChecks.HasIdNumberAsync(request.RepresentativeRenterId, cancellationToken))
                 return ContractErrors.RepresentativeIdRequired;
 
-            if (await LiquidationGuards.HasInvoiceAfterAsync(db, old.Id, request.HandoverDate, cancellationToken))
+            if (await invoices.HasInvoiceAfterAsync(old.Id, request.HandoverDate, cancellationToken))
                 return ContractErrors.InvoiceAfterEndDate;
-            var contractNo = await ContractNumbers.NextAsync(db, numberGenerator, currentUser, clock, cancellationToken);
+            var contractNo = await ContractNumbers.NextAsync(contractQueries, numberGenerator, currentUser, clock, cancellationToken);
             var liquidation = old.StartLiquidation(request.HandoverDate, TerminationReason.MutualAgreement, null,
                 $"Ký lại cho người còn ở — hợp đồng mới {contractNo}", clock.GetUtcNow().ToBusinessDate());
             if (liquidation.IsFailure)
@@ -52,7 +54,7 @@ public sealed class ResignContractHandler(
             var renterIds = data.Value!.Occupants.Select(o => o.RenterId).ToList();
             var vehicles = old.ResignVehicles(renterIds, request.HandoverDate, next.StartDate);
             // Lưu việc kết thúc xe ở HĐ cũ trước khi đăng ký lại ở HĐ mới — unique "biển số đang đăng ký" kiểm từng câu lệnh.
-            await db.SaveChangesAsync(cancellationToken);
+            await unitOfWork.SaveChangesAsync(cancellationToken);
             foreach (var vehicle in vehicles)
             {
                 var registered = next.RegisterVehicle(vehicle);
@@ -60,7 +62,7 @@ public sealed class ResignContractHandler(
                     return registered.Error!;
             }
 
-            db.Contracts.Add(next);
+            contracts.Add(next);
             if (request.TransferDeposit)
                 old.MarkDepositTransferred(contractNo);
             return new CreatedWithWarnings(next.Id, ContractWarnings.For(next));
