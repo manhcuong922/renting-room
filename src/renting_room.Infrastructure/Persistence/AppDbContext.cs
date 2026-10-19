@@ -20,7 +20,8 @@ namespace renting_room.Infrastructure.Persistence;
 public class AppDbContext(
     DbContextOptions<AppDbContext> options,
     ICurrentUser currentUser,
-    TimeProvider clock)
+    TimeProvider clock,
+    DomainEventPublisher? domainEvents = null)
     : DbContext(options)
 {
     public DbSet<Organization> Organizations => Set<Organization>();
@@ -122,11 +123,11 @@ public class AppDbContext(
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
         var auditLogs = PrepareForSave();
-        var staleMarker = InvoiceStaleMarker.Collect(ChangeTracker);
+        var pending = DomainEventPublisher.Collect(ChangeTracker);
         try
         {
             var saved = base.SaveChanges(acceptAllChangesOnSuccess);
-            staleMarker?.Mark(this);
+            domainEvents?.PublishAsync(pending, CancellationToken.None).GetAwaiter().GetResult();
             return saved;
         }
         catch
@@ -139,12 +140,12 @@ public class AppDbContext(
     public override async Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
     {
         var auditLogs = PrepareForSave();
-        var staleMarker = InvoiceStaleMarker.Collect(ChangeTracker);
+        var pending = DomainEventPublisher.Collect(ChangeTracker);
         try
         {
             var saved = await base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
-            if (staleMarker is not null)
-                await staleMarker.MarkAsync(this, cancellationToken);
+            if (domainEvents is not null)
+                await domainEvents.PublishAsync(pending, cancellationToken);
             return saved;
         }
         catch

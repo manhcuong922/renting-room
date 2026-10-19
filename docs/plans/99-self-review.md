@@ -364,7 +364,7 @@ Không làm (đã chốt): sổ cọc / trừ cọc vào phiếu, lãi / phạt 
 | Kỳ thu C-05 | README | M05 (rent terms, fees), M06 (sheet, usage), M07 (lập phiếu, prorate) |
 | Thứ tự khóa C-07 | README | M02 §10, M05 §10, M06 §10, M07 §10, M08 §10 |
 | Khóa kỳ đã chốt (`firstOpenPeriodStart`, `lockedUntil`) | M07 interfaces | M04 FE-BR-07, M05 CT-BR-05/06, M06 MT-BR-06 |
-| Đánh dấu "Cần tính lại" | BL-BR-20 (`InvoiceStaleMarker`) | FE-BR-09, MT-BR-06, MT-BR-18, M05 CT-BR-47 |
+| Đánh dấu "Cần tính lại" | BL-BR-20 (domain event → `DraftStalenessHandler`) | FE-BR-09, MT-BR-06, MT-BR-18, M05 CT-BR-47 |
 | Bất biến tài chính C-06 | README | M07 BL-BR-14, M08 PM-BR-01/07, ngoại lệ ẩn danh RT-BR-06 |
 | FK composite C-01 | README | M02 (group members), M04, M05, M06, M07, M08 |
 | Che dữ liệu cá nhân LEG-06 | 00-legal | M03 §11, M09 FS-BR-07, M10 RP-BR-03 |

@@ -72,6 +72,7 @@ public static class DependencyInjection
         services.AddScoped<IFeePriceLockReader, FeePriceLockReader>();
 
         services.AddScoped<IUnitOfWork, UnitOfWork>();
+        services.AddScoped<DomainEventPublisher>();
         services.AddScoped<IContractRepository, ContractRepository>();
         services.AddScoped<IContractQueries, ContractQueries>();
         services.AddScoped<IContractTemplateRepository, ContractTemplateRepository>();
