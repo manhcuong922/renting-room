@@ -3,6 +3,7 @@ using Mediator;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using renting_room.Application.Common.Behaviors;
+using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Identity.Auth;
 
 namespace renting_room.Application;
@@ -21,6 +22,7 @@ public static class DependencyInjection
         services.AddScoped<AuthTokenIssuer>();
         services.AddScoped<Renters.RenterAnonymizer>();
         services.AddScoped<Payments.PaymentPosting>();
+        services.AddScoped<IDomainEventHandler, Billing.DraftStalenessHandler>();
         services.AddScoped<Billing.RoomChargeBilling>();
         services.AddScoped<Billing.InvoiceInputLoader>();
         services.AddScoped<Billing.InvoiceFinalizer>();

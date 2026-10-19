@@ -238,7 +238,7 @@ Migration = file C# mô tả thay đổi cấu trúc DB, nằm ở `src/renting_
 Quy trình khi đổi entity / cấu hình:
 
 ```powershell
-# 1. Sửa entity (Domain) hoặc cấu hình (Infrastructure/Persistence/Configurations)
+# 1. Sửa entity (Domain) hoặc cấu hình (Infrastructure/Persistence/<Module>/Configurations)
 
 # 2. Tạo migration — đặt tên mô tả thay đổi
 dotnet ef migrations add AddProperties -p src/renting_room.Infrastructure -s src/renting_room.Infrastructure -o Persistence/Migrations

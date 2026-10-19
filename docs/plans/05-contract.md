@@ -467,7 +467,7 @@ Audit toàn bộ lệnh thay đổi; in HĐ có số giấy tờ đầy đủ gh
 
 ## 13. Phụ thuộc
 - Dùng: M02 (room), M03 (renter), M04 (fee types), M06 (ghi chỉ số nhận phòng / cuối), M07 (`IInvoiceLockReader`, phiếu quyết toán), M08 (thu nợ / bỏ nợ khi hoàn tất).
-- Nháp phiếu của M07 tự gắn "Cần tính lại" khi HĐ đổi (giá, khoản thu, người ở, ngày, phòng) — `InvoiceStaleMarker` trong SaveChanges, không qua event.
+- Nháp phiếu của M07 tự gắn "Cần tính lại" khi HĐ đổi (giá, khoản thu, người ở, ngày, phòng) — HĐ phát domain event `ContractBillingChanged`, `DraftStalenessHandler` (Billing) đánh dấu sau khi lưu, trong cùng transaction.
 - (P2) Phát event cho M03 khi làm phần cư trú.
 
 ## 15. Câu hỏi mở
