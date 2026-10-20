@@ -8,7 +8,6 @@ using renting_room.Requests;
 
 namespace renting_room.Controllers;
 
-/// <summary>Khoản phát sinh theo phòng (M07 BL-UC-15..17): phụ thu / bù tạo ngay lúc xảy ra, cuối tháng tự vào phiếu.</summary>
 [ApiController]
 [Route("api/v1")]
 [Tags("RoomCharges")]

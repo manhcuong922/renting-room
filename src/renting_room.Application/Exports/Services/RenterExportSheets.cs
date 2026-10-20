@@ -7,7 +7,6 @@ using renting_room.Domain.Renters;
 
 namespace renting_room.Application.Exports;
 
-/// <summary>Cột và cách chia sheet của E1 — Danh sách người thuê.</summary>
 internal static class RenterExportSheets
 {
     private const string Title = "DANH SÁCH NGƯỜI THUÊ";

@@ -10,12 +10,10 @@ using renting_room.Domain.Common;
 
 namespace renting_room.Application.Imports;
 
-// RT-UC-10: import người thuê đang ở — chỉ tạo mới khi chuyển từ sổ sang phần mềm
 public sealed record TenancyImportPreviewDto(
     int ValidRooms, int InvalidRooms, IReadOnlyList<ImportRowResult<TenancyImportRow>> Rows, IReadOnlyList<TenancyRoomDto> Rooms,
     IReadOnlyList<ImportIssue> FileErrors);
 
-/// <summary>RT-UC-10 bước 1: đọc file, kiểm từng người + từng phòng — <b>không lưu gì, server không giữ gì</b>.</summary>
 public sealed record PreviewTenancyImportCommand(Guid PropertyId, byte[] Content) : IRequest<Result<TenancyImportPreviewDto>>;
 
 public sealed class PreviewTenancyImportHandler(

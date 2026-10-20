@@ -45,7 +45,6 @@ internal sealed class InvoiceQueries(AppDbContext db) : IInvoiceQueries
             finalized?.Overdue ?? 0, drafts?.Count ?? 0, drafts?.Total ?? 0, paid - writtenOff, writtenOff);
     }
 
-    /// <summary>Bộ lọc dùng chung cho danh sách phiếu và số tổng hợp (BL-UC-02).</summary>
     private IQueryable<Invoice> Filter(ListInvoicesQuery request)
     {
         var query = db.Invoices.AsNoTracking();
@@ -65,6 +64,10 @@ internal sealed class InvoiceQueries(AppDbContext db) : IInvoiceQueries
             query = query.Where(i => i.Status == InvoiceStatus.Finalized && i.PaidAmount < i.TotalAmount);
         if (request.Stale == true)
             query = query.Where(i => i.Status == InvoiceStatus.Draft && i.IsStale);
+        if (request.Adjusted is { } adjusted)
+            query = query.Where(i => i.IsAdjusted == adjusted);
+        if (request.NeedsResend is { } resend)
+            query = query.Where(i => i.NeedsResend == resend);
         return query;
     }
 
@@ -281,6 +284,26 @@ internal sealed class InvoiceQueries(AppDbContext db) : IInvoiceQueries
             .Where(l => l.IsSystem && l.Type == InvoiceLineType.Metered && l.FeeTypeId == feeTypeId
                 && (usageStart == null || l.ServiceFrom == usageStart))
             .FirstAsync(cancellationToken);
+
+    public async Task<IReadOnlyList<DraftRef>> ListDraftsUsingMetersAsync(IReadOnlyCollection<Guid> meterIds, CancellationToken cancellationToken)
+    {
+        var roomIds = db.Meters.Where(m => meterIds.Contains(m.Id)).Select(m => m.RoomId);
+        return await db.Invoices.AsNoTracking()
+            .Where(i => i.Status == InvoiceStatus.Draft
+                && (roomIds.Contains(i.RoomId) || i.Segments.Any(s => meterIds.Contains(s.MeterId) && !s.Voided)))
+            .Select(i => new DraftRef(i.Id, i.ContractId))
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<SheetInvoiceRow>> ListSheetInvoicesAsync(IReadOnlyCollection<Guid> contractIds, CancellationToken cancellationToken) =>
+        await db.Invoices.AsNoTracking()
+            .Where(i => contractIds.Contains(i.ContractId) && i.Status != InvoiceStatus.Void && i.Type == InvoiceType.Regular)
+            .Select(i => new SheetInvoiceRow(i.Id, i.ContractId, i.PeriodStart, i.Status, i.IsStale))
+            .ToListAsync(cancellationToken);
+
+    public async Task<IReadOnlyList<InvoiceAdjustment>> ListAdjustmentsAsync(Guid invoiceId, CancellationToken cancellationToken) =>
+        await db.InvoiceAdjustments.AsNoTracking().Where(a => a.InvoiceId == invoiceId)
+            .OrderByDescending(a => a.CreatedAt).ToListAsync(cancellationToken);
 
     public async Task<IReadOnlyList<SegmentEndRow>> ListSegmentEndsAsync(IReadOnlyCollection<Guid> contractIds, CancellationToken cancellationToken) =>
         (await db.Invoices.AsNoTracking()

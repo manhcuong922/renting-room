@@ -37,7 +37,6 @@ internal sealed class OrganizationQueries(AppDbContext db) : IOrganizationQuerie
             .ThenBy(o => o.Id)
             .Skip((request.Page - 1) * request.PageSize)
             .Take(request.PageSize)
-            // ID-UC-02: số khu / phòng chưa ngừng dùng — đếm on-demand. SystemAdmin không thuộc tổ chức nào nên phải bỏ bộ lọc theo tổ chức.
             .Select(o => new OrganizationSummaryDto(
                 o.Id, o.Code, o.Name, o.Status, o.ContactName, o.ContactPhone, o.CreatedAt,
                 db.Properties.IgnoreQueryFilters().Count(p => p.OrganizationId == o.Id && p.ArchivedAt == null),

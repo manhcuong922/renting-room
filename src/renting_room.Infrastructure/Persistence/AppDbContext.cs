@@ -37,6 +37,7 @@ public class AppDbContext(
     public DbSet<Meter> Meters => Set<Meter>();
     public DbSet<Invoice> Invoices => Set<Invoice>();
     public DbSet<RoomCharge> RoomCharges => Set<RoomCharge>();
+    public DbSet<InvoiceAdjustment> InvoiceAdjustments => Set<InvoiceAdjustment>();
     public DbSet<RenterConsent> RenterConsents => Set<RenterConsent>();
     public DbSet<Payment> Payments => Set<Payment>();
     public DbSet<Contract> Contracts => Set<Contract>();
@@ -55,7 +56,6 @@ public class AppDbContext(
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
-        // btree_gist: cần cho EXCLUDE constraint (hợp đồng / người ở không chồng thời gian — CT-BR-01, CT-BR-08).
         modelBuilder.HasPostgresExtension("btree_gist");
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(AppDbContext).Assembly);
         ApplyTenantQueryFilters(modelBuilder);
@@ -195,9 +195,6 @@ public class AppDbContext(
         }
     }
 
-    /// <summary>
-    /// C-01: gán tổ chức cho entity mới, chặn ghi vào dữ liệu của tổ chức khác; C-10: gán thông tin tạo/sửa.
-    /// </summary>
     private void ApplyTenantAndAuditRules(AuditActor actor)
     {
         foreach (var entry in ChangeTracker.Entries())

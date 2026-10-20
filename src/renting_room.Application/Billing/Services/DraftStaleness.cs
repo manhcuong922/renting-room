@@ -5,10 +5,6 @@ using renting_room.Domain.Meters;
 
 namespace renting_room.Application.Billing;
 
-/// <summary>
-/// BL-BR-20 (I1, rút gọn 10/10/2026): nháp đã lập mà giá dịch vụ / điện nước, chỉ số công tơ hoặc giá thuê / người ở / dịch vụ của HĐ đổi
-/// ⇒ cờ "Cần tính lại" (xe, cài đặt khu: không — ít ảnh hưởng, tránh báo thừa). Chỉ là gợi ý: chốt vẫn tính lại và so (BL-BR-12).
-/// </summary>
 public sealed class DraftStalenessHandler(IInvoiceRepository invoices) : IDomainEventHandler
 {
     public async Task HandleAsync(DomainEventBatch batch, CancellationToken cancellationToken)
@@ -18,9 +14,6 @@ public sealed class DraftStalenessHandler(IInvoiceRepository invoices) : IDomain
     }
 }
 
-/// <summary>Nháp cần đánh dấu: của các HĐ, các phòng (có công tơ đổi), và của các khu có khoản thu đổi giá từ <see cref="PriceFrom"/>.</summary>
-/// <param name="MeterIds">Công tơ có chỉ số đổi — nháp của phòng đặt công tơ.</param>
-/// <param name="PriceFrom">Giá đổi chỉ ảnh hưởng nháp có kỳ kết thúc từ ngày hiệu lực trở đi (giá theo phiên bản tới ngày cuối kỳ — FE-BR-10).</param>
 public sealed record DraftStaleScope(
     Guid OrganizationId, IReadOnlyCollection<Guid> ContractIds, IReadOnlyCollection<Guid> RoomIds, IReadOnlyCollection<Guid> MeterIds,
     IReadOnlyCollection<Guid> FeeTypeIds, DateOnly PriceFrom)

@@ -12,7 +12,7 @@ Quyền: chủ trọ và phó quản lý.
 | Tiền phòng | `Rent` | Giá thuê HĐ × hệ số kỳ lẻ (kỳ chuyển tiếp: 1 tháng ± số ngày chủ trọ chọn) | 3.000.000 · "Tiền phòng (1 tháng + 4 ngày — đổi ngày chốt)" |
 | Điện nước | `Metered` | Công tơ của phòng ([meters.md](meters.md)) × một giá hoặc **giá theo bậc** (bản giá mới nhất tới cuối kỳ) | Điện 88 kWh × 3.500 · "Điện (giá bậc)" |
 | Dịch vụ | `Service` | Dịch vụ gắn HĐ: theo phòng / theo đầu người / theo số gói — **trọn tháng**, kỳ lẻ không chia ngày (sửa tay trên nháp nếu cần) | Nước 2 người × 20.000; Giữ xe 2 × 100.000 |
-| Phụ thu | `Surcharge` | **Nhập tay**, bắt buộc lý do — 1 phiếu hoặc nhiều phòng một lúc. **Bồi thường tài sản khi trả phòng cũng là phụ thu** trên phiếu quyết toán | Thay khóa cửa 250.000 · Bồi thường gương 300.000 |
+| Phụ thu | `Surcharge` | **Nhập tay**, bắt buộc lý do — 1 phiếu hoặc nhiều phòng một lúc. **Bồi thường tài sản khi trả phòng cũng là phụ thu** trên hóa đơn trả phòng | Thay khóa cửa 250.000 · Bồi thường gương 300.000 |
 | Giảm trừ | `ManualDiscount` | Nhập tay (số dương, lưu âm) — không vượt phần thu | −200.000 |
 | Hoàn trả | `Refund` | **Nhập tay** như phụ thu, bắt buộc lý do (số dương, lưu âm) — được làm **tổng phiếu âm** = chủ trọ trả lại người thuê | Hoàn tiền phòng 15 ngày chưa ở −1.500.000 |
 | Làm tròn | `summary.roundingAmount` (không phải dòng) | Khu bật **làm tròn tổng phiếu** (mặc định bật): bỏ phần lẻ dưới 1.000đ của tổng, về 0 — tính lại mỗi khi tổng nháp đổi | Làm tròn −560 (523.560 ⇒ 523.000) |
@@ -22,14 +22,14 @@ Quyền: chủ trọ và phó quản lý.
 - **Kỳ**: mỗi tháng thu (`billingMonth` = tháng của kỳ chuẩn của khu chứa kỳ) tối đa 1 phiếu / hợp đồng. Tiền phòng kỳ lẻ (vào giữa kỳ, trả phòng
   giữa kỳ) tính theo ngày nếu khu chọn `Daily` (`prorationFactor` trên dòng); dịch vụ luôn trọn tháng.
 - **Điện nước trả sau / trả trước**: `Postpaid` — điện nước của chính kỳ; `Prepaid` — điện nước của **kỳ trước** (kỳ đầu không có).
-  Phiếu quyết toán khu thu trước mà kỳ trước chưa thu ⇒ **2 dòng** cho mỗi khoản (17/10/2026): kỳ trước (tới chỉ số cuối kỳ) + kỳ cuối (tới chỉ số
+  Hóa đơn trả phòng khu thu trước mà kỳ trước chưa thu ⇒ **2 dòng** cho mỗi khoản (17/10/2026): kỳ trước (tới chỉ số cuối kỳ) + kỳ cuối (tới chỉ số
   trả phòng), `description` ghi khoảng ngày ("Điện (giá bậc) 05/10–04/11"), giá bậc tính riêng từng dòng; thiếu chỉ số cuối kỳ trước ⇒ `MISSING_READING`.
 - **Chuyển phòng giữa kỳ** (17/10/2026): **1 dòng** cho mỗi khoản = phòng cũ (tới chỉ số lúc chuyển) + phòng mới; `segments` có nhiều đoạn, giá bậc
   tính trên tổng. Không còn dòng phụ thu "chốt điện nước" (dữ liệu trước 17/10/2026 vẫn giữ dòng cũ).
 - **Hiển thị `segments` (18/10/2026 — plan M07 BL-BR-05):** mỗi đoạn đo có `roomCode`, `meterSerial`, `startDate` → `endDate`, `startValue` →
   `endValue`, `consumption`. Dòng Điện nước có **từ 2 đoạn** (chuyển phòng / thay công tơ / quay lại phòng cũ) ⇒ hiện mỗi đoạn một hàng dưới dòng,
   VD "Phòng 203 (E-101): 01/10 1.200 → 20/10 1.260 = 60 kWh" · "Phòng 206: 20/10 3.500 → 04/11 3.540 = 40 kWh"; 1 đoạn ⇒ chỉ "chỉ số cũ → mới".
-  Mỗi đoạn chỉ nằm trong đúng 1 dòng (phiếu quyết toán 2 dòng Điện thì mỗi dòng có đoạn của kỳ mình). Phiếu lập trước 18/10/2026: các trường
+  Mỗi đoạn chỉ nằm trong đúng 1 dòng (hóa đơn trả phòng 2 dòng Điện thì mỗi dòng có đoạn của kỳ mình). Phiếu lập trước 18/10/2026: các trường
   bản chụp đã được điền lại, trường nào không tìm được thì `null`. `lines[]` sắp theo nhóm rồi theo `serviceFrom`.
 - **Thay công tơ giữa kỳ**: hệ thống tự cộng phần công tơ cũ (`segments` có 2 đoạn), kể cả khi sau đó chuyển phòng trong cùng kỳ. Cách khác: nhập tiền điện công tơ cũ thành phụ thu.
 - **Giá theo phiên bản**: mọi khoản (điện nước, dịch vụ) lấy bản giá mới nhất có hiệu lực tới **ngày cuối** kỳ, áp cả kỳ — đổi giá giữa kỳ thì cả kỳ tính giá mới.
@@ -104,7 +104,7 @@ Quyền: chủ trọ và phó quản lý.
 | `PREVIOUS_PERIOD_NOT_BILLED` | Chưa lập phiếu kỳ trước — lập **lần lượt từ kỳ đầu** (kỳ chứa "Tính tiền từ ngày"); UI gợi ý tạo tháng còn thiếu. HĐ nhập từ sổ cũ đặt `billingStartDate` thay vì bỏ qua kỳ đầu |
 | `LATER_PERIOD_BILLED` | Đã có phiếu kỳ sau |
 | `NO_PERIOD_IN_MONTH` | HĐ không có kỳ thuộc tháng thu này |
-| `USE_FINAL_INVOICE` | Kỳ chứa ngày trả phòng — lập **phiếu quyết toán** thay phiếu thường |
+| `USE_FINAL_INVOICE` | Kỳ chứa ngày trả phòng — lập **hóa đơn trả phòng** thay phiếu thường |
 | `MISSING_READING` | (17/10/2026) Thiếu chỉ số cuối kỳ của công tơ đang hoạt động ⇒ **không tạo nháp**. UI: link sang lưới ghi chỉ số tháng đó, nhập xong bấm tạo lại (phòng khác vẫn được tạo) |
 | `PREVIOUS_PERIOD_INCOMPLETE` | (17/10/2026) Kỳ trước còn nháp mang lỗi `MISSING_READING` (chỉ số bị hủy sau khi lập) — nhập lại chỉ số, tính lại nháp kỳ trước rồi mới tạo kỳ này |
 
@@ -112,7 +112,7 @@ Nháp chỉ được tạo khi đủ chỉ số; xóa nháp không mất chỉ s
 
 `withIssues` = số phiếu còn **vấn đề chặn chốt** (`issues` có `severity: "Error"`): `MISSING_READING` (nháp đã có mà chỉ số bị hủy / sửa sau đó — vào lưới ghi chỉ số),
 `FEE_PRICE_MISSING` (khoản chưa có giá), `RENT_TERM_MISSING`, `NEGATIVE_TOTAL` (giảm trừ lớn hơn phần thu). Cảnh báo (`Warning`): `EDITED_BASE_CHANGED`,
-`RENT_OVERPAID` (phiếu quyết toán: tiền phòng kỳ cuối đã thu nhiều hơn số ngày ở — message ghi số thừa; thêm dòng Hoàn trả nếu trả lại),
+`RENT_OVERPAID` (hóa đơn trả phòng: tiền phòng kỳ cuối đã thu nhiều hơn số ngày ở — message ghi số thừa; thêm dòng Hoàn trả nếu trả lại),
 `UNUSUAL_USAGE` (điện nước bất thường — gấp ≥ 3 lần trung bình 3 kỳ trước và tăng ≥ 50, hoặc = 0 khi có người ở: kiểm lại chỉ số),
 `TWO_RENT_PERIODS` (khu vừa đổi sang thu trước: người thuê trả 2 tháng tiền phòng gần nhau — nên báo trước).
 
@@ -166,7 +166,7 @@ Hiện thành dải thẻ số phía trên danh sách phiếu; gọi lại mỗi
     "propertyId": "…", "roomId": "…", "roomCode": "101", "contractId": "…", "contractNo": "HD2026-0012", "representativeName": "Trần Thị Lan",
     "billingMonth": "2026-11", "periodStart": "2026-11-01", "periodEnd": "2026-11-30",
     "totalAmount": 3378000, "paidAmount": 0, "outstanding": 0, "refundDue": 0, "dueDate": null, "errorCount": 0, "version": "…",
-    "isStale": false, "roundingAmount": 0
+    "isStale": false, "roundingAmount": 0, "isAdjusted": false, "needsResend": false
   },
   "subtotal": 3378000, "discountTotal": 0, "refundTotal": 0, "refundedOn": null, "refundMethod": null, "refundNote": null, "issueDate": null,
   "lines": [
@@ -176,6 +176,7 @@ Hiện thành dải thẻ số phía trên danh sách phiếu; gọi lại mỗi
       "note": "Giảm do sửa nhà", "segments": [] },
     { "id": "…", "type": "Metered", "isSystem": true, "feeTypeId": "…", "description": "Điện", "unit": "kWh",
       "quantity": 88, "unitPrice": 3500, "amount": 308000, "isManuallyEdited": false,
+      "price": { "source": "Catalog", "effectiveFrom": "2026-10-01", "unitPrice": 3500, "tiers": null },
       "segments": [ { "meterId": "…", "startReadingId": "…", "endReadingId": "…", "startValue": 100, "endValue": 188, "consumption": 88,
                       "roomId": "…", "roomCode": "101", "meterSerial": "E-101", "startDate": "2026-10-05", "endDate": "2026-11-04" } ] },
     { "id": "…", "type": "Surcharge", "isSystem": false, "description": "Thay khóa cửa", "quantity": 1, "unitPrice": 250000,
@@ -196,6 +197,23 @@ phiếu này. **Tổng cần thanh toán** (`totalDue`) = còn phải trả củ
 `totalDue`; thu tiền vẫn ghi trên HĐ cũ. Gửi thông báo (P2) kèm cả phiếu mới và các phiếu còn nợ.
 
 UI: ô có `isManuallyEdited` hiện nhãn **"Sửa tay"** và số hệ thống (`systemAmount`) bên cạnh, nút "Bỏ sửa tay".
+
+**Bộ giá đã áp** (`lines[].price`, 20/10/2026 — BL-BR-39): dòng Điện nước / Dịch vụ do hệ thống tính lưu bộ giá lúc tính — UI hiện mục
+**"Bảng giá áp dụng"** dưới dòng:
+
+| Trường | Ý nghĩa |
+|---|---|
+| `source` | `Catalog` = bảng giá của khu · `ContractOverride` = giá riêng của hợp đồng |
+| `effectiveFrom` | Ngày hiệu lực của bản giá đã dùng (null với giá riêng HĐ) |
+| `unitPrice` | Đơn giá (giá theo bậc: giá bậc 1) |
+| `tiers` | Giá theo bậc: `[{ "from": 0, "upTo": 50, "unitPrice": 1984, "quantity": 50, "amount": 99200 }, { "from": 50, "upTo": null, … }]` — sản lượng của dòng chia theo bậc; null = một giá |
+
+VD hiển thị: "Điện — bản giá từ 01/04/2026: 0–50 kWh × 1.984đ = 99.200đ; 51–100 kWh × 2.050đ = …". Tính lại nháp ⇒ `price` theo bản giá mới nhất
+tới ngày cuối kỳ (giá có hiệu lực sau ngày cuối kỳ không áp). Dòng nhập tay, Tiền phòng, hóa đơn lập trước 20/10/2026: `price = null`.
+
+**Nhãn điều chỉnh** (`summary.isAdjusted`, `summary.needsResend` — BL-BR-40): **"Đã điều chỉnh"** = hóa đơn từng điều chỉnh chỉ số
+([meters.md](meters.md#điều-chỉnh-chỉ-số-đã-chốt-mt-uc-09--viết-lại-20102026)); **"Cần gửi lại"** = hóa đơn đã chốt vừa bị tính lại, chủ trọ gửi lại cho
+người thuê rồi bấm "Đã gửi lại".
 
 ## Sửa phiếu nháp
 
@@ -259,8 +277,8 @@ thanh toán của HĐ). Sau khi chốt: chỉ số cuối kỳ bị khóa và th
 ## Hủy / xóa
 
 - `POST /invoices/{id}/void` `{ "reason": "Nhập sai chỉ số" }` → 200. Chỉ phiếu **đã chốt, chưa thu tiền** (422 `INVOICE_HAS_PAYMENTS` — đảo phiếu
-  thu trước; đã xác nhận hoàn tiền → 422 `REFUND_CONFIRMED` — bỏ xác nhận trước) và là **phiếu mới nhất** của HĐ (422 `NOT_LATEST_INVOICE` — hủy / xóa phiếu kỳ sau trước). **Phiếu quyết toán chưa hủy luôn là mới nhất** (17/10/2026):
-  phiếu tháng cuối không hủy / xóa được khi còn phiếu quyết toán — xóa / hủy phiếu quyết toán trước. Hủy xong lập lại được, chỉ số được mở khóa.
+  thu trước; đã xác nhận hoàn tiền → 422 `REFUND_CONFIRMED` — bỏ xác nhận trước) và là **phiếu mới nhất** của HĐ (422 `NOT_LATEST_INVOICE` — hủy / xóa phiếu kỳ sau trước). **Hóa đơn trả phòng chưa hủy luôn là mới nhất** (17/10/2026):
+  phiếu tháng cuối không hủy / xóa được khi còn hóa đơn trả phòng — xóa / hủy hóa đơn trả phòng trước. Hủy xong lập lại được, chỉ số được mở khóa.
 - `DELETE /invoices/{id}` → 204: xóa **nháp** (cũng chỉ phiếu mới nhất).
 
 ## Trạng thái thu tiền (`paymentStatus`, chỉ phiếu đã chốt)
@@ -274,22 +292,33 @@ thanh toán của HĐ). Sau khi chốt: chỉ số cuối kỳ bị khóa và th
 `RefundPending` tổng âm, **chờ chủ trọ trả lại** người thuê · `Refunded` đã trả lại.
 `outstanding` = số còn nợ (≥ 0 — phiếu âm không bù trừ nợ phiếu khác); `refundDue` = số còn phải trả lại người thuê. Gửi phiếu qua Zalo kèm mã QR: P2.
 
+## Điều chỉnh chỉ số — lịch sử và gửi lại
+
+- `GET /invoices/{id}/adjustments` → mảng, mới nhất trước:
+  `[{ "id", "meterReadingId", "feeTypeId", "usageStart", "oldValue": 1388, "newValue": 1338, "oldQuantity": 138, "newQuantity": 88, "oldAmount": 524400,
+  "newAmount": 334400, "difference": -190000, "handling": "Immediate" | "NextInvoice" | "Recalculated", "roomChargeId", "paymentIds": [], "reason",
+  "createdAt", "createdBy" }]`. Hóa đơn không tồn tại → 404 `INVOICE_NOT_FOUND`.
+- `POST /invoices/{id}/resent` → 200 chi tiết hóa đơn, `needsResend: false` ("Đã gửi lại"). Hóa đơn chưa chốt → 422 `INVOICE_NOT_FINALIZED`.
+- Lọc danh sách: `GET /invoices?adjusted=true` (đã điều chỉnh) · `GET /invoices?needsResend=true` (cần gửi lại).
+
 ## Hoàn tiền cho người thuê
 
-1. Thêm dòng **Hoàn trả** (`type: "Refund"`) vào phiếu nháp (thường là phiếu quyết toán khi trả phòng sớm — gợi ý từ cảnh báo `RENT_OVERPAID`).
+1. Thêm dòng **Hoàn trả** (`type: "Refund"`) vào phiếu nháp (thường là hóa đơn trả phòng khi trả phòng sớm — gợi ý từ cảnh báo `RENT_OVERPAID`).
 2. Chốt phiếu. Tổng âm ⇒ `paymentStatus: "RefundPending"`, `refundDue` = số phải trả.
 3. Trả tiền cho người thuê rồi bấm **"Đã hoàn tiền"**: `POST /invoices/{id}/refund` `{ "refundedOn": "2026-11-20", "method": "Cash", "note": "…" }`
    → 200 chi tiết phiếu (`Refunded`). Ngày hoàn từ ngày lập phiếu tới hôm nay (422 `INVALID_REFUND_DATE`); phiếu không âm → 422 `NOTHING_TO_REFUND`;
    đã xác nhận → 422 `REFUND_CONFIRMED`. Nhập nhầm: `DELETE /invoices/{id}/refund`. HĐ đã kết thúc → 422 `CONTRACT_NOT_BILLABLE` (không đổi được nữa).
 4. Hoàn tất thanh lý bị chặn khi còn phiếu Chờ hoàn (422 `REFUND_PENDING`, `refundDue` trong body).
 
-## Phiếu quyết toán
+## Hóa đơn trả phòng
 
-Lập từ hợp đồng đang thanh lý: `POST /contracts/{id}/final-invoice` ([contracts.md](contracts.md#lập-phiếu-quyết-toán--post-contractsidfinal-invoice)).
-Là phiếu bình thường (sửa tay, phụ thu, tính lại, chốt, hủy như trên) cho đoạn cuối **[đầu kỳ cuối, ngày trả phòng]**, chỉ **thu phần còn thiếu**:
+Lập từ hợp đồng đang thanh lý: `POST /contracts/{id}/final-invoice` ([contracts.md](contracts.md#lập-hóa-đơn-trả-phòng--post-contractsidfinal-invoice)).
+Là phiếu bình thường (sửa tay, phụ thu, tính lại, chốt, hủy như trên) cho đoạn cuối **[đầu kỳ cuối, ngày trả phòng]**, chỉ **thu phần còn thiếu**.
+**Khác phiếu tháng** (20/10/2026 — BL-BR-10): **khoản bù** (khoản phát sinh `Credit`, khoản điều chỉnh chỉ số) **luôn vào** hóa đơn trả phòng, kể cả khi lớn
+hơn phần thu ⇒ hóa đơn **âm** ⇒ chốt được ⇒ `RefundPending` (Chờ hoàn) như mục "Hoàn tiền cho người thuê" — không còn khoản bù treo khi trả phòng.
 
 - **Tiền phòng** những ngày đã ở của kỳ cuối nếu chưa thu (đã thu trọn kỳ ⇒ không có dòng; thu thừa ⇒ cảnh báo `RENT_OVERPAID`, chủ trọ thêm dòng **Hoàn trả** nếu trả lại).
 - **Dịch vụ** kỳ cuối nếu kỳ đó chưa có phiếu thường — **trọn tháng** (sửa số lượng / thành tiền trên nháp nếu thỏa thuận khác).
 - **Điện nước** tới **chỉ số cuối** (trả trước: gồm cả kỳ trước nếu chưa thu).
 
-Phiếu quyết toán đã chốt là điều kiện hoàn tất thanh lý; còn nợ thì chọn "Đã thu toàn bộ" / "Bỏ nợ"; còn phiếu Chờ hoàn thì xác nhận đã hoàn trước ([contracts.md](contracts.md#hoàn-tất--post-contractsidliquidationcomplete)).
+Hóa đơn trả phòng đã chốt là điều kiện hoàn tất thanh lý; còn nợ thì chọn "Đã thu toàn bộ" / "Bỏ nợ"; còn phiếu Chờ hoàn thì xác nhận đã hoàn trước ([contracts.md](contracts.md#hoàn-tất--post-contractsidliquidationcomplete)).

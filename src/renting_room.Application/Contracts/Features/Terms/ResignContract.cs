@@ -8,11 +8,6 @@ using renting_room.Domain.Contracts;
 
 namespace renting_room.Application.Contracts;
 
-/// <summary>
-/// CT-UC-21: ký lại cho người còn ở — trong 1 transaction: HĐ cũ bắt đầu thanh lý tại ngày bàn giao X, tạo HĐ nháp mới từ X+1
-/// (chép điều khoản, dịch vụ, người ở còn lại, xe của họ). Chủ trọ xem lại nháp rồi kích hoạt như bình thường.
-/// </summary>
-/// <param name="TransferDeposit">PM-BR-34: cọc của HĐ cũ ghi "Đã chuyển sang HĐ mới" (mặc định); false ⇒ HĐ cũ vẫn "Đang giữ cọc" để hoàn sau.</param>
 public sealed record ResignContractCommand(
     Guid ContractId, DateOnly HandoverDate, Guid RepresentativeRenterId, DateOnly? EndDate, bool TransferDeposit = true)
     : IRequest<Result<CreatedWithWarnings>>;
@@ -52,7 +47,7 @@ public sealed class ResignContractHandler(
 
             var next = Contract.CreateDraft(old.PropertyId, old.RoomId, contractNo, data.Value!, previousContractId: old.Id);
             var renterIds = data.Value!.Occupants.Select(o => o.RenterId).ToList();
-            var vehicles = old.ResignVehicles(renterIds, request.HandoverDate, next.StartDate);
+            var vehicles = old.ResignVehicles(renterIds, request.HandoverDate, next.StartDate, next.Id);
             // Lưu việc kết thúc xe ở HĐ cũ trước khi đăng ký lại ở HĐ mới — unique "biển số đang đăng ký" kiểm từng câu lệnh.
             await unitOfWork.SaveChangesAsync(cancellationToken);
             foreach (var vehicle in vehicles)

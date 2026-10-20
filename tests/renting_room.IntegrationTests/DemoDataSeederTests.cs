@@ -123,6 +123,24 @@ public sealed class DemoDataSeederTests(ApiFactory factory)
         var notRefunded = await (await _client.GetAsync("/api/v1/contracts?depositNotRefunded=true&pageSize=100", token)).ReadAsync<JsonElement>();
         notRefunded.GetProperty("items").EnumerateArray().Select(c => c.GetProperty("roomCode").GetString()).Should().Contain("106");
         Deposit(await DetailAsync("B06", "Liquidating")).GetProperty("status").GetString().Should().Be("Transferred", "ký lại ⇒ cọc chuyển sang HĐ mới");
+        var b09 = await DetailAsync("B09", "Liquidating");
+        Deposit(b09).GetProperty("status").GetString().Should().Be("Holding", "ký lại không thành ⇒ cọc về đang giữ");
+        b09.GetProperty("vehicles")[0].GetProperty("registeredTo").ValueKind.Should().Be(JsonValueKind.Null, "ký lại không thành ⇒ xe mở lại (CT-UC-21)");
+
+        // M06 MT-BR-19 (20/10/2026): 212 chưa thu ⇒ tính lại trên hóa đơn; 213 Xử lý ngay ⇒ phiếu hoàn; 214 bỏ nợ giảm trước; 215 hóa đơn trả phòng âm.
+        async Task<List<JsonElement>> InvoicesOfAsync(string room, string status) =>
+            (await (await _client.GetAsync($"/api/v1/invoices?contractId={(await DetailAsync(room, status)).GetProperty("id").GetGuid()}", token))
+                .ReadAsync<JsonElement>()).GetProperty("items").EnumerateArray().ToList();
+        var adjusted212 = (await InvoicesOfAsync("212", "Active")).Single();
+        adjusted212.GetProperty("isAdjusted").GetBoolean().Should().BeTrue();
+        adjusted212.GetProperty("needsResend").GetBoolean().Should().BeTrue("hóa đơn chưa thu được tính lại ⇒ cần gửi lại");
+        var contract213 = (await DetailAsync("213", "Active")).GetProperty("id").GetGuid();
+        (await (await _client.GetAsync($"/api/v1/payments?contractId={contract213}", token)).ReadAsync<List<JsonElement>>())
+            .Select(p => p.GetProperty("kind").GetString()).Should().Contain("Refund");
+        var written214 = (await InvoicesOfAsync("214", "Active")).Single().GetProperty("writtenOffAmount").GetDecimal();
+        written214.Should().BeInRange(1, 99_999, "phần thu dư trừ vào 100.000đ đã bỏ nợ");
+        (await InvoicesOfAsync("215", "Liquidating")).Single(i => i.GetProperty("type").GetString() == "Final")
+            .GetProperty("paymentStatus").GetString().Should().Be("RefundPending", "khoản giảm lớn hơn hóa đơn trả phòng");
         var final106 = items.Single(i => i.GetProperty("roomCode").GetString() == "106" && i.GetProperty("type").GetString() == "Final");
         (await (await _client.GetAsync($"/api/v1/invoices/{final106.GetProperty("id").GetGuid()}", token)).ReadAsync<JsonElement>())
             .GetProperty("lines").EnumerateArray().Should().Contain(l => l.GetProperty("type").GetString() == "Surcharge"

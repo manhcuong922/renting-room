@@ -7,18 +7,13 @@ using renting_room.Domain.Renters;
 
 namespace renting_room.Application.Imports;
 
-// RT-UC-10: import người thuê đang ở — chỉ tạo mới khi chuyển từ sổ sang phần mềm
 public enum ImportRole
 {
-    /// <summary>Đứng tên HĐ và ở trong phòng.</summary>
     Representative,
-    /// <summary>Đứng tên nhưng không ở (VD bố mẹ thuê cho con) — một người được đứng tên nhiều phòng.</summary>
     RepresentativeNotLiving,
-    /// <summary>Ở cùng người đứng tên.</summary>
     Occupant
 }
 
-/// <param name="MonthlyRent">Chỉ đọc ở dòng đứng tên.</param>
 public sealed record TenancyImportRow(
     int RowNumber,
     string? RoomCode,

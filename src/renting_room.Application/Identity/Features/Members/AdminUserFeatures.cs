@@ -43,7 +43,6 @@ public sealed class AdminSetUserLockHandler(
         if (user is null)
             return Result.Failure(IdentityErrors.UserNotFound);
 
-        // ID-BR-04: chủ trọ là chủ duy nhất của tổ chức — muốn chặn thì tạm ngưng tổ chức.
         if (request.Locked && user.Role == UserRole.OrgOwner)
             return Result.Failure(IdentityErrors.CannotLockOwner);
 

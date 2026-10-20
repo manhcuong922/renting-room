@@ -12,7 +12,6 @@ public interface IFeeTypeRepository
 
     Task<IReadOnlyList<FeeType>> ListActiveByPropertyAsync(Guid propertyId, CancellationToken cancellationToken);
 
-    /// <summary>Khoản thu chưa ngừng dùng khác của khu đã có tên này (hoặc cùng mã hệ thống điện / nước nếu có).</summary>
     Task<bool> IsNameTakenAsync(Guid propertyId, string normalizedName, string? systemCode, Guid? excludeId, CancellationToken cancellationToken);
 
     void Add(FeeType fee);

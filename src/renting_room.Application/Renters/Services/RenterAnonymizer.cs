@@ -28,7 +28,6 @@ public sealed class RenterAnonymizer(
         if (renter.IsAnonymized)
             return;
 
-        // RT-BR-06: hết thời gian giữ (job) ⇒ giữ họ tên; người thuê yêu cầu xóa (bằng tay) ⇒ xóa cả tên ở hồ sơ, phiếu, phiếu thu.
         var keepName = reason is null;
         var oldName = renter.FullName;
         var name = keepName ? oldName : Renter.AnonymizedName(renterId);
@@ -38,7 +37,6 @@ public sealed class RenterAnonymizer(
         var contractIds = contracts.Select(c => c.Id).ToList();
         var invoices = (await invoiceRepository.ListByContractsAsync(contractIds, ct)).ToList();
         var payments = await paymentRepository.ListByContractsAsync(contractIds, ct);
-        // CT-BR-51: phiếu chốt thời người này còn đứng tên (HĐ sau đó đã đổi người đứng tên).
         var formerContractIds = await contractQueries.ListIdsByFormerRepresentativeAsync(renterId, ct);
         invoices.AddRange(await invoiceRepository.ListByRepresentativeNameAsync(formerContractIds, contractIds, oldName, ct));
 

@@ -2,7 +2,6 @@ using System.Security.Cryptography;
 
 namespace renting_room.Application.Identity.Organizations;
 
-/// <summary>Sinh mật khẩu tạm 12 ký tự bằng CSPRNG, luôn có chữ thường, chữ hoa và số (ID-BR-10).</summary>
 public static class TemporaryPasswordGenerator
 {
     // Bỏ các ký tự dễ nhầm khi đọc/gõ lại: 0/O, 1/l/I.

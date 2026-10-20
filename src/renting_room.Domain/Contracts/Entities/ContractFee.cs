@@ -2,10 +2,6 @@ using renting_room.Domain.Common;
 
 namespace renting_room.Domain.Contracts;
 
-/// <summary>
-/// Đăng ký khoản thu của HĐ trong một khoảng hiệu lực [EffectiveFrom, EffectiveTo] (CT-BR-06). Đổi số lượng / giá riêng
-/// từ một kỳ = đóng bản cũ ngày trước đó + thêm bản mới ⇒ giữ lịch sử để tính lại các kỳ cũ.
-/// </summary>
 public sealed class ContractFee : TenantEntity
 {
     private ContractFee() { } // EF Core

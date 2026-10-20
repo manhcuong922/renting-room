@@ -29,7 +29,6 @@ public sealed class UpdatePropertyCommandValidator : AbstractValidator<UpdatePro
     }
 }
 
-/// <summary>Sửa thông tin khu. Cài đặt kỳ thu đổi qua <see cref="UpdatePropertyBillingCommand"/> (K4).</summary>
 public sealed class UpdatePropertyHandler(
     IPropertyRepository properties, IOrganizationQueries organizations, IUnitOfWork unitOfWork, TimeProvider clock)
     : IRequestHandler<UpdatePropertyCommand, Result<PropertyDetailDto>>

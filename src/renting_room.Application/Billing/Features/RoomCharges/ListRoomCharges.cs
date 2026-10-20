@@ -5,7 +5,6 @@ namespace renting_room.Application.Billing;
 public sealed record ListRoomChargesQuery(Guid? RoomId, Guid? PropertyId, RoomChargeStatus? Status, DateOnly? From, DateOnly? To)
     : IRequest<IReadOnlyList<RoomChargeDto>>;
 
-/// <summary>BL-UC-17: khoản phát sinh theo phòng / khu, mới nhất trước — chủ trọ ở xa xem người quản lý đã ghi gì.</summary>
 public sealed class ListRoomChargesHandler(IRoomChargeQueries roomChargeQueries, RoomChargeBilling roomCharges)
     : IRequestHandler<ListRoomChargesQuery, IReadOnlyList<RoomChargeDto>>
 {

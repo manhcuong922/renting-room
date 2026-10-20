@@ -37,7 +37,6 @@ public static class CommonRules
             .Matches($"^[A-Za-z0-9._/-]{{1,{maxLength}}}$").WithErrorCode("INVALID_FORMAT")
             .WithMessage($"{label} gồm tối đa {maxLength} ký tự chữ, số, '.', '_', '/' hoặc '-'.");
 
-    /// <summary>Tiền VND: số nguyên, 0 ≤ x ≤ 1 tỷ.</summary>
     public static IRuleBuilderOptions<T, decimal> Money<T>(this IRuleBuilder<T, decimal> rule, bool allowZero = true) =>
         rule
             .Must(v => (allowZero ? v >= 0 : v > 0) && v <= MaxMoney && decimal.Truncate(v) == v)

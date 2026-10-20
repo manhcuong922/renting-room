@@ -12,13 +12,8 @@ using renting_room.Domain.Meters;
 
 namespace renting_room.Application.Billing;
 
-/// <param name="FinalReadings">Chỉ số cuối (ngày trả phòng) của từng công tơ — bắt buộc nếu chưa nhập; đã có thì bỏ trống = giữ, có số = sửa.</param>
 public sealed record CreateFinalInvoiceCommand(Guid ContractId, IReadOnlyList<MeterReadingInput>? FinalReadings) : IRequest<Result<InvoiceDetailDto>>;
 
-/// <summary>
-/// BL-UC-11 / BL-BR-17: lập phiếu quyết toán (nháp, sửa được) cho HĐ đang thanh lý — kỳ [đầu kỳ cuối, ngày trả phòng], ghi chỉ số cuối
-/// (MT-UC-05) trong cùng transaction. Chỉ thu phần còn thiếu; hoàn tiền: để sau. Còn phiếu nháp ⇒ chốt / xóa trước (BL-BR-18).
-/// </summary>
 public sealed class CreateFinalInvoiceHandler(
     IUnitOfWork unitOfWork, IContractRepository contracts, IInvoiceRepository invoiceRepository, IInvoiceQueries invoiceQueries,
     IPropertyQueries properties, IRoomQueries rooms, IRenterQueries renters, InvoiceInputLoader inputs, ContractMeterReadings meterReadings,
@@ -43,7 +38,6 @@ public sealed class CreateFinalInvoiceHandler(
 
         var schedule = (await properties.GetBillingAsync(contract.PropertyId, cancellationToken)).Schedule;
         var period = contract.BillingPeriods(schedule, contract.ActualEndDate!.Value).Last();
-        // BL-BR-21: các kỳ trước kỳ cuối phải có phiếu (kỳ cuối cũng là kỳ đầu ⇒ không cần).
         var previousBilled = invoices.Any(i => i.PeriodStart == period.Start || i.PeriodEnd == period.Start.AddDays(-1));
         if (!previousBilled && period.Start != contract.BillingStartDate)
             return BillingErrors.PreviousNotBilled;
@@ -61,7 +55,6 @@ public sealed class CreateFinalInvoiceHandler(
         var invoice = Invoice.CreateDraft(contract.PropertyId, contract.RoomId, contract.Id, period, room, contract.ContractNo,
             representative, calculation, InvoiceType.Final);
         invoiceRepository.Add(invoice);
-        // BL-BR-32: mọi khoản phát sinh còn chờ của HĐ vào phiếu quyết toán.
         await roomCharges.AttachPendingAsync(invoice, cancellationToken);
 
         await unitOfWork.SaveChangesAsync(cancellationToken);

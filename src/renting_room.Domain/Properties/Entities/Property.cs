@@ -3,7 +3,6 @@ using renting_room.Domain.Common;
 
 namespace renting_room.Domain.Properties;
 
-/// <summary>Khu trọ — một địa điểm cho thuê có địa chỉ, bên cho thuê và cài đặt thu riêng.</summary>
 public sealed class Property : TenantEntity
 {
     private Property() { } // EF Core
@@ -18,20 +17,15 @@ public sealed class Property : TenantEntity
     public string? Description { get; private set; }
     public string? EvnCustomerCode { get; private set; }
 
-    // Cài đặt kỳ thu của khu (PR-BR-09) — mọi HĐ của khu dùng chung. Ngày chốt / cách thu hiện hành = mốc cuối của lịch kỳ thu.
     public int BillingAnchorDay { get; private set; }
     public ChargeMode ChargeMode { get; private set; }
     public int PaymentDueDays { get; private set; }
     public ProrationMode ProrationMode { get; private set; }
 
-    /// <summary>BL-BR-29 (H1): bỏ phần lẻ dưới 1.000đ của tổng phiếu (dòng "Làm tròn").</summary>
     public bool RoundInvoiceTotal { get; private set; } = true;
-    /// <summary>Số ngày báo trước khi trả phòng — giá trị gợi ý khi tạo HĐ (HĐ giữ riêng).</summary>
     public int DefaultNoticeDays { get; private set; }
-    /// <summary>Lịch kỳ thu (jsonb): các mốc đổi ngày chốt / thu trước–thu sau, giữ để tính đúng kỳ cũ (K4 — BL-BR-28).</summary>
     public IReadOnlyList<BillingScheduleEntry> BillingScheduleEntries { get; private set; } = [];
 
-    // Bên cho thuê (PR-BR-12) — lưu phẳng thành cột lessor_*
     public LessorType? LessorType { get; private set; }
     public string? LessorName { get; private set; }
     public string? LessorAddress { get; private set; }
@@ -108,10 +102,6 @@ public sealed class Property : TenantEntity
         OwnershipCertificateNo = TextNormalizer.TrimToNull(land.OwnershipCertificateNo);
     }
 
-    /// <summary>
-    /// Hạn thanh toán, cách tính tiền phòng kỳ lẻ, số ngày báo trước gợi ý, làm tròn tổng phiếu — áp ngay (phiếu đã chốt giữ số tiền cũ;
-    /// nháp được đánh dấu "Cần tính lại" — BL-BR-20).
-    /// </summary>
     public void UpdateBillingTerms(int paymentDueDays, ProrationMode prorationMode, int noticeDays, bool roundInvoiceTotal)
     {
         new BillingSettings(BillingSchedule.MinAnchorDay, ChargeMode, paymentDueDays, prorationMode, noticeDays).EnsureValid();
@@ -121,10 +111,6 @@ public sealed class Property : TenantEntity
         RoundInvoiceTotal = roundInvoiceTotal;
     }
 
-    /// <summary>
-    /// PR-BR-09 / K4: đổi ngày chốt / thu trước–thu sau. <paramref name="from"/> = đầu kỳ chuẩn chưa lập phiếu đầu tiên của khu (null = khu chưa có
-    /// phiếu ⇒ áp lại từ đầu, không có kỳ chuyển tiếp). Kỳ chuyển tiếp: tiền phòng ± <paramref name="adjustDays"/> ngày (null = gợi ý, BL-BR-28).
-    /// </summary>
     public Result ChangeBillingCycle(int anchorDay, ChargeMode chargeMode, DateOnly? from, int? adjustDays)
     {
         if (anchorDay is < BillingSchedule.MinAnchorDay or > BillingSchedule.MaxAnchorDay)
@@ -151,12 +137,8 @@ public sealed class Property : TenantEntity
         ChargeMode = schedule.Current.ChargeMode;
     }
 
-    /// <summary>
-    /// Khai bên cho thuê riêng cho khu (khác chủ trọ — PR-BR-17). Không ảnh hưởng hợp đồng đã kích hoạt — hợp đồng giữ snapshot (PR-BR-15).
-    /// </summary>
     public void UpdateLessor(LessorDetails lessor) => SetLessor(lessor.Normalized());
 
-    /// <summary>Bỏ bên cho thuê riêng ⇒ khu quay về dùng thông tin chủ trọ (PR-BR-17).</summary>
     public void ClearLessor() => SetLessor(null);
 
     private void SetLessor(LessorDetails? lessor)

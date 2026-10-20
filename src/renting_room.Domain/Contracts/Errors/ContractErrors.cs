@@ -33,7 +33,6 @@ public static class ContractErrors
     public static readonly Error TransferCancelSettled = Error.BusinessRule("ROOM_TRANSFER_CANCEL_SETTLED",
         "Khoản chênh lệch tiền phòng của lần chuyển đã đánh dấu đã thu / đã trả — bỏ đánh dấu trước khi chuyển lại.");
 
-    /// <summary>CT-BR-11: HĐ đã chuyển phòng không trả phòng trước ngày vào phòng hiện tại.</summary>
     public static readonly Error EndDateBeforeRoomTransfer = Error.BusinessRule("END_DATE_BEFORE_ROOM_TRANSFER",
         "Ngày trả phòng trước ngày chuyển sang phòng hiện tại — chọn ngày từ ngày chuyển phòng.");
 
@@ -48,7 +47,6 @@ public static class ContractErrors
         "Người đứng tên ký hợp đồng phải đủ 18 tuổi (BLDS 2015 Điều 117).");
     public static readonly Error NoOccupant = Error.BusinessRule("NO_OCCUPANT", "Hợp đồng phải có ít nhất 1 người ở.");
     public static readonly Error OccupantOverlap = Error.Conflict("OCCUPANCY_OVERLAP", "Người này đã đang ở trong hợp đồng.");
-    // CT-BR-28..31: quan hệ người ở với người đứng tên, người chưa thành niên, ở 2 nơi cùng lúc.
     public static readonly Error RelationshipRequired = Error.Validation("RELATIONSHIP_REQUIRED",
         "Chọn quan hệ của người ở với người đứng tên hợp đồng.");
     public static readonly Error RelationshipNoteRequired = Error.Validation("RELATIONSHIP_NOTE_REQUIRED",

@@ -4,8 +4,6 @@ using renting_room.Domain.Common;
 
 namespace renting_room.Application.Imports;
 
-// PR-UC-11: import phòng từ Excel — xem trước (không giữ) → sửa → lưu dòng hợp lệ
-/// <param name="ElectricityReading">Chỉ số đầu kỳ hiện tại — công tơ tính là lắp từ ngày chốt kỳ hiện tại của khu.</param>
 public sealed record RoomImportRow(
     int RowNumber,
     string? Code,
@@ -41,7 +39,6 @@ internal static class RoomImportTemplate
 
     public static readonly Dictionary<string, string> Headers = Columns.ToDictionary(c => c.Key, c => c.Header.TrimEnd('*'));
 
-    /// <summary>Tên thuộc tính lỗi của validator lệnh tạo phòng → cột trong file.</summary>
     public static readonly Dictionary<string, string> PropertyToKey = new(StringComparer.OrdinalIgnoreCase)
     {
         ["code"] = "code", ["floor"] = "floor", ["areaM2"] = "area", ["maxOccupants"] = "people", ["listedRent"] = "listedRent",

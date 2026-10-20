@@ -5,11 +5,6 @@ using renting_room.Domain.Fees;
 
 namespace renting_room.Application.Contracts;
 
-/// <summary>
-/// Một khoản thu theo thỏa thuận lúc ký (CT-BR-19 <c>utility_price_snapshot</c>): tên, cách tính, số lượng, đơn giá tại ngày bắt đầu HĐ.
-/// Gồm khoản gắn với HĐ và điện / nước theo công tơ của khu (tính theo công tơ của phòng — FE-BR-17).
-/// <see cref="UnitPrice"/> null = lúc ký khoản này chưa có giá (in theo bảng giá khu tại ngày bắt đầu).
-/// </summary>
 public sealed record UtilityPriceItem(
     Guid FeeTypeId,
     string Name,

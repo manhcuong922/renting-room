@@ -26,7 +26,6 @@ public sealed class LoginHandler(
         var user = await FindUserAsync(request.Username, cancellationToken);
         var (result, outcome) = await AttemptAsync(request, user, now, cancellationToken);
 
-        // M01 §11: mỗi lần đăng nhập thành công / thất bại ghi 1 dòng nhật ký (không lưu tên đăng nhập gõ vào).
         loginEvents.Add(LoginEvent.Record(user, request.Username, request.IpAddress, outcome, now));
         await unitOfWork.SaveChangesAsync(cancellationToken);
         return result;
@@ -35,7 +34,6 @@ public sealed class LoginHandler(
     private async Task<(Result<AuthTokens> Result, LoginOutcome Outcome)> AttemptAsync(
         LoginCommand request, User? user, DateTimeOffset now, CancellationToken cancellationToken)
     {
-        // Luôn băm mật khẩu (kể cả khi user không tồn tại) để thời gian phản hồi như nhau (ID-BR-13).
         var verification = passwordHasher.Verify(user?.PasswordHash, request.Password);
 
         if (user is null)
@@ -59,7 +57,6 @@ public sealed class LoginHandler(
             return (IdentityErrors.InvalidCredentials, LoginOutcome.WrongPassword);
         }
 
-        // ID-BR-20: chỉ báo hết hạn khi mật khẩu ĐÚNG — không giúp kẻ dò mật khẩu.
         if (user.IsTemporaryPasswordExpired(now))
             return (IdentityErrors.TemporaryPasswordExpired, LoginOutcome.TemporaryPasswordExpired);
 

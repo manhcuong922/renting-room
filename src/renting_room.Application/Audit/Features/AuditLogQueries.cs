@@ -22,16 +22,11 @@ public sealed record AuditLogDto(
 public sealed record AuditLogFilter(
     string? EntityType, Guid? EntityId, Guid? UserId, string? Action, DateOnly? From, DateOnly? To, int Page, int PageSize);
 
-/// <summary>Đọc nhật ký kiểm toán của tổ chức đang đăng nhập (C-10) — hiện thực ở Infrastructure.</summary>
 public interface IAuditLogReader
 {
     Task<PagedResult<AuditLogDto>> ListAsync(AuditLogFilter filter, CancellationToken cancellationToken);
 }
 
-/// <summary>
-/// ID-BR-19: chủ trọ xem ai (chủ trọ / phó quản lý) đã làm gì, với đối tượng nào, lúc nào — mới nhất trước.
-/// VD lịch sử 1 phiếu: <c>entityType=Invoice&amp;entityId=…</c>; việc của 1 người: <c>userId=…</c>.
-/// </summary>
 public sealed record ListAuditLogsQuery(
     string? EntityType, Guid? EntityId, Guid? UserId, string? Action, DateOnly? From, DateOnly? To,
     int Page = 1, int PageSize = Paging.DefaultPageSize) : IRequest<PagedResult<AuditLogDto>>;

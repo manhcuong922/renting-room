@@ -7,7 +7,6 @@ using renting_room.Security;
 
 namespace renting_room.Controllers;
 
-/// <summary>Admin chỉ quản lý TÀI KHOẢN — không xem dữ liệu trọ (ID-BR-11).</summary>
 [ApiController]
 [Route("api/v1")]
 [Tags("Admin - Users")]

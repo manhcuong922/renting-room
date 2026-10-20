@@ -20,7 +20,6 @@ internal sealed class ContractVehicleConfiguration : IEntityTypeConfiguration<Co
         builder.Property(v => v.BrandColor).HasMaxLength(100);
         builder.Property(v => v.Note).HasMaxLength(500);
 
-        // 1 biển số chỉ đang đăng ký giữ ở 1 nơi trong tổ chức.
         builder.HasIndex(v => new { v.OrganizationId, v.PlateNumber })
             .IsUnique()
             .HasFilter("registered_to IS NULL AND plate_number IS NOT NULL")

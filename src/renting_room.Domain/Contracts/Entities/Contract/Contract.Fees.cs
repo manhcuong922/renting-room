@@ -5,10 +5,6 @@ namespace renting_room.Domain.Contracts;
 
 public sealed partial class Contract
 {
-    // Khoản thu (CT-UC-06)
-    /// <summary>
-    /// Đổi số lượng / giá riêng của một khoản thu (hoặc gắn thêm khoản mới) từ đầu một kỳ thu (CT-BR-06, cùng quy tắc khóa CT-BR-05).
-    /// </summary>
     public Result ChangeFee(ContractFeeInput input, DateOnly effectiveFrom, DateOnly? firstOpenPeriodStart, BillingSchedule schedule)
     {
         var check = CheckFeeChangeDate(input.FeeTypeId, effectiveFrom, firstOpenPeriodStart, schedule);
@@ -52,7 +48,7 @@ public sealed partial class Contract
     {
         if (Status != ContractStatus.Active)
             return Result.Failure(ContractErrors.NotActive);
-        if (effectiveFrom < StartDate) // sau ngày hết hạn vẫn đổi được (CT-BR-37)
+        if (effectiveFrom < StartDate)
             return Result.Failure(ContractErrors.DateOutsideContract);
         if (effectiveFrom != StartDate && !IsPeriodStart(schedule, effectiveFrom))
             return Result.Failure(ContractErrors.NotPeriodStart);

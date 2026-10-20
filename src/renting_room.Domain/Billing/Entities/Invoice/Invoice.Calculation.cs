@@ -2,14 +2,8 @@ using renting_room.Domain.Common;
 
 namespace renting_room.Domain.Billing;
 
-// Tính phiếu nháp (BL-BR-07, BL-BR-12) và cảnh báo trên phiếu
 public sealed partial class Invoice
 {
-    /// <summary>
-    /// BL-BR-07 / BL-UC-06: thay dòng hệ thống bằng kết quả tính mới. Ô sửa tay được giữ (nếu <paramref name="keepManualEdits"/>) và
-    /// cập nhật giá trị hệ thống bên cạnh — hệ thống đổi so với lúc sửa ⇒ cảnh báo <c>EDITED_BASE_CHANGED</c>. Phụ thu / giảm tay luôn giữ.
-    /// </summary>
-    /// <param name="periodEnd">Kỳ bị cắt ngắn sau khi tạo nháp (HĐ bắt đầu thanh lý) ⇒ cập nhật ngày cuối kỳ.</param>
     public Result ApplyCalculation(InvoiceCalculation calculation, bool keepManualEdits, DateOnly? periodEnd = null)
     {
         if (Status != InvoiceStatus.Draft)
@@ -49,12 +43,11 @@ public sealed partial class Invoice
         RoundTotal = calculation.RoundTotal;
         IsStale = false;
         Recompute();
-        if (NetCharges < 0)
+        if (RejectsNegative(NetCharges))
             Issues = [.. Issues, new InvoiceIssue("NEGATIVE_TOTAL", InvoiceIssue.Error, "Giảm trừ lớn hơn phần thu — giảm bớt dòng giảm trừ.")];
         return Result.Success();
     }
 
-    /// <summary>BL-BR-12: phần hệ thống của nháp (bỏ qua ô sửa tay — so giá trị hệ thống) khớp kết quả tính lại.</summary>
     public bool SystemPartMatches(InvoiceCalculation calculation)
     {
         var system = _lines.Where(l => l.IsSystem).ToList();
@@ -73,7 +66,6 @@ public sealed partial class Invoice
             && calculation.Segments.All(s => _segments.Any(x => x.MeterId == s.MeterId && x.StartReadingId == s.StartReadingId && x.EndReadingId == s.EndReadingId));
     }
 
-    /// <summary>Cảnh báo thêm sau khi tính (VD khoản bù chưa gắn được — BL-BR-33); không trùng theo mã + tham chiếu.</summary>
     public void AddIssue(InvoiceIssue issue)
     {
         if (!Issues.Any(i => i.Code == issue.Code && i.Ref == issue.Ref))

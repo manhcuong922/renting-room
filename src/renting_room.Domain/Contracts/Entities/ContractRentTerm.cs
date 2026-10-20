@@ -2,7 +2,6 @@ using renting_room.Domain.Common;
 
 namespace renting_room.Domain.Contracts;
 
-/// <summary>Giá thuê hiệu lực từ đầu một kỳ (bản đầu = giá lúc ký, các bản sau = phụ lục) — CT-BR-05.</summary>
 public sealed class ContractRentTerm : TenantEntity
 {
     private ContractRentTerm() { } // EF Core
@@ -26,7 +25,6 @@ public sealed class ContractRentTerm : TenantEntity
     public string? AddendumNo { get; private set; }
     public string? Note { get; private set; }
 
-    /// <returns>true nếu có giá trị đổi.</returns>
     internal bool Replace(decimal monthlyRent, string? addendumNo, string? note)
     {
         if (monthlyRent <= 0)

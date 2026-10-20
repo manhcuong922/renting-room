@@ -11,8 +11,6 @@ namespace renting_room.Application.Billing;
 
 public sealed record RecalculateInvoicesResult(int Recalculated, int WithIssues, IReadOnlyList<Guid> NotDraft);
 
-/// <summary>BL-UC-06: phạm vi = danh sách phiếu, hoặc khu + tháng (lọc phòng / tầng). Mặc định giữ ô sửa tay.</summary>
-/// <param name="StaleOnly">BL-BR-20 (I1): chỉ các nháp "Cần tính lại" — theo khu, tháng thu tùy chọn.</param>
 public sealed record RecalculateInvoicesCommand(
     IReadOnlyList<Guid>? InvoiceIds, Guid? PropertyId, string? BillingMonth, IReadOnlyList<Guid>? RoomIds, string? Floor,
     bool KeepManualEdits = true, bool StaleOnly = false) : IRequest<Result<RecalculateInvoicesResult>>;
@@ -28,9 +26,7 @@ public sealed class RecalculateInvoicesCommandValidator : AbstractValidator<Reca
     }
 }
 
-public sealed class RecalculateInvoicesHandler(
-    IUnitOfWork unitOfWork, IContractRepository contracts, IInvoiceRepository invoices, IInvoiceQueries invoiceQueries, IPropertyQueries properties,
-    InvoiceInputLoader inputs, RoomChargeBilling roomCharges)
+public sealed class RecalculateInvoicesHandler(IUnitOfWork unitOfWork, IInvoiceQueries invoiceQueries, DraftRecalculator recalculator)
     : IRequestHandler<RecalculateInvoicesCommand, Result<RecalculateInvoicesResult>>
 {
     public async ValueTask<Result<RecalculateInvoicesResult>> Handle(RecalculateInvoicesCommand request, CancellationToken cancellationToken)
@@ -54,17 +50,9 @@ public sealed class RecalculateInvoicesHandler(
         await using var transaction = await unitOfWork.BeginTransactionAsync(ct);
         await unitOfWork.LockForUpdateAsync<Contract>(contractId, ct);
         await unitOfWork.LockForUpdateAsync<Invoice>(invoiceId, ct);
-        var contract = (await contracts.GetForUpdateAsync(contractId, ct))!;
-        var invoice = (await invoices.GetForUpdateAsync(invoiceId, ct))!;
-        if (invoice.Status != InvoiceStatus.Draft)
+        var invoice = await recalculator.RecalculateAsync(contractId, invoiceId, keepManualEdits, ct);
+        if (invoice is null)
             return false;
-
-        var schedule = (await properties.GetBillingAsync(contract.PropertyId, ct)).Schedule;
-        var period = InvoiceInputLoader.CurrentPeriod(contract, invoice, schedule)
-            ?? new BillingPeriod(invoice.PeriodStart, invoice.PeriodEnd, invoice.BillingMonth);
-        var calculation = InvoiceCalculator.Calculate(await inputs.LoadAsync(contract, period, invoice.Id, ct, invoice.Type));
-        invoice.ApplyCalculation(calculation, keepManualEdits, period.End);
-        await roomCharges.AttachPendingAsync(invoice, ct);
         await unitOfWork.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
         return invoice.HasBlockingIssues;

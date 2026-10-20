@@ -35,10 +35,6 @@ public sealed class CompleteLiquidationCommandValidator : AbstractValidator<Comp
     }
 }
 
-/// <summary>
-/// CT-BR-12: có chỉ số cuối mọi công tơ → không còn phiếu nháp → phiếu quyết toán đã chốt → không còn phiếu chờ hoàn → còn nợ thì
-/// "Đã thu toàn bộ" / "Bỏ nợ" theo lựa chọn của chủ trọ → kết thúc HĐ, đóng người ở và xe. Cọc không chặn (chỉ nhắc — PM-BR-35).
-/// </summary>
 public sealed class CompleteLiquidationHandler(
     ContractMutation mutation, ContractMeterReadings meterReadings, IInvoiceQueries invoiceQueries, IUserQueries users, PaymentPosting posting, ICurrentUser currentUser, TimeProvider clock)
     : IRequestHandler<CompleteLiquidationCommand, Result>

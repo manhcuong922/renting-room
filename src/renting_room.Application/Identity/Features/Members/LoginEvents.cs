@@ -10,7 +10,6 @@ namespace renting_room.Application.Identity.Members;
 public sealed record LoginEventDto(
     Guid Id, Guid? UserId, string? FullName, bool Success, LoginOutcome Reason, string? IpAddress, DateTimeOffset OccurredAt);
 
-/// <summary>M01 §11: chủ trọ xem nhật ký đăng nhập của các tài khoản trong tổ chức mình, mới nhất trước.</summary>
 public sealed record ListLoginEventsQuery(Guid? UserId, bool? Success, int Page = 1, int PageSize = Paging.DefaultPageSize)
     : IRequest<PagedResult<LoginEventDto>>;
 

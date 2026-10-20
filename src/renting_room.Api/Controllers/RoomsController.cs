@@ -13,7 +13,6 @@ using renting_room.Security;
 
 namespace renting_room.Controllers;
 
-/// <summary>Phòng (M02). Trạng thái phòng tính từ hợp đồng, không sửa trực tiếp.</summary>
 [ApiController]
 [Route("api/v1")]
 [Tags("Rooms")]

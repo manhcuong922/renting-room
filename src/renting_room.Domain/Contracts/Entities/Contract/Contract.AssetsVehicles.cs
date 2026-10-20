@@ -75,4 +75,34 @@ public sealed partial class Contract
         vehicle.End(endDate);
         return Result.Success();
     }
+
+    public IReadOnlyList<ContractVehicle> VehiclesEndedByResign(Guid? newContractId = null) =>
+        _vehicles.Where(v => v.ResignedToContractId is { } to && (newContractId is null || to == newContractId)).ToList();
+
+    public IReadOnlyList<ContractVehicle> ReopenResignedVehicles(Guid? newContractId, IReadOnlySet<string> takenPlates)
+    {
+        if (Status is not (ContractStatus.Active or ContractStatus.Liquidating))
+            return [];
+
+        var notRestored = new List<ContractVehicle>();
+        foreach (var vehicle in VehiclesEndedByResign(newContractId))
+        {
+            if (vehicle.PlateNumber is { } plate && takenPlates.Contains(plate))
+            {
+                vehicle.ForgetResign();
+                notRestored.Add(vehicle);
+            }
+            else
+                vehicle.Reopen();
+        }
+        return notRestored;
+    }
+
+    public void ReleasePlates(IReadOnlyCollection<string> plates)
+    {
+        if (Status != ContractStatus.Draft)
+            return;
+        foreach (var vehicle in _vehicles.Where(v => v.IsActive && v.PlateNumber is { } plate && plates.Contains(plate)))
+            vehicle.End(vehicle.RegisteredFrom);
+    }
 }

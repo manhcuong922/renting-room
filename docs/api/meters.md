@@ -121,37 +121,75 @@ body có `lockedUntil`, UI gợi ý chọn từ `lockedUntil + 1`; thay hàng lo
 `contractId` = hợp đồng chỉ số này thuộc về (`null` với chỉ số lắp / tháo công tơ). `kind`: `Initial` lắp · `Handover` nhận phòng · `Periodic` cuối kỳ ·
 `Adhoc` kiểm tra · `Final` cuối hợp đồng · `Removal` tháo.
 
-`PUT /meter-readings/{id}` — `{ "value": 108, "note": "Đọc lại" }` → **200** chỉ số sau khi sửa. Đã dùng cho phiếu đã chốt → 422 `READING_LOCKED`.
+`PUT /meter-readings/{id}` — `{ "value": 108, "note": "Đọc lại" }` → **200** chỉ số sau khi sửa. Đã dùng cho hóa đơn đã chốt → 422 `READING_LOCKED`.
+**Từ 20/10/2026**: hóa đơn **nháp** đang dùng công tơ này **tự tính lại ngay** trong cùng lệnh (giữ ô sửa tay) — áp cho sửa, hủy chỉ số và lưu lưới;
+UI tải lại nháp, không còn cờ "Cần tính lại" vì chỉ số (thay / tháo / lắp công tơ vẫn chỉ gắn cờ).
 Giá trị phải **≥ chỉ số trước và ≤ chỉ số sau** (422 `READING_NOT_MONOTONIC`, body có `previousValue`, `nextValue` để hiện gợi ý).
 VD: chỉ số nhận phòng tự lấy 100 (số cuối người cũ), thực tế thợ sửa chữa đã dùng 8 kWh → sửa thành 108.
 
-### Điều chỉnh chỉ số đã chốt (18/10/2026 — MT-UC-09)
+### Điều chỉnh chỉ số đã chốt (MT-UC-09 — viết lại 20/10/2026)
 
-Gõ sai chỉ số, phát hiện khi phiếu đã chốt (kể cả đã thu): `PUT` trả `READING_LOCKED` ⇒ UI hiện nút **"Điều chỉnh chỉ số đã chốt"**.
+Gõ sai chỉ số, phát hiện khi hóa đơn đã chốt: `PUT` trả `READING_LOCKED` ⇒ UI hiện nút **"Điều chỉnh chỉ số đã chốt"**.
 
-`POST /meter-readings/{id}/adjust` — **Idempotency-Key** — `{ "value": 1338, "reason": "Gõ nhầm 1.338 thành 1.388" }` (`reason` bắt buộc ≤ 300)
+`POST /meter-readings/{id}/adjust` — **Idempotency-Key**
 
 ```json
-{ "reading": { "id": "…", "kind": "Periodic", "readingDate": "2026-11-04", "value": 1338, "contractId": "…", "note": "Gõ nhầm 1.338 thành 1.388", "version": "…" },
-  "charge": { "id": "…", "roomCode": "101", "kind": "Credit", "description": "Điều chỉnh chỉ số Điện kỳ 05/10–04/11: 1388 → 1338 (−50 kWh)",
-              "amount": 190000, "incurredOn": "2026-11-10", "status": "Pending", "isSettled": false, "invoiceId": null, … },
+{ "value": 1338, "reason": "Gõ nhầm 1.338 thành 1.388",
+  "handling": "Immediate",
+  "settlement": { "date": "2026-11-10", "method": "Cash" } }
+```
+
+- `reason` bắt buộc (≤ 300). `handling` — chỉ cần khi hóa đơn nguồn **đã có tiền** (đã thu và / hoặc đã bỏ nợ): `Immediate` (**Xử lý ngay**) hoặc
+  `NextInvoice` (**Đẩy sang hóa đơn sau**). `settlement` (tùy chọn, `Immediate`) — ngày + cách trả / thu tiền; bỏ trống = hôm nay, tiền mặt.
+- **Hộp thoại gợi ý cho UI**: hóa đơn nguồn chưa thu (`paidAmount = 0`) ⇒ chỉ nhập số mới + lý do. Đã thu ⇒ thêm 2 lựa chọn; HĐ đang thanh lý mà hóa
+  đơn trả phòng **đã chốt** (hoặc chỉ số là số cuối lúc trả phòng) ⇒ chỉ hiện "Xử lý ngay".
+
+**Kết quả theo trạng thái thu của hóa đơn nguồn** (VD điện 3.800đ/kWh, hóa đơn tháng 10 chốt với 1.388, đúng 1.338):
+
+| Hóa đơn nguồn | `handling` trả về | Hệ thống làm |
+|---|---|---|
+| Chưa thu đồng nào | `Recalculated` | Tính lại dòng điện nước **ngay trên hóa đơn** (88 kWh = 334.400đ), tổng giảm; giữ số hóa đơn, ngày lập, hạn. Nhãn `isAdjusted`, `needsResend` |
+| Đã thu + `Immediate` | `Immediate` | Tính lại như trên. Thu dư ⇒ trừ vào **phần bỏ nợ** trước, phần còn lại ghi **phiếu hoàn tiền** (`kind: Refund`, số `PC…` — [payments.md](payments.md)). Thu thiếu ⇒ hóa đơn còn nợ; có `settlement` ⇒ ghi luôn phiếu thu phần thiếu |
+| Đã thu + `NextInvoice` | `NextInvoice` | Hóa đơn **giữ nguyên tổng**, nhãn `isAdjusted`. Phần chênh thành **khoản điều chỉnh** (thu dư ⇒ `Credit` = chênh − phần đã bỏ nợ; thu thiếu ⇒ `Surcharge`) vào hóa đơn sau — có nháp ⇒ gắn ngay, chưa có ⇒ chờ |
+
+**Response 200**
+
+```json
+{ "reading": { "id": "…", "kind": "Periodic", "readingDate": "2026-11-01", "value": 1338, "contractId": "…", "note": "Gõ nhầm 1.338 thành 1.388", "version": "…" },
+  "handling": "Immediate",
+  "invoice": { "summary": { "id": "…", "invoiceNo": "PB2026-000012", "totalAmount": 3834000, "paidAmount": 3834000, "collectedAmount": 3834000,
+                            "isAdjusted": true, "needsResend": true, … }, "lines": [ … ] },
+  "charge": null,
+  "payments": [ { "id": "…", "receiptNo": "PC2026-000001", "kind": "Refund", "amount": 190000, "method": "Cash", "paidAt": "2026-11-10", … } ],
   "warnings": [] }
 ```
 
-- Chỉ số được sửa về số đúng; **phiếu đã chốt giữ nguyên** (chứng từ). Hệ thống tính lại thành tiền dòng điện nước của phiếu đó với sản lượng mới (cùng
-  giá / bậc của dòng) và tạo **khoản phát sinh** phần chênh ([room-charges.md](room-charges.md)): thu dư ⇒ `Credit` (bù), thu thiếu ⇒ `Surcharge`
-  (phụ thu); chênh 0đ ⇒ `charge: null`. Có nháp đang mở ⇒ khoản gắn ngay (`status: OnDraft`), không thì chờ phiếu sau. Khoản sửa / hủy được như khoản thường.
-- Kỳ sau tính tiếp từ chỉ số đúng (nhập được 1.380 bình thường); nháp kỳ sau tự "Cần tính lại".
-- `warnings`: `LINE_MANUALLY_EDITED` — dòng của phiếu đã chốt từng sửa tay, khoản tính theo số hệ thống, chủ trọ tự kiểm tra.
+- `invoice` = chi tiết hóa đơn nguồn sau điều chỉnh. `charge` = khoản điều chỉnh khi `NextInvoice` (null khi không có / chênh về 0).
+  `payments` = phiếu hoàn / phiếu thu thêm / phiếu bỏ nợ bị đảo và phiếu bỏ nợ ghi lại trong lệnh.
+- **Khoản điều chỉnh** ([room-charges.md](room-charges.md)): `isSystem: true` — **không sửa / hủy tay** (422 `ROOM_CHARGE_SYSTEM`), chỉ đánh dấu đã trả /
+  đã thu ngay. **Mỗi dòng nguồn chỉ 1 khoản**: điều chỉnh lần sau (VD 1.338 → 1.350) **sửa chính khoản đó** (190.000đ → 144.400đ), không sinh khoản mới;
+  điều chỉnh về đúng số lúc chốt ⇒ khoản tự hủy. Hóa đơn nguồn bị hủy về sau ⇒ khoản tự hủy. Khoản đã đánh dấu đã trả / thu ngay ⇒ không
+  điều chỉnh tiếp được (`ADJUSTMENT_ALREADY_BILLED`); bỏ đánh dấu không bị giới hạn bù 1 tháng tiền phòng.
+- Nháp kỳ sau (bắt đầu từ chỉ số này) **tự tính lại** trong cùng lệnh.
+- `warnings`: `LINE_MANUALLY_EDITED` — dòng của hóa đơn đã chốt từng sửa tay: tiền chênh theo số hệ thống, số sửa tay + chênh;
+  `MANUAL_AMOUNT_CLAMPED` — số sửa tay + chênh ra âm, đã đặt 0đ (chủ trọ kiểm tra lại).
+- **HĐ đang thanh lý**: hóa đơn trả phòng chưa chốt ⇒ `NextInvoice` vào hóa đơn trả phòng (có thể làm hóa đơn âm — [invoices.md](invoices.md)).
+- Lịch sử: `GET /invoices/{id}/adjustments` ([invoices.md](invoices.md#điều-chỉnh-chỉ-số--lịch-sử-và-gửi-lại)).
 
 | Lỗi | Khi nào |
 |-----|---------|
-| 422 `READING_NOT_LOCKED` | Chỉ số chưa dùng cho phiếu đã chốt — dùng `PUT` sửa trực tiếp |
-| 422 `READING_NOT_ADJUSTABLE` | Không phải chỉ số cuối của đoạn đo trên phiếu đã chốt (VD chỉ số đầu kỳ) |
-| 422 `READING_NEXT_PERIOD_FINALIZED` | Kỳ sau đã chốt phiếu bắt đầu từ chỉ số này — tổng 2 kỳ đã tự bù nhau |
+| 422 `READING_NOT_LOCKED` | Chỉ số chưa dùng cho hóa đơn đã chốt — dùng `PUT` sửa trực tiếp |
+| 422 `READING_NOT_ADJUSTABLE` | Không phải chỉ số cuối của đoạn đo trên hóa đơn đã chốt (VD chỉ số đầu kỳ) |
+| 422 `READING_NEXT_PERIOD_FINALIZED` | Hóa đơn kỳ sau đã chốt, bắt đầu từ chỉ số này — tổng 2 kỳ đã tự bù nhau |
 | 400 `READING_UNCHANGED` | Số mới trùng số hiện tại |
+| 400 `ADJUSTMENT_HANDLING_REQUIRED` | Hóa đơn đã có tiền mà chưa chọn `handling` |
+| 400 `INVALID_HANDLING` / `INVALID_SETTLED_DATE` | `handling` khác 2 giá trị trên / ngày `settlement` ở tương lai |
+| 422 `ADJUSTMENT_ALREADY_BILLED` | Khoản điều chỉnh lần trước đã thanh toán (đã trả / thu ngay, hoặc đã nằm trên hóa đơn đã chốt) — không điều chỉnh tiếp; phần chênh còn lại nhập khoản phụ thu / bù tay |
+| 422 `REFUND_CONFIRMED` | Hóa đơn nguồn (âm) đã xác nhận "Đã hoàn" — bỏ xác nhận (`DELETE /invoices/{id}/refund`) rồi điều chỉnh |
+| 422 `ADJUSTMENT_NO_NEXT_INVOICE` | `NextInvoice` mà hóa đơn trả phòng đã chốt (không còn hóa đơn sau) |
+| 422 `CONTRACT_ENDED` | HĐ đã kết thúc — chưa hỗ trợ điều chỉnh sau thanh lý |
 | 422 `READING_NOT_MONOTONIC` | Số mới nhỏ hơn chỉ số trước / lớn hơn chỉ số sau |
-| 422 `ROOM_CHARGE_NO_OPEN_INVOICE` | HĐ đã kết thúc / đã chốt phiếu quyết toán — không còn phiếu để đưa khoản vào |
+| 422 `READING_ADJUSTMENT_TOO_LARGE` | Khoản điều chỉnh vượt 100.000.000đ |
 
 ## Lưới ghi chỉ số hằng tháng
 
@@ -168,14 +206,18 @@ cho phiếu tháng đó. Hợp đồng **trả sau** (`Postpaid`): kỳ của th
       "meterId": "…", "serialNo": "E-101", "feeTypeId": "…", "feeTypeName": "Điện", "unit": "kWh",
       "usageStart": "2026-11-01", "usageEnd": "2026-11-30", "closingPeriodStart": "2026-11-01", "endsWithFinal": false,
       "previous": { "id": "…", "kind": "Handover", "readingDate": "2026-11-01", "value": 100 },
-      "current": null, "consumption": null, "locked": false, "recentAverage": 140, "usageWarning": null
+      "current": null, "consumption": null, "locked": false, "recentAverage": 140, "usageWarning": null,
+      "invoice": { "id": "…", "status": "Draft", "isStale": false }
     }
   ]
 }
 ```
 
 - `previous` = chỉ số cũ (số cuối của phiếu trước / nhận phòng / tháng trước); `current` = số đã nhập; `consumption` = mới − cũ (tạm tính).
-- `locked: true` ⇒ chỉ số đã dùng cho phiếu đã chốt — ô chỉ đọc (muốn sửa thì hủy phiếu).
+- `locked: true` ⇒ chỉ số đã dùng cho hóa đơn đã chốt — ô chỉ đọc (gõ sai ⇒ "Điều chỉnh chỉ số đã chốt").
+- **`invoice`** (20/10/2026) = hóa đơn thường của HĐ cho kỳ đang ghi: `{ id, status: Draft | Finalized, isStale }`; `null` = chưa lập. UI dựng cột
+  **"Hóa đơn"** và lọc phía client: **Chưa nhập** (`current = null`), **Chưa có hóa đơn** (`invoice = null`), **Cần tính lại** (`isStale`), **Đã chốt**.
+  VD khu 34 phòng mới nhập 25 ⇒ "Tạo hóa đơn" tạo 25, bỏ qua 9 (`MISSING_READING`) — lọc "Chưa nhập" ra đúng 9 phòng.
 - **Bất thường** (MT-BR-08, không chặn lưu): `recentAverage` = trung bình 3 kỳ trước của HĐ (null khi chưa đủ 3 kỳ) — UI tô vàng ngay khi
   nhập nếu sản lượng ≥ 3 × `recentAverage` **và** tăng ≥ 50; hoặc = 0 khi phòng có người ở. Số đã lưu ⇒ server trả câu cảnh báo trong `usageWarning`
   (phiếu nháp có cảnh báo `UNUSUAL_USAGE`).
@@ -189,7 +231,7 @@ cho phiếu tháng đó. Hợp đồng **trả sau** (`Postpaid`): kỳ của th
 
 → **200** `{ "saved": 1, "warnings": [] }`. **Cả lô hoặc không gì**: có dòng lỗi ⇒ 422 `READINGS_INVALID`, body có `rowErrors: [{ index, code, message }]`
 (`READING_NOT_MONOTONIC`, `READING_LOCKED`, `METER_NOT_IN_ROOM`, `NOT_PERIOD_START`…) — tô đỏ dòng theo `index`, chưa lưu dòng nào.
-Gửi lại dòng đã có số ⇒ sửa số đó (nếu chưa khóa). Lưu xong → **Tính lại** phiếu nháp của tháng ([invoices.md](invoices.md#tính-lại)).
+Gửi lại dòng đã có số ⇒ sửa số đó (nếu chưa khóa). Hóa đơn nháp đang dùng các công tơ này **tự tính lại** trong cùng lệnh (20/10/2026).
 
 **Cảnh báo ngày ghi (12/10/2026, không chặn lưu):** `readingDate` nằm ngoài khoảng **7 ngày trước → 15 ngày sau ngày cuối kỳ** (`usageEnd`) ⇒
 kết quả lưu có `warnings: [ { "index": 0, "code": "READING_DATE_FAR_FROM_PERIOD_END", "message": "Ngày ghi 06/11/2026 lệch xa ngày cuối kỳ 30/11/2026 — …" } ]`.
@@ -216,7 +258,7 @@ Dùng để đối chiếu hóa đơn điện nước cả khu: tổng trên cá
 ## Hủy chỉ số ghi nhầm (11/10/2026)
 
 `POST /meter-readings/{id}/void` `{ "reason": "Ghi nhầm phòng" }` → **204**. Dòng bị hủy không còn trong lịch sử chỉ số (vẫn lưu trong DB kèm
-lý do); phiếu nháp liên quan chuyển "Cần tính lại".
+lý do); hóa đơn nháp liên quan tự tính lại (20/10/2026).
 
 | Lỗi | Khi nào |
 |-----|---------|

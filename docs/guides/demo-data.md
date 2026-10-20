@@ -40,17 +40,21 @@ wifi 100.000đ → **120.000đ từ ngày 10 tháng M−1** (cả tháng M−1 t
 | 103 | Phiếu nháp M−1: **sửa tay** tiền phòng, **phụ thu** thay khóa, **giảm trừ** mất nước; điện **= 0** khi có người ở ⇒ cảnh báo `UNUSUAL_USAGE`; khoản **"Làm thêm chìa khóa" đã thu ngay** ⇒ hiện trên nháp, không tính vào tổng; phụ thu / giảm trừ trên nháp cũng nằm trong danh sách khoản phát sinh của phòng |
 | 104 | Người nước ngoài (hộ chiếu) **vào giữa tháng**, ở ghép; phòng tính **nước theo người** (không công tơ nước); giá niêm yết tăng 3tr → 3,1tr rồi **áp cho người đang thuê** ⇒ HĐ 2,8tr → 3,1tr từ tháng M (tháng M−1 đã lập phiếu giữ giá cũ) |
 | 105 | **Đang thanh lý** — báo trả phòng sau 15 ngày; phiếu M−1 **"Thanh toán + bỏ phần còn lại"** (trả thiếu 200k, chủ trọ bỏ do mất nước) |
-| 106 | Bỏ đi không báo giữa tháng M−1, làm vỡ gương ⇒ tài sản ghi "Vỡ", phiếu quyết toán có **phụ thu "Bồi thường gương nhà tắm" 300k**; hoàn tất thanh lý bằng **bỏ nợ**; cọc **chưa đánh dấu hoàn** ⇒ nhãn **"Chưa hoàn cọc"** (`GET /contracts?depositNotRefunded=true`) |
+| 106 | Bỏ đi không báo giữa tháng M−1, làm vỡ gương ⇒ tài sản ghi "Vỡ", hóa đơn trả phòng có **phụ thu "Bồi thường gương nhà tắm" 300k**; hoàn tất thanh lý bằng **bỏ nợ**; cọc **chưa đánh dấu hoàn** ⇒ nhãn **"Chưa hoàn cọc"** (`GET /contracts?depositNotRefunded=true`) |
 | 201 | HĐ cũ đã kết thúc ~10 tháng trước (lịch sử) — **"Đã hoàn trả cọc"** đủ 2,5tr |
 | 202 | HĐ **hết hạn chờ quyết định** — nhãn chỉ hiện ở **hợp đồng**, thẻ phòng không mang nhãn thời hạn (13/10/2026); thử bấm **Ở tiếp** ⇒ HĐ thành không thời hạn, hết nhãn; người đứng tên **không có SĐT** ⇒ cảnh báo `REPRESENTATIVE_PHONE_MISSING` |
 | 203 | HĐ hết hạn, chủ trọ đã chọn **Ở tiếp** ⇒ **không thời hạn** (`endDate` trống, `previousEndDate` = hạn cũ, `holdoverSince`), không còn nhãn; thử **Gia hạn** để có hạn mới — vẫn **thêm được người ở** sau ngày hết hạn (quá hạn = không thời hạn); phiếu M−2 **chưa thu**; **chuyển sang phòng 206 hôm nay** (giá mới 3,2tr) ⇒ HĐ và cọc giữ nguyên, 203 trống từ mai, **điện + nước của 203 chốt thành 2 khoản phát sinh hệ thống** (không sửa / hủy tay), nhãn **"Còn nợ" sang 206** |
 | 204 | **HĐ nháp** sắp vào ở + 1 HĐ nháp **đã hủy**: khách đổi ý ⇒ ghi **"Đã hoàn trả cọc" 0đ** kèm lý do (mất cọc giữ chỗ) |
 | 205 | Phòng **bảo trì** |
-| 101 (thêm 18/10/2026) | **Điều chỉnh chỉ số đã chốt** (MT-UC-09): chỉ số điện cuối tháng trước gõ dư 20 kWh, phiếu đã chốt + đã thu ⇒ khoản **bù** "Điều chỉnh chỉ số Điện …" chờ vào phiếu tháng này; thử `POST /meter-readings/{id}/adjust` với chỉ số cuối kỳ của phòng khác đã chốt |
+| 101 (thêm 18/10/2026, đổi 20/10/2026) | **Điều chỉnh chỉ số đã chốt — "Đẩy sang hóa đơn sau"** (MT-UC-09): chỉ số điện cuối tháng trước gõ dư 20 kWh, hóa đơn đã chốt + đã thu ⇒ hóa đơn giữ nguyên tổng (nhãn "Đã điều chỉnh"), **khoản điều chỉnh** (bù, khóa — không sửa / hủy tay) chờ vào hóa đơn tháng này; điều chỉnh lại chỉ số sửa chính khoản đó |
 | 206 | Phòng của HĐ **chuyển từ 203** (chuyển phòng hôm nay) — mang theo nợ; điện 25 kWh + nước 2 m³ của 203 là sản lượng đã lưu, phiếu tháng này cộng vào **cùng dòng** với 206 (không còn khoản chốt). Thử **chuyển lại về 203 ngay hôm nay** (chuyển nhầm): HĐ về 203 như chưa chuyển, **giá thuê tự về 3,0tr** — không cần sửa tay |
 | 207 | HĐ hôm nay **chuyển nhầm sang 208 rồi chuyển lại về 207 trong ngày** ⇒ lần chuyển bị xóa (không có `roomMoves`, chỉ số của lần chuyển bị hủy, 208 vẫn trống); hôm nay nhận thêm **người đồng thuê chuyển từ 208 sang** (chuyển người) |
 | 208 | HĐ mới 3 người (đứng tên, em gái, bạn **đồng thuê**); hôm nay bạn đồng thuê **chuyển sang 207**, người đứng tên rời đi, **em gái đứng tên thay trên cùng HĐ** ⇒ HĐ về "Thiếu tài liệu", có lịch sử người đứng tên, quan hệ phải khai lại; **lịch sử thuê của phòng** hiện 2 người đứng tên theo thời điểm (`representatives[]`); file xuất người thuê ghi bạn đồng thuê là **"Đồng thuê"** |
 | 210, 211 | Hai phòng mới **lắp công tơ điện hàng loạt** bằng 1 lệnh (`POST /properties/{id}/meters/bulk`), chưa có công tơ nước. 210: thợ sơn dùng **14 kWh lúc phòng trống** ⇒ HĐ nhận phòng ở số 14, hiện ở **sản lượng phòng trống** (`GET /properties/{id}/meters/vacant-usage`); 211 trống |
+| 212 | **Điều chỉnh chỉ số — hóa đơn chưa thu** (20/10/2026): điện tháng trước gõ dư 20 kWh, hóa đơn đã chốt chưa thu ⇒ hệ thống **tính lại ngay trên hóa đơn** (giữ số, hạn), nhãn **"Đã điều chỉnh"** + **"Cần gửi lại"** (`GET /invoices?needsResend=true`, nút "Đã gửi lại"); lịch sử ở `GET /invoices/{id}/adjustments` |
+| 213 | **Điều chỉnh — đã thu, "Xử lý ngay"**: hóa đơn tính lại, có **phiếu hoàn tiền** `PC…` (`kind: Refund`) trả lại 20 kWh thừa |
+| 214 | **Điều chỉnh — có bỏ nợ**: trả gần đủ, chủ trọ bỏ 100.000đ còn lại; "Xử lý ngay" ⇒ phần thừa **trừ vào phần bỏ nợ** (còn 30.000đ), phiếu bỏ nợ cũ bị đảo + phiếu bỏ nợ mới, không phiếu hoàn |
+| 215 | **Hóa đơn trả phòng âm** (BL-BR-10): trả phòng đầu tháng này, khoản giảm 1.000.000đ (cúp nước) lớn hơn hóa đơn trả phòng ⇒ hóa đơn **−763.000đ**, **Chờ hoàn**; "Hoàn tất thanh lý" bị chặn `REFUND_PENDING` tới khi bấm "Đã hoàn tiền" |
 | 209 | **HĐ nháp** có người đứng tên đang là **người ở thường của phòng 102** ⇒ chi tiết HĐ cảnh báo `REPRESENTATIVE_IS_RESIDENT_ELSEWHERE`; kích hoạt bị chặn cho tới khi đổi người đó thành đồng thuê ở 102 hoặc ghi chuyển đi. Thêm 1 hồ sơ người thuê chưa từng thuê |
 
 Khu A có khoản **"Phí điều hòa"** thêm hàng loạt cho 101, 102 qua màn "Phòng đang dùng dịch vụ" (`POST /fee-types/{id}/usage`).
@@ -59,13 +63,14 @@ Khu A có khoản **"Phí điều hòa"** thêm hàng loạt cho 101, 102 qua m�
 
 | Phòng | Tình huống |
 |-------|-----------|
-| B01 | Trả phòng sớm kỳ này ⇒ phiếu quyết toán có cảnh báo **thu thừa**, dòng **hoàn trả** (phiếu nguồn = phiếu kỳ này đã thu trọn tiền phòng), tổng âm ⇒ **Chờ hoàn**; HĐ đang thanh lý, cọc **đang giữ** |
+| B01 | Trả phòng sớm kỳ này ⇒ hóa đơn trả phòng có cảnh báo **thu thừa**, dòng **hoàn trả** (phiếu nguồn = phiếu kỳ này đã thu trọn tiền phòng), tổng âm ⇒ **Chờ hoàn**; HĐ đang thanh lý, cọc **đang giữ** |
 | B02 | Trả phòng sớm kỳ trước ⇒ hoàn trả **đã xác nhận hoàn**, HĐ kết thúc, **"Đã hoàn trả cọc"** đủ; người thuê **ẩn danh bằng tay** — biển số xe máy đã bị xóa |
 | B03 | **Thay công tơ điện** giữa kỳ trước ⇒ phiếu nháp kỳ này có 2 đoạn đo |
 | B04 | 3 người, **450 kWh** ⇒ phiếu nháp tính giá bậc (tổng lẻ ⇒ **"Làm tròn"**); người ở thứ 4 vào **sau khi lập nháp** ⇒ nháp **"Cần tính lại"** (`GET /invoices?stale=true`); khoản **bù "hỏng quạt" đã trả tiền mặt** ⇒ hiện trên nháp, không trừ vào tổng |
 | B05 | Phòng trống |
 | B07 → B08 | **Chuyển phòng hôm nay ở khu thu trước, điện giá bậc**: điện 30 kWh + nước 2 m³ của B07 là sản lượng đã lưu — phiếu tháng sau cộng vào cùng dòng với B08, giá bậc tính trên tổng; giá thuê mới áp cho kỳ này nhưng **kỳ này đã chốt tiền phòng** ⇒ khoản phát sinh **"Chênh lệch tiền phòng" 300k** ở B08, mốc giá mới từ kỳ sau |
 | B06 | Người đứng tên chuyển đi, vợ **ký lại** HĐ mới từ mai ⇒ cọc HĐ cũ **"Đã chuyển sang HĐ mới"**, HĐ cũ đang thanh lý |
+| B09 | **Ký lại không thành** (CT-UC-21): người ở cùng có xe 29K1-246.80, ký lại rồi đổi ý hủy HĐ nháp mới ⇒ xe **mở lại** trên HĐ cũ (đang thanh lý), cọc về **"Đang giữ"** |
 
 **Khu C — nhập từ Excel** (thu sau, chốt ngày 1): import phòng (xem trước → lưu dòng hợp lệ; C05 gõ sai số người bị bỏ qua; chỉ số đầu
 kỳ ⇒ công tơ lắp từ ngày 1 tháng M), rồi import người thuê đang ở (1 sheet, mỗi dòng 1 người; phòng C09 không tồn tại bị bỏ qua).

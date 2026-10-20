@@ -14,10 +14,6 @@ using renting_room.Application.Identity;
 
 namespace renting_room.Application.Contracts;
 
-/// <summary>
-/// CT-UC-15: xuất văn bản hợp đồng (.docx) để in / ký / lưu. Người có quyền xem dữ liệu nhạy cảm (ID-BR-22) nhận số giấy tờ
-/// đầy đủ (ghi log kiểm toán); người không có quyền nhận bản che số (********1234).
-/// </summary>
 public sealed record GetContractDocumentQuery(Guid ContractId) : IRequest<Result<ExportFile>>;
 
 public sealed class GetContractDocumentHandler(
@@ -83,7 +79,6 @@ public sealed class GetContractDocumentHandler(
         : full ? protector.Decrypt(Convert.FromBase64String(base64))
         : PersonalDataProtectorExtensions.Mask(last4);
 
-    /// <summary>Bản nháp chưa có bản chụp ⇒ dựng tạm từ dữ liệu hiện tại (không lưu).</summary>
     private async Task<SigningSnapshot?> CurrentSnapshotAsync(Contract contract, CancellationToken ct)
     {
         var property = (await properties.GetAsync(contract.PropertyId, ct))!;

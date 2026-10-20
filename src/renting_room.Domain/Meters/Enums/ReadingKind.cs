@@ -4,8 +4,8 @@ namespace renting_room.Domain.Meters;
 public enum ReadingKind
 {
     Initial,   // lắp công tơ
-    Handover,  // nhận phòng — mốc bắt đầu tính của HĐ (MT-BR-13)
-    Periodic,  // cuối kỳ (đợt 2, cùng M07)
+    Handover,
+    Periodic,
     Adhoc,     // kiểm tra, không dùng tính tiền
     Final,     // cuối HĐ (thanh lý)
     Removal    // tháo công tơ

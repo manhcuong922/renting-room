@@ -5,7 +5,6 @@ using renting_room.Domain.Common;
 
 namespace renting_room.Application.Contracts;
 
-/// <summary>Đánh dấu đã có / chưa có bản HĐ ký (giấy, ảnh, PDF) + ghi chú nơi cất — hết cờ "Thiếu tài liệu". Không ảnh hưởng thu tiền.</summary>
 public sealed record SetSignedDocumentCommand(Guid ContractId, bool HasSignedDocument, string? Note) : IRequest<Result>;
 
 public sealed class SetSignedDocumentCommandValidator : AbstractValidator<SetSignedDocumentCommand>

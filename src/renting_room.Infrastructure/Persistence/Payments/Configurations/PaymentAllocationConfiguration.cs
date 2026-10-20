@@ -14,7 +14,6 @@ internal sealed class PaymentAllocationConfiguration : IEntityTypeConfiguration<
         builder.HasKey(a => a.Id);
         builder.ConfigureAuditable();
 
-        // PM-BR-02: phiếu báo phải cùng HĐ với phiếu thu — FK gồm contract_id.
         builder.HasOne<Invoice>()
             .WithMany()
             .HasForeignKey(a => new { a.OrganizationId, a.ContractId, a.InvoiceId })

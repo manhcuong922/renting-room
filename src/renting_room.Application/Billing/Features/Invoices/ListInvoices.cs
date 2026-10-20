@@ -9,7 +9,8 @@ namespace renting_room.Application.Billing;
 
 public sealed record ListInvoicesQuery(
     Guid? PropertyId, string? BillingMonth, InvoiceStatus? Status, Guid? RoomId, Guid? ContractId, string? Floor,
-    bool? UnpaidOnly = null, int Page = 1, int PageSize = Paging.DefaultPageSize, bool? Stale = null) : IRequest<PagedResult<InvoiceSummaryDto>>;
+    bool? UnpaidOnly = null, int Page = 1, int PageSize = Paging.DefaultPageSize, bool? Stale = null, bool? Adjusted = null, bool? NeedsResend = null)
+    : IRequest<PagedResult<InvoiceSummaryDto>>;
 
 public sealed class ListInvoicesQueryValidator : AbstractValidator<ListInvoicesQuery>
 {
@@ -22,7 +23,6 @@ public sealed class ListInvoicesQueryValidator : AbstractValidator<ListInvoicesQ
     }
 }
 
-/// <summary>BL-UC-02 / BL-UC-14: danh sách phiếu theo khu / tháng / phòng / HĐ, mới nhất trước.</summary>
 public sealed class ListInvoicesHandler(IInvoiceQueries invoices, TimeProvider clock) : IRequestHandler<ListInvoicesQuery, PagedResult<InvoiceSummaryDto>>
 {
     public async ValueTask<PagedResult<InvoiceSummaryDto>> Handle(ListInvoicesQuery request, CancellationToken cancellationToken)

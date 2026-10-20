@@ -7,7 +7,6 @@ namespace renting_room.Application.Billing;
 
 public sealed record PropertyGenerateResult(Guid PropertyId, string PropertyCode, GenerateInvoicesResult? Result, string? ErrorCode);
 
-/// <summary>BL-UC-01: tạo phiếu nháp tháng thu cho nhiều khu trong một lệnh; <paramref name="PropertyIds"/> trống = mọi khu đang dùng.</summary>
 public sealed record GenerateInvoicesBulkCommand(IReadOnlyList<Guid>? PropertyIds, string BillingMonth, bool RecalculateExistingDrafts)
     : IRequest<IReadOnlyList<PropertyGenerateResult>>;
 
@@ -20,7 +19,6 @@ public sealed class GenerateInvoicesBulkCommandValidator : AbstractValidator<Gen
     }
 }
 
-/// <summary>Mỗi khu chạy như lệnh tạo phiếu của riêng khu đó — khu lỗi (VD không thuộc tổ chức) trả mã lỗi, không làm hỏng khu khác.</summary>
 public sealed class GenerateInvoicesBulkHandler(IPropertyQueries properties, ISender sender)
     : IRequestHandler<GenerateInvoicesBulkCommand, IReadOnlyList<PropertyGenerateResult>>
 {

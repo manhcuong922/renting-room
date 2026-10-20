@@ -7,7 +7,6 @@ namespace renting_room.Application.Fees;
 
 public sealed record ChangeFeeTypeStateCommand(Guid Id, bool Archive) : IRequest<Result>;
 
-/// <summary>Ngừng dùng chỉ khi không còn HĐ nháp / hiệu lực / thanh lý đang gắn khoản này (thay FE-BR-12 bản đầu).</summary>
 public sealed class ChangeFeeTypeStateHandler(IFeeTypeRepository fees, IFeeQueries queries, IUnitOfWork unitOfWork, TimeProvider clock)
     : IRequestHandler<ChangeFeeTypeStateCommand, Result>
 {

@@ -36,7 +36,6 @@ public sealed record LessorDetails(
         AuthorizationDocNo = TextNormalizer.TrimToNull(AuthorizationDocNo)
     };
 
-    /// <summary>PR-BR-12: đủ thông tin bắt buộc để làm bên cho thuê trong hợp đồng.</summary>
     public bool IsComplete(DateOnly today)
     {
         if (string.IsNullOrWhiteSpace(Name) || string.IsNullOrWhiteSpace(Address) || string.IsNullOrWhiteSpace(Phone))

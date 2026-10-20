@@ -6,7 +6,6 @@ using renting_room.Domain.Renters;
 
 namespace renting_room.Infrastructure.Persistence.Configurations;
 
-/// <summary>CT-BR-51: lịch sử người đứng tên HĐ.</summary>
 internal sealed class ContractRepresentativeConfiguration : IEntityTypeConfiguration<ContractRepresentative>
 {
     public void Configure(EntityTypeBuilder<ContractRepresentative> builder)

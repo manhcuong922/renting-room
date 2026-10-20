@@ -35,17 +35,17 @@ internal sealed class RoomChargeQueries(AppDbContext db) : IRoomChargeQueries
     public Task<Guid?> GetContractIdAsync(Guid chargeId, CancellationToken cancellationToken) =>
         db.RoomCharges.Where(c => c.Id == chargeId).Select(c => (Guid?)c.ContractId).FirstOrDefaultAsync(cancellationToken);
 
-    public Task<bool> IsMeterClosingAsync(Guid chargeId, CancellationToken cancellationToken) =>
-        db.RoomCharges.AnyAsync(c => c.Id == chargeId && c.MeterId != null, cancellationToken);
+    public Task<bool> IsSystemAsync(Guid chargeId, CancellationToken cancellationToken) =>
+        db.RoomCharges.AnyAsync(c => c.Id == chargeId && (c.MeterId != null || c.SourceInvoiceId != null), cancellationToken);
 
     public async Task<decimal> GetWaitingCreditTotalAsync(Guid contractId, CancellationToken cancellationToken) =>
         await db.RoomCharges
-            .Where(c => c.ContractId == contractId && c.Kind == RoomChargeKind.Credit && c.CancelledAt == null && !c.IsSettled
+            .Where(c => c.ContractId == contractId && c.Kind == RoomChargeKind.Credit && c.CancelledAt == null && !c.IsSettled && c.SourceInvoiceId == null
                 && (c.InvoiceId == null || db.Invoices.Any(i => i.Id == c.InvoiceId && i.Status == InvoiceStatus.Draft)))
             .SumAsync(c => (decimal?)c.Amount, cancellationToken) ?? 0;
 
     public Task<SettledCredit?> FindSettledCreditAsync(Guid chargeId, CancellationToken cancellationToken) =>
         db.RoomCharges.AsNoTracking()
-            .Where(c => c.Id == chargeId && c.Kind == RoomChargeKind.Credit && c.IsSettled && c.CancelledAt == null)
+            .Where(c => c.Id == chargeId && c.Kind == RoomChargeKind.Credit && c.IsSettled && c.CancelledAt == null && c.SourceInvoiceId == null)
             .Select(c => new SettledCredit(c.ContractId, c.IncurredOn, c.Amount)).FirstOrDefaultAsync(cancellationToken);
 }

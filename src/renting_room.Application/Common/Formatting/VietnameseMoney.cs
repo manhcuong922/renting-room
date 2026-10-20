@@ -3,14 +3,12 @@ using System.Text;
 
 namespace renting_room.Application.Common.Formatting;
 
-/// <summary>Định dạng tiền cho văn bản: "3.500.000 đ" và "Ba triệu năm trăm nghìn đồng".</summary>
 public static class VietnameseMoney
 {
     private static readonly CultureInfo Vietnamese = CultureInfo.GetCultureInfo("vi-VN");
     private static readonly string[] Digits = ["không", "một", "hai", "ba", "bốn", "năm", "sáu", "bảy", "tám", "chín"];
     private static readonly string[] Scales = ["", " nghìn", " triệu", " tỷ", " nghìn tỷ", " triệu tỷ"];
 
-    /// <summary>"3.500.000 đ"; đơn giá có phần lẻ giữ tối đa 2 số ("15.500,5 đ").</summary>
     public static string Format(decimal amount) => amount.ToString("#,##0.##", Vietnamese) + " đ";
 
     /// <summary>Số nguyên không âm → chữ, viết hoa chữ đầu, kết thúc "đồng". Phần lẻ dưới 1 đồng bị bỏ.</summary>

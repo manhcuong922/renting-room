@@ -2,7 +2,6 @@ using renting_room.Domain.Meters;
 
 namespace renting_room.Application.Meters;
 
-/// <summary>Đọc công tơ (chỉ đọc, kèm chỉ số).</summary>
 public interface IMeterQueries
 {
     Task<Meter?> GetAsync(Guid id, CancellationToken cancellationToken);
@@ -15,7 +14,6 @@ public interface IMeterQueries
 
     Task<IReadOnlyList<Meter>> ListByPropertyAsync(Guid propertyId, CancellationToken cancellationToken);
 
-    /// <summary>Công tơ đang hoạt động của khoản thu trong khu.</summary>
     Task<IReadOnlyList<Meter>> ListActiveByFeeAsync(Guid propertyId, Guid feeTypeId, CancellationToken cancellationToken);
 
     /// <summary>Công tơ của phòng đang đo tại ngày <paramref name="date"/>.</summary>
@@ -26,7 +24,6 @@ public interface IMeterQueries
     /// <summary>Phòng (trong <paramref name="roomIds"/>) đang có công tơ hoạt động của khoản thu.</summary>
     Task<HashSet<Guid>> GetMeteredRoomIdsAsync(IReadOnlyCollection<Guid> roomIds, Guid feeTypeId, CancellationToken cancellationToken);
 
-    /// <summary>Phòng của khu đang có công tơ hoạt động của khoản thu.</summary>
     Task<HashSet<Guid>> GetMeteredRoomIdsInPropertyAsync(Guid propertyId, Guid feeTypeId, CancellationToken cancellationToken);
 
     Task<bool> HasActiveAsync(Guid roomId, Guid feeTypeId, CancellationToken cancellationToken);
@@ -36,13 +33,11 @@ public interface IMeterQueries
 
     Task<Guid?> GetMeterIdOfReadingAsync(Guid readingId, CancellationToken cancellationToken);
 
-    /// <summary>Công tơ của các phòng.</summary>
     Task<IReadOnlyList<MeterRoomRow>> ListRoomMetersAsync(IReadOnlyCollection<Guid> roomIds, CancellationToken cancellationToken);
 
     /// <summary>Khoản thu của công tơ đang đo tại ngày <paramref name="date"/> ở các phòng.</summary>
     Task<IReadOnlyList<MeterFeeRow>> ListActiveFeesAsync(IReadOnlyCollection<Guid> roomIds, DateOnly date, CancellationToken cancellationToken);
 
-    /// <summary>Khoản thu của công tơ chưa tháo ở các phòng.</summary>
     Task<IReadOnlyList<MeterFeeRow>> ListUnremovedFeesAsync(IReadOnlyCollection<Guid> roomIds, CancellationToken cancellationToken);
 
     /// <summary>Phòng có công tơ của khoản thu còn đo sau ngày <paramref name="date"/>.</summary>
@@ -51,10 +46,8 @@ public interface IMeterQueries
     /// <summary>Có chỉ số nào trong <paramref name="readingIds"/> ghi sau ngày <paramref name="date"/>.</summary>
     Task<bool> AnyReadingAfterAsync(IReadOnlyCollection<Guid> readingIds, DateOnly date, CancellationToken cancellationToken);
 
-    /// <summary>Công tơ chưa tháo của các phòng kèm ngày ghi chỉ số gần nhất.</summary>
     Task<IReadOnlyList<MeterLastReadingRow>> ListLastReadingsAsync(IReadOnlyCollection<Guid> roomIds, CancellationToken cancellationToken);
 
-    /// <summary>Chỉ số chưa hủy.</summary>
     Task<ReadingValue?> GetActiveReadingAsync(Guid readingId, CancellationToken cancellationToken);
 }
 

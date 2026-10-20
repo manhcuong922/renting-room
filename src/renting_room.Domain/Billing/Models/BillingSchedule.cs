@@ -2,20 +2,10 @@ using renting_room.Domain.Properties;
 
 namespace renting_room.Domain.Billing;
 
-/// <summary>
-/// Hiện thực DUY NHẤT của kỳ thu (README C-05, PR-BR-09, K4). Ngày chốt / thu trước–thu sau là của <b>khu</b>, mọi HĐ dùng chung.
-/// <list type="bullet">
-/// <item>Kỳ chuẩn tháng M = [ngày chốt tháng M, ngày chốt tháng M+1 − 1]; tháng thu của kỳ = M.</item>
-/// <item>Đổi ngày chốt từ mốc T (đầu kỳ chuẩn cũ tháng M, kỳ đầu chưa lập phiếu của khu): kỳ chuyển tiếp [T, ngày chốt mới tháng M+1 − 1]
-/// vẫn là tháng M ⇒ mỗi tháng đúng 1 kỳ; từ đó theo ngày chốt mới.</item>
-/// <item>Kỳ của HĐ = kỳ chuẩn cắt theo [Tính tiền từ ngày, ngày trả phòng] — kỳ đầu lẻ <b>không gộp</b> vào kỳ sau.</item>
-/// </list>
-/// </summary>
 public sealed class BillingSchedule
 {
     public const int MinAnchorDay = 1;
     public const int MaxAnchorDay = 28;
-    /// <summary>BL-BR-28: lệch ≤ 3 ngày ⇒ mặc định không tính thêm / không trừ.</summary>
     public const int NegligibleDeviationDays = 3;
 
     private readonly BillingScheduleEntry[] _entries;
@@ -79,10 +69,6 @@ public sealed class BillingSchedule
         return periods;
     }
 
-    /// <summary>
-    /// Số tháng tiền phòng của một kỳ HĐ (C-05, BL-BR-03, BL-BR-28): <c>Daily</c> = số ngày / độ dài kỳ chuẩn × số tháng của kỳ chuẩn;
-    /// <c>FullPeriod</c> = số tháng của kỳ chuẩn (kỳ lẻ vẫn trọn tháng). Không làm tròn — làm tròn một lần ở thành tiền.
-    /// </summary>
     public decimal RentFactor(DateOnly start, DateOnly end, ProrationMode mode)
     {
         if (end < start)
@@ -94,11 +80,6 @@ public sealed class BillingSchedule
         return (decimal)(to.DayNumber - start.DayNumber + 1) / standard.Days * standard.RentMonths;
     }
 
-    /// <summary>
-    /// K4 (PR-BR-09): lịch mới khi đổi ngày chốt / cách thu từ kỳ chuẩn bắt đầu tại <paramref name="from"/> (kỳ đầu chưa lập phiếu của khu).
-    /// Mốc đổi trước đó chưa có phiếu (từ <paramref name="from"/> trở đi) bị ghi đè. Đổi về đúng cài đặt cũ ⇒ không có kỳ chuyển tiếp.
-    /// </summary>
-    /// <param name="adjustDays">Null ⇒ gợi ý theo BL-BR-28 (lệch ≤ 3 ngày ⇒ 0, còn lại đủ số ngày lệch).</param>
     public BillingSchedule ChangeFrom(DateOnly from, int anchorDay, ChargeMode chargeMode, int? adjustDays)
     {
         if (StandardPeriodContaining(from).Start != from)
@@ -124,7 +105,6 @@ public sealed class BillingSchedule
 
     public static int SuggestedAdjustDays(int deviation) => Math.Abs(deviation) <= NegligibleDeviationDays ? 0 : deviation;
 
-    /// <summary>Dư N ngày ⇒ cộng 0..N; thiếu N ngày ⇒ trừ 0..N.</summary>
     public static bool IsAdjustAllowed(int deviation, int adjustDays) =>
         deviation >= 0 ? adjustDays >= 0 && adjustDays <= deviation : adjustDays <= 0 && adjustDays >= deviation;
 

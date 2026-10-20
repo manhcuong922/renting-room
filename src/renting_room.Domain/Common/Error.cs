@@ -1,6 +1,5 @@
 namespace renting_room.Domain.Common;
 
-/// <summary>Phân loại lỗi nghiệp vụ — tầng API ánh xạ sang HTTP status.</summary>
 public enum ErrorType
 {
     Validation,

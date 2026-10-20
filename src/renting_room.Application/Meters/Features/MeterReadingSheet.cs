@@ -17,12 +17,6 @@ namespace renting_room.Application.Meters;
 
 public sealed record SheetReadingDto(Guid Id, ReadingKind Kind, DateOnly ReadingDate, decimal Value);
 
-/// <param name="ClosingPeriodStart">Gửi lại khi lưu chỉ số (khóa chỉ số cuối kỳ — MT-BR-04).</param>
-/// <param name="Previous">Chỉ số cũ (số cuối phiếu trước / nhận phòng / tháng trước).</param>
-/// <param name="Current">Chỉ số cuối kỳ đã nhập (null = chưa nhập).</param>
-/// <param name="Locked">Chỉ số đã dùng cho phiếu đã chốt — muốn sửa phải hủy phiếu (MT-BR-06).</param>
-/// <param name="RecentAverage">MT-BR-08: trung bình 3 kỳ trước của HĐ (null = chưa đủ 3 kỳ) — UI cảnh báo ngay khi nhập ≥ 3 lần và tăng ≥ 50.</param>
-/// <param name="UsageWarning">MT-BR-08: cảnh báo bất thường với số đã nhập (không chặn lưu).</param>
 public sealed record MeterReadingSheetRow(
     Guid RoomId,
     string RoomCode,
@@ -44,14 +38,14 @@ public sealed record MeterReadingSheetRow(
     decimal? Consumption,
     bool Locked,
     decimal? RecentAverage = null,
-    string? UsageWarning = null);
+    string? UsageWarning = null,
+    SheetInvoiceDto? Invoice = null);
+
+/// <summary>Hóa đơn của HĐ cho kỳ đang ghi (M06 §3.4) — null = chưa lập.</summary>
+public sealed record SheetInvoiceDto(Guid Id, InvoiceStatus Status, bool IsStale);
 
 public sealed record MeterReadingSheetDto(string BillingMonth, IReadOnlyList<MeterReadingSheetRow> Rows);
 
-/// <summary>
-/// MT-BR-09/10 (17/10/2026): công tơ đã có đoạn đo trên phiếu đã chốt ⇒ thay / tháo phải sau ngày cuối kỳ sử dụng của phiếu đó, nếu không
-/// phần sản lượng từ chỉ số cuối kỳ tới số tháo không phiếu nào tính (kỳ sau bỏ qua công tơ đã tháo trước đầu kỳ).
-/// </summary>
 internal static class MeterPeriodLocks
 {
     /// <summary>Lỗi nếu <paramref name="date"/> chưa qua kỳ đã chốt của công tơ.</summary>
@@ -59,7 +53,6 @@ internal static class MeterPeriodLocks
         locks.TryGetValue(meterId, out var until) && date <= until ? MeterErrors.PeriodLocked(until) : null;
 }
 
-/// <param name="FeeTypeId">Chỉ các công tơ của khoản thu này (VD đi ghi riêng điện).</param>
 public sealed record GetMeterReadingSheetQuery(Guid PropertyId, string BillingMonth, string? Floor, Guid? FeeTypeId = null)
     : IRequest<Result<MeterReadingSheetDto>>;
 
@@ -68,10 +61,6 @@ public sealed class GetMeterReadingSheetQueryValidator : AbstractValidator<GetMe
     public GetMeterReadingSheetQueryValidator(TimeProvider clock) => RuleFor(x => x.BillingMonth).BillingMonth(clock);
 }
 
-/// <summary>
-/// MT-UC-04 / §3.4: mỗi dòng = (phòng, HĐ, công tơ) có kỳ sử dụng ứng với tháng thu — Postpaid: kỳ của tháng; Prepaid: kỳ liền trước.
-/// Công tơ đã tháo trong kỳ không cần nhập (số tháo là số cuối).
-/// </summary>
 public sealed class GetMeterReadingSheetHandler(
     IPropertyQueries properties, IRoomQueries roomQueries, IContractQueries contractQueries, IMeterQueries meterQueries, IFeeQueries feeQueries,
     IRenterQueries renters, IInvoiceQueries invoices)
@@ -94,6 +83,8 @@ public sealed class GetMeterReadingSheetHandler(
         var locked = await invoices.GetLockedReadingIdsAsync(meters.Select(m => m.Id).ToList(), cancellationToken);
         var contractIds = contracts.Select(c => c.Id).ToList();
         var segments = await invoices.ListSegmentEndsAsync(contractIds, cancellationToken);
+        var billed = (await invoices.ListSheetInvoicesAsync(contractIds, cancellationToken))
+            .ToDictionary(x => (x.ContractId, x.PeriodStart), x => new SheetInvoiceDto(x.Id, x.Status, x.IsStale));
 
         var schedule = (await properties.GetBillingAsync(request.PropertyId, cancellationToken)).Schedule;
         var history = (await invoices.ListMeteredUsageAsync(contractIds, cancellationToken))
@@ -103,16 +94,12 @@ public sealed class GetMeterReadingSheetHandler(
         {
             var period = BillingMonths.PeriodIn(contract, month, schedule);
             var usage = period is null ? null : UsagePeriod.For(contract, period, schedule);
-            // HĐ trả phòng trong kỳ sử dụng ⇒ chỉ số cuối nhập khi lập phiếu quyết toán, không qua lưới.
             if (usage is null || contract.ActualEndDate <= usage.End)
                 continue;
-            // Chỉ số cuối của đoạn đo gần nhất trên phiếu chưa hủy kỳ trước (MT-BR-12) — như khi tính phiếu.
             var lastEnd = segments.Where(x => x.ContractId == contract.Id && x.PeriodStart < period!.Start)
                 .GroupBy(x => x.MeterId).ToDictionary(g => g.Key, g => g.MaxBy(x => x.PeriodStart)!.EndReadingId);
             var room = rooms[contract.RoomId];
-            // CT-BR-47: chuyển tới phòng này giữa kỳ ⇒ chỉ số cũ = chỉ số nhận phòng của HĐ (công tơ phòng cũ đã có chỉ số cuối lúc chuyển).
             var stay = contract.RoomStays[^1];
-            // Chuyển tới phòng này sau khi kỳ sử dụng kết thúc (thu trước) ⇒ công tơ phòng này chưa có gì để tính cho kỳ đó.
             if (stay.From > usage.End)
                 continue;
 
@@ -131,7 +118,8 @@ public sealed class GetMeterReadingSheetHandler(
                     consumption,
                     current is not null && locked.Contains(current.Id),
                     UsageAnomaly.RecentAverage(recent),
-                    consumption is { } used ? UsageAnomaly.Check(fee.Name, fee.Unit, used, recent, contract.OccupantsOn(usage.End).Any()) : null));
+                    consumption is { } used ? UsageAnomaly.Check(fee.Name, fee.Unit, used, recent, contract.OccupantsOn(usage.End).Any()) : null,
+                    billed.GetValueOrDefault((contract.Id, period!.Start))));
             }
         }
         return new MeterReadingSheetDto(request.BillingMonth, rows.OrderBy(r => r.Floor).ThenBy(r => r.RoomCode).ThenBy(r => r.FeeTypeName).ToList());
@@ -144,7 +132,6 @@ public sealed record PeriodicReadingInput(Guid MeterId, Guid ContractId, DateOnl
 
 public sealed record ReadingRowError(int Index, string Code, string Message);
 
-/// <summary>MT-BR-05: ngày ghi lệch xa ngày cuối kỳ sử dụng — không chặn lưu.</summary>
 public sealed record ReadingRowWarning(int Index, string Code, string Message);
 
 public sealed record SaveMeterReadingsResult(int Saved, IReadOnlyList<ReadingRowWarning>? Warnings = null);
@@ -166,17 +153,15 @@ public sealed class SaveMeterReadingsCommandValidator : AbstractValidator<SaveMe
     }
 }
 
-/// <summary>
-/// MT-UC-04 / MT-BR-07: lưu chỉ số cuối kỳ hàng loạt — có dòng lỗi thì không lưu dòng nào (422 READINGS_INVALID kèm <c>rowErrors</c>).
-/// Đã có chỉ số của kỳ đó ⇒ sửa giá trị (chưa khóa). Khóa công tơ theo id (C-07).
-/// </summary>
 public sealed class SaveMeterReadingsHandler(
-    IMeterRepository meterRepository, IContractQueries contractQueries, IInvoiceQueries invoices, IPropertyQueries properties, IUnitOfWork unitOfWork)
+    IMeterRepository meterRepository, IContractQueries contractQueries, IInvoiceQueries invoices, IPropertyQueries properties, IUnitOfWork unitOfWork,
+    MeterDraftRefresher drafts)
     : IRequestHandler<SaveMeterReadingsCommand, Result<SaveMeterReadingsResult>>
 {
     public async ValueTask<Result<SaveMeterReadingsResult>> Handle(SaveMeterReadingsCommand request, CancellationToken cancellationToken)
     {
         await using var transaction = await unitOfWork.BeginTransactionAsync(cancellationToken);
+        var affected = await drafts.LockContractsAsync(request.Readings.Select(r => r.MeterId).Distinct().ToList(), cancellationToken);
         var meters = (await meterRepository.LockAndLoadAsync(request.Readings.Select(r => r.MeterId), cancellationToken))
             .ToDictionary(m => m.Id);
         var contractIds = request.Readings.Select(r => r.ContractId).Distinct().ToList();
@@ -200,6 +185,7 @@ public sealed class SaveMeterReadingsHandler(
         if (errors.Count > 0)
             return Error.BusinessRule("READINGS_INVALID", "Có dòng chỉ số không hợp lệ — chưa lưu dòng nào.").WithDetail("rowErrors", errors);
 
+        await drafts.RecalculateAsync(affected, cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return new SaveMeterReadingsResult(request.Readings.Count, warnings);
@@ -209,7 +195,6 @@ public sealed class SaveMeterReadingsHandler(
     private const int DaysBeforePeriodEnd = 7;
     private const int DaysAfterPeriodEnd = 15;
 
-    /// <summary>MT-BR-05: chỉ số cuối kỳ nên ghi quanh ngày cuối kỳ (trước 7 ngày – sau 15 ngày); lệch xa thì nhắc kiểm lại kỳ.</summary>
     private static string? DateWarning(PeriodicReadingInput row, Contract contract, BillingSchedule schedule)
     {
         var period = contract.BillingPeriods(schedule, row.ClosingPeriodStart).FirstOrDefault(p => p.Start == row.ClosingPeriodStart);

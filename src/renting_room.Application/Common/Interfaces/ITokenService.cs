@@ -12,7 +12,6 @@ public interface ITokenService
     /// <summary>Hạn của mỗi refresh token (trượt theo mỗi lần xoay vòng).</summary>
     TimeSpan RefreshTokenLifetime { get; }
 
-    /// <summary>Hạn tuyệt đối của một phiên đăng nhập — hết hạn thì phải đăng nhập lại.</summary>
     TimeSpan RefreshTokenAbsoluteLifetime { get; }
 
     AccessToken CreateAccessToken(User user, DateTimeOffset now, Guid? sessionId = null);

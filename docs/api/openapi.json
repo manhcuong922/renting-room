@@ -356,47 +356,6 @@
         }
       }
     },
-    "/api/v1/me": {
-      "get": {
-        "tags": [
-          "Auth"
-        ],
-        "summary": "Thông tin tài khoản đang đăng nhập",
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MeDto"
-                }
-              }
-            }
-          }
-        }
-      },
-      "put": {
-        "tags": [
-          "Auth"
-        ],
-        "summary": "Chủ trọ tự sửa họ tên, SĐT, email — đổi SĐT / email phải gửi currentPassword và đăng nhập lại; phó quản lý: 403 (chủ trọ sửa)",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateMeRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        }
-      }
-    },
     "/api/v1/auth/login": {
       "post": {
         "tags": [
@@ -519,6 +478,47 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/me": {
+      "get": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Thông tin tài khoản đang đăng nhập",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeDto"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Chủ trọ tự sửa họ tên, SĐT, email — đổi SĐT / email phải gửi currentPassword và đăng nhập lại; phó quản lý: 403 (chủ trọ sửa)",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateMeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
           }
         }
       }
@@ -1687,7 +1687,7 @@
         "tags": [
           "Contracts"
         ],
-        "summary": "Xem trước thanh lý: phiếu còn nợ, tiền chờ hoàn, chỉ số cuối còn thiếu, phiếu quyết toán, cọc, những gì còn chặn hoàn tất",
+        "summary": "Xem trước thanh lý: phiếu còn nợ, tiền chờ hoàn, chỉ số cuối còn thiếu, hóa đơn trả phòng, cọc, những gì còn chặn hoàn tất",
         "parameters": [
           {
             "name": "id",
@@ -1769,7 +1769,7 @@
         "tags": [
           "Contracts"
         ],
-        "summary": "Hoàn tất thanh lý: cần phiếu quyết toán đã chốt; còn nợ ⇒ settlement CollectAll (đã thu toàn bộ) / WriteOff (bỏ nợ)",
+        "summary": "Hoàn tất thanh lý: cần hóa đơn trả phòng đã chốt; còn nợ ⇒ settlement CollectAll (đã thu toàn bộ) / WriteOff (bỏ nợ)",
         "parameters": [
           {
             "name": "id",
@@ -1802,7 +1802,7 @@
         "tags": [
           "Contracts"
         ],
-        "summary": "Lập phiếu quyết toán khi trả phòng (nhập chỉ số cuối) — nháp sửa được như phiếu thường",
+        "summary": "Lập hóa đơn trả phòng khi trả phòng (nhập chỉ số cuối) — nháp sửa được như phiếu thường",
         "parameters": [
           {
             "name": "id",
@@ -1953,7 +1953,7 @@
         "tags": [
           "Contracts"
         ],
-        "summary": "Ghi tình trạng tài sản khi trả phòng (bồi thường: thêm phụ thu trên phiếu quyết toán)",
+        "summary": "Ghi tình trạng tài sản khi trả phòng (bồi thường: thêm phụ thu trên hóa đơn trả phòng)",
         "parameters": [
           {
             "name": "id",
@@ -2838,7 +2838,7 @@
         "tags": [
           "Invoices"
         ],
-        "summary": "Danh sách phiếu (khu, tháng, trạng thái, phòng, hợp đồng, tầng, còn nợ, nháp cần tính lại)",
+        "summary": "Danh sách hóa đơn (khu, tháng, trạng thái, phòng, hợp đồng, tầng, còn nợ, nháp cần tính lại, đã điều chỉnh, cần gửi lại)",
         "parameters": [
           {
             "name": "propertyId",
@@ -2900,6 +2900,20 @@
             }
           },
           {
+            "name": "adjusted",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "needsResend",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
             "name": "page",
             "in": "query",
             "schema": {
@@ -2951,6 +2965,54 @@
           "Invoices"
         ],
         "summary": "Xóa phiếu nháp (chỉ phiếu mới nhất của hợp đồng)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/invoices/{id}/adjustments": {
+      "get": {
+        "tags": [
+          "Invoices"
+        ],
+        "summary": "Lịch sử điều chỉnh chỉ số của hóa đơn (mới nhất trước)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/invoices/{id}/resent": {
+      "post": {
+        "tags": [
+          "Invoices"
+        ],
+        "summary": "Đã gửi lại hóa đơn vừa điều chỉnh cho người thuê — bỏ nhãn \"Cần gửi lại\"",
         "parameters": [
           {
             "name": "id",
@@ -3615,6 +3677,97 @@
         }
       }
     },
+    "/api/v1/properties/{propertyId}/meter-reading-sheet": {
+      "get": {
+        "tags": [
+          "Meters"
+        ],
+        "summary": "Lưới ghi chỉ số cuối kỳ của khu theo tháng thu (lọc tầng, khoản thu)",
+        "parameters": [
+          {
+            "name": "propertyId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "billingMonth",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "floor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "feeTypeId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/properties/{propertyId}/meter-readings": {
+      "put": {
+        "tags": [
+          "Meters"
+        ],
+        "summary": "Lưu chỉ số cuối kỳ hàng loạt (lỗi 1 dòng ⇒ không lưu dòng nào)",
+        "parameters": [
+          {
+            "name": "propertyId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Khóa duy nhất cho thao tác (VD UUID). Gửi lại cùng khóa ⇒ nhận lại kết quả cũ, không thực thi lần 2.",
+            "schema": {
+              "maxLength": 64,
+              "minLength": 8,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveMeterReadingsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/api/v1/meters/{id}/replace": {
       "post": {
         "tags": [
@@ -3791,7 +3944,7 @@
         "tags": [
           "Meters"
         ],
-        "summary": "Điều chỉnh chỉ số đã chốt (gõ sai): sửa chỉ số + tự tạo khoản bù / phụ thu phần tiền chênh vào phiếu kỳ sau",
+        "summary": "Điều chỉnh chỉ số đã chốt (gõ sai): hóa đơn chưa thu ⇒ tính lại trên hóa đơn; đã thu ⇒ Xử lý ngay (tính lại + hoàn / thu thêm) hoặc Đẩy sang hóa đơn sau",
         "parameters": [
           {
             "name": "id",
@@ -3824,143 +3977,6 @@
           },
           "required": true
         },
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        }
-      }
-    },
-    "/api/v1/properties/{propertyId}/meter-reading-sheet": {
-      "get": {
-        "tags": [
-          "Meters"
-        ],
-        "summary": "Lưới ghi chỉ số cuối kỳ của khu theo tháng thu (lọc tầng, khoản thu)",
-        "parameters": [
-          {
-            "name": "propertyId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "billingMonth",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "floor",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "feeTypeId",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        }
-      }
-    },
-    "/api/v1/properties/{propertyId}/meter-readings": {
-      "put": {
-        "tags": [
-          "Meters"
-        ],
-        "summary": "Lưu chỉ số cuối kỳ hàng loạt (lỗi 1 dòng ⇒ không lưu dòng nào)",
-        "parameters": [
-          {
-            "name": "propertyId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "Idempotency-Key",
-            "in": "header",
-            "description": "Khóa duy nhất cho thao tác (VD UUID). Gửi lại cùng khóa ⇒ nhận lại kết quả cũ, không thực thi lần 2.",
-            "schema": {
-              "maxLength": 64,
-              "minLength": 8,
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SaveMeterReadingsRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        }
-      }
-    },
-    "/api/v1/org/login-events": {
-      "get": {
-        "tags": [
-          "Organization members"
-        ],
-        "summary": "Nhật ký đăng nhập của các tài khoản trong tổ chức (thành công / thất bại, lý do, IP) — chỉ chủ trọ, mới nhất trước",
-        "parameters": [
-          {
-            "name": "userId",
-            "in": "query",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "success",
-            "in": "query",
-            "schema": {
-              "type": "boolean"
-            }
-          },
-          {
-            "name": "page",
-            "in": "query",
-            "schema": {
-              "type": "integer",
-              "format": "int32"
-            }
-          },
-          {
-            "name": "pageSize",
-            "in": "query",
-            "schema": {
-              "type": "integer",
-              "format": "int32"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -4073,6 +4089,52 @@
           },
           "required": true
         },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/org/login-events": {
+      "get": {
+        "tags": [
+          "Organization members"
+        ],
+        "summary": "Nhật ký đăng nhập của các tài khoản trong tổ chức (thành công / thất bại, lý do, IP) — chỉ chủ trọ, mới nhất trước",
+        "parameters": [
+          {
+            "name": "userId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "success",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -5838,6 +5900,36 @@
         }
       }
     },
+    "/api/v1/tenancy-history": {
+      "get": {
+        "tags": [
+          "Rooms"
+        ],
+        "summary": "Tìm theo họ tên: người đó đã ở / đứng tên phòng nào, HĐ nào, từ – đến",
+        "parameters": [
+          {
+            "name": "search",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "propertyId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/api/v1/rooms/{id}": {
       "get": {
         "tags": [
@@ -5882,6 +5974,96 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/UpdateRoomRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/properties/{propertyId}/rooms": {
+      "post": {
+        "tags": [
+          "Rooms"
+        ],
+        "summary": "Tạo phòng",
+        "parameters": [
+          {
+            "name": "propertyId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Khóa duy nhất cho thao tác (VD UUID). Gửi lại cùng khóa ⇒ nhận lại kết quả cũ, không thực thi lần 2.",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 8,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRoomRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/properties/{propertyId}/rooms/bulk": {
+      "post": {
+        "tags": [
+          "Rooms"
+        ],
+        "summary": "Tạo phòng hàng loạt theo tầng (mã trùng ⇒ không tạo phòng nào)",
+        "parameters": [
+          {
+            "name": "propertyId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Khóa duy nhất cho thao tác (VD UUID). Gửi lại cùng khóa ⇒ nhận lại kết quả cũ, không thực thi lần 2.",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 8,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkCreateRoomsRequest"
               }
             }
           },
@@ -6010,126 +6192,6 @@
             "name": "id",
             "in": "path",
             "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        }
-      }
-    },
-    "/api/v1/properties/{propertyId}/rooms": {
-      "post": {
-        "tags": [
-          "Rooms"
-        ],
-        "summary": "Tạo phòng",
-        "parameters": [
-          {
-            "name": "propertyId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "Idempotency-Key",
-            "in": "header",
-            "description": "Khóa duy nhất cho thao tác (VD UUID). Gửi lại cùng khóa ⇒ nhận lại kết quả cũ, không thực thi lần 2.",
-            "required": true,
-            "schema": {
-              "maxLength": 64,
-              "minLength": 8,
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateRoomRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        }
-      }
-    },
-    "/api/v1/properties/{propertyId}/rooms/bulk": {
-      "post": {
-        "tags": [
-          "Rooms"
-        ],
-        "summary": "Tạo phòng hàng loạt theo tầng (mã trùng ⇒ không tạo phòng nào)",
-        "parameters": [
-          {
-            "name": "propertyId",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "Idempotency-Key",
-            "in": "header",
-            "description": "Khóa duy nhất cho thao tác (VD UUID). Gửi lại cùng khóa ⇒ nhận lại kết quả cũ, không thực thi lần 2.",
-            "required": true,
-            "schema": {
-              "maxLength": 64,
-              "minLength": 8,
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/BulkCreateRoomsRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        }
-      }
-    },
-    "/api/v1/tenancy-history": {
-      "get": {
-        "tags": [
-          "Rooms"
-        ],
-        "summary": "Tìm theo họ tên: người đó đã ở / đứng tên phòng nào, HĐ nào, từ – đến",
-        "parameters": [
-          {
-            "name": "search",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "propertyId",
-            "in": "query",
             "schema": {
               "type": "string",
               "format": "uuid"
@@ -6306,6 +6368,33 @@
           "reason": {
             "type": "string",
             "nullable": true
+          },
+          "handling": {
+            "$ref": "#/components/schemas/AdjustmentHandling"
+          },
+          "settlement": {
+            "$ref": "#/components/schemas/AdjustmentSettlement"
+          }
+        },
+        "additionalProperties": false
+      },
+      "AdjustmentHandling": {
+        "enum": [
+          "Recalculated",
+          "Immediate",
+          "NextInvoice"
+        ],
+        "type": "string"
+      },
+      "AdjustmentSettlement": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "method": {
+            "$ref": "#/components/schemas/PaymentMethod"
           }
         },
         "additionalProperties": false

@@ -9,5 +9,8 @@ public interface IPaymentRepository
 
     Task<Payment?> GetWithAllocationsForUpdateAsync(Guid id, CancellationToken cancellationToken);
 
+    /// <summary>Phiếu bỏ nợ chưa đảo có phân bổ (chưa hủy) vào hóa đơn này, kèm phân bổ — mới nhất trước.</summary>
+    Task<IReadOnlyList<Payment>> ListActiveWriteOffsForInvoiceAsync(Guid invoiceId, CancellationToken cancellationToken);
+
     void Add(Payment payment);
 }

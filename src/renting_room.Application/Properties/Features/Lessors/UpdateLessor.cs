@@ -7,7 +7,6 @@ using renting_room.Application.Identity.Organizations;
 
 namespace renting_room.Application.Properties;
 
-// Bên cho thuê (PR-BR-12 → 17)
 /// <summary>Khai bên cho thuê <b>riêng</b> cho khu — chỉ khi khác chủ trọ (công ty, người được ủy quyền…). Không khai ⇒ dùng thông tin chủ trọ.</summary>
 /// <param name="IdNumber">Null = giữ nguyên số giấy tờ đang lưu (client chỉ thấy 4 số cuối nên không gửi lại được).</param>
 public sealed record UpdateLessorCommand(

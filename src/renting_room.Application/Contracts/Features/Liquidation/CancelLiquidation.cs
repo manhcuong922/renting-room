@@ -4,43 +4,51 @@ using renting_room.Application.Billing;
 using renting_room.Application.Meters;
 using renting_room.Domain.Billing;
 using renting_room.Domain.Common;
+using renting_room.Domain.Contracts;
 
 namespace renting_room.Application.Contracts;
 
 /// <summary>Quay lại Active ⇒ ngày kết thúc thực tế bỏ trống; nếu phòng đã có HĐ mới sau đó, EXCLUDE trong DB trả 409.</summary>
-public sealed record CancelLiquidationCommand(Guid ContractId) : IRequest<Result>;
+public sealed record CancelLiquidationCommand(Guid ContractId) : IRequest<Result<IReadOnlyList<Warning>>>;
 
-/// <summary>
-/// Hủy thanh lý (CT-UC-09): phiếu quyết toán đã chốt ⇒ phải hủy phiếu đó trước; nháp quyết toán bị xóa, chỉ số cuối bị hủy.
-/// </summary>
 public sealed class CancelLiquidationHandler(
-    ContractMutation mutation, IInvoiceRepository invoices, ContractMeterReadings meterReadings, OccupantChecks occupantChecks, TimeProvider clock)
-    : IRequestHandler<CancelLiquidationCommand, Result>
+    ContractMutation mutation, IContractRepository contracts, IInvoiceRepository invoices, ContractMeterReadings meterReadings,
+    OccupantChecks occupantChecks, ResignVehicleRestorer vehicles, TimeProvider clock)
+    : IRequestHandler<CancelLiquidationCommand, Result<IReadOnlyList<Warning>>>
 {
-    public ValueTask<Result> Handle(CancelLiquidationCommand request, CancellationToken cancellationToken) =>
-        new(mutation.RunAsync(request.ContractId, async contract =>
+    public ValueTask<Result<IReadOnlyList<Warning>>> Handle(CancelLiquidationCommand request, CancellationToken cancellationToken) =>
+        new(mutation.RunAsync<IReadOnlyList<Warning>>(request.ContractId, async contract =>
         {
             var final = await invoices.FindFinalForUpdateAsync(contract.Id, cancellationToken);
             if (final?.Status == InvoiceStatus.Finalized)
-                return Result.Failure(BillingErrors.FinalFinalized);
+                return BillingErrors.FinalFinalized;
 
             var cancelled = contract.CancelLiquidation();
             if (cancelled.IsFailure)
-                return cancelled;
-            // PM-BR-34: thanh lý để ký lại bị hủy ⇒ cọc không còn chuyển sang HĐ mới.
+                return cancelled.Error!;
             contract.RevertDepositTransfer();
             if (final is not null)
                 invoices.Remove(final);
             await meterReadings.VoidFinalAsync(contract, clock.GetUtcNow(), cancellationToken);
 
-            // CT-BR-31: người ở chưa ghi chuyển đi lại thành "đang ở" vô thời hạn — có thể đã chuyển sang phòng khác.
-            var staying = contract.Occupants.Where(o => o.MoveOutDate is null).ToList();
-            if (staying.Count == 0)
-                return Result.Success();
-            var people = await occupantChecks.LoadPeopleAsync(staying.Select(o => o.RenterId), cancellationToken);
-            var elsewhere = await occupantChecks.FindLivingElsewhereAsync(contract,
-                staying.Select(o => (o.RenterId, o.MoveInDate, (DateOnly?)null)).ToList(),
-                people.ToDictionary(p => p.Key, p => p.Value.Name), cancellationToken);
-            return elsewhere is null ? Result.Success() : Result.Failure(elsewhere);
+            var occupants = await CheckOccupantsAsync(contract, cancellationToken);
+            if (occupants is not null)
+                return occupants;
+
+            var plates = contract.VehiclesEndedByResign().Select(v => v.PlateNumber).OfType<string>().ToList();
+            if (plates.Count > 0 && await contracts.FindResignDraftAsync(contract.Id, cancellationToken) is { } draft)
+                draft.ReleasePlates(plates);
+            return Result.Success(await vehicles.RestoreAsync(contract, null, cancellationToken));
         }, cancellationToken));
+
+    private async Task<Error?> CheckOccupantsAsync(Contract contract, CancellationToken ct)
+    {
+        var staying = contract.Occupants.Where(o => o.MoveOutDate is null).ToList();
+        if (staying.Count == 0)
+            return null;
+        var people = await occupantChecks.LoadPeopleAsync(staying.Select(o => o.RenterId), ct);
+        return await occupantChecks.FindLivingElsewhereAsync(contract,
+            staying.Select(o => (o.RenterId, o.MoveInDate, (DateOnly?)null)).ToList(),
+            people.ToDictionary(p => p.Key, p => p.Value.Name), ct);
+    }
 }

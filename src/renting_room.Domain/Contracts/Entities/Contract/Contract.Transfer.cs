@@ -4,10 +4,6 @@ namespace renting_room.Domain.Contracts;
 
 public sealed partial class Contract
 {
-    /// <summary>
-    /// CT-UC-12 / CT-BR-14: HĐ đi theo người thuê sang phòng khác cùng khu từ ngày <paramref name="date"/> — người ở, xe, dịch vụ, cọc giữ nguyên.
-    /// Phòng mới trống, chỉ số công tơ: Application kiểm và ghi.
-    /// </summary>
     public Result TransferRoom(Guid newRoomId, DateOnly date, DateOnly today)
     {
         if (Status != ContractStatus.Active)
@@ -24,7 +20,6 @@ public sealed partial class Contract
         return Result.Success();
     }
 
-    /// <summary>CT-BR-14: hủy lần chuyển phòng gần nhất (nhập nhầm phòng / ngày) — HĐ trở lại phòng trước đó như chưa từng chuyển.</summary>
     public Result CancelLastTransfer()
     {
         if (Status != ContractStatus.Active)
@@ -39,7 +34,6 @@ public sealed partial class Contract
         return Result.Success();
     }
 
-    /// <summary>CT-BR-14: lưu những gì lần chuyển phòng gần nhất đã đổi ngoài phòng + chỉ số, để hủy chuyển phòng hoàn nguyên được.</summary>
     public Result RecordTransferUndo(string snapshotJson)
     {
         if (_roomMoves.MaxBy(m => m.FromDate) is not { } last)
@@ -48,10 +42,6 @@ public sealed partial class Contract
         return Result.Success();
     }
 
-    /// <summary>
-    /// CT-BR-14: hủy chuyển phòng — trả lại mốc giá thuê lần chuyển đã ghi (xóa mốc mới thêm, hoặc trả mốc bị sửa đè về giá cũ).
-    /// false = mốc đó đã bị đổi tiếp sau lần chuyển ⇒ giữ nguyên, chủ trọ tự kiểm.
-    /// </summary>
     public bool RevertTransferRent(DateOnly effectiveFrom, decimal rentAfter, decimal? rentBefore, bool termAdded)
     {
         var term = _rentTerms.FirstOrDefault(t => t.EffectiveFrom == effectiveFrom);
@@ -69,7 +59,6 @@ public sealed partial class Contract
         return true;
     }
 
-    /// <summary>CT-BR-14: hủy chuyển phòng — gắn lại dịch vụ đã bỏ lúc chuyển. false = khoản đó đã được gắn / đổi lại sau lần chuyển.</summary>
     public bool RestoreTransferFee(ContractFeeInput input, DateOnly effectiveFrom)
     {
         if (_fees.Any(f => f.FeeTypeId == input.FeeTypeId && (f.Covers(effectiveFrom) || f.EffectiveFrom > effectiveFrom)))

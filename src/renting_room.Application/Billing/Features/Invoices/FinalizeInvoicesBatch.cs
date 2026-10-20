@@ -13,7 +13,6 @@ public sealed class FinalizeInvoicesBatchCommandValidator : AbstractValidator<Fi
         RuleFor(x => x.InvoiceIds).NotEmpty().Must(i => i.Count <= 500).WithErrorCode("OUT_OF_RANGE");
 }
 
-/// <summary>BL-UC-07: chốt hàng loạt — mỗi phiếu 1 transaction, trả kết quả từng phiếu.</summary>
 public sealed class FinalizeInvoicesBatchHandler(InvoiceFinalizer finalizer)
     : IRequestHandler<FinalizeInvoicesBatchCommand, IReadOnlyList<FinalizeResult>>
 {

@@ -14,17 +14,14 @@ internal sealed class ContractConfiguration : IEntityTypeConfiguration<Contract>
         builder.ToTable("contracts", t =>
         {
             t.HasCheckConstraint("ck_contracts_end_after_start", "end_date IS NULL OR end_date > start_date");
-            // M08 PM-BR-33: đã hoàn trả cọc phải có ngày và số tiền 0 … cọc thỏa thuận.
             t.HasCheckConstraint("ck_contracts_deposit_refund",
                 "deposit_status <> 'Refunded' OR (deposit_refunded_on IS NOT NULL AND deposit_refunded_amount BETWEEN 0 AND deposit_amount)");
             t.HasCheckConstraint("ck_contracts_actual_end", "actual_end_date IS NULL OR actual_end_date >= start_date");
-            // K5: "Tính tiền từ ngày" nằm trong thời gian HĐ.
             t.HasCheckConstraint("ck_contracts_billing_start", "billing_start_date >= start_date AND (end_date IS NULL OR billing_start_date <= end_date)");
             t.HasCheckConstraint("ck_contracts_liquidation_end",
                 "status NOT IN ('Liquidating','Ended') OR actual_end_date IS NOT NULL");
             t.HasCheckConstraint("ck_contracts_settings",
                 "deposit_amount >= 0 AND copies_count BETWEEN 1 AND 10");
-            // CT-BR-20 (Điều 164): hiệu lực không trước ngày ký. Có thể sau ngày bàn giao (dọn vào trước, ký sau).
             t.HasCheckConstraint("ck_contracts_effective_date",
                 "effective_date IS NULL OR signed_date IS NULL OR effective_date >= signed_date");
             // CT-BR-19/20: hợp đồng đã kích hoạt luôn có ngày hiệu lực và snapshot bên cho thuê.
@@ -80,7 +77,6 @@ internal sealed class ContractConfiguration : IEntityTypeConfiguration<Contract>
         builder.Property(c => c.HoldoverNote).HasMaxLength(500);
         builder.Property(c => c.CancelReason).HasMaxLength(500);
 
-        // CT-BR-25: văn bản hợp đồng theo mẫu (chép từ mẫu, bất biến sau kích hoạt).
         builder.Property(c => c.ContractType).HasConversion<string>().HasMaxLength(24).HasDefaultValue(ContractType.RoomRental)
             .HasSentinel((ContractType)(-1));
         builder.Property(c => c.Title).HasMaxLength(200);
@@ -123,7 +119,6 @@ internal sealed class ContractConfiguration : IEntityTypeConfiguration<Contract>
         builder.HasMany(c => c.Vehicles).WithOne()
             .HasForeignKey(v => new { v.OrganizationId, v.ContractId }).HasPrincipalKey(c => new { c.OrganizationId, c.Id })
             .OnDelete(DeleteBehavior.Cascade);
-        // Khoản thu: FK gồm property_id ⇒ khoản thu bắt buộc cùng khu với HĐ (CT-BR-06), chặn ở DB.
         builder.HasMany(c => c.Fees).WithOne()
             .HasForeignKey(f => new { f.OrganizationId, f.PropertyId, f.ContractId })
             .HasPrincipalKey(c => new { c.OrganizationId, c.PropertyId, c.Id })

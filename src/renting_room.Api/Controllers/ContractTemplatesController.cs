@@ -10,7 +10,6 @@ using renting_room.Security;
 
 namespace renting_room.Controllers;
 
-/// <summary>Mẫu hợp đồng của tổ chức (CT-BR-25) — tùy biến tiêu đề, điều khoản, trường theo từng loại hợp đồng.</summary>
 [ApiController]
 [Route("api/v1")]
 [Tags("Contract templates")]

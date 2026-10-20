@@ -59,22 +59,18 @@ public sealed class StaleDraftAndRoundingTests(ApiFactory factory)
             .ReadAsync<JsonElement>();
 
     [Fact]
-    public async Task EarlyDraft_FlaggedWhenReadingOrPriceOrContractChanges_BulkRecalculateClearsFlag()
+    public async Task EarlyDraft_ReadingChangeRecalculatesAtOnce_PriceOrContractChangeFlags_BulkRecalculateClearsFlag()
     {
         var s = await ArrangeAsync();
         (await DraftAsync(s)).GetProperty("isStale").GetBoolean().Should().BeFalse("vừa tính");
 
+        // M06 MT-BR-06 (20/10/2026): sửa chỉ số ⇒ nháp tự tính lại ngay, không qua cờ.
         (await SaveReadingAsync(s, 187)).StatusCode.Should().Be(HttpStatusCode.OK);
-        (await DraftAsync(s)).GetProperty("isStale").GetBoolean().Should().BeTrue("sửa chỉ số sau khi lập nháp");
-        var stale = await (await _client.GetAsync($"/api/v1/invoices?propertyId={s.PropertyId}&stale=true", s.Token)).ReadAsync<JsonElement>();
-        stale.GetProperty("totalCount").GetInt32().Should().Be(1);
-
-        var recalculated = await RecalculateStaleAsync(s);
-        recalculated.GetProperty("recalculated").GetInt32().Should().Be(1);
         var draft = await DraftAsync(s);
-        draft.GetProperty("isStale").GetBoolean().Should().BeFalse();
+        draft.GetProperty("isStale").GetBoolean().Should().BeFalse("nháp đã tính lại cùng lệnh lưu chỉ số");
+        draft.GetProperty("totalAmount").GetDecimal().Should().Be(3_304_000, "87 kWh × 3.500 = 304.500, làm tròn nghìn");
         draft.GetProperty("errorCount").GetInt32().Should().Be(0);
-        (await RecalculateStaleAsync(s)).GetProperty("recalculated").GetInt32().Should().Be(0, "không còn nháp cần tính lại");
+        (await RecalculateStaleAsync(s)).GetProperty("recalculated").GetInt32().Should().Be(0, "không có nháp cần tính lại");
 
         await _client.PostJsonAsync($"/api/v1/fee-types/{s.ElectricityId}/prices", new { effectiveFrom = s.Month, unitPrice = 3800 }, s.Token);
         (await DraftAsync(s)).GetProperty("isStale").GetBoolean().Should().BeTrue("giá điện có hiệu lực trong kỳ đổi");

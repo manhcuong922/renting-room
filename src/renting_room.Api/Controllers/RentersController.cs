@@ -11,7 +11,6 @@ using renting_room.Security;
 
 namespace renting_room.Controllers;
 
-/// <summary>Người thuê / người ở (M03 — phần cơ bản). Số giấy tờ luôn che, xem đầy đủ qua reveal có ghi log.</summary>
 [ApiController]
 [Route("api/v1")]
 [Tags("Renters")]

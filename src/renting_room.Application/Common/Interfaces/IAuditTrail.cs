@@ -29,7 +29,6 @@ public static class AuditActions
     public const string PrintWithIdNumbers = "PrintWithIdNumbers";
     public const string ExportWithIdNumbers = "ExportWithIdNumbers";
     public const string Anonymized = "Anonymized";
-    /// <summary>PR-UC-11 / RT-UC-10: một dòng cho cả lần import (số dòng) — từng bản ghi tạo ra vẫn có dòng "Created" riêng.</summary>
     public const string Import = "Import";
 }
 

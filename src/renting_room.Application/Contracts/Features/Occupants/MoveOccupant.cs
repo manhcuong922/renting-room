@@ -7,7 +7,6 @@ using renting_room.Domain.Contracts;
 
 namespace renting_room.Application.Contracts;
 
-// Chuyển người (CT-BR-52)
 public sealed record MoveOccupantCommand(
     Guid ContractId, Guid OccupantId, Guid ToContractId, DateOnly Date, OccupantRole Role, OccupantRelationship? RelationshipType,
     string? Relationship, bool GuardianConsent, string? Note) : IRequest<Result>;

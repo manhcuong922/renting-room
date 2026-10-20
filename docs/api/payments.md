@@ -45,7 +45,14 @@ Quyền: chủ trọ và phó quản lý.
 | 400 `INVALID_PAID_AT` | Ngày thu ở tương lai, hoặc trước ngày bắt đầu HĐ quá 60 ngày |
 | 422 `CONTRACT_NOT_BILLABLE` | HĐ đã kết thúc (hoàn tất thanh lý đã xử lý hết nợ) |
 
-`kind`: `Receipt` tiền thật · `WriteOff` **bỏ nợ** — không tính doanh thu. Tiền cọc không đi qua phiếu thu (chỉ theo dõi trên HĐ — [contracts.md](contracts.md#tiền-cọc)).
+`kind`: `Receipt` tiền thật · `WriteOff` **bỏ nợ** — không tính doanh thu · `Refund` **phiếu hoàn tiền** (20/10/2026) — tiền chủ trọ trả lại người thuê.
+Tiền cọc không đi qua phiếu thu (chỉ theo dõi trên HĐ — [contracts.md](contracts.md#tiền-cọc)).
+
+**Phiếu hoàn tiền** (`kind: Refund`, số `PC{yyyy}-{000000}` — PM-BR-37): chỉ hệ thống tạo, khi điều chỉnh chỉ số "Xử lý ngay" làm hóa đơn đã thu
+thấp hơn số người thuê trả thật ([meters.md](meters.md#điều-chỉnh-chỉ-số-đã-chốt-mt-uc-09--viết-lại-20102026)). `allocations` = hóa đơn được hoàn; hóa đơn
+**giảm** `paidAmount` / `collectedAmount` đúng số hoàn. Hiện trong danh sách phiếu thu với nhãn "Hoàn tiền" (số âm trong tổng thu). **Đảo** được như
+phiếu thu: hóa đơn tăng lại số đã thu — vượt tổng mới → 422 `PAYMENT_EXCEEDS_DEBT`. Điều chỉnh làm giảm phần **bỏ nợ** ⇒ phiếu bỏ nợ cũ bị
+**đảo** (`Reversed`, lý do "Điều chỉnh chỉ số — giảm phần bỏ nợ") và có phiếu bỏ nợ **mới** phần còn lại (cùng ngày, cùng lý do).
 Số phiếu thu `PT{năm lập phiếu}-…` (ghi bù ngày thu năm trước vẫn mang năm hiện tại).
 
 ## Trả dần và bỏ nợ (F2)
@@ -82,7 +89,7 @@ trở lại còn nợ. Đã đảo → 409 `PAYMENT_ALREADY_REVERSED`. Không x�
     "allocations": [ { "invoiceId": "…", "invoiceNo": "PB2026-000005", "amount": 1000000 } ] } ]
 ```
 
-- `status`: `Recorded` đã ghi · `Reversed` đã đảo (gạch ngang, hiện `reverseReason`). `kind`: `Receipt` tiền thu thật · `WriteOff` bỏ nợ (không tính doanh thu).
+- `status`: `Recorded` đã ghi · `Reversed` đã đảo (gạch ngang, hiện `reverseReason`). `kind`: `Receipt` tiền thu thật · `WriteOff` bỏ nợ (không tính doanh thu) · `Refund` hoàn tiền (tiền chi ra).
 - `method`: `Cash` tiền mặt · `BankTransfer` chuyển khoản · `EWallet` ví điện tử.
 - `allocations` = tiền này trừ vào phiếu nào, bao nhiêu (thu theo hợp đồng có thể trừ vào nhiều phiếu, cũ trước).
 - Ghi thu (`POST /contracts/{id}/payments`) → 201 + đúng một phần tử như trên; đảo (`POST /payments/{id}/reverse`) → 200 + phần tử đó sau khi đảo.

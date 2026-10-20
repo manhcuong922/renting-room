@@ -4,7 +4,6 @@ using renting_room.Application.Common.Interfaces;
 
 namespace renting_room.Infrastructure.Persistence;
 
-/// <summary>Bộ đếm số hợp đồng theo (tổ chức, năm).</summary>
 public sealed class ContractNumberSequence
 {
     public Guid OrganizationId { get; set; }

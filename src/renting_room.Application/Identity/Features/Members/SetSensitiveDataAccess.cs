@@ -4,10 +4,6 @@ using renting_room.Domain.Common;
 
 namespace renting_room.Application.Identity.Members;
 
-/// <summary>
-/// ID-BR-22: chủ trọ cấp / thu hồi quyền xem dữ liệu nhạy cảm cho phó quản lý — audit tự ghi khi lưu
-/// (Updated User, <c>canViewSensitiveData</c> cũ → mới).
-/// </summary>
 public sealed record SetSensitiveDataAccessCommand(Guid Id, bool Allowed) : IRequest<Result<MemberDto>>;
 
 public sealed class SetSensitiveDataAccessHandler(IUserRepository users, IUserQueries userQueries, IUnitOfWork unitOfWork, ICurrentUser currentUser)

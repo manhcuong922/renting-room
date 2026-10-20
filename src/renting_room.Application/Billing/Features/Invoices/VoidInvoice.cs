@@ -15,9 +15,9 @@ public sealed class VoidInvoiceCommandValidator : AbstractValidator<VoidInvoiceC
     public VoidInvoiceCommandValidator() => RuleFor(x => x.Reason).RequiredText(300, "Lý do hủy");
 }
 
-/// <summary>BL-BR-15/22: hủy phiếu đã chốt chưa thu tiền, chỉ phiếu mới nhất của HĐ — chỉ số được giải phóng để lập lại.</summary>
 public sealed class VoidInvoiceHandler(
-    IUnitOfWork unitOfWork, IInvoiceRepository invoices, IInvoiceQueries invoiceQueries, RoomChargeBilling roomCharges, TimeProvider clock)
+    IUnitOfWork unitOfWork, IInvoiceRepository invoices, IInvoiceQueries invoiceQueries, RoomChargeBilling roomCharges, IRoomChargeRepository charges,
+    ReadingAdjustmentCharges adjustments, TimeProvider clock)
     : IRequestHandler<VoidInvoiceCommand, Result<InvoiceDetailDto>>
 {
     public async ValueTask<Result<InvoiceDetailDto>> Handle(VoidInvoiceCommand request, CancellationToken cancellationToken)
@@ -37,10 +37,26 @@ public sealed class VoidInvoiceHandler(
         var voided = invoice.Void(request.Reason, now);
         if (voided.IsFailure)
             return voided.Error!;
-        // BL-BR-35: khoản phát sinh của phiếu bị hủy quay về chờ, vào phiếu lập lại.
         await roomCharges.DetachAllAsync(invoice.Id, cancellationToken);
+        var cancelled = await CancelAdjustmentsAsync(invoice.Id, cancellationToken);
+        if (cancelled.IsFailure)
+            return cancelled.Error!;
         await unitOfWork.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return invoice.ToDetail(now.ToBusinessDate());
+    }
+
+    /// <summary>BL-BR-15: hóa đơn nguồn bị hủy ⇒ khoản điều chỉnh chỉ số trỏ tới nó (chưa nằm trên hóa đơn đã chốt) tự hủy — lập lại đã đúng số.</summary>
+    private async Task<Result> CancelAdjustmentsAsync(Guid sourceInvoiceId, CancellationToken ct)
+    {
+        foreach (var charge in await charges.ListReadingAdjustmentsAsync(sourceInvoiceId, ct))
+        {
+            if (charge.InvoiceId is { } holderId && (await invoices.GetForUpdateAsync(holderId, ct))?.Status != InvoiceStatus.Draft)
+                continue;
+            var cancelled = await adjustments.CancelAsync(charge, "Hóa đơn nguồn đã hủy — chỉ số đã đúng khi lập lại", ct);
+            if (cancelled.IsFailure)
+                return cancelled;
+        }
+        return Result.Success();
     }
 }

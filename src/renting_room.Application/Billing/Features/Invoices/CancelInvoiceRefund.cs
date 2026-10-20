@@ -7,7 +7,6 @@ namespace renting_room.Application.Billing;
 
 public sealed record CancelInvoiceRefundCommand(Guid Id) : IRequest<Result<InvoiceDetailDto>>;
 
-/// <summary>Bỏ xác nhận đã hoàn (nhập nhầm) — phải bỏ trước khi hủy phiếu.</summary>
 public sealed class CancelInvoiceRefundHandler(
     IUnitOfWork unitOfWork, IInvoiceRepository invoices, IInvoiceQueries invoiceQueries, IContractQueries contracts, TimeProvider clock)
     : IRequestHandler<CancelInvoiceRefundCommand, Result<InvoiceDetailDto>>

@@ -18,7 +18,6 @@ public sealed class UpdateContractTemplateCommandValidator : AbstractValidator<U
     }
 }
 
-/// <summary>CT-BR-25: sửa mẫu không đổi hợp đồng đã kích hoạt; bản nháp nhận nội dung mới ở lần sửa nháp kế tiếp.</summary>
 public sealed class UpdateContractTemplateHandler(IContractTemplateRepository templates, IUnitOfWork unitOfWork)
     : IRequestHandler<UpdateContractTemplateCommand, Result<ContractTemplateDto>>
 {

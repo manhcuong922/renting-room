@@ -16,7 +16,6 @@ public sealed class GetInvoiceHandler(IInvoiceQueries invoices, IContractQueries
         if (invoice is null)
             return BillingErrors.NotFound;
 
-        // F1 (PM-UC-18): phiếu kỳ trước của HĐ còn nợ — thu vẫn FIFO phiếu cũ nhất trước (PM-BR-06).
         var previous = await invoices.ListPreviousDebtsAsync(invoice.ContractId, invoice.Id, invoice.PeriodStart, cancellationToken);
         var own = invoice.Status == InvoiceStatus.Draft ? Math.Max(invoice.TotalAmount, 0) : invoice.Outstanding;
         var earlier = await PreviousContractDebtsAsync(invoice.ContractId, cancellationToken);
@@ -29,7 +28,6 @@ public sealed class GetInvoiceHandler(IInvoiceQueries invoices, IContractQueries
 
     private const int MaxContractChain = 10;
 
-    /// <summary>PM-BR-31: đi ngược chuỗi <c>previous_contract_id</c> (ký lại — CT-UC-21), lấy phiếu đã chốt còn nợ của các HĐ đó.</summary>
     private async Task<IReadOnlyList<PreviousContractDebtDto>> PreviousContractDebtsAsync(Guid contractId, CancellationToken ct)
     {
         var numbers = new Dictionary<Guid, string>();

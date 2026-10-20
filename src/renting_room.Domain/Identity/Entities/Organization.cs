@@ -3,7 +3,6 @@ using renting_room.Domain.Properties;
 
 namespace renting_room.Domain.Identity;
 
-/// <summary>Khách hàng B2B (một chủ trọ / công ty quản lý) — đơn vị cô lập dữ liệu.</summary>
 public sealed class Organization : AuditableEntity
 {
     private Organization() { } // EF Core
@@ -19,24 +18,15 @@ public sealed class Organization : AuditableEntity
     public string? Note { get; private set; }
     public string? Address { get; private set; }
 
-    /// <summary>ID-BR-15: số phó quản lý đang hoạt động tối đa.</summary>
     public int MaxManagers { get; private set; } = DefaultMaxManagers;
 
     public const int DefaultMaxManagers = 10;
 
-    /// <summary>
-    /// RT-BR-06: giữ dữ liệu cá nhân người thuê bao nhiêu tháng sau lần cuối gắn với HĐ rồi tự ẩn danh. Tối thiểu 36 tháng = thời hiệu
-    /// khởi kiện tranh chấp hợp đồng 3 năm (BLDS 2015 Điều 429) — giữ chứng cứ; tối đa 120 tháng để không giữ vô thời hạn.
-    /// </summary>
     public int PersonalDataRetentionMonths { get; private set; } = DefaultRetentionMonths;
 
     /// <summary>Tắt ⇒ job không ẩn danh tổ chức này; chủ trọ tự chịu trách nhiệm lưu giữ (audit ghi ai tắt).</summary>
     public bool AutoAnonymizeEnabled { get; private set; } = true;
 
-    /// <summary>
-    /// PR-BR-17: bên cho thuê mặc định = thông tin của chính chủ trọ, khai một lần. Khu không khai bên cho thuê riêng (công ty, người được
-    /// ủy quyền…) thì dùng thông tin này khi kích hoạt / in hợp đồng.
-    /// </summary>
     public LessorDetails? DefaultLessor { get; private set; }
 
     public const int DefaultRetentionMonths = 36;
@@ -75,7 +65,6 @@ public sealed class Organization : AuditableEntity
 
     public static string NormalizeCode(string code) => code.Trim().ToUpperInvariant();
 
-    /// <summary>ID-UC-03: chủ trọ tự sửa thông tin tổ chức của mình — mã tổ chức không đổi.</summary>
     public void UpdateInfo(string name, string? contactName, string? contactPhone, string? contactEmail, string? taxCode, string? address)
     {
         if (string.IsNullOrWhiteSpace(name))
@@ -89,7 +78,6 @@ public sealed class Organization : AuditableEntity
         Address = TextNormalizer.TrimToNull(address);
     }
 
-    /// <summary>Sửa không ảnh hưởng hợp đồng đã kích hoạt — hợp đồng giữ bản chụp (PR-BR-15).</summary>
     public void UpdateDefaultLessor(LessorDetails lessor) => DefaultLessor = lessor.Normalized();
 
     public void UpdateDataRetention(int retentionMonths, bool autoAnonymize)

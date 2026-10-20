@@ -22,12 +22,13 @@ public static partial class ContractWarnings
     public static Warning UnusualPlate(string plate) => new("PLATE_FORMAT_UNUSUAL",
         $"Biển số \"{plate}\" không giống định dạng biển số Việt Nam — kiểm tra lại (biển cũ / nước ngoài thì bỏ qua).");
 
+    public static Warning VehicleNotRestored(string plate) => new("VEHICLE_NOT_RESTORED",
+        $"Xe biển số \"{plate}\" đang đăng ký ở hợp đồng khác — không mở lại được trên hợp đồng này, kiểm tra và đăng ký lại bằng tay nếu cần.");
+
     public const int LessorNoticeDays = 30;
 
-    /// <summary>HĐ không thời hạn: chấm dứt sau 90 ngày kể từ khi bên cho thuê thông báo (CT-BR-42).</summary>
     public const int IndefiniteNoticeDays = 90;
 
-    /// <param name="parkingFees">Khoản thu giữ xe của khu (có <c>VehicleType</c>) — null ⇒ bỏ qua đối chiếu số xe (CT-BR-22).</param>
     public static IReadOnlyList<Warning> For(Contract contract, IReadOnlyCollection<Fees.FeeType>? parkingFees = null, DateOnly? today = null)
     {
         var warnings = new List<Warning>();
@@ -48,7 +49,6 @@ public static partial class ContractWarnings
         return warnings;
     }
 
-    /// <summary>CT-BR-44/45: cờ cần chủ trọ xử lý → câu cảnh báo.</summary>
     private static Warning FlagWarning(Contract contract, ContractFlag flag) => flag switch
     {
         ContractFlag.RepresentativeMovedOut => new Warning("REPRESENTATIVE_MOVED_OUT",
@@ -61,7 +61,6 @@ public static partial class ContractWarnings
             $"Hợp đồng đã hết hạn ngày {contract.EndDate:dd/MM/yyyy} mà người thuê vẫn ở — đang tính như hợp đồng không thời hạn; nên ký phụ lục gia hạn (hoặc ghi nhận ở tiếp / thu lại phòng).")
     };
 
-    /// <summary>CT-BR-21, CT-BR-41, CT-BR-42: báo trước không đủ / bỏ đi không báo — chỉ cảnh báo, không chặn.</summary>
     private static IEnumerable<Warning> TerminationWarnings(Contract contract)
     {
         if (contract.ActualEndDate is not { } end)
@@ -90,7 +89,6 @@ public static partial class ContractWarnings
                 "khai báo xóa tạm trú cho người ở; tiền cọc xử lý theo điều khoản đã ký.");
     }
 
-    /// <summary>CT-BR-22: số xe đang đăng ký theo loại ≠ tổng số lượng phí giữ xe loại đó đang tính cho HĐ ⇒ cảnh báo.</summary>
     private static IEnumerable<Warning> ParkingMismatch(Contract contract, IReadOnlyCollection<Fees.FeeType> parkingFees, DateOnly today)
     {
         foreach (var group in parkingFees.Where(f => f.VehicleType is not null).GroupBy(f => f.VehicleType!.Value))

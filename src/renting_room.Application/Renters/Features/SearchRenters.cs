@@ -7,9 +7,6 @@ using renting_room.Domain.Common;
 
 namespace renting_room.Application.Renters;
 
-/// <param name="PropertyId">Người từng đứng tên / ở trong HĐ của khu này.</param>
-/// <param name="Staying"><c>true</c> = đang ở trong HĐ hiệu lực / đang thanh lý; <c>false</c> = không còn ở.</param>
-/// <param name="IncludeArchived">Kèm hồ sơ đã ẩn (RT-BR-05).</param>
 public sealed record SearchRentersQuery(
     string? Q, string? IdNumber, IdDocumentType? IdType, int Page = 1, int PageSize = Paging.DefaultPageSize, Guid? PropertyId = null,
     bool? Staying = null, bool IncludeArchived = false)

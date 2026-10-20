@@ -5,7 +5,6 @@ namespace renting_room.Domain.Common;
 
 public static class TextNormalizer
 {
-    /// <summary>"Trần Thị Lan" → "tran thi lan" — để tìm kiếm không dấu, không phân biệt hoa thường.</summary>
     public static string ToSearchText(string value)
     {
         var decomposed = value.Trim().ToLowerInvariant().Replace('đ', 'd').Normalize(NormalizationForm.FormD);

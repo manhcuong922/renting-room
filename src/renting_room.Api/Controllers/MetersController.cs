@@ -7,7 +7,6 @@ using renting_room.Requests;
 
 namespace renting_room.Controllers;
 
-/// <summary>Công tơ và chỉ số (M06): lắp / thay / tháo, ghi chỉ số cuối kỳ, sửa / hủy / điều chỉnh chỉ số.</summary>
 [ApiController]
 [Route("api/v1")]
 [Tags("Meters")]
@@ -28,7 +27,6 @@ public sealed class MetersController(ISender sender) : ControllerBase
         (await sender.Send(new InstallMeterCommand(roomId, b.FeeTypeId, b.SerialNo, b.InstalledDate, b.InitialValue, b.Note), ct))
         .ToCreated(Route);
 
-    // MT-UC-08 (M2): thay công tơ hàng loạt giữa tháng (điện lực thay cả khu).
     [HttpGet("properties/{propertyId:guid}/meters/replace-sheet")]
     [EndpointSummary("Lưới thay công tơ hàng loạt: công tơ đang hoạt động của khoản thu trong khu, chỉ số gần nhất")]
     public async Task<IResult> GetReplaceSheet(Guid propertyId, Guid feeTypeId, CancellationToken ct) =>
@@ -96,7 +94,7 @@ public sealed class MetersController(ISender sender) : ControllerBase
 
     [HttpPost("meter-readings/{id:guid}/adjust")]
     [Idempotent]
-    [EndpointSummary("Điều chỉnh chỉ số đã chốt (gõ sai): sửa chỉ số + tự tạo khoản bù / phụ thu phần tiền chênh vào phiếu kỳ sau")]
+    [EndpointSummary("Điều chỉnh chỉ số đã chốt (gõ sai): hóa đơn chưa thu ⇒ tính lại trên hóa đơn; đã thu ⇒ Xử lý ngay (tính lại + hoàn / thu thêm) hoặc Đẩy sang hóa đơn sau")]
     public async Task<IResult> AdjustReading(Guid id, AdjustReadingRequest b, CancellationToken ct) =>
-        (await sender.Send(new AdjustMeterReadingCommand(id, b.Value, b.Reason), ct)).ToHttp();
+        (await sender.Send(new AdjustMeterReadingCommand(id, b.Value, b.Reason, b.Handling, b.Settlement), ct)).ToHttp();
 }

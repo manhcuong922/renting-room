@@ -64,7 +64,7 @@ public sealed class ContractTests(ApiFactory factory)
         (await (await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/liquidation/complete", null, token))
             .ReadProblemCodeAsync()).Should().Be("LIQUIDATION_BEFORE_END_DATE");
         (await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/liquidation/cancel", null, token))
-            .StatusCode.Should().Be(HttpStatusCode.NoContent);
+            .StatusCode.Should().Be(HttpStatusCode.OK);
 
         // Trả phòng hôm nay ⇒ hoàn tất được.
         var start = await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/liquidation/start",

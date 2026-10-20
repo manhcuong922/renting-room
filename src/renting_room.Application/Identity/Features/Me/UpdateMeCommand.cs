@@ -7,8 +7,6 @@ using renting_room.Domain.Identity;
 
 namespace renting_room.Application.Identity.Me;
 
-/// <summary>ID-UC-12: chủ trọ / SystemAdmin tự sửa họ tên, SĐT, email của mình; phó quản lý do chủ trọ sửa.</summary>
-/// <param name="CurrentPassword">Bắt buộc khi đổi SĐT hoặc email (tên đăng nhập).</param>
 public sealed record UpdateMeCommand(string FullName, string? Phone, string? Email, string? CurrentPassword = null) : IRequest<Result>;
 
 public sealed class UpdateMeCommandValidator : AbstractValidator<UpdateMeCommand>

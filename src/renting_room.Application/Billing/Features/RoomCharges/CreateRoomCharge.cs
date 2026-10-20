@@ -11,7 +11,6 @@ using renting_room.Domain.Properties;
 
 namespace renting_room.Application.Billing;
 
-/// <param name="Settlement">Có ⇒ khoản đã thanh toán / đã hoàn ngay (vẫn hiện trên phiếu, không tính vào tổng).</param>
 public sealed record CreateRoomChargeCommand(
     Guid RoomId, RoomChargeKind Kind, string Description, decimal Amount, DateOnly IncurredOn, string Reason, ChargeSettlement? Settlement)
     : IRequest<Result<RoomChargeDto>>;
@@ -30,10 +29,6 @@ public sealed class CreateRoomChargeCommandValidator : AbstractValidator<CreateR
     }
 }
 
-/// <summary>
-/// BL-UC-15 / BL-BR-30..33: tạo phụ thu / bù cho phòng đang có người thuê tại ngày phát sinh; nháp nhận được khoản đã có ⇒ gắn ngay,
-/// chưa có ⇒ chờ. Khóa HĐ → phiếu (C-07).
-/// </summary>
 public sealed class CreateRoomChargeHandler(
     IUnitOfWork unitOfWork, IRoomQueries rooms, IContractQueries contracts, IInvoiceQueries invoiceQueries, IRoomChargeRepository roomChargeRepository,
     IRoomChargeQueries roomChargeQueries, RoomChargeBilling roomCharges, TimeProvider clock)
@@ -45,7 +40,6 @@ public sealed class CreateRoomChargeHandler(
         if (propertyId is null)
             return PropertyErrors.RoomNotFound;
 
-        // HĐ đang ở phòng tại ngày phát sinh — kể cả HĐ đã chuyển sang phòng khác sau đó (M05 CT-BR-14).
         var date = request.IncurredOn;
         var tenancy = await contracts.FindTenancyAsync(request.RoomId, date, cancellationToken);
         if (tenancy is null)
@@ -58,7 +52,6 @@ public sealed class CreateRoomChargeHandler(
         if (status == ContractStatus.Ended || (status == ContractStatus.Liquidating && finalClosed))
             return RoomChargeErrors.NoOpenInvoice;
 
-        // BL-BR-30 (G-01): khoản bù chưa trả không vượt một tháng tiền phòng ⇒ phiếu tháng luôn trừ được hết, không còn khoản bù treo.
         if (request.Kind == RoomChargeKind.Credit && request.Settlement is null
             && await CreditLimitExceededAsync(contracts, roomChargeQueries, tenancy.Id, date, request.Amount, cancellationToken) is { } limit)
             return RoomChargeErrors.CreditTooHigh(limit);

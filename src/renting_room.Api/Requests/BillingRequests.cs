@@ -15,7 +15,6 @@ public sealed record RecalculateInvoicesRequest(
 
 public sealed record EditInvoiceLineRequest(decimal? Quantity, decimal? UnitPrice, decimal? Amount, string? Note);
 
-/// <param name="Settled">Phụ thu / giảm trừ đã thanh toán / đã hoàn ngay ⇒ hiện trên phiếu, không tính vào tổng (BL-BR-34).</param>
 public sealed record AddInvoiceLineRequest(
     InvoiceLineType Type, string Description, decimal? Quantity, decimal? UnitPrice, decimal Amount, string Note, Guid? FeeTypeId, Guid? SourceInvoiceId,
     bool? Settled = null, DateOnly? SettledOn = null, PaymentMethod? Method = null);

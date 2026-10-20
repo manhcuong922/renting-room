@@ -4,7 +4,6 @@ using renting_room.Domain.Common;
 
 namespace renting_room.Application.Identity.Members;
 
-/// <summary>PM-BR-16: chủ trọ bật / tắt quyền bỏ nợ cho từng phó quản lý — audit tự ghi (Updated User, <c>canWriteOff</c>).</summary>
 public sealed record SetWriteOffPermissionCommand(Guid Id, bool Allowed) : IRequest<Result<MemberDto>>;
 
 public sealed class SetWriteOffPermissionHandler(IUserRepository users, IUserQueries userQueries, IUnitOfWork unitOfWork, ICurrentUser currentUser)

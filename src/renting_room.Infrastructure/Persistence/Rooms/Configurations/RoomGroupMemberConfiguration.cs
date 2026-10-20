@@ -14,7 +14,6 @@ internal sealed class RoomGroupMemberConfiguration : IEntityTypeConfiguration<Ro
         builder.HasKey(m => m.Id);
         builder.ConfigureAuditable();
 
-        // PR-BR-07: phòng phải cùng khu với nhóm — đảm bảo bằng FK composite có property_id.
         builder.HasOne<Room>()
             .WithMany()
             .HasForeignKey(m => new { m.OrganizationId, m.PropertyId, m.RoomId })

@@ -7,7 +7,6 @@ using renting_room.Domain.Common;
 
 namespace renting_room.Application.Billing;
 
-/// <param name="Amount">Bỏ trống ⇒ số lượng × đơn giá × hệ số prorate.</param>
 public sealed record EditInvoiceLineCommand(Guid InvoiceId, Guid LineId, decimal? Quantity, decimal? UnitPrice, decimal? Amount, string? Note)
     : IRequest<Result<InvoiceDetailDto>>;
 
@@ -38,21 +37,18 @@ public sealed class EditInvoiceLineHandler(
             if (edited.IsFailure)
                 return edited;
             var line = invoice.Lines.First(l => l.Id == request.LineId);
-            // BL-BR-27: sửa số tiền hoàn trả cũng không vượt số đã thu của phiếu nguồn.
             if (line is { Type: InvoiceLineType.Refund, SourceInvoiceId: { } sourceId } && sourceId != invoice.Id)
             {
                 var allowed = await RefundSource.CheckAsync(invoiceQueries, invoice, sourceId, Math.Abs(line.Amount), cancellationToken, line.Id);
                 if (allowed.IsFailure)
                     return allowed;
             }
-            // BL-BR-34: sửa dòng phụ thu / giảm trừ trên nháp ⇒ sửa khoản phát sinh của phòng.
             if (line.RoomChargeId is { } chargeId)
                 (await roomCharges.GetForUpdateAsync(chargeId, cancellationToken))!.Update(Math.Abs(line.Amount), line.Note!);
             return edited;
         }, cancellationToken);
 
-    /// <summary>BL-BR-38: dòng của khoản chốt điện nước khi chuyển phòng — không sửa / xóa tay.</summary>
     internal static async Task<bool> IsSystemChargeLineAsync(IRoomChargeQueries roomCharges, Invoice invoice, Guid lineId, CancellationToken ct) =>
         invoice.Lines.FirstOrDefault(l => l.Id == lineId)?.RoomChargeId is { } chargeId
-        && await roomCharges.IsMeterClosingAsync(chargeId, ct);
+        && await roomCharges.IsSystemAsync(chargeId, ct);
 }

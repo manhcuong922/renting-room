@@ -5,8 +5,6 @@ using renting_room.Domain.Common;
 
 namespace renting_room.Application.Imports;
 
-// ============================================================ Dùng chung cho import Excel (PR-UC-11, RT-UC-10)
-
 /// <param name="Column">Tiêu đề cột trong file (null = lỗi cả dòng / cả phòng).</param>
 public sealed record ImportIssue(string Code, string Message, string? Column = null);
 
@@ -16,19 +14,15 @@ public sealed record ImportRowResult<TRow>(TRow Row, IReadOnlyList<ImportIssue> 
     public bool IsValid => Errors.Count == 0;
 }
 
-/// <param name="FileErrors">Lỗi cả file (sai mẫu, quá số dòng…) — không có dòng nào được đọc.</param>
 public sealed record ImportPreviewDto<TRow>(int ValidCount, int ErrorCount, IReadOnlyList<ImportRowResult<TRow>> Rows, IReadOnlyList<ImportIssue> FileErrors);
 
 public enum ImportOutcome
 {
     Saved,
-    /// <summary>Không hợp lệ ⇒ bỏ qua, chưa lưu (sửa rồi lưu lại).</summary>
     Invalid,
-    /// <summary>Hợp lệ nhưng lỗi lúc lưu (dữ liệu vừa đổi) ⇒ chưa lưu.</summary>
     Failed
 }
 
-/// <param name="Key">Mã phòng — đơn vị lưu (form phòng: từng dòng; form người thuê: cả phòng).</param>
 public sealed record ImportUnitResult(string Key, IReadOnlyList<int> RowNumbers, ImportOutcome Outcome, IReadOnlyList<ImportIssue> Errors);
 
 public sealed record ImportSaveResultDto(int Saved, int Skipped, IReadOnlyList<ImportUnitResult> Units);
@@ -116,7 +110,6 @@ internal static class ImportFiles
     }
 }
 
-/// <summary>Bảng dữ liệu trong 1 sheet: tìm dòng tiêu đề theo mẫu, đọc các dòng sau đó (bỏ dòng trống).</summary>
 internal sealed class ImportTable
 {
     private const int HeaderSearchRows = 10;

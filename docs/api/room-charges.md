@@ -15,12 +15,16 @@ Quyền: chủ trọ và phó quản lý.
 - **Khoản hệ thống** (`isSystem = true`) — **chỉ còn dữ liệu cũ** (17/10/2026: chuyển phòng không tạo khoản này nữa, sản lượng phòng cũ cộng vào
   dòng điện nước của phiếu): khoản chốt điện nước của phòng cũ khi chuyển phòng trước 17/10/2026 — kèm `feeTypeId`, `quantity`, `unitPrice`.
   Chỉ đánh dấu / bỏ đánh dấu "đã thu ngay"; sửa / hủy → 422 `ROOM_CHARGE_SYSTEM`.
+- **Khoản điều chỉnh chỉ số** (`isSystem = true`, 20/10/2026 — [meters.md](meters.md#điều-chỉnh-chỉ-số-đã-chốt-mt-uc-09--viết-lại-20102026)): tạo khi
+  điều chỉnh chỉ số đã chốt chọn "Đẩy sang hóa đơn sau"; kèm `feeTypeId`. Mỗi dòng hóa đơn nguồn tối đa 1 khoản — đổi số tiền bằng cách điều chỉnh
+  lại chỉ số; **không sửa / hủy tay** (422 `ROOM_CHARGE_SYSTEM`), chỉ đánh dấu đã trả / đã thu ngay; không tính vào giới hạn khoản bù; hóa đơn nguồn bị
+  hủy ⇒ khoản tự hủy.
 - **Trạng thái thanh toán** (`isSettled`):
   - `false` — chưa thanh toán: phụ thu cộng vào phiếu, bù trừ vào phiếu.
   - `true` — phụ thu người thuê **đã trả ngay** / bù chủ trọ **đã trả ngay**: vẫn hiện trên phiếu cho đầy đủ nhưng **không tính vào tổng**.
 - **Vào phiếu nào**: phiếu nháp của HĐ có ngày cuối kỳ ≥ ngày phát sinh.
   - Nháp đã có ⇒ gắn ngay. Chưa có ⇒ khoản **chờ**, tự vào khi lập / tính lại nháp.
-  - Kỳ chứa ngày phát sinh đã chốt ⇒ vào phiếu kỳ kế tiếp. Đang trả phòng ⇒ vào phiếu quyết toán.
+  - Kỳ chứa ngày phát sinh đã chốt ⇒ vào phiếu kỳ kế tiếp. Đang trả phòng ⇒ vào hóa đơn trả phòng.
 - **Khóa theo phiếu**: khoản đã nằm trên phiếu đã chốt thì không đánh dấu / hủy được (422 `ROOM_CHARGE_LOCKED`). Hủy phiếu hoặc xóa nháp ⇒ khoản quay về chờ.
 - **Thêm tay trên nháp** (`POST /invoices/{id}/manual-lines` loại `Surcharge` / `ManualDiscount`) cũng tạo khoản phát sinh của phòng; xóa dòng đó ⇒ khoản bị hủy.
 
@@ -68,14 +72,15 @@ Quyền: chủ trọ và phó quản lý.
 ## Trên phiếu
 
 Dòng của khoản phát sinh có `roomChargeId` và `isSettled` ([invoices.md](invoices.md)). Dòng `isSettled: true` hiện kèm ghi chú "đã thu / đã trả", không cộng vào `totalAmount`.
-Khoản bù chưa trả mà lớn hơn phần thu của phiếu ⇒ chưa đưa vào, nháp có cảnh báo `ROOM_CHARGE_NOT_ATTACHED`, khoản chờ phiếu sau.
+Khoản bù chưa trả mà lớn hơn phần thu của **phiếu tháng** ⇒ chưa đưa vào, nháp có cảnh báo `ROOM_CHARGE_NOT_ATTACHED`, khoản chờ phiếu sau.
+**Hóa đơn trả phòng** (20/10/2026) luôn nhận khoản bù, kể cả làm hóa đơn âm ⇒ Chờ hoàn ([invoices.md](invoices.md#hóa-đơn-trả-phòng)).
 
 ## Lỗi
 
 | Lỗi | Khi nào |
 |-----|---------|
 | 422 `ROOM_CHARGE_NO_TENANT` | Phòng không có người thuê tại ngày phát sinh |
-| 422 `ROOM_CHARGE_NO_OPEN_INVOICE` | HĐ đã chốt phiếu quyết toán / đã kết thúc |
+| 422 `ROOM_CHARGE_NO_OPEN_INVOICE` | HĐ đã chốt hóa đơn trả phòng / đã kết thúc |
 | 422 `ROOM_CHARGE_LOCKED` | Khoản đã nằm trên phiếu đã chốt |
 | 422 `ROOM_CHARGE_CANCELLED` | Khoản đã hủy |
 | 422 `ROOM_CHARGE_NOT_SETTLED` | Bỏ đánh dấu khi chưa đánh dấu |

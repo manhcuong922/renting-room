@@ -22,10 +22,6 @@ public enum RenterExportLayout
     SingleSheet       // gộp 1 sheet
 }
 
-/// <summary>
-/// E1 — Danh sách người thuê (M10). Bộ lọc kết hợp AND; danh sách rỗng / null = không lọc.
-/// Khoảng ngày: người <b>đang ở</b> bất kỳ ngày nào trong [from, to]; bỏ trống = đang ở hôm nay.
-/// </summary>
 public sealed record ExportRentersQuery(
     IReadOnlyList<Guid>? PropertyIds = null,
     IReadOnlyList<string>? Floors = null,
@@ -64,11 +60,6 @@ public static class ExportErrors
         $"Kết quả vượt {MaxRows:N0} dòng — hãy thu hẹp bộ lọc (ít khu hơn / khoảng ngày ngắn hơn).");
 }
 
-/// <summary>
-/// RP-BR-01: id khu / nhóm / phòng không thuộc tổ chức ⇒ 404 cả request. RP-BR-03: số giấy tờ che mặc định;
-/// xuất đầy đủ ghi log AUDIT. RP-BR-05: tối đa 20.000 dòng. RP-BR-09: đếm + đọc trong 1 transaction REPEATABLE READ
-/// (cùng một snapshot) — có người sửa dữ liệu giữa chừng thì file vẫn nhất quán và không vượt giới hạn đã kiểm.
-/// </summary>
 public sealed class ExportRentersHandler(
     IExportQueries exports,
     IPropertyQueries properties,
@@ -149,7 +140,6 @@ public sealed class ExportRentersHandler(
     }
 }
 
-/// <summary>Một dòng = một người ở trong một hợp đồng (người ở nhiều lần ⇒ nhiều dòng).</summary>
 public sealed class RenterExportRow
 {
     public Guid PropertyId { get; init; }

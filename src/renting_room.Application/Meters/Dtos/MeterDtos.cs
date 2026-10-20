@@ -8,7 +8,6 @@ namespace renting_room.Application.Meters;
 public sealed record MeterReadingDto(
     Guid Id, ReadingKind Kind, DateOnly ReadingDate, decimal Value, Guid? ContractId, string? Note, string Version);
 
-/// <param name="LatestReading">Chỉ số mới nhất — UI dùng cho nút "Dùng số mới nhất" (MT-BR-13).</param>
 public sealed record MeterDto(
     Guid Id,
     Guid RoomId,

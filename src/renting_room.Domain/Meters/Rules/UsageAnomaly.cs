@@ -1,9 +1,5 @@
 namespace renting_room.Domain.Meters;
 
-/// <summary>
-/// MT-BR-08 (ngưỡng chốt 09/10/2026) — cảnh báo điện nước bất thường, <b>không chặn</b>: (1) sản lượng gấp ≥ 3 lần trung bình 3 kỳ trước
-/// VÀ tăng ≥ 50 đơn vị (tránh báo nhầm phòng dùng ít: 10 → 35 kWh); chưa đủ 3 kỳ lịch sử ⇒ không xét; (2) = 0 khi phòng có người ở.
-/// </summary>
 public static class UsageAnomaly
 {
     public const string Code = "UNUSUAL_USAGE";

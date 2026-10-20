@@ -3,11 +3,6 @@ using renting_room.Domain.Contracts;
 
 namespace renting_room.Domain.Billing;
 
-/// <summary>
-/// Khoản phát sinh của phòng đang có người thuê (M07 BL-BR-30..37): tạo ngay lúc xảy ra (hỏng khóa, mất nước…), cuối tháng tự vào phiếu của
-/// HĐ đang ở phòng ngày đó. Có trạng thái đã thanh toán / đã hoàn ngay — khoản đó vẫn hiện trên phiếu nhưng không tính vào tổng.
-/// Khóa theo phiếu: đã nằm trên phiếu đã chốt thì không sửa / hủy (Application kiểm vì cần trạng thái phiếu).
-/// </summary>
 public sealed class RoomCharge : TenantEntity
 {
     public const decimal MaxAmount = 100_000_000;
@@ -23,7 +18,6 @@ public sealed class RoomCharge : TenantEntity
     public DateOnly IncurredOn { get; private set; }
     public string Reason { get; private set; } = null!;
 
-    /// <summary>Phụ thu: người thuê đã trả ngay; bù: chủ trọ đã trả ngay (BL-BR-31).</summary>
     public bool IsSettled { get; private set; }
     public DateOnly? SettledOn { get; private set; }
     public PaymentMethod? SettledMethod { get; private set; }
@@ -33,10 +27,6 @@ public sealed class RoomCharge : TenantEntity
     public DateTimeOffset? CancelledAt { get; private set; }
     public string? CancelReason { get; private set; }
 
-    /// <summary>
-    /// BL-BR-38: khoản chốt điện nước khi chuyển phòng (M05 CT-BR-47) — hệ thống tạo từ công tơ phòng cũ: chỉ số đầu / cuối, sản lượng,
-    /// đơn giá tại ngày chuyển. Null với khoản nhập tay.
-    /// </summary>
     public Guid? MeterId { get; private set; }
     public Guid? StartReadingId { get; private set; }
     public Guid? EndReadingId { get; private set; }
@@ -44,8 +34,12 @@ public sealed class RoomCharge : TenantEntity
     public decimal? Quantity { get; private set; }
     public decimal? UnitPrice { get; private set; }
 
-    /// <summary>Khoản hệ thống: không sửa / hủy tay — chỉ đánh dấu đã thanh toán, hoặc hủy cùng lần chuyển phòng.</summary>
-    public bool IsSystem => MeterId is not null;
+    public Guid? SourceInvoiceId { get; private set; }
+    public DateOnly? SourceUsageStart { get; private set; }
+
+    public bool IsReadingAdjustment => SourceInvoiceId is not null;
+
+    public bool IsSystem => MeterId is not null || IsReadingAdjustment;
 
     public bool IsCancelled => CancelledAt is not null;
     public bool IsPending => InvoiceId is null && !IsCancelled;
@@ -74,7 +68,6 @@ public sealed class RoomCharge : TenantEntity
         };
     }
 
-    /// <summary>BL-BR-38: phụ thu điện nước phòng cũ chốt tại ngày chuyển phòng.</summary>
     public static RoomCharge CreateMeterClosing(
         Guid propertyId, Guid roomId, Guid contractId, string description, decimal amount, DateOnly incurredOn, string reason, MeterClosing closing)
     {
@@ -86,6 +79,31 @@ public sealed class RoomCharge : TenantEntity
         charge.Quantity = closing.Quantity;
         charge.UnitPrice = closing.UnitPrice;
         return charge;
+    }
+
+    /// <summary>M06 MT-BR-19 "Đẩy sang hóa đơn sau": khoản điều chỉnh của dòng điện nước <paramref name="feeTypeId"/> kỳ <paramref name="usageStart"/>.</summary>
+    public static RoomCharge CreateReadingAdjustment(
+        Guid propertyId, Guid roomId, Guid contractId, RoomChargeKind kind, string description, decimal amount, DateOnly incurredOn, string reason,
+        Guid sourceInvoiceId, Guid feeTypeId, DateOnly usageStart)
+    {
+        var charge = Create(propertyId, roomId, contractId, kind, description, amount, incurredOn, reason);
+        charge.SourceInvoiceId = sourceInvoiceId;
+        charge.FeeTypeId = feeTypeId;
+        charge.SourceUsageStart = usageStart;
+        return charge;
+    }
+
+    /// <summary>Điều chỉnh lại chỉ số: cùng khoản đổi loại / số tiền (người gọi gỡ khỏi nháp trước rồi gắn lại).</summary>
+    public void ReviseAdjustment(RoomChargeKind kind, decimal amount, string description, string reason)
+    {
+        if (!IsReadingAdjustment)
+            throw new InvalidOperationException("Only reading adjustments are revised.");
+        if (amount <= 0 || amount > MaxAmount || decimal.Round(amount, 0) != amount)
+            throw new ArgumentOutOfRangeException(nameof(amount));
+        Kind = kind;
+        Amount = amount;
+        Description = description.Trim();
+        Reason = reason.Trim();
     }
 
     public Result Settle(DateOnly settledOn, PaymentMethod method, DateOnly today)
@@ -122,7 +140,6 @@ public sealed class RoomCharge : TenantEntity
         return Result.Success();
     }
 
-    /// <summary>Sửa dòng trên nháp ⇒ sửa khoản (BL-BR-34).</summary>
     public void Update(decimal amount, string reason)
     {
         if (amount <= 0 || amount > MaxAmount || decimal.Round(amount, 0) != amount)
@@ -133,6 +150,5 @@ public sealed class RoomCharge : TenantEntity
 
     public void AttachTo(Guid invoiceId) => InvoiceId = invoiceId;
 
-    /// <summary>Nháp bị xóa / phiếu bị hủy ⇒ khoản quay về chờ (BL-BR-35).</summary>
     public void Detach() => InvoiceId = null;
 }

@@ -2,13 +2,11 @@ using renting_room.Domain.Common;
 
 namespace renting_room.Domain.Identity;
 
-/// <summary>Tài khoản đăng nhập. SystemAdmin không thuộc tổ chức; các role khác thuộc đúng 1 tổ chức (ID-BR-03).</summary>
 public sealed class User : AuditableEntity
 {
     public const int MaxFailedLoginAttempts = 5;
     public static readonly TimeSpan LockoutDuration = TimeSpan.FromMinutes(15);
 
-    /// <summary>ID-BR-20: mật khẩu tạm (tạo tài khoản / cấp lại) chỉ dùng được trong khoảng này.</summary>
     public static readonly TimeSpan TemporaryPasswordLifetime = TimeSpan.FromHours(72);
 
     private User() { } // EF Core
@@ -30,27 +28,20 @@ public sealed class User : AuditableEntity
     public DateTimeOffset? RemovedAt { get; private set; }
     public Guid? RemovedBy { get; private set; }
 
-    /// <summary>
-    /// ID-BR-22: phó quản lý được chủ trọ cấp quyền xem dữ liệu nhạy cảm (số giấy tờ đầy đủ, xuất file / in có số đầy đủ).
-    /// Chủ trọ luôn có quyền — cờ này chỉ có nghĩa với phó quản lý.
-    /// </summary>
     public bool CanViewSensitiveData { get; private set; }
 
     public bool HasSensitiveDataAccess => Role == UserRole.OrgOwner || (Role == UserRole.OrgManager && CanViewSensitiveData);
 
-    /// <summary>PM-BR-16 (10/10/2026): chủ trọ cho riêng từng phó quản lý quyền bỏ nợ — mặc định không.</summary>
     public bool CanWriteOff { get; private set; }
 
     public bool HasWriteOffAccess => Role == UserRole.OrgOwner || (Role == UserRole.OrgManager && Status == UserStatus.Active && CanWriteOff);
 
-    /// <summary>Tên đăng nhập hiển thị: ưu tiên SĐT, sau đó email.</summary>
     public string Username => PhoneNormalized ?? EmailNormalized!;
 
     public static User CreateOrgOwner(
         Guid organizationId, string fullName, string? phone, string? email, string temporaryPasswordHash, DateTimeOffset now) =>
         CreateOrgMember(UserRole.OrgOwner, organizationId, fullName, phone, email, temporaryPasswordHash, now);
 
-    /// <summary>Phó quản lý — thao tác nghiệp vụ như chủ trọ, không quản lý thành viên (ID-BR-14).</summary>
     public static User CreateOrgManager(
         Guid organizationId, string fullName, string? phone, string? email, string temporaryPasswordHash, DateTimeOffset now) =>
         CreateOrgMember(UserRole.OrgManager, organizationId, fullName, phone, email, temporaryPasswordHash, now);
@@ -156,10 +147,6 @@ public sealed class User : AuditableEntity
         return Result.Success();
     }
 
-    /// <summary>
-    /// Gỡ phó quản lý (ID-BR-17): không xóa vật lý — dữ liệu nghiệp vụ vẫn trỏ tới user này qua created_by.
-    /// SĐT/email được giải phóng để có thể dùng cho tài khoản khác.
-    /// </summary>
     public Result Remove(DateTimeOffset now, Guid removedBy)
     {
         if (Role != UserRole.OrgManager)
@@ -178,7 +165,6 @@ public sealed class User : AuditableEntity
         return Result.Success();
     }
 
-    /// <summary>Chủ trọ cấp / thu hồi quyền xem dữ liệu nhạy cảm của phó quản lý (ID-BR-22).</summary>
     public Result SetSensitiveDataAccess(bool allowed)
     {
         if (Role != UserRole.OrgManager)
@@ -190,7 +176,6 @@ public sealed class User : AuditableEntity
         return Result.Success();
     }
 
-    /// <summary>Chủ trọ cấp / thu hồi quyền bỏ nợ cho từng phó quản lý (PM-BR-16) — người tin tưởng thì bật, người mới thì không.</summary>
     public Result SetWriteOffPermission(bool allowed)
     {
         if (Role != UserRole.OrgManager)

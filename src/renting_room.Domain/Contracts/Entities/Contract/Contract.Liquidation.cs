@@ -9,13 +9,11 @@ public sealed partial class Contract
     {
         if (Status != ContractStatus.Active)
             return Result.Failure(ContractErrors.NotActive);
-        // HĐ không thời hạn: thông báo chấm dứt trước 90 ngày ⇒ được hẹn ngày trả phòng xa hơn mức thường (CT-BR-42).
         var maxDaysAhead = ground == Contracts.TerminationGround.IndefiniteTermNotice ? ContractWarnings.IndefiniteNoticeDays : MaxLiquidationDaysAhead;
         if (actualEndDate < StartDate
             || _occupants.Any(o => o.MoveInDate > actualEndDate)
             || actualEndDate > today.AddDays(maxDaysAhead))
             return Result.Failure(ContractErrors.InvalidEndDate);
-        // CT-BR-11: đã chuyển phòng ⇒ không trả phòng trước ngày vào phòng hiện tại (khoảng ở phòng hiện tại phải hợp lệ).
         if (actualEndDate < RoomSince)
             return Result.Failure(ContractErrors.EndDateBeforeRoomTransfer);
         if (reason == Contracts.TerminationReason.Expired && (EndDate is not { } end || actualEndDate < end))
@@ -50,11 +48,6 @@ public sealed partial class Contract
         return Result.Success();
     }
 
-    /// <summary>
-    /// CT-BR-12 (phần đã có): đóng mọi người ở và xe còn mở tại ngày kết thúc thực tế.
-    /// Điều kiện phiếu quyết toán / số dư cọc sẽ bổ sung khi có M07, M08.
-    /// </summary>
-    /// <summary>RT-BR-06: thay bản chụp lúc ký bằng bản đã xóa dữ liệu cá nhân bên thuê — ngoại lệ duy nhất cho bản chụp bất biến.</summary>
     public void ReplaceSigningSnapshot(string? signingSnapshot) => SigningSnapshot = signingSnapshot;
 
     public Result CompleteLiquidation(DateTimeOffset now)
@@ -62,7 +55,6 @@ public sealed partial class Contract
         if (Status != ContractStatus.Liquidating)
             return Result.Failure(ContractErrors.NotLiquidating);
 
-        // Chỉ hoàn tất khi đã tới ngày trả phòng: trước đó người thuê vẫn đang ở (chỉ số cuối, bàn giao chưa có).
         var endDate = ActualEndDate!.Value;
         if (now.ToBusinessDate() < endDate)
             return Result.Failure(ContractErrors.LiquidationBeforeEndDate);

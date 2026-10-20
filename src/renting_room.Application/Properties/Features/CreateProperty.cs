@@ -46,7 +46,6 @@ public sealed class CreatePropertyHandler(IPropertyRepository properties, IFeeTy
         property.UpdateInfo(request.Name, request.Address.ToDomain(), request.Description, request.EvnCustomerCode, request.Land.ToDomain());
 
         properties.Add(property);
-        // FE-UC-01: khu mới có sẵn Điện + Nước theo công tơ (chưa có giá), tự gắn vào HĐ mới.
         foreach (var fee in FeeType.DefaultsFor(property.Id))
             fees.Add(fee);
         await unitOfWork.SaveChangesAsync(cancellationToken);

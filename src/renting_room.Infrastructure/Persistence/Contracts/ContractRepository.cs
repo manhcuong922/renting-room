@@ -21,6 +21,10 @@ internal sealed class ContractRepository(AppDbContext db) : IContractRepository
     public Task<Contract?> FindForUpdateAsync(Guid id, CancellationToken cancellationToken) =>
         db.Contracts.FirstOrDefaultAsync(c => c.Id == id, cancellationToken);
 
+    public Task<Contract?> FindResignDraftAsync(Guid previousContractId, CancellationToken cancellationToken) =>
+        db.Contracts.Include(c => c.Vehicles)
+            .FirstOrDefaultAsync(c => c.PreviousContractId == previousContractId && c.Status == ContractStatus.Draft, cancellationToken);
+
     public void Add(Contract contract) => db.Contracts.Add(contract);
 
     public async Task<IReadOnlyList<Contract>> ListWithVehiclesByRenterAsync(Guid renterId, CancellationToken cancellationToken) =>

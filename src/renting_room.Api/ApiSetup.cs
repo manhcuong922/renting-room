@@ -151,7 +151,6 @@ internal static class ApiSetup
         return app;
     }
 
-    /// <summary>"10.0.0.0/8" → IPNetwork.</summary>
     private static System.Net.IPNetwork ParseNetwork(string cidr) =>
         System.Net.IPNetwork.TryParse(cidr, out var network)
             ? network

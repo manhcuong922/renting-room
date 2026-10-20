@@ -13,7 +13,6 @@ public sealed record GetContractQuery(Guid Id) : IRequest<Result<ContractDetailD
 
 internal static class ContractMeterWarnings
 {
-    /// <summary>MT-BR-11: HĐ đang hiệu lực mà phòng chưa có công tơ điện (khu có khoản Điện) ⇒ không tính được tiền điện.</summary>
     public static async Task<IReadOnlyList<Warning>> ForAsync(
         IFeeQueries fees, IMeterQueries meters, Contract contract, DateOnly today, CancellationToken ct)
     {

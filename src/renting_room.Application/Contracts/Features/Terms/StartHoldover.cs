@@ -5,7 +5,6 @@ using renting_room.Domain.Common;
 
 namespace renting_room.Application.Contracts;
 
-/// <summary>CT-UC-22: HĐ quá hạn, chủ trọ cho ở tiếp chưa ký lại (CT-BR-45).</summary>
 public sealed record StartHoldoverCommand(Guid ContractId, string? Note) : IRequest<Result>;
 
 public sealed class StartHoldoverCommandValidator : AbstractValidator<StartHoldoverCommand>

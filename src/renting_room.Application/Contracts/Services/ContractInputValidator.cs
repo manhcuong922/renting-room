@@ -14,7 +14,6 @@ internal sealed class ContractInputValidator : AbstractValidator<ContractInput>
         RuleFor(x => x.EndDate)
             .Must((x, end) => end is null || (end > x.StartDate && end <= x.StartDate.AddYears(10)))
             .WithErrorCode("INVALID_END_DATE").WithMessage("Ngày kết thúc phải sau ngày bắt đầu và không quá 10 năm.");
-        // K5: HĐ nhập từ sổ cũ được bắt đầu xa (≤ 10 năm) nhưng phần tính tiền trong phần mềm không trước hôm nay quá 1 năm.
         RuleFor(x => x.StartDate)
             .Must((x, d) => d >= clock.GetUtcNow().ToBusinessDate().AddYears(x.BillingStartDate is null ? -1 : -10))
             .WithErrorCode("INVALID_START_DATE").WithMessage("Ngày bắt đầu không được trước hôm nay quá 1 năm (HĐ cũ: nhập \"Tính tiền từ ngày\").");
@@ -24,7 +23,6 @@ internal sealed class ContractInputValidator : AbstractValidator<ContractInput>
         RuleFor(x => x.SignedDate)
             .Must(d => d is null || d <= clock.GetUtcNow().ToBusinessDate())
             .WithErrorCode("INVALID_SIGNED_DATE").WithMessage("Ngày ký không được ở tương lai.");
-        // CT-BR-20 (Luật Nhà ở 2023 Điều 164): hiệu lực theo thỏa thuận, không trước ngày ký.
         RuleFor(x => x.EffectiveDate)
             .Must((x, d) => d is null || ((x.SignedDate is null || d >= x.SignedDate) && (x.EndDate is null || d <= x.EndDate)))
             .WithErrorCode("INVALID_EFFECTIVE_DATE").WithMessage("Ngày hiệu lực không được trước ngày ký hoặc sau ngày kết thúc.");
@@ -33,7 +31,6 @@ internal sealed class ContractInputValidator : AbstractValidator<ContractInput>
             .WithErrorCode("INVALID_AMOUNT").WithMessage("Giá thuê phải lớn hơn 0.");
         RuleFor(x => x.DepositAmount).OptionalMoney();
         RuleFor(x => x.DepositTerms).OptionalText(5000);
-        // K5: "Tính tiền từ ngày" nằm trong thời gian HĐ.
         RuleFor(x => x.BillingStartDate)
             .Must((x, d) => d is null || (d >= x.StartDate && (x.EndDate is null || d <= x.EndDate)))
             .WithErrorCode("INVALID_BILLING_START_DATE").WithMessage("\"Tính tiền từ ngày\" phải từ ngày bắt đầu tới ngày kết thúc hợp đồng.");

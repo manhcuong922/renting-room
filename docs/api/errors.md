@@ -154,7 +154,7 @@ Mọi lỗi có dạng ProblemDetails (xem [conventions.md](conventions.md#lỗi
 | `PLATE_ALREADY_REGISTERED` | 409 | Biển số đang gửi ở HĐ khác |
 | `VEHICLE_ALREADY_ENDED` | 409 | Tải lại |
 
-Cảnh báo mềm của HĐ (không phải lỗi, nằm trong `warnings` của response 2xx / chi tiết HĐ): `DEPOSIT_ABOVE_THREE_MONTHS`, `PLATE_FORMAT_UNUSUAL`;
+Cảnh báo mềm của HĐ (không phải lỗi, nằm trong `warnings` của response 2xx / chi tiết HĐ): `DEPOSIT_ABOVE_THREE_MONTHS`, `PLATE_FORMAT_UNUSUAL`, `VEHICLE_NOT_RESTORED` (hủy nháp ký lại / hủy thanh lý: biển số đã ở HĐ khác nên xe không mở lại);
 giấy tờ / pháp lý (09/10/2026 — trước là lỗi chặn): `LESSOR_INFO_INCOMPLETE`, `REPRESENTATIVE_PHONE_MISSING`, `REPRESENTATIVE_UNDERAGE`,
 `RELATIONSHIP_REQUIRED` / `RELATIONSHIP_NOTE_REQUIRED` / `RELATIONSHIP_GENDER_MISMATCH` / `RELATIONSHIP_AGE_MISMATCH`,
 `SPOUSE_UNDER_MARRIAGE_AGE` / `MULTIPLE_SPOUSES`, `GUARDIAN_CONSENT_REQUIRED`, `SIGNED_DOCUMENT_MISSING`.
@@ -197,19 +197,19 @@ Cảnh báo mềm: `ROOM_WITHOUT_METER` (HĐ hiệu lực, phòng chưa có côn
 | `INVOICE_HAS_PAYMENTS` | 422 | Đảo phiếu thu trước khi hủy phiếu |
 | `ROOM_CHARGE_NO_TENANT` | 422 | Khoản phát sinh: phòng không có người thuê tại ngày phát sinh |
 | `ROOM_CHARGE_CREDIT_TOO_HIGH` | 422 | Khoản bù chưa trả (cộng các khoản bù chưa trả khác) vượt một tháng tiền phòng — kèm `limit` |
-| `ROOM_CHARGE_NO_OPEN_INVOICE` | 422 | Khoản phát sinh: HĐ đã chốt phiếu quyết toán / đã kết thúc |
+| `ROOM_CHARGE_NO_OPEN_INVOICE` | 422 | Khoản phát sinh: HĐ đã chốt hóa đơn trả phòng / đã kết thúc |
 | `ROOM_CHARGE_LOCKED` | 422 | Khoản phát sinh đã nằm trên phiếu đã chốt — không đánh dấu / hủy |
-| `ROOM_CHARGE_SYSTEM` | 422 | Khoản chốt điện nước khi chuyển phòng (dữ liệu trước 17/10/2026) — không sửa / hủy tay |
+| `ROOM_CHARGE_SYSTEM` | 422 | Khoản do hệ thống tạo (khoản điều chỉnh chỉ số; khoản chốt điện nước khi chuyển phòng — dữ liệu trước 17/10/2026) — không sửa / hủy tay, chỉ đánh dấu đã trả / đã thu ngay |
 | `REFUND_SOURCE_INVALID` | 422 | Phiếu nguồn của dòng hoàn trả không phải phiếu đã chốt của cùng HĐ |
 | `REFUND_EXCEEDS_PAID` | 422 | Hoàn trả vượt số người thuê đã trả thật cho phiếu nguồn trừ các lần hoàn trước (`available`) — kiểm khi thêm, sửa dòng và khi chốt |
 | `REFUND_NOT_BULK` | 400 | Thêm hoàn trả hàng loạt — hoàn từng phiếu (chọn phiếu nguồn) |
-| `REFUND_CONFIRMED` | 422 | Phiếu đã xác nhận hoàn tiền — bỏ xác nhận (`DELETE /invoices/{id}/refund`) trước khi hủy / xác nhận lại |
+| `REFUND_CONFIRMED` | 422 | Phiếu đã xác nhận hoàn tiền — bỏ xác nhận (`DELETE /invoices/{id}/refund`) trước khi hủy / xác nhận lại / điều chỉnh chỉ số |
 | `REFUND_NOT_CONFIRMED` | 422 | Phiếu chưa xác nhận hoàn tiền |
 | `NOTHING_TO_REFUND` | 422 | Phiếu không có khoản phải trả lại người thuê (tổng không âm) |
 | `INVALID_REFUND_DATE` | 400 | Ngày hoàn từ ngày lập phiếu tới hôm nay |
 | `NO_DRAFT_INVOICE` | — | (kết quả từng phòng của `POST /invoices/manual-lines`) Phòng chưa có phiếu nháp tháng này |
 | `INVOICE_SAVE_FAILED` | — | (kết quả từng phòng của `POST /invoices/manual-lines`) Không lưu được phiếu đó — tải lại rồi thử lại; `CONCURRENCY_CONFLICT`: phiếu vừa được sửa |
-| `NOT_LATEST_INVOICE` | 422 | Hủy / xóa phiếu kỳ sau trước (phiếu quyết toán chưa hủy luôn là mới nhất) |
+| `NOT_LATEST_INVOICE` | 422 | Hủy / xóa phiếu kỳ sau trước (hóa đơn trả phòng chưa hủy luôn là mới nhất) |
 | `INVOICE_EXISTS` | 409 | Kỳ đã có phiếu (tạo song song) — tải lại |
 | `INVALID_BILLING_MONTH` | 400 | Tháng thu dạng yyyy-MM |
 | `READINGS_INVALID` | 422 | Lưu chỉ số: tô đỏ dòng theo `rowErrors[].index`, chưa lưu dòng nào |
@@ -219,6 +219,11 @@ Cảnh báo mềm: `ROOM_WITHOUT_METER` (HĐ hiệu lực, phòng chưa có côn
 | `READING_NEXT_PERIOD_FINALIZED` | 422 | Điều chỉnh: kỳ sau đã chốt từ chỉ số này |
 | `READING_UNCHANGED` | 400 | Điều chỉnh: số mới trùng số hiện tại |
 | `READING_ADJUSTMENT_TOO_LARGE` | 422 | Điều chỉnh: tiền chênh quá lớn — kiểm tra lại chỉ số |
+| `ADJUSTMENT_HANDLING_REQUIRED` | 400 | Điều chỉnh: hóa đơn đã có tiền — chọn `handling` = `Immediate` (Xử lý ngay) hoặc `NextInvoice` (Đẩy sang hóa đơn sau) |
+| `INVALID_HANDLING` | 400 | Điều chỉnh: `handling` chỉ nhận `Immediate` / `NextInvoice` |
+| `ADJUSTMENT_ALREADY_BILLED` | 422 | Điều chỉnh: khoản điều chỉnh lần trước đã thanh toán (đã trả / thu ngay, hoặc trên hóa đơn đã chốt) — không điều chỉnh tiếp |
+| `ADJUSTMENT_NO_NEXT_INVOICE` | 422 | Điều chỉnh: hóa đơn trả phòng đã chốt, không còn hóa đơn sau — chọn `Immediate` |
+| `CONTRACT_ENDED` | 422 | Điều chỉnh: hợp đồng đã kết thúc — chưa hỗ trợ |
 | `READING_NOT_VOIDABLE` | 422 | Hủy chỉ số: chỉ hủy được chỉ số cuối kỳ / kiểm tra |
 | `SEARCH_TOO_SHORT` | 400 | Tìm lịch sử thuê theo tên: nhập ít nhất 2 ký tự |
 | `USERNAME_REQUIRED` | 400 | Tài khoản phải còn SĐT hoặc email để đăng nhập |
@@ -228,9 +233,9 @@ Cảnh báo mềm: `ROOM_WITHOUT_METER` (HĐ hiệu lực, phòng chưa có côn
 | `NOTHING_TO_WRITE_OFF` | 422 | "Thanh toán + bỏ phần còn lại" mà số trả = số còn nợ — dùng "Đã thu" |
 | `NO_OUTSTANDING_INVOICE` | 422 | Không còn phiếu nào chưa thu đủ |
 | `PAYMENT_ALREADY_REVERSED` | 409 | Phiếu thu đã đảo — tải lại |
-| `FINAL_INVOICE_EXISTS` | 409 | Đã có phiếu quyết toán — mở phiếu đó |
-| `FINAL_INVOICE_REQUIRED` | 422 | Hoàn tất thanh lý: lập + chốt phiếu quyết toán trước |
-| `FINAL_INVOICE_FINALIZED` | 422 | Hủy thanh lý: hủy phiếu quyết toán đã chốt trước |
+| `FINAL_INVOICE_EXISTS` | 409 | Đã có hóa đơn trả phòng — mở phiếu đó |
+| `FINAL_INVOICE_REQUIRED` | 422 | Hoàn tất thanh lý: lập + chốt hóa đơn trả phòng trước |
+| `FINAL_INVOICE_FINALIZED` | 422 | Hủy thanh lý: hủy hóa đơn trả phòng đã chốt trước |
 | `INVOICE_DRAFT_EXISTS` | 409 | Còn phiếu nháp — chốt hoặc xóa |
 | `PREVIOUS_PERIOD_NOT_BILLED` | 422 | Lập phiếu các kỳ trước trước |
 | `MISSING_READING` / `PREVIOUS_PERIOD_INCOMPLETE` | — | Lý do bỏ qua khi tạo phiếu (`skipped[].reason`, 17/10/2026): thiếu chỉ số ⇒ không tạo nháp; kỳ trước còn nháp thiếu chỉ số |

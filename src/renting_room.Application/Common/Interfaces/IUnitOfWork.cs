@@ -28,7 +28,6 @@ public interface IUnitOfWork
     /// <summary>Lỗi lưu do vi phạm ràng buộc DB / xung đột version (dữ liệu vừa bị người khác đổi).</summary>
     bool IsSaveFailure(Exception exception);
 
-    /// <summary>Optimistic concurrency (C-07): version client gửi lên phải khớp bản đang lưu, nếu không lưu sẽ báo 409.</summary>
     void SetExpectedVersion(AuditableEntity entity, uint version);
 
     /// <summary><c>SELECT … FOR UPDATE</c> trên 1 hàng — tuần tự hóa các lệnh cùng tác động 1 bản ghi. Phải gọi trong transaction.</summary>
@@ -48,10 +47,8 @@ public enum SaveOutcome
 {
     Saved,
 
-    /// <summary>Bản ghi đã bị người khác sửa (C-07).</summary>
     Conflict,
 
-    /// <summary>Vi phạm ràng buộc DB.</summary>
     Failed
 }
 

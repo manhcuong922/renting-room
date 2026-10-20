@@ -7,16 +7,11 @@ using renting_room.Domain.Properties;
 
 namespace renting_room.Application.Fees;
 
-// Sao chép danh mục (FE-UC-06)
 public sealed record CopyFeeCatalogCommand(Guid SourcePropertyId, Guid TargetPropertyId, bool IncludePrices, DateOnly? EffectiveFrom)
     : IRequest<Result<CopyFeeCatalogResult>>;
 
 public sealed record CopyFeeCatalogResult(int Copied, IReadOnlyList<string> Skipped);
 
-/// <summary>
-/// Chép khoản thu chưa ngừng dùng từ khu nguồn sang khu đích; trùng tên / trùng mã hệ thống (điện, nước) thì bỏ qua.
-/// Kèm giá: chép giá đang hiệu lực, hiệu lực từ <c>effectiveFrom</c> (mặc định hôm nay).
-/// </summary>
 public sealed class CopyFeeCatalogHandler(IPropertyQueries properties, IFeeTypeRepository fees, IUnitOfWork unitOfWork, TimeProvider clock)
     : IRequestHandler<CopyFeeCatalogCommand, Result<CopyFeeCatalogResult>>
 {
@@ -41,7 +36,6 @@ public sealed class CopyFeeCatalogHandler(IPropertyQueries properties, IFeeTypeR
                 || (fee.SystemCode != null && t.SystemCode == fee.SystemCode));
             var price = request.IncludePrices ? fee.ResolvePrice(from) : null;
 
-            // Điện / Nước mặc định của khu đích chưa có giá ⇒ chép giá vào khoản sẵn có thay vì bỏ qua.
             if (existing is not null)
             {
                 if (price is not null && existing.SystemCode is not null && existing.SystemCode == fee.SystemCode && existing.Prices.Count == 0)

@@ -4,7 +4,6 @@ using renting_room.Domain.Billing;
 
 namespace renting_room.Infrastructure.Persistence;
 
-/// <summary>FE-BR-07: ngày cuối của dòng phiếu đã chốt có dùng khoản thu — không thêm / xóa giá hồi tố trước ngày đó.</summary>
 public sealed class FeePriceLockReader(AppDbContext db) : IFeePriceLockReader
 {
     public async Task<DateOnly?> GetLockedUntilAsync(Guid feeTypeId, CancellationToken cancellationToken) =>

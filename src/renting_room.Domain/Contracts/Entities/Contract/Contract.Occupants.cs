@@ -10,7 +10,6 @@ public sealed partial class Contract
             return Result.Failure(ContractErrors.NotEditable);
         if (input.MoveInDate < StartDate)
             return Result.Failure(ContractErrors.DateOutsideContract);
-        // CT-BR-37: HĐ đang hiệu lực quá hạn mà vẫn ở = không thời hạn ⇒ chỉ nháp mới bị ngày hết hạn chặn.
         if (Status == ContractStatus.Draft && EndDate is { } end && input.MoveInDate > end)
             return Result.Failure(ContractErrors.DateOutsideContract);
         if (_occupants.Any(o => o.RenterId == input.RenterId && o.OverlapsFrom(input.MoveInDate)))
@@ -21,11 +20,9 @@ public sealed partial class Contract
         return Result.Success();
     }
 
-    /// <summary>CT-BR-49: người đứng tên không mang vai trò đồng thuê.</summary>
     private OccupantInput WithRole(OccupantInput input) =>
         input.RenterId == RepresentativeRenterId ? input with { Role = OccupantRole.Resident } : input;
 
-    /// <summary>CT-BR-49: đổi vai trò người ở ↔ đồng thuê (HĐ nháp / đang hiệu lực, người chưa chuyển đi).</summary>
     public Result ChangeOccupantRole(Guid occupantId, OccupantRole role)
     {
         if (Status is not (ContractStatus.Draft or ContractStatus.Active))
@@ -42,11 +39,6 @@ public sealed partial class Contract
         return Result.Success();
     }
 
-    /// <summary>
-    /// CT-BR-51: đổi người đứng tên, HĐ giữ nguyên (số HĐ, nợ, cọc, khoản phát sinh, chuỗi chỉ số). Bản ký cũ không còn đúng người ⇒ về
-    /// "Thiếu tài liệu"; mốc khai quan hệ đổi ⇒ xóa quan hệ người ở để khai lại.
-    /// </summary>
-    /// <param name="signingSnapshotJson">Bản chụp lúc ký đã thay phần bên thuê (null = HĐ chưa có bản chụp).</param>
     public Result ChangeRepresentative(
         Guid newRepresentativeId, DateOnly date, DateOnly today, Guid? householdHeadRenterId, bool oldRepresentativeMovesOut, string? signingSnapshotJson)
     {

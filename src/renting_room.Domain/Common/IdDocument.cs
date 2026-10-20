@@ -4,10 +4,8 @@ namespace renting_room.Domain.Common;
 
 public enum IdDocumentType
 {
-    /// <summary>CCCD / thẻ căn cước — 12 chữ số.</summary>
     CitizenId,
 
-    /// <summary>CMND 9 số — chỉ để lưu dữ liệu cũ.</summary>
     LegacyId,
 
     Passport

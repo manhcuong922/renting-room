@@ -3,7 +3,6 @@ using renting_room.Domain.Identity;
 
 namespace renting_room.Application.Common.Validation;
 
-/// <summary>Quy tắc validation dùng chung cho tài khoản (ID-BR-01, ID-BR-05).</summary>
 public static class IdentityRules
 {
     public const int PasswordMinLength = 8;

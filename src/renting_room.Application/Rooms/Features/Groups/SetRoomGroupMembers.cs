@@ -23,7 +23,6 @@ public sealed class SetRoomGroupMembersHandler(IRoomGroupRepository groups, IRoo
         if (group is null)
             return PropertyErrors.RoomGroupNotFound;
 
-        // PR-BR-07: phòng phải cùng khu với nhóm (FK composite trong DB là chốt chặn cuối).
         var roomIds = request.RoomIds.Distinct().ToList();
         var validCount = await rooms.CountInPropertyAsync(roomIds, group.PropertyId, cancellationToken);
         if (validCount != roomIds.Count)

@@ -152,9 +152,9 @@ Vượt giới hạn → **429 `TOO_MANY_REQUESTS`** + header `Retry-After` (gi�
 | `FeeGroup` | `Metered` Điện nước (theo công tơ) · `Service` Dịch vụ |
 | `ChargeBasis` | `PerRoom` Theo phòng · `PerOccupant` Theo đầu người · `PerUnit` Theo số gói |
 | `InvoiceStatus` | `Draft` Nháp · `Finalized` Đã chốt · `Void` Đã hủy |
-| `InvoiceLineType` | `Rent` Tiền phòng · `Metered` Điện nước · `Service` Dịch vụ · `Surcharge` Phụ thu · `ManualDiscount` Giảm trừ · `Refund` Hoàn trả (phiếu quyết toán) |
+| `InvoiceLineType` | `Rent` Tiền phòng · `Metered` Điện nước · `Service` Dịch vụ · `Surcharge` Phụ thu · `ManualDiscount` Giảm trừ · `Refund` Hoàn trả (hóa đơn trả phòng) |
 | `InvoicePaymentStatus` | `Unpaid` Chưa thu · `PartiallyPaid` Thu một phần · `Paid` Đã thu đủ · `Overdue` Quá hạn · `WrittenOff` Đã bỏ nợ · `RefundPending` Chờ hoàn tiền cho người thuê · `Refunded` Đã hoàn |
-| `InvoiceType` | `Regular` Phiếu tháng · `Final` Phiếu quyết toán |
+| `InvoiceType` | `Regular` Phiếu tháng · `Final` Hóa đơn trả phòng |
 | `PaymentKind` | `Receipt` Tiền thu · `WriteOff` Bỏ nợ |
 | `PaymentStatus` | `Recorded` Đã ghi · `Reversed` Đã đảo |
 | `RoomChargeKind` | `Surcharge` Phụ thu · `Credit` Bù (trừ cho người thuê) |

@@ -11,11 +11,6 @@ using renting_room.Domain.Contracts;
 
 namespace renting_room.Application.Imports;
 
-// RT-UC-10: import người thuê đang ở — chỉ tạo mới khi chuyển từ sổ sang phần mềm
-/// <summary>
-/// RT-UC-10 bước 2: nhận các dòng (đã sửa trên màn), kiểm lại toàn bộ, lưu các phòng hợp lệ — mỗi phòng 1 transaction: dùng lại / tạo người
-/// thuê → HĐ (tính tiền từ đầu kỳ hiện tại của khu hoặc ngày vào ở, thiếu bản ký) → kích hoạt (chỉ số nhận phòng = số mới nhất).
-/// </summary>
 public sealed record SaveTenancyImportCommand(Guid PropertyId, IReadOnlyList<TenancyImportRow> Rows) : IRequest<Result<ImportSaveResultDto>>;
 
 public sealed class SaveTenancyImportCommandValidator : AbstractValidator<SaveTenancyImportCommand>

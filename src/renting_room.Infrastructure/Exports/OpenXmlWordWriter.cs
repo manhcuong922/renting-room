@@ -5,10 +5,6 @@ using renting_room.Application.Common.Interfaces;
 
 namespace renting_room.Infrastructure.Exports;
 
-/// <summary>
-/// Ghi .docx theo thể thức văn bản thường dùng ở VN: khổ A4, lề trái 3cm / phải 2cm / trên dưới 2cm,
-/// Times New Roman 13. Mở / sửa / in được bằng Word, LibreOffice, Google Docs.
-/// </summary>
 internal sealed class OpenXmlWordWriter : IWordDocumentWriter
 {
     private const string Font = "Times New Roman";

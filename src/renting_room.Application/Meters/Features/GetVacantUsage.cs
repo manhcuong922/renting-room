@@ -8,8 +8,6 @@ using renting_room.Domain.Properties;
 
 namespace renting_room.Application.Meters;
 
-// MT-BR-14: sản lượng phòng trống (không tính cho người thuê nào)
-/// <summary>Một khoảng công tơ chạy khi phòng không có người thuê: từ chỉ số liền trước tới chỉ số nhận phòng của HĐ kế tiếp.</summary>
 public sealed record VacantUsageRow(
     Guid RoomId, string RoomCode, Guid MeterId, string? SerialNo, Guid FeeTypeId, string FeeTypeName, string Unit, DateOnly FromDate,
     decimal FromValue, DateOnly ToDate, decimal ToValue, decimal Quantity);
@@ -18,13 +16,8 @@ public sealed record VacantUsageTotal(Guid FeeTypeId, string FeeTypeName, string
 
 public sealed record VacantUsageDto(DateOnly From, DateOnly To, IReadOnlyList<VacantUsageRow> Rows, IReadOnlyList<VacantUsageTotal> Totals);
 
-/// <param name="From">Mặc định 12 tháng trước hôm nay.</param>
 public sealed record GetVacantUsageQuery(Guid PropertyId, DateOnly? From, DateOnly? To) : IRequest<Result<VacantUsageDto>>;
 
-/// <summary>
-/// MT-BR-14: mỗi chỉ số nhận phòng cao hơn chỉ số liền trước trên cùng công tơ là phần điện nước dùng lúc phòng trống (sửa chữa, thử phòng) —
-/// không nằm trên phiếu của ai. Tổng hợp theo ngày nhận phòng để chủ trọ đối chiếu hóa đơn điện nước của khu.
-/// </summary>
 public sealed class GetVacantUsageHandler(
     IPropertyQueries properties, IMeterQueries meterQueries, IRoomQueries roomQueries, IFeeQueries feeQueries, TimeProvider clock)
     : IRequestHandler<GetVacantUsageQuery, Result<VacantUsageDto>>

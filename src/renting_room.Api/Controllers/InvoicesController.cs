@@ -11,7 +11,6 @@ using renting_room.Requests;
 
 namespace renting_room.Controllers;
 
-/// <summary>Phiếu báo tiền phòng (M07): tạo nháp, sửa, tính lại, chốt, hủy, hoàn tiền.</summary>
 [ApiController]
 [Route("api/v1")]
 [Tags("Invoices")]
@@ -46,17 +45,27 @@ public sealed class InvoicesController(ISender sender) : ControllerBase
             b.KeepManualEdits ?? true, b.StaleOnly ?? false), ct)).ToHttp();
 
     [HttpGet("invoices")]
-    [EndpointSummary("Danh sách phiếu (khu, tháng, trạng thái, phòng, hợp đồng, tầng, còn nợ, nháp cần tính lại)")]
+    [EndpointSummary("Danh sách hóa đơn (khu, tháng, trạng thái, phòng, hợp đồng, tầng, còn nợ, nháp cần tính lại, đã điều chỉnh, cần gửi lại)")]
     public async Task<IResult> List(
         Guid? propertyId, string? billingMonth, InvoiceStatus? status, Guid? roomId, Guid? contractId, string? floor,
-        bool? unpaidOnly, bool? stale, int? page, int? pageSize, CancellationToken ct) =>
+        bool? unpaidOnly, bool? stale, bool? adjusted, bool? needsResend, int? page, int? pageSize, CancellationToken ct) =>
         Results.Ok(await sender.Send(new ListInvoicesQuery(propertyId, billingMonth, status, roomId, contractId, floor, unpaidOnly,
-            page ?? 1, pageSize ?? Paging.DefaultPageSize, stale), ct));
+            page ?? 1, pageSize ?? Paging.DefaultPageSize, stale, adjusted, needsResend), ct));
 
     [HttpGet("invoices/{id:guid}")]
     [EndpointSummary("Chi tiết phiếu: dòng, đoạn đo công tơ, vấn đề")]
     public async Task<IResult> Get(Guid id, CancellationToken ct) =>
         (await sender.Send(new GetInvoiceQuery(id), ct)).ToHttp();
+
+    [HttpGet("invoices/{id:guid}/adjustments")]
+    [EndpointSummary("Lịch sử điều chỉnh chỉ số của hóa đơn (mới nhất trước)")]
+    public async Task<IResult> GetAdjustments(Guid id, CancellationToken ct) =>
+        (await sender.Send(new GetInvoiceAdjustmentsQuery(id), ct)).ToHttp();
+
+    [HttpPost("invoices/{id:guid}/resent")]
+    [EndpointSummary("Đã gửi lại hóa đơn vừa điều chỉnh cho người thuê — bỏ nhãn \"Cần gửi lại\"")]
+    public async Task<IResult> MarkResent(Guid id, CancellationToken ct) =>
+        (await sender.Send(new MarkInvoiceResentCommand(id), ct)).ToHttp();
 
     [HttpDelete("invoices/{id:guid}")]
     [EndpointSummary("Xóa phiếu nháp (chỉ phiếu mới nhất của hợp đồng)")]

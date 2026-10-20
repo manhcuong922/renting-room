@@ -120,7 +120,7 @@ Chuyển dữ liệu từ sổ cũ: **nhập Excel** phòng + người đang thu
 6. **Xuất Excel** tiền phòng tháng cho 1/nhiều khu — chưa làm (M10 E2).
 
 ### F5. Trả phòng / thanh lý (M05, M06, M07, M08)
-Báo trả phòng (ngày dự kiến) → bắt đầu thanh lý → ghi chỉ số cuối → phiếu **quyết toán** (thu phần còn thiếu; đã thu thừa tiền phòng ⇒ cảnh báo, chủ trọ thêm dòng **Hoàn trả**) →
+Báo trả phòng (ngày dự kiến) → bắt đầu thanh lý → ghi chỉ số cuối → **hóa đơn trả phòng** (thu phần còn thiếu; đã thu thừa tiền phòng ⇒ cảnh báo, chủ trọ thêm dòng **Hoàn trả**) →
 hoàn tất thanh lý: còn nợ ⇒ "Đã thu toàn bộ" / "Bỏ nợ"; còn phiếu Chờ hoàn ⇒ xác nhận đã hoàn trước (hợp đồng `Ended`).
 Trả lại cọc ⇒ bấm **"Đã hoàn trả cọc"** (không bắt buộc trước khi hoàn tất; HĐ đã kết thúc còn giữ cọc ⇒ nhãn "Chưa hoàn cọc").
 

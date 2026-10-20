@@ -4,7 +4,6 @@ using renting_room.Domain.Renters;
 
 namespace renting_room.Application.Renters;
 
-// RT-UC-05: ghi nhận đồng ý xử lý dữ liệu cá nhân
 public sealed record ListRenterConsentsQuery(Guid RenterId) : IRequest<Result<IReadOnlyList<RenterConsentDto>>>;
 
 public sealed class ListRenterConsentsHandler(IRenterQueries renters) : IRequestHandler<ListRenterConsentsQuery, Result<IReadOnlyList<RenterConsentDto>>>

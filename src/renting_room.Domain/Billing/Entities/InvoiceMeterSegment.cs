@@ -2,7 +2,6 @@ using renting_room.Domain.Common;
 
 namespace renting_room.Domain.Billing;
 
-/// <summary>Đoạn đo của dòng điện nước: (chỉ số đầu, chỉ số cuối) trên 1 công tơ — thay công tơ giữa kỳ ⇒ nhiều đoạn (MT-BR-15).</summary>
 public sealed class InvoiceMeterSegment : TenantEntity
 {
     private InvoiceMeterSegment() { } // EF Core
@@ -43,11 +42,17 @@ public sealed class InvoiceMeterSegment : TenantEntity
     public DateOnly? StartDate { get; private set; }
     public DateOnly? EndDate { get; private set; }
 
-    /// <summary>Ngày đầu kỳ sử dụng của dòng chứa đoạn đo — phiếu quyết toán có 2 dòng cùng khoản thì mỗi đoạn thuộc đúng 1 dòng.</summary>
+    /// <summary>Ngày đầu kỳ sử dụng của dòng chứa đoạn đo — hóa đơn trả phòng có 2 dòng cùng khoản thì mỗi đoạn thuộc đúng 1 dòng.</summary>
     public DateOnly? UsageStart { get; private set; }
 
     /// <summary>Đoạn đo thuộc dòng Điện nước này (dữ liệu cũ không có <see cref="UsageStart"/> ⇒ theo khoản thu).</summary>
     public bool BelongsTo(InvoiceLine line) => FeeTypeId == line.FeeTypeId && (UsageStart is null || UsageStart == line.ServiceFrom);
 
     internal void Void() => Voided = true;
+
+    internal void ChangeEnd(decimal endValue)
+    {
+        EndValue = endValue;
+        Consumption = endValue - StartValue;
+    }
 }

@@ -27,7 +27,6 @@ public sealed class RateLimitingOptions
     /// <summary>Tắt toàn bộ (chỉ dùng khi debug cục bộ).</summary>
     public bool Enabled { get; init; } = true;
 
-    /// <summary>Đăng nhập — theo IP, mọi tài khoản cộng lại (M01 §11: 20/phút).</summary>
     [Required] public RateLimitRule Login { get; init; } = new() { PermitLimit = 20 };
 
     /// <summary>
@@ -42,7 +41,6 @@ public sealed class RateLimitingOptions
     /// <summary>Thao tác nhạy cảm (đổi mật khẩu, tạo tổ chức…) — theo user.</summary>
     [Required] public RateLimitRule Sensitive { get; init; } = new() { PermitLimit = 5 };
 
-    /// <summary>Xem trước import Excel (PR-UC-11, RT-UC-10) — theo user: mỗi lần đọc cả file, chặn bấm liên tục.</summary>
     [Required] public RateLimitRule Import { get; init; } = new() { PermitLimit = 10 };
 
     [Required] public RateLimitRule Authenticated { get; init; } = new() { PermitLimit = 300 };

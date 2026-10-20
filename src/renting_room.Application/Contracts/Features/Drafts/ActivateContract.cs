@@ -13,7 +13,6 @@ using renting_room.Domain.Properties;
 
 namespace renting_room.Application.Contracts;
 
-/// <param name="HandoverReadings">MT-BR-13: chỉ số nhận phòng cho mỗi công tơ của phòng; value null = "Dùng số mới nhất".</param>
 public sealed record ActivateContractCommand(
     Guid Id, IReadOnlyList<MeterReadingInput>? HandoverReadings = null) : IRequest<Result>;
 
@@ -46,7 +45,6 @@ public sealed class ActivateContractHandler(
             ?? await occupantChecks.FindRoleConflictAsync(contract, cancellationToken);
         if (occupantError is not null)
             return Result.Failure(occupantError);
-        // CT-BR-14: HĐ khác đã chuyển khỏi phòng này vẫn tính là ở tới ngày chuyển (lịch sử không nằm trong EXCLUDE của contracts).
         if (await contractQueries.AnyRoomMoveFromAsync(contract.RoomId, contract.StartDate, cancellationToken))
             return Result.Failure(ContractErrors.RoomPeriodOverlap);
 
@@ -58,7 +56,6 @@ public sealed class ActivateContractHandler(
             today,
             now,
             RoomAvailable: !room.IsArchived && !room.IsUnderMaintenance && !property.IsArchived,
-            // Bên cho thuê: riêng của khu, không có thì của chủ trọ (PR-BR-17). Chưa khai cả hai ⇒ không chụp (chỉ cảnh báo LESSOR_INFO_INCOMPLETE).
             SigningSnapshotJson: lessor is null ? null : SigningSnapshot.From(property, lessor, room, representative, now).ToJson(),
             HouseRulesSnapshot: property.HouseRulesText,
             UtilityPriceSnapshotJson: UtilityPriceSnapshotJson.ToJson(UtilityPriceSnapshotJson.Capture(contract, feeTypes)));
@@ -67,7 +64,6 @@ public sealed class ActivateContractHandler(
         if (activated.IsFailure)
             return activated;
         var handover = await meterReadings.RecordAsync(
-            // K5: chỉ số nhận phòng tại "Tính tiền từ ngày" (= ngày bắt đầu, trừ HĐ nhập từ sổ cũ) — điện nước trước mốc đó không tính.
             contract, ReadingKind.Handover, contract.BillingStartDate, request.HandoverReadings, cancellationToken);
         if (handover.IsFailure)
             return handover;
@@ -76,7 +72,6 @@ public sealed class ActivateContractHandler(
         return Result.Success();
     }
 
-    /// <summary>CT-BR-31 tại thời điểm bàn giao: không ai đang ở phòng khác (quan hệ người ở chỉ cảnh báo — ContractPaperWarnings).</summary>
     private async Task<Error?> CheckOccupantsAsync(Contract contract, CancellationToken ct)
     {
         var people = await occupantChecks.LoadPeopleAsync(

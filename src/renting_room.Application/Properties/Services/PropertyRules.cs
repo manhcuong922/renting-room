@@ -19,7 +19,6 @@ internal static class PropertyRules
         });
     }
 
-    /// <summary>PR-BR-09: ngày chốt 1–28 (tháng nào cũng có ngày chốt).</summary>
     public static void BillingRules<T>(this AbstractValidator<T> v, Func<T, PropertyBillingInput?> billing)
     {
         v.When(x => billing(x) is not null, () =>

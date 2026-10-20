@@ -38,7 +38,6 @@ internal sealed class RoomQueries(AppDbContext db) : IRoomQueries
         var query = rooms.ToRows(db, today);
         if (request.Status is { } status)
             query = query.Where(r => r.Status == status);
-        // PR-BR-16: bộ lọc "Quá hạn" — phòng có phiếu quá hạn thanh toán chưa thu đủ.
         if (request.Overdue is { } overdue)
             query = query.Where(r => (r.OverdueAmount > 0) == overdue);
 

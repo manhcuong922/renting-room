@@ -17,7 +17,6 @@ public sealed record RoomSpecInput(
     public RoomSpec ToDomain() => new(Floor, AreaM2, MaxOccupants, ListedRent, DefaultDeposit, Amenities ?? [], Description);
 }
 
-/// <param name="Flags">PR-BR-16: việc cần xử lý của HĐ (người ký đã rời đi, quá hạn chờ quyết định, ở tiếp chưa ký…).</param>
 public sealed record CurrentContractDto(
     Guid Id, string ContractNo, string RepresentativeName, DateOnly StartDate, DateOnly? EndDate, int OccupantCount,
     IReadOnlyList<ContractFlag>? Flags = null);
@@ -42,7 +41,6 @@ public sealed record RoomDto(
     decimal OverdueAmount = 0,
     decimal DepositHeld = 0)
 {
-    /// <summary>PR-BR-16: nhãn đỏ "Quá hạn" — có phiếu đã chốt chưa thu đủ đã quá hạn thanh toán.</summary>
     public bool IsOverdue => OverdueAmount > 0;
 }
 

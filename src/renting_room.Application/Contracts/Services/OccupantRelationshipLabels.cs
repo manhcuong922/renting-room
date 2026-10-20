@@ -37,7 +37,6 @@ public static class OccupantRelationshipLabels
         _ => "Khác"
     };
 
-    /// <summary>Nhãn + ghi chú (VD "Khác — bạn học", "Anh / chị / em ruột — em gái").</summary>
     public static string? Describe(OccupantRelationship? relationship, string? note) => (relationship, note) switch
     {
         (null, null) => null,

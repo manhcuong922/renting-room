@@ -3,12 +3,6 @@ using renting_room.Domain.Contracts;
 
 namespace renting_room.Domain.Fees;
 
-/// <summary>
-/// Khoản thu của một khu trọ (M04): điện, nước, rác, wifi, giữ xe… Cách tính chọn theo nhóm + cơ sở tính.
-/// Giá đi theo thời gian (<see cref="FeePrice"/>), một giá cho mỗi đơn vị (không bậc thang — FE-BR-15).
-/// Khoản <see cref="FeeGroup.Metered"/> đi theo <b>công tơ của phòng</b> (M06), không gắn vào hợp đồng (FE-BR-17);
-/// khoản <see cref="FeeGroup.Service"/> gắn vào hợp đồng qua <c>contract_fees</c> (M05) và có thể đặt giá riêng.
-/// </summary>
 public sealed class FeeType : TenantEntity
 {
     public const decimal MaxQuantity = 100;
@@ -28,7 +22,6 @@ public sealed class FeeType : TenantEntity
     public decimal? DefaultQuantity { get; private set; }
     public int SortOrder { get; private set; }
 
-    /// <summary>CT-BR-22: dịch vụ theo số gói dùng làm phí giữ loại xe này (đối chiếu số xe đăng ký trên HĐ). Chỉ <see cref="Fees.ChargeBasis.PerUnit"/>.</summary>
     public VehicleType? VehicleType { get; private set; }
     public DateTimeOffset? ArchivedAt { get; private set; }
 
@@ -51,14 +44,12 @@ public sealed class FeeType : TenantEntity
         return fee;
     }
 
-    /// <summary>Điện + Nước theo công tơ, chưa có giá (FE-UC-01). Đi theo công tơ của phòng nên không gắn vào HĐ.</summary>
     public static IReadOnlyList<FeeType> DefaultsFor(Guid propertyId) =>
     [
         Create(propertyId, "Điện", FeeGroup.Metered, null, "kWh", autoAttach: false, null, 0, FeeSystemCodes.Electricity),
         Create(propertyId, "Nước", FeeGroup.Metered, null, "m³", autoAttach: false, null, 1, FeeSystemCodes.Water)
     ];
 
-    /// <summary>Không đổi nhóm / cơ sở tính (FE-BR-02) — cần đổi thì tạo khoản mới, ngừng dùng khoản cũ.</summary>
     public void Update(string name, string unit, bool autoAttach, decimal? defaultQuantity, int sortOrder, VehicleType? vehicleType = null)
     {
         if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(unit))
@@ -71,7 +62,7 @@ public sealed class FeeType : TenantEntity
         Name = name.Trim();
         NameNormalized = NormalizeName(name);
         Unit = unit.Trim();
-        AutoAttach = autoAttach && Group != FeeGroup.Metered; // FE-BR-17: khoản theo công tơ không gắn vào HĐ
+        AutoAttach = autoAttach && Group != FeeGroup.Metered;
         DefaultQuantity = defaultQuantity;
         SortOrder = sortOrder;
         if (before != (VehicleType, Name, NameNormalized, Unit, AutoAttach, DefaultQuantity, SortOrder))
@@ -83,8 +74,6 @@ public sealed class FeeType : TenantEntity
     /// <summary>Số gói mặc định khi gắn vào HĐ: <c>PerUnit</c> dùng <see cref="DefaultQuantity"/> (mặc định 1), cách khác luôn 1.</summary>
     public decimal AttachQuantity => IsPerUnit ? DefaultQuantity ?? 1 : 1;
 
-    /// <param name="lockedUntil">Ngày cuối của dòng phiếu đã chốt dùng khoản này (M07) — không thêm giá hồi tố trước ngày đó (FE-BR-07).</param>
-    /// <param name="tiers">FE-BR-15: có ⇒ giá theo bậc (chỉ khoản theo công tơ); null ⇒ một giá.</param>
     public Result<FeePrice> AddPrice(DateOnly effectiveFrom, decimal unitPrice, string? note, DateOnly? lockedUntil, IReadOnlyList<PriceTier>? tiers = null)
     {
         if (IsArchived)
@@ -115,7 +104,6 @@ public sealed class FeeType : TenantEntity
         return Result.Success();
     }
 
-    /// <summary>FE-BR-10: bản giá có ngày hiệu lực lớn nhất ≤ <paramref name="date"/>; null nếu chưa có giá.</summary>
     public FeePrice? ResolvePrice(DateOnly date) =>
         _prices.Where(p => p.EffectiveFrom <= date).MaxBy(p => p.EffectiveFrom);
 

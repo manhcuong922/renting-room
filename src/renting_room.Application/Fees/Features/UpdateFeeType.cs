@@ -25,7 +25,6 @@ public sealed class UpdateFeeTypeCommandValidator : AbstractValidator<UpdateFeeT
     }
 }
 
-/// <summary>FE-BR-02: không đổi nhóm / cách tính — muốn đổi thì tạo khoản mới và ngừng dùng khoản cũ.</summary>
 public sealed class UpdateFeeTypeHandler(IFeeTypeRepository fees, IUnitOfWork unitOfWork, TimeProvider clock)
     : IRequestHandler<UpdateFeeTypeCommand, Result<FeeTypeDto>>
 {

@@ -35,10 +35,11 @@ public static class BillingErrors
         "Chỉ hủy / xóa được phiếu mới nhất của hợp đồng — hủy các phiếu kỳ sau trước.");
     public static readonly Error DraftStale = Error.Conflict("DRAFT_STALE",
         "Dữ liệu nguồn (giá, chỉ số, người ở…) đã đổi sau khi tạo nháp — tính lại rồi chốt.");
-    public static readonly Error FinalExists = Error.Conflict("FINAL_INVOICE_EXISTS", "Hợp đồng đã có phiếu quyết toán — mở phiếu đó để sửa.");
-    public static readonly Error FinalRequired = Error.BusinessRule("FINAL_INVOICE_REQUIRED", "Lập và chốt phiếu quyết toán trước khi hoàn tất thanh lý.");
+    public static readonly Error FinalExists = Error.Conflict("FINAL_INVOICE_EXISTS", "Hợp đồng đã có hóa đơn trả phòng — mở hóa đơn đó để sửa.");
+    public static readonly Error FinalRequired = Error.BusinessRule("FINAL_INVOICE_REQUIRED", "Lập và chốt hóa đơn trả phòng trước khi hoàn tất thanh lý.");
     public static readonly Error FinalFinalized = Error.BusinessRule("FINAL_INVOICE_FINALIZED",
-        "Phiếu quyết toán đã chốt — hủy phiếu quyết toán trước khi hủy thanh lý.");
+        "Hóa đơn trả phòng đã chốt — hủy hóa đơn trả phòng trước khi hủy thanh lý.");
+    public static readonly Error PriceMissing = Error.BusinessRule("FEE_PRICE_MISSING", "Khoản thu chưa có giá cho kỳ của hóa đơn.");
     public static readonly Error DraftExists = Error.Conflict("INVOICE_DRAFT_EXISTS", "Hợp đồng còn phiếu nháp — chốt hoặc xóa trước.");
     public static readonly Error PreviousNotBilled = Error.BusinessRule("PREVIOUS_PERIOD_NOT_BILLED", "Chưa lập phiếu kỳ trước — lập lần lượt từng kỳ.");
 
