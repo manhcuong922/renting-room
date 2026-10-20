@@ -54,7 +54,14 @@ wifi 100.000đ → **120.000đ từ ngày 10 tháng M−1** (cả tháng M−1 t
 | 212 | **Điều chỉnh chỉ số — hóa đơn chưa thu** (20/10/2026): điện tháng trước gõ dư 20 kWh, hóa đơn đã chốt chưa thu ⇒ hệ thống **tính lại ngay trên hóa đơn** (giữ số, hạn), nhãn **"Đã điều chỉnh"** + **"Cần gửi lại"** (`GET /invoices?needsResend=true`, nút "Đã gửi lại"); lịch sử ở `GET /invoices/{id}/adjustments` |
 | 213 | **Điều chỉnh — đã thu, "Xử lý ngay"**: hóa đơn tính lại, có **phiếu hoàn tiền** `PC…` (`kind: Refund`) trả lại 20 kWh thừa |
 | 214 | **Điều chỉnh — có bỏ nợ**: trả gần đủ, chủ trọ bỏ 100.000đ còn lại; "Xử lý ngay" ⇒ phần thừa **trừ vào phần bỏ nợ** (còn 30.000đ), phiếu bỏ nợ cũ bị đảo + phiếu bỏ nợ mới, không phiếu hoàn |
-| 215 | **Hóa đơn trả phòng âm** (BL-BR-10): trả phòng đầu tháng này, khoản giảm 1.000.000đ (cúp nước) lớn hơn hóa đơn trả phòng ⇒ hóa đơn **−763.000đ**, **Chờ hoàn**; "Hoàn tất thanh lý" bị chặn `REFUND_PENDING` tới khi bấm "Đã hoàn tiền" |
+| 215 | **Hóa đơn trả phòng âm** (BL-BR-10): trả phòng đầu tháng này, khoản giảm 1.000.000đ (cúp nước) lớn hơn hóa đơn trả phòng ⇒ hóa đơn **−763.000đ**, **Chờ hoàn**; "Hoàn tất thanh lý" bị chặn `REFUND_PENDING` tới khi bấm "Đã hoàn tiền". Kỳ cuối chọn **"Tính theo ngày ở"** (mặc định là thu trọn kỳ). **Lượt 2**: thêm khoản **"Mất chìa khóa"** tạo sau khi chốt ⇒ khoản chưa xử lý; chưa hoàn tất ⇒ mở **màn thanh lý** thấy "Cần trả lại", khoản chưa xử lý và cọc — bấm Hoàn tất một lần |
+| 216 | **Điều chỉnh làm hóa đơn âm** (Lượt 2): tháng trước miễn tiền phòng + giảm gần hết hóa đơn, chưa thu; điện gõ dư 20 kWh ⇒ tính lại sẽ âm (`ADJUSTMENT_NEGATIVE_TOTAL`) ⇒ đã chọn **"Đẩy sang hóa đơn sau"**: hóa đơn giữ tổng, khoản bù 70.000đ chờ vào tháng này |
+| 217 | **Báo trả phòng** ngày 15 tháng này ⇒ "Tạo hóa đơn" tháng này bỏ qua `MOVE_OUT_NOTICED`; ô phòng và lưới chỉ số hiện **"Trả phòng 15/MM"**. Thử rút báo trả phòng (`DELETE /contracts/{id}/notice`) |
+| 218 | **Hoàn tất thanh lý một lần**: trả phòng ngày 1, kỳ cuối mặc định **"Thu trọn kỳ"**; mất chìa khóa sau khi chốt ⇒ coi như đã thu tay; **"Không trả cọc"** (`Forfeited`, có lý do) |
+| 219 | **Chênh lệch sau thanh lý**: HĐ đã kết thúc, số cuối điện gõ dư 30 kWh ⇒ điều chỉnh số cuối (`handling: AfterEnd`), hóa đơn trả phòng giữ nguyên, khoản 105.000đ **đã trả lại** (chuyển khoản) |
+| 220 | **Người mới nhập số nhỏ hơn số cuối người cũ**: HĐ cũ kết thúc với số cuối gõ dư 30 kWh; người mới nhận phòng ngày 2 nhập đúng số, chọn "Số cuối người cũ gõ nhầm" ⇒ HĐ cũ có "Chênh lệch sau thanh lý" 105.000đ **chờ xử lý** — thử "Đã trả lại" / "Không trả lại" (`POST /room-charges/{id}/waive`) |
+| 221 | **Kỳ ảo**: tháng −2 đã chốt + thu, tháng trước chỉ có nháp nhưng người thuê thực ra đã đi ⇒ **"Coi như trả phòng từ"** ngày cuối tháng −2: nháp tháng trước bị xóa, **không cần hóa đơn trả phòng** / chỉ số cuối, HĐ đã kết thúc |
+| 222 | **Kỳ cuối "Không thu"**: trả phòng ngày 1, chủ trọ miễn tiền phòng + dịch vụ kỳ cuối, vẫn tính điện; hóa đơn trả phòng **còn nháp** ⇒ mở màn thanh lý xem số tiền 3 cách, đổi qua lại (`PUT …/liquidation/final-period-charge`), thử sửa tay một dòng (bắt buộc lý do) |
 | 209 | **HĐ nháp** có người đứng tên đang là **người ở thường của phòng 102** ⇒ chi tiết HĐ cảnh báo `REPRESENTATIVE_IS_RESIDENT_ELSEWHERE`; kích hoạt bị chặn cho tới khi đổi người đó thành đồng thuê ở 102 hoặc ghi chuyển đi. Thêm 1 hồ sơ người thuê chưa từng thuê |
 
 Khu A có khoản **"Phí điều hòa"** thêm hàng loạt cho 101, 102 qua màn "Phòng đang dùng dịch vụ" (`POST /fee-types/{id}/usage`).
@@ -63,7 +70,8 @@ Khu A có khoản **"Phí điều hòa"** thêm hàng loạt cho 101, 102 qua m�
 
 | Phòng | Tình huống |
 |-------|-----------|
-| B01 | Trả phòng sớm kỳ này ⇒ hóa đơn trả phòng có cảnh báo **thu thừa**, dòng **hoàn trả** (phiếu nguồn = phiếu kỳ này đã thu trọn tiền phòng), tổng âm ⇒ **Chờ hoàn**; HĐ đang thanh lý, cọc **đang giữ** |
+| B01 | Trả phòng sớm kỳ này, chủ trọ chọn kỳ cuối **"Tính theo ngày ở"** ⇒ hóa đơn trả phòng có cảnh báo **thu thừa kèm số gợi ý hoàn**, dòng **hoàn trả** đúng số đó (phiếu nguồn = phiếu kỳ này đã thu trọn tiền phòng), tổng âm ⇒ **Chờ hoàn**; HĐ đang thanh lý, cọc **đang giữ** |
+| B10 | Trả phòng sớm kỳ này, chọn "Tính theo ngày ở", nhưng hóa đơn tháng (tiền phòng trọn kỳ) **chưa thu** ⇒ cảnh báo thu thừa **không có số gợi ý hoàn**, nhắc **hủy hóa đơn tháng** để tính lại; hóa đơn trả phòng còn nháp |
 | B02 | Trả phòng sớm kỳ trước ⇒ hoàn trả **đã xác nhận hoàn**, HĐ kết thúc, **"Đã hoàn trả cọc"** đủ; người thuê **ẩn danh bằng tay** — biển số xe máy đã bị xóa |
 | B03 | **Thay công tơ điện** giữa kỳ trước ⇒ phiếu nháp kỳ này có 2 đoạn đo |
 | B04 | 3 người, **450 kWh** ⇒ phiếu nháp tính giá bậc (tổng lẻ ⇒ **"Làm tròn"**); người ở thứ 4 vào **sau khi lập nháp** ⇒ nháp **"Cần tính lại"** (`GET /invoices?stale=true`); khoản **bù "hỏng quạt" đã trả tiền mặt** ⇒ hiện trên nháp, không trừ vào tổng |

@@ -84,7 +84,13 @@ public sealed record InvoiceDetailDto(
     IReadOnlyList<PreviousDebtDto>? PreviousDebts = null,
     decimal? TotalDue = null,
     IReadOnlyList<PreviousContractDebtDto>? PreviousContractDebts = null,
-    decimal PreviousContractDue = 0);
+    decimal PreviousContractDue = 0,
+    FinalPeriodSummaryDto? FinalPeriod = null);
+
+/// <summary>M07 BL-UC-11: dòng tóm tắt kỳ cuối của hóa đơn trả phòng — "Ở đến 15/02 · Kỳ 01/02–28/02 · Tính: trọn kỳ".</summary>
+/// <param name="RentBilledInvoiceNo">Tiền phòng kỳ cuối đã thu ở hóa đơn tháng này (khu thu trước); null = thu ở hóa đơn trả phòng.</param>
+public sealed record FinalPeriodSummaryDto(
+    DateOnly StayedUntil, DateOnly PeriodStart, DateOnly PeriodEnd, int Days, int PeriodDays, FinalPeriodCharge Charge, string? RentBilledInvoiceNo);
 
 internal static class InvoiceMapping
 {

@@ -327,7 +327,7 @@ public sealed class InvoiceTests
     }
 
     [Fact]
-    public void FinalInvoice_LastPeriodNotBilled_ChargesRentForDaysStayed_ServicesFullMonth()
+    public void FinalInvoice_DailyProratesRentAndServices_DefaultChargesWhole_NoneChargesNothing()
     {
         var contract = Active(ChargeMode.Postpaid);
         contract.StartLiquidation(Start.AddDays(14), TerminationReason.MutualAgreement, null, null, Start.AddDays(14)).IsSuccess.Should().BeTrue();
@@ -337,21 +337,34 @@ public sealed class InvoiceTests
 
         var result = InvoiceCalculator.Calculate(new InvoiceCalcInput(contract, period, ScheduleOf(contract), ProrationMode.Daily,
             new Dictionary<Guid, FeeType> { [Electricity.Id] = Electricity, [WaterPerPerson.Id] = WaterPerPerson, [Parking.Id] = Parking },
-            [meter], new Dictionary<Guid, Guid>(), new FinalSettlement(RentBilled: null, LastPeriodHasRegular: false)));
+            [meter], new Dictionary<Guid, Guid>(), new FinalSettlement(RentBilled: null, LastPeriodHasRegular: false, FinalPeriodCharge.Daily)));
 
         var factor = 15m / 31; // 05/10–19/10 trong kỳ chuẩn 05/10–04/11
         result.Lines.Single(l => l.Type == InvoiceLineType.Rent).Amount.Should().Be(Invoice.Money(3_500_000 * factor));
         result.Lines.Single(l => l.Type == InvoiceLineType.Metered).Quantity.Should().Be(22, "từ chỉ số nhận phòng tới chỉ số cuối");
         result.Lines.Where(l => l.Type == InvoiceLineType.Service).Sum(l => l.Amount)
-            .Should().Be(2 * 20_000 + 2 * 100_000, "dịch vụ thu trọn tháng kể cả phiếu quyết toán (BL-BR-17, L1)");
+            .Should().Be(Invoice.Money(2 * 20_000 * factor) + Invoice.Money(2 * 100_000 * factor), "kỳ cuối theo ngày ở: dịch vụ như tiền phòng (BL-BR-17, 20/10/2026)");
+
+        var whole = InvoiceCalculator.Calculate(new InvoiceCalcInput(contract, period, ScheduleOf(contract), ProrationMode.Daily,
+            new Dictionary<Guid, FeeType> { [Electricity.Id] = Electricity, [WaterPerPerson.Id] = WaterPerPerson, [Parking.Id] = Parking },
+            [meter], new Dictionary<Guid, Guid>(), new FinalSettlement(RentBilled: null, LastPeriodHasRegular: false)));
+        whole.Lines.Single(l => l.Type == InvoiceLineType.Rent).Amount.Should().Be(3_500_000, "thu trọn kỳ");
+        whole.Lines.Where(l => l.Type == InvoiceLineType.Service).Sum(l => l.Amount).Should().Be(2 * 20_000 + 2 * 100_000,
+            "mặc định thu trọn kỳ, không theo cài đặt khu (Daily)");
+
+        var none = InvoiceCalculator.Calculate(new InvoiceCalcInput(contract, period, ScheduleOf(contract), ProrationMode.Daily,
+            new Dictionary<Guid, FeeType> { [Electricity.Id] = Electricity, [WaterPerPerson.Id] = WaterPerPerson, [Parking.Id] = Parking },
+            [meter], new Dictionary<Guid, Guid>(), new FinalSettlement(RentBilled: null, LastPeriodHasRegular: false, FinalPeriodCharge.None)));
+        none.Lines.Where(l => l.Type is InvoiceLineType.Rent or InvoiceLineType.Service).Should().OnlyContain(l => l.Amount == 0);
+        none.Lines.Single(l => l.Type == InvoiceLineType.Metered).Quantity.Should().Be(22, "không thu tiền phòng vẫn tính điện");
 
         var covered = InvoiceCalculator.Calculate(new InvoiceCalcInput(contract, period, ScheduleOf(contract), ProrationMode.Daily,
             new Dictionary<Guid, FeeType> { [Electricity.Id] = Electricity, [WaterPerPerson.Id] = WaterPerPerson, [Parking.Id] = Parking },
-            [meter], new Dictionary<Guid, Guid>(), new FinalSettlement(RentBilled: 3_500_000, LastPeriodHasRegular: true)));
+            [meter], new Dictionary<Guid, Guid>(), new FinalSettlement(RentBilled: 3_500_000, LastPeriodHasRegular: true, FinalPeriodCharge.Daily, RentCollected: 3_500_000)));
         covered.Lines.Select(l => l.Type).Should().Equal(InvoiceLineType.Metered); // tiền phòng, dịch vụ đã thu — không tự hoàn
         var overpaid = 3_500_000 - Invoice.Money(3_500_000 * factor);
         covered.Issues.Should().ContainSingle(i => i.Code == "RENT_OVERPAID" && i.Severity == InvoiceIssue.Warning)
-            .Which.Message.Should().Contain($"{overpaid:N0}");
+            .Which.Amount.Should().Be(overpaid);
     }
 
     private static Invoice Draft(decimal rent = 1_000_000, bool round = false) =>
@@ -480,5 +493,27 @@ public sealed class InvoiceTests
 
         invoice.ConfirmRefund(Start, PaymentMethod.Cash, null, Start).Error.Should().Be(BillingErrors.NothingToRefund);
         invoice.PaymentStatus(Start).Should().Be(InvoicePaymentStatus.Unpaid);
+    }
+
+    [Fact]
+    public void ReadingAdjustment_ThatWouldMakeMonthlyInvoiceNegative_IsRejectedWithoutChanges()
+    {
+        var contract = Active(ChargeMode.Postpaid);
+        var period = Periods(contract, Start).First();
+        var meter = MeterWithHandover(contract, 108);
+        meter.Record(ReadingKind.Periodic, period.End, 196, contract.Id, null, period.Start);
+        var invoice = Invoice.CreateDraft(PropertyId, RoomId, contract.Id, period, "101", "HD", "A", Calculate(contract, period, meter));
+        var metered = invoice.Lines.Single(l => l.Type == InvoiceLineType.Metered).Amount;
+        invoice.AddManualLine(InvoiceLineType.ManualDiscount, "Miễn", null, null, invoice.NetCharges - metered / 2, "Sửa nhà", null,
+            roomChargeId: Guid.NewGuid()).IsSuccess.Should().BeTrue();
+        invoice.Finalize("PB2026-000001", Start, 5, DateTimeOffset.UtcNow).IsSuccess.Should().BeTrue();
+        var total = invoice.TotalAmount;
+        var reading = meter.FindPeriodic(contract.Id, period.Start)!;
+
+        invoice.ApplyReadingChange(reading.Id, 110, null).Error.Should().Be(MeterErrors.AdjustmentNegativeTotal);
+
+        invoice.TotalAmount.Should().Be(total);
+        invoice.Segments.Single().EndValue.Should().Be(196);
+        invoice.IsAdjusted.Should().BeFalse();
     }
 }

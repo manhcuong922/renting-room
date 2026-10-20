@@ -40,13 +40,27 @@ public sealed class InvoiceInputLoader(IPropertyQueries properties, IFeeQueries 
         if (isFinal)
         {
             var rentLines = source.FinalRentAmounts!;
-            final = new FinalSettlement(rentLines.Count > 0 ? rentLines.Sum() : null, source.HasRegularInFinalPeriod);
+            var charge = contract.FinalPeriodCharge ?? FinalPeriodCharge.FullPeriod;
+            final = rentLines.Count == 0
+                ? new FinalSettlement(null, source.HasRegularInFinalPeriod, charge)
+                : await WithRentSourceAsync(rentLines, source.HasRegularInFinalPeriod, charge, ct);
         }
         var recent = source.RecentUsage
             .GroupBy(x => x.FeeTypeId)
             .ToDictionary(g => g.Key, g => (IReadOnlyList<decimal>)g.OrderByDescending(x => x.PeriodStart).Select(x => x.Quantity).ToList());
         return new InvoiceCalcInput(contract, period, billing.Schedule, billing.ProrationMode, types, source.Meters.ToList(), lastEnd, final, recent,
             billing.RoundInvoiceTotal, source.ClosedReadingIds, source.RoomCodes);
+    }
+
+    /// <summary>Khu thu trước: tiền phòng kỳ cuối đã lập ở hóa đơn tháng ⇒ kèm số người thuê đã trả thật + đã hoàn để gợi ý hoàn đúng.</summary>
+    private async Task<FinalSettlement> WithRentSourceAsync(
+        IReadOnlyList<(Guid InvoiceId, decimal Amount)> rentLines, bool hasRegular, FinalPeriodCharge charge, CancellationToken ct)
+    {
+        var sourceId = rentLines[^1].InvoiceId;
+        var source = await invoices.GetAsync(sourceId, ct);
+        var collected = source is { Status: InvoiceStatus.Finalized } ? source.PaidAmount - source.WrittenOffAmount : 0;
+        var refunded = -await invoices.GetRefundLinesTotalAsync(sourceId, null, ct);
+        return new FinalSettlement(rentLines.Sum(l => l.Amount), hasRegular, charge, sourceId, collected, refunded);
     }
 
     public static BillingPeriod? CurrentPeriod(Contract contract, Invoice invoice, BillingSchedule schedule) =>

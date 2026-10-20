@@ -929,6 +929,11 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("ended_at");
 
+                    b.Property<string>("FinalPeriodCharge")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("final_period_charge");
+
                     b.Property<bool>("HasSignedDocument")
                         .HasColumnType("boolean")
                         .HasColumnName("has_signed_document");

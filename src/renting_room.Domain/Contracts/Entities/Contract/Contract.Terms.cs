@@ -115,4 +115,24 @@ public sealed partial class Contract
         var actualDays = plannedMoveOutDate.DayNumber - noticeDate.DayNumber;
         return Result.Success(new NoticeResult(actualDays < NoticeDays, NoticeDays, actualDays));
     }
+
+    /// <summary>CT-UC-07: người thuê đổi ý ở tiếp — bỏ ngày báo / dự kiến trả ⇒ hóa đơn tháng lập lại được.</summary>
+    public Result WithdrawNotice()
+    {
+        if (Status != ContractStatus.Active)
+            return Result.Failure(ContractErrors.NotActive);
+        if (PlannedMoveOutDate is null)
+            return Result.Failure(ContractErrors.NoticeNotGiven);
+        NoticeGivenDate = null;
+        PlannedMoveOutDate = null;
+        return Result.Success();
+    }
+
+    /// <summary>Nhãn "Trả phòng dd/MM": ngày trả phòng khi đang thanh lý, ngày dự kiến trả đã báo khi còn hiệu lực.</summary>
+    public DateOnly? MoveOutDate => Status switch
+    {
+        ContractStatus.Liquidating => ActualEndDate,
+        ContractStatus.Active => PlannedMoveOutDate,
+        _ => null
+    };
 }

@@ -57,19 +57,16 @@ public sealed partial class DemoDataSeeder
             }
         }
 
-        // Trả phòng sớm trong kỳ đã thu trọn tiền phòng ⇒ hóa đơn trả phòng có cảnh báo RENT_OVERPAID + dòng hoàn trả ⇒ tổng âm.
-        async Task<InvoiceDetailDto> MoveOutEarly(DemoRoom room, Guid contract, DateOnly periodStart, DateOnly leftOn)
+        // Trả phòng sớm trong kỳ đã thu trọn tiền phòng, chủ trọ chọn kỳ cuối "Tính theo ngày ở" (mặc định thu trọn kỳ — CT-BR-11) ⇒ hóa đơn
+        // trả phòng cảnh báo RENT_OVERPAID kèm số gợi ý hoàn + hóa đơn nguồn ⇒ "Thêm hoàn trả" đúng số đó ⇒ tổng âm.
+        async Task<InvoiceDetailDto> MoveOutEarly(DemoRoom room, Guid contract, DateOnly leftOn)
         {
-            await Send(new StartLiquidationCommand(contract, leftOn, TerminationReason.MutualAgreement, null, "Trả phòng sớm theo thỏa thuận"));
+            await Send(new StartLiquidationCommand(contract, leftOn, TerminationReason.MutualAgreement, null, "Trả phòng sớm theo thỏa thuận",
+                FinalPeriodCharge.Daily));
             var final = await Send(new CreateFinalInvoiceCommand(contract, [FinalReading(room.Electricity, 30), FinalReading(room.Water!.Value, 2)]));
-            var daysStayed = leftOn.DayNumber - periodStart.DayNumber + 1;
-            var periodDays = periodStart.AddMonths(1).DayNumber - periodStart.DayNumber;
-            var overpaid = Invoice.Money(PrepaidRent * (periodDays - daysStayed) / periodDays);
-            // E (BL-BR-27): nguồn = phiếu thường của kỳ cuối đã thu trọn tiền phòng.
-            var source = (await Raw(new ListInvoicesQuery(null, $"{periodStart:yyyy-MM}", null, null, contract, null)))
-                .Items.Single(i => i.Type == InvoiceType.Regular).Id;
-            await Send(new AddInvoiceManualLineCommand(final.Summary.Id, InvoiceLineType.Refund, $"Hoàn tiền phòng {periodDays - daysStayed} ngày chưa ở",
-                null, null, overpaid, "Trả phòng sớm — đã thu trọn kỳ", null, source));
+            var suggestion = final.Issues.Single(i => i.Code == "RENT_OVERPAID");
+            await Send(new AddInvoiceManualLineCommand(final.Summary.Id, InvoiceLineType.Refund, "Hoàn tiền phòng những ngày chưa ở",
+                null, null, suggestion.Amount!.Value, "Trả phòng sớm — đã thu trọn kỳ", null, suggestion.Ref));
             return await FinalizeAsync(final.Summary.Id, leftOn.AddDays(1));
         }
 
@@ -78,7 +75,7 @@ public sealed partial class DemoDataSeeder
         var c01 = await ContractAsync(b01.Id, await RenterAsync("Cao Văn Bình", new DateOnly(1996, 2, 2), Gender.Male, Phone(21)),
             Period(-2), PrepaidRent, b01.Meters, fees: standard);
         await History(b01, c01, -2, 0);
-        await MoveOutEarly(b01, c01, Period(0), Period(0).AddDays(Math.Min(9, _today.DayNumber - Period(0).DayNumber)));
+        await MoveOutEarly(b01, c01, Period(0).AddDays(Math.Min(9, _today.DayNumber - Period(0).DayNumber)));
 
         // B02 — Trả phòng sớm kỳ trước, đã hoàn tiền, đã kết thúc; người thuê yêu cầu xóa dữ liệu ⇒ ẩn danh bằng tay.
         var b02 = await Room("B02");
@@ -86,11 +83,23 @@ public sealed partial class DemoDataSeeder
         var c02 = await ContractAsync(b02.Id, tenant02, Period(-3), PrepaidRent, b02.Meters, fees: standard);
         await Send(new RegisterVehicleCommand(c02, tenant02, VehicleType.Motorbike, "29H155667", "Vision trắng", Period(-3), null)); // xóa biển số khi ẩn danh
         await History(b02, c02, -3, -1);
-        var refunded = await MoveOutEarly(b02, c02, Period(-1), Period(-1).AddDays(10));
+        var refunded = await MoveOutEarly(b02, c02, Period(-1).AddDays(10));
         await Send(new ConfirmInvoiceRefundCommand(refunded.Summary.Id, _today, PaymentMethod.Cash, "Trả tiền mặt khi bàn giao phòng"));
         await Send(new CompleteLiquidationCommand(c02));
         await Send(new RefundDepositCommand(c02, _today, null, null)); // "Đã hoàn trả cọc" đủ
         await Send(new AnonymizeRenterCommand(tenant02, "Người thuê yêu cầu xóa dữ liệu cá nhân sau khi trả phòng"));
+
+        // B10 — trả phòng sớm kỳ này, chọn "Tính theo ngày ở", nhưng hóa đơn tháng (đã lập tiền phòng trọn kỳ) chưa thu đồng nào ⇒ không gợi ý
+        // hoàn, cảnh báo nhắc hủy hóa đơn tháng để tính lại (BL-BR-17); hóa đơn trả phòng còn nháp.
+        var b10 = await Room("B10");
+        var c10 = await ContractAsync(b10.Id, await RenterAsync("Lê Văn Tâm", new DateOnly(1998, 3, 3), Gender.Male, Phone(55)),
+            Period(-1), PrepaidRent, b10.Meters, fees: standard);
+        await History(b10, c10, -1, -1);
+        await Close(b10, c10, Period(-1), 90);
+        await FinalizeAsync(await DraftAsync(propertyId, b10.Id, c10, Period(0)), Period(0));
+        await Send(new StartLiquidationCommand(c10, Period(0).AddDays(Math.Min(9, _today.DayNumber - Period(0).DayNumber)),
+            TerminationReason.MutualAgreement, null, "Trả phòng sớm theo thỏa thuận", FinalPeriodCharge.Daily));
+        await Send(new CreateFinalInvoiceCommand(c10, [FinalReading(b10.Electricity, 20), FinalReading(b10.Water!.Value, 1)]));
 
         // B03 — Thay công tơ điện giữa kỳ trước ⇒ phiếu nháp kỳ này có 2 đoạn đo (công tơ cũ + mới).
         var b03 = await Room("B03");

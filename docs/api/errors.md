@@ -197,7 +197,8 @@ Cảnh báo mềm: `ROOM_WITHOUT_METER` (HĐ hiệu lực, phòng chưa có côn
 | `INVOICE_HAS_PAYMENTS` | 422 | Đảo phiếu thu trước khi hủy phiếu |
 | `ROOM_CHARGE_NO_TENANT` | 422 | Khoản phát sinh: phòng không có người thuê tại ngày phát sinh |
 | `ROOM_CHARGE_CREDIT_TOO_HIGH` | 422 | Khoản bù chưa trả (cộng các khoản bù chưa trả khác) vượt một tháng tiền phòng — kèm `limit` |
-| `ROOM_CHARGE_NO_OPEN_INVOICE` | 422 | Khoản phát sinh: HĐ đã chốt hóa đơn trả phòng / đã kết thúc |
+| `ROOM_CHARGE_NO_OPEN_INVOICE` | 422 | Khoản phát sinh: HĐ đã kết thúc (từ 20/10/2026 hóa đơn trả phòng đã chốt vẫn tạo được — khoản chưa xử lý) |
+| `ROOM_CHARGE_NOT_WAIVABLE` | 422 | "Không trả lại": chỉ cho khoản Chênh lệch sau thanh lý đang chờ |
 | `ROOM_CHARGE_LOCKED` | 422 | Khoản phát sinh đã nằm trên phiếu đã chốt — không đánh dấu / hủy |
 | `ROOM_CHARGE_SYSTEM` | 422 | Khoản do hệ thống tạo (khoản điều chỉnh chỉ số; khoản chốt điện nước khi chuyển phòng — dữ liệu trước 17/10/2026) — không sửa / hủy tay, chỉ đánh dấu đã trả / đã thu ngay |
 | `REFUND_SOURCE_INVALID` | 422 | Phiếu nguồn của dòng hoàn trả không phải phiếu đã chốt của cùng HĐ |
@@ -223,7 +224,10 @@ Cảnh báo mềm: `ROOM_WITHOUT_METER` (HĐ hiệu lực, phòng chưa có côn
 | `INVALID_HANDLING` | 400 | Điều chỉnh: `handling` chỉ nhận `Immediate` / `NextInvoice` |
 | `ADJUSTMENT_ALREADY_BILLED` | 422 | Điều chỉnh: khoản điều chỉnh lần trước đã thanh toán (đã trả / thu ngay, hoặc trên hóa đơn đã chốt) — không điều chỉnh tiếp |
 | `ADJUSTMENT_NO_NEXT_INVOICE` | 422 | Điều chỉnh: hóa đơn trả phòng đã chốt, không còn hóa đơn sau — chọn `Immediate` |
-| `CONTRACT_ENDED` | 422 | Điều chỉnh: hợp đồng đã kết thúc — chưa hỗ trợ |
+| `ADJUSTMENT_NEGATIVE_TOTAL` | 422 | Điều chỉnh: tính lại làm hóa đơn tháng âm — gợi ý "Đẩy sang hóa đơn sau" (`handling: NextInvoice`) |
+| `ADJUSTMENT_AFTER_END_INCREASE` | 422 | Điều chỉnh sau thanh lý: chỉ giảm được số cuối |
+| `HANDOVER_BELOW_PREVIOUS_FINAL` | 422 | Kích hoạt: số nhận phòng nhỏ hơn số cuối HĐ trước — hỏi "Số người cũ gõ nhầm / Công tơ đã thay / Nhập nhầm" (`meterId`, `previousValue`, `previousContractNo`) |
+| `PREVIOUS_CONTRACT_NOT_ENDED` | 422 | Kích hoạt: HĐ trước còn đang thanh lý — sửa số cuối trên HĐ đó trước |
 | `READING_NOT_VOIDABLE` | 422 | Hủy chỉ số: chỉ hủy được chỉ số cuối kỳ / kiểm tra |
 | `SEARCH_TOO_SHORT` | 400 | Tìm lịch sử thuê theo tên: nhập ít nhất 2 ký tự |
 | `USERNAME_REQUIRED` | 400 | Tài khoản phải còn SĐT hoặc email để đăng nhập |
@@ -241,9 +245,12 @@ Cảnh báo mềm: `ROOM_WITHOUT_METER` (HĐ hiệu lực, phòng chưa có côn
 | `MISSING_READING` / `PREVIOUS_PERIOD_INCOMPLETE` | — | Lý do bỏ qua khi tạo phiếu (`skipped[].reason`, 17/10/2026): thiếu chỉ số ⇒ không tạo nháp; kỳ trước còn nháp thiếu chỉ số |
 | `RENTER_IDENTITY_MISMATCH` | — | Lỗi dòng nhập Excel: số giấy tờ trùng hồ sơ có sẵn nhưng khác họ tên / ngày sinh |
 | `CONTRACT_HAS_DEBT` | 422 | Hoàn tất thanh lý: còn nợ `outstanding` — chọn "Đã thu toàn bộ" / "Bỏ nợ" |
-| `REFUND_PENDING` | 422 | Hoàn tất thanh lý: còn `refundDue` phải trả lại người thuê — xác nhận đã hoàn trên phiếu trước |
+| `REFUND_PENDING` | 422 | Hoàn tất thanh lý: còn tiền phải trả lại người thuê — gửi lại kèm `refund` ("Đã trả") |
+| `PENDING_CHARGES` | 422 | Hoàn tất thanh lý: còn khoản chưa xử lý (`count`, `surcharge`, `credit`) — gửi lại kèm `pendingCharges` |
+| `NOTICE_NOT_GIVEN` | 422 | Rút báo trả phòng khi chưa báo |
+| `MOVE_OUT_NOTICED` | — | Lý do bỏ qua khi tạo hóa đơn tháng: đã báo trả phòng trong kỳ |
 | `CONTRACT_NOT_BILLABLE` | 422 | HĐ đã kết thúc — không ghi / đảo phiếu thu, không xác nhận / bỏ xác nhận hoàn tiền |
-| `INVOICE_AFTER_END_DATE` | 422 | Bắt đầu thanh lý / ký lại: còn phiếu kỳ sau ngày trả phòng — hủy / xóa trước |
+| `INVOICE_AFTER_END_DATE` | 422 | Bắt đầu thanh lý / ký lại: còn hóa đơn tháng kỳ sau ngày trả phòng, hoặc đã tính điện nước tới sau ngày đó — hủy / xóa trước |
 
 Cảnh báo trên phiếu (`issues`, `severity: "Warning"`): `EDITED_BASE_CHANGED` (ô sửa tay mà số hệ thống tính lại đã đổi).
 

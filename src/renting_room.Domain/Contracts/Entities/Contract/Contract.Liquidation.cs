@@ -5,7 +5,8 @@ namespace renting_room.Domain.Contracts;
 public sealed partial class Contract
 {
     public Result StartLiquidation(
-        DateOnly actualEndDate, TerminationReason reason, TerminationGround? ground, string? note, DateOnly today)
+        DateOnly actualEndDate, TerminationReason reason, TerminationGround? ground, string? note, DateOnly today,
+        FinalPeriodCharge? finalPeriodCharge = null)
     {
         if (Status != ContractStatus.Active)
             return Result.Failure(ContractErrors.NotActive);
@@ -29,7 +30,17 @@ public sealed partial class Contract
         TerminationReason = reason;
         TerminationGround = reason == Contracts.TerminationReason.LessorUnilateral ? ground : null;
         TerminationNote = TextNormalizer.TrimToNull(note);
+        FinalPeriodCharge = finalPeriodCharge;
         Status = ContractStatus.Liquidating;
+        return Result.Success();
+    }
+
+    /// <summary>CT-BR-11: đổi cách tính kỳ cuối khi hóa đơn trả phòng chưa chốt (người gọi kiểm và tính lại nháp).</summary>
+    public Result ChangeFinalPeriodCharge(FinalPeriodCharge? charge)
+    {
+        if (Status != ContractStatus.Liquidating)
+            return Result.Failure(ContractErrors.NotLiquidating);
+        FinalPeriodCharge = charge;
         return Result.Success();
     }
 
@@ -44,6 +55,7 @@ public sealed partial class Contract
         TerminationGround = null;
         TerminationNote = null;
         LiquidationStartedOn = null;
+        FinalPeriodCharge = null;
         Status = ContractStatus.Active;
         return Result.Success();
     }

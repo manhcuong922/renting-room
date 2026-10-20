@@ -141,6 +141,30 @@ public sealed class DemoDataSeederTests(ApiFactory factory)
         written214.Should().BeInRange(1, 99_999, "phần thu dư trừ vào 100.000đ đã bỏ nợ");
         (await InvoicesOfAsync("215", "Liquidating")).Single(i => i.GetProperty("type").GetString() == "Final")
             .GetProperty("paymentStatus").GetString().Should().Be("RefundPending", "khoản giảm lớn hơn hóa đơn trả phòng");
+
+        // Lượt 2 (20/10/2026): 215 màn hoàn tất có tiền cần trả lại + khoản chưa xử lý; 216 tính lại sẽ âm ⇒ Đẩy sang; 217 báo trả phòng;
+        // 218 hoàn tất một lần + không trả cọc; 219 chênh lệch sau thanh lý đã trả lại; 220 người mới nhập số nhỏ hơn ⇒ chênh lệch chờ xử lý.
+        var preview215 = await (await _client.GetAsync(
+            $"/api/v1/contracts/{(await DetailAsync("215", "Liquidating")).GetProperty("id").GetGuid()}/liquidation/preview", token)).ReadAsync<JsonElement>();
+        preview215.GetProperty("needsRefundDecision").GetBoolean().Should().BeTrue();
+        preview215.GetProperty("pendingCharges").EnumerateArray().Single().GetProperty("description").GetString().Should().Be("Mất chìa khóa");
+        var adjusted216 = (await InvoicesOfAsync("216", "Active")).Single();
+        adjusted216.GetProperty("isAdjusted").GetBoolean().Should().BeTrue();
+        adjusted216.GetProperty("needsResend").GetBoolean().Should().BeFalse("đẩy sang hóa đơn sau ⇒ hóa đơn giữ nguyên");
+        khuA.GetProperty("items").EnumerateArray().Single(r => r.GetProperty("code").GetString() == "217")
+            .GetProperty("currentContract").GetProperty("moveOutDate").ValueKind.Should().Be(JsonValueKind.String, "nhãn Trả phòng dd/MM");
+        Deposit(await DetailAsync("218", "Ended")).GetProperty("status").GetString().Should().Be("Forfeited");
+        var final10 = (await InvoicesOfAsync("B10", "Liquidating")).Single(i => i.GetProperty("type").GetString() == "Final");
+        var overpaid10 = (await (await _client.GetAsync($"/api/v1/invoices/{final10.GetProperty("id").GetGuid()}", token)).ReadAsync<JsonElement>())
+            .GetProperty("issues").EnumerateArray().Single(i => i.GetProperty("code").GetString() == "RENT_OVERPAID");
+        overpaid10.GetProperty("amount").ValueKind.Should().Be(JsonValueKind.Null, "hóa đơn tháng chưa thu ⇒ không gợi ý hoàn, nhắc hủy");
+        (await InvoicesOfAsync("221", "Ended")).Should().OnlyContain(i => i.GetProperty("type").GetString() == "Regular",
+            "kỳ ảo ⇒ coi như trả phòng từ ngày chốt kỳ trước, không cần hóa đơn trả phòng");
+        var final222 = (await InvoicesOfAsync("222", "Liquidating")).Single(i => i.GetProperty("type").GetString() == "Final");
+        var detail222 = await (await _client.GetAsync($"/api/v1/invoices/{final222.GetProperty("id").GetGuid()}", token)).ReadAsync<JsonElement>();
+        detail222.GetProperty("finalPeriod").GetProperty("charge").GetString().Should().Be("None");
+        detail222.GetProperty("lines").EnumerateArray().Single(l => l.GetProperty("type").GetString() == "Rent")
+            .GetProperty("amount").GetDecimal().Should().Be(0, "không thu tiền phòng kỳ cuối");
         var final106 = items.Single(i => i.GetProperty("roomCode").GetString() == "106" && i.GetProperty("type").GetString() == "Final");
         (await (await _client.GetAsync($"/api/v1/invoices/{final106.GetProperty("id").GetGuid()}", token)).ReadAsync<JsonElement>())
             .GetProperty("lines").EnumerateArray().Should().Contain(l => l.GetProperty("type").GetString() == "Surcharge"
@@ -150,8 +174,12 @@ public sealed class DemoDataSeederTests(ApiFactory factory)
         var charges = await (await _client.GetAsync("/api/v1/room-charges", token)).ReadAsync<JsonElement>();
         charges.EnumerateArray().Select(c => c.GetProperty("status").GetString()).Should().Contain(["Pending", "OnDraft", "Billed"]);
         charges.EnumerateArray().Where(c => c.GetProperty("status").GetString() == "Pending").Select(c => c.GetProperty("roomCode").GetString())
-            .Should().BeEquivalentTo(["101", "101", "102", "B08"],
-                "chuyển phòng không còn tạo khoản chốt điện nước — sản lượng phòng cũ cộng vào dòng của kỳ (CT-BR-47); B08 có khoản chênh lệch tiền phòng (CT-BR-48); 101 có thêm khoản bù điều chỉnh chỉ số (MT-UC-09)");
+            .Should().BeEquivalentTo(["101", "101", "102", "B08", "215", "216", "218", "219", "220"],
+                "chuyển phòng không còn tạo khoản chốt điện nước — sản lượng phòng cũ cộng vào dòng của kỳ (CT-BR-47); B08 có khoản chênh lệch tiền phòng (CT-BR-48); 101 có thêm khoản bù điều chỉnh chỉ số (MT-UC-09); " +
+                "215 / 218 khoản sau khi chốt hóa đơn trả phòng, 216 khoản bù điều chỉnh, 219 / 220 chênh lệch sau thanh lý");
+        var afterEnd = charges.EnumerateArray().Where(c => c.GetProperty("description").GetString()!.StartsWith("Chênh lệch sau thanh lý")).ToList();
+        afterEnd.Single(c => c.GetProperty("roomCode").GetString() == "219").GetProperty("isSettled").GetBoolean().Should().BeTrue("đã trả lại");
+        afterEnd.Single(c => c.GetProperty("roomCode").GetString() == "220").GetProperty("isSettled").GetBoolean().Should().BeFalse("chờ xử lý");
         charges.EnumerateArray().Should().Contain(c => c.GetProperty("roomCode").GetString() == "101" && c.GetProperty("kind").GetString() == "Credit"
             && c.GetProperty("description").GetString()!.StartsWith("Điều chỉnh chỉ số"), "điều chỉnh chỉ số đã chốt tạo khoản bù (MT-UC-09)");
         charges.EnumerateArray().Single(c => c.GetProperty("roomCode").GetString() == "B08").GetProperty("amount").GetDecimal().Should().Be(300_000);

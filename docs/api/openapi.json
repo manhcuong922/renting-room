@@ -1558,6 +1558,40 @@
         }
       }
     },
+    "/api/v1/contracts/{id}/deposit/forfeit": {
+      "post": {
+        "tags": [
+          "Contracts"
+        ],
+        "summary": "\"Không trả cọc\" — cọc không hoàn, lý do bắt buộc (M08 PM-BR-33)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ForfeitDepositRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/api/v1/contracts/{id}/transfer-room": {
       "post": {
         "tags": [
@@ -1680,14 +1714,12 @@
             "description": "OK"
           }
         }
-      }
-    },
-    "/api/v1/contracts/{id}/liquidation/preview": {
-      "get": {
+      },
+      "delete": {
         "tags": [
           "Contracts"
         ],
-        "summary": "Xem trước thanh lý: phiếu còn nợ, tiền chờ hoàn, chỉ số cuối còn thiếu, hóa đơn trả phòng, cọc, những gì còn chặn hoàn tất",
+        "summary": "Rút báo trả phòng — người thuê ở tiếp (CT-UC-07)",
         "parameters": [
           {
             "name": "id",
@@ -1696,6 +1728,38 @@
             "schema": {
               "type": "string",
               "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/contracts/{id}/liquidation/preview": {
+      "get": {
+        "tags": [
+          "Contracts"
+        ],
+        "summary": "Màn thanh lý: kỳ cuối, kỳ trước chưa có hóa đơn, hóa đơn tháng từ ngày trả phòng, nợ, tiền cần trả lại, khoản chưa xử lý, cọc (HĐ còn hiệu lực: ?actualEndDate= để xem trước)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "actualEndDate",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
             }
           }
         ],
@@ -1740,6 +1804,40 @@
         }
       }
     },
+    "/api/v1/contracts/{id}/liquidation/final-period-charge": {
+      "put": {
+        "tags": [
+          "Contracts"
+        ],
+        "summary": "Kỳ cuối: FullPeriod / null = thu trọn kỳ (mặc định), Daily = theo ngày ở, None = không thu — nháp hóa đơn trả phòng tự tính lại (CT-BR-11)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FinalPeriodChargeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/api/v1/contracts/{id}/liquidation/cancel": {
       "post": {
         "tags": [
@@ -1769,7 +1867,7 @@
         "tags": [
           "Contracts"
         ],
-        "summary": "Hoàn tất thanh lý: cần hóa đơn trả phòng đã chốt; còn nợ ⇒ settlement CollectAll (đã thu toàn bộ) / WriteOff (bỏ nợ)",
+        "summary": "Hoàn tất thanh lý một lần: refund (cần trả lại), pendingCharges (khoản chưa xử lý), settlement (còn nợ: CollectAll / WriteOff), deposit (trả / không trả / để sau) — cần hóa đơn trả phòng đã chốt khi còn phần chưa thu",
         "parameters": [
           {
             "name": "id",
@@ -5801,6 +5899,30 @@
         }
       }
     },
+    "/api/v1/room-charges/{id}/waive": {
+      "post": {
+        "tags": [
+          "RoomCharges"
+        ],
+        "summary": "\"Không trả lại\" khoản Chênh lệch sau thanh lý đang chờ (M06 MT-BR-19) — khoản hủy, báo cáo không đổi",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/api/v1/rooms": {
       "get": {
         "tags": [
@@ -6374,6 +6496,10 @@
           },
           "settlement": {
             "$ref": "#/components/schemas/AdjustmentSettlement"
+          },
+          "notReturned": {
+            "type": "boolean",
+            "nullable": true
           }
         },
         "additionalProperties": false
@@ -6382,7 +6508,8 @@
         "enum": [
           "Recalculated",
           "Immediate",
-          "NextInvoice"
+          "NextInvoice",
+          "AfterEnd"
         ],
         "type": "string"
       },
@@ -6861,6 +6988,15 @@
           "reason": {
             "type": "string",
             "nullable": true
+          },
+          "refund": {
+            "$ref": "#/components/schemas/LiquidationRefund"
+          },
+          "pendingCharges": {
+            "$ref": "#/components/schemas/LiquidationPendingCharges"
+          },
+          "deposit": {
+            "$ref": "#/components/schemas/LiquidationDeposit"
           }
         },
         "additionalProperties": false
@@ -7414,6 +7550,14 @@
         ],
         "type": "string"
       },
+      "DepositAction": {
+        "enum": [
+          "Refund",
+          "Forfeit",
+          "Later"
+        ],
+        "type": "string"
+      },
       "EditInvoiceLineRequest": {
         "type": "object",
         "properties": {
@@ -7575,6 +7719,23 @@
         },
         "additionalProperties": false
       },
+      "FinalPeriodCharge": {
+        "enum": [
+          "FullPeriod",
+          "Daily",
+          "None"
+        ],
+        "type": "string"
+      },
+      "FinalPeriodChargeRequest": {
+        "type": "object",
+        "properties": {
+          "finalPeriodCharge": {
+            "$ref": "#/components/schemas/FinalPeriodCharge"
+          }
+        },
+        "additionalProperties": false
+      },
       "FinalizeBatchRequest": {
         "type": "object",
         "properties": {
@@ -7584,6 +7745,20 @@
               "type": "string",
               "format": "uuid"
             },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "ForfeitDepositRequest": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "note": {
+            "type": "string",
             "nullable": true
           }
         },
@@ -7774,6 +7949,51 @@
         ],
         "type": "string"
       },
+      "LiquidationDeposit": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/DepositAction"
+          },
+          "amount": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "date": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "note": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "LiquidationPendingCharges": {
+        "type": "object",
+        "properties": {
+          "method": {
+            "$ref": "#/components/schemas/PaymentMethod"
+          }
+        },
+        "additionalProperties": false
+      },
+      "LiquidationRefund": {
+        "type": "object",
+        "properties": {
+          "refundedOn": {
+            "type": "string",
+            "format": "date"
+          },
+          "method": {
+            "$ref": "#/components/schemas/PaymentMethod"
+          }
+        },
+        "additionalProperties": false
+      },
       "LoginRequest": {
         "type": "object",
         "properties": {
@@ -7869,6 +8089,9 @@
             "type": "number",
             "format": "double",
             "nullable": true
+          },
+          "correctPreviousFinal": {
+            "type": "boolean"
           }
         },
         "additionalProperties": false
@@ -8840,6 +9063,9 @@
           "note": {
             "type": "string",
             "nullable": true
+          },
+          "finalPeriodCharge": {
+            "$ref": "#/components/schemas/FinalPeriodCharge"
           }
         },
         "additionalProperties": false

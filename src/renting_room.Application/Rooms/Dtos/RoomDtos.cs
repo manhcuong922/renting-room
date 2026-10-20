@@ -19,7 +19,7 @@ public sealed record RoomSpecInput(
 
 public sealed record CurrentContractDto(
     Guid Id, string ContractNo, string RepresentativeName, DateOnly StartDate, DateOnly? EndDate, int OccupantCount,
-    IReadOnlyList<ContractFlag>? Flags = null);
+    IReadOnlyList<ContractFlag>? Flags = null, DateOnly? MoveOutDate = null);
 
 public sealed record RoomDto(
     Guid Id,

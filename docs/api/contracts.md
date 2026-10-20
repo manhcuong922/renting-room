@@ -476,7 +476,23 @@ thuê trước) hoặc **nhập số khác** ≥ số đó (VD sửa chữa phò
 |-------------|---------|
 | 422 `HANDOVER_READING_REQUIRED` | Thiếu công tơ nào (`meterIds` trong body lỗi) |
 | 422 `READING_NOT_MONOTONIC` | Số nhập nhỏ hơn số mới nhất (`previousValue`, `meterId`) |
+| 422 `HANDOVER_BELOW_PREVIOUS_FINAL` | (20/10/2026) Số nhập nhỏ hơn **số cuối của HĐ trước đã kết thúc** (`meterId`, `previousValue`, `previousContractNo`) — xem dưới |
+| 422 `PREVIOUS_CONTRACT_NOT_ENDED` | Như trên nhưng HĐ trước còn đang thanh lý — sửa số cuối trên HĐ đó trước |
 | 422 `METER_NOT_IN_ROOM` | `meterId` không phải công tơ đang hoạt động của phòng |
+
+**Người mới nhập số nhỏ hơn số cuối người cũ** (20/10/2026 — CT-BR-02): nhận `HANDOVER_BELOW_PREVIOUS_FINAL` ⇒ UI hỏi nguyên nhân:
+
+| Chủ trọ chọn | UI làm |
+|---|---|
+| **Số cuối người cũ gõ nhầm** | Gửi lại cùng số, thêm `"correctPreviousFinal": true` trên công tơ đó ⇒ số cuối HĐ cũ sửa về số này, hóa đơn trả phòng cũ **giữ nguyên**, HĐ cũ có khoản **"Chênh lệch sau thanh lý"** chờ xử lý ([meters.md](meters.md#sau-thanh-lý-hđ-đã-kết-thúc-20102026)) — kích hoạt bình thường |
+| **Công tơ đã thay** | Chuyển sang "Thay công tơ" ([meters.md](meters.md)) rồi kích hoạt lại |
+| **Nhập nhầm** | Sửa số |
+
+```json
+{ "handoverReadings": [ { "meterId": "…điện", "value": 1420, "correctPreviousFinal": true } ] }
+```
+
+Số nhập **lớn hơn** số cuối người cũ (số cuối gõ thấp) ⇒ cho qua như cũ, phần chênh hiện ở sản lượng phòng trống.
 
 Chi tiết hợp đồng đang hiệu lực mà phòng chưa có công tơ điện → cảnh báo `ROOM_WITHOUT_METER`.
 
@@ -635,13 +651,14 @@ Chi tiết HĐ có `deposit`:
   "notRefundedReminder": false }
 ```
 
-`status`: `Holding` (đang giữ) · `Refunded` (đã hoàn trả) · `Transferred` (chuyển sang HĐ ký lại — tự về `Holding` khi HĐ nháp ký lại bị hủy / HĐ cũ hủy thanh lý) · `null` (HĐ không cọc — `amount` = 0).
+`status`: `Holding` (đang giữ) · `Refunded` (đã hoàn trả) · `Forfeited` (**không hoàn** — 20/10/2026, `note` = lý do, `refundedOn` = ngày quyết) · `Transferred` (chuyển sang HĐ ký lại — tự về `Holding` khi HĐ nháp ký lại bị hủy / HĐ cũ hủy thanh lý) · `null` (HĐ không cọc — `amount` = 0).
 `notRefundedReminder` = HĐ đã kết thúc mà chưa đánh dấu hoàn cọc ⇒ nhãn **"Chưa hoàn cọc"**; lọc `GET /contracts?depositNotRefunded=true`.
 
 | Thao tác | Endpoint | Ghi chú |
 |----------|----------|---------|
 | **Đã hoàn trả cọc** | `POST /contracts/{id}/deposit/refund` `{ "refundedOn": "2026-11-20", "amount": null, "note": null }` | `amount` null = đủ cọc; 0 … cọc; **ít hơn cọc** (giữ lại một phần / mất cọc) ⇒ `note` bắt buộc. Được ở mọi trạng thái HĐ (kể cả đã kết thúc / đã hủy) → 204 |
-| Bỏ đánh dấu (nhập nhầm) | `DELETE /contracts/{id}/deposit/refund` | Về "Đang giữ" → 204 |
+| **Không trả cọc** (20/10/2026) | `POST /contracts/{id}/deposit/forfeit` `{ "date": "2026-11-20", "note": "Trả phòng trước hạn, mất cọc theo HĐ" }` | `note` bắt buộc (400 `REQUIRED`) → 204. Cũng chọn được ngay khi hoàn tất thanh lý |
+| Bỏ đánh dấu (nhập nhầm) | `DELETE /contracts/{id}/deposit/refund` | Về "Đang giữ" (cả "Không hoàn") → 204 |
 
 | Lỗi | Khi nào |
 |-----|---------|
@@ -742,7 +759,9 @@ chuyển tiếp (chuyển thẳng → 400 `ROOM_TRANSFER_INVALID_DATE`).
 HĐ cũ** ⇒ cọc HĐ cũ tự về `Holding`, xe kết thúc lúc ký lại **mở lại** trên HĐ cũ (20/10/2026); biển số đã ở HĐ khác ⇒ cảnh báo `VEHICLE_NOT_RESTORED` trong response của lệnh hủy. Hủy thanh lý khi nháp ký lại vẫn còn ⇒ xe cùng biển số trên nháp bị kết thúc (nhả biển số), nháp giữ nguyên. UI tải lại chi tiết HĐ cũ.
 
 → **201** `{ "id": "<HĐ nháp mới>", "warnings": [] }`. Trong 1 thao tác:
-1. HĐ cũ **bắt đầu thanh lý** tại `handoverDate` (lý do `MutualAgreement`, ghi chú tự sinh).
+1. HĐ cũ **bắt đầu thanh lý** tại `handoverDate` (lý do `MutualAgreement`, ghi chú tự sinh). **Kỳ cuối của HĐ cũ tự đặt** để 2 HĐ cộng lại đúng 1 kỳ
+   (người thuê không rời đi — 20/10/2026): khu "Tính kỳ lẻ theo ngày" ⇒ `finalPeriodCharge = Daily`; khu "tròn tháng" ⇒ `None` (kỳ đầu HĐ mới đã thu trọn); `handoverDate` là ngày cuối kỳ ⇒ `FullPeriod` (HĐ mới bắt đầu kỳ sau).
+   Chủ trọ vẫn đổi được (`PUT …/liquidation/final-period-charge`). Nháp hóa đơn tháng của kỳ sau `handoverDate` bị xóa như bắt đầu thanh lý.
 2. Tạo **HĐ nháp mới** từ `handoverDate + 1`, `previousContractId` = HĐ cũ, chép: giá thuê hiện hành, kỳ thu, cọc + điều khoản cọc,
    mẫu / điều khoản / trường tùy biến, dịch vụ đang áp, người ở còn lại, xe của họ (xe đó **kết thúc trên HĐ cũ tại `handoverDate`** — 17/10/2026,
    trước đây báo 409 `PLATE_ALREADY_REGISTERED` khi xe có biển số). `endDate` null = không thời hạn.
@@ -768,6 +787,13 @@ Chỉ **ghi nhận** (trạng thái vẫn `Active`); gửi lại để sửa ng�
 "Báo trước 10 ngày, ít hơn 30 ngày theo hợp đồng — có thể mất cọc tùy thỏa thuận".
 Đến ngày trả phòng → bấm **Bắt đầu thanh lý** với `actualEndDate` = `plannedMoveOutDate`.
 
+**Từ 20/10/2026** (CT-UC-07):
+- Đã báo trả phòng ⇒ **tạo hóa đơn tháng bỏ qua** kỳ chứa (hoặc sau) ngày dự kiến trả: `skipped[].reason = "MOVE_OUT_NOTICED"` — kỳ đó lập
+  **hóa đơn trả phòng** theo số ngày ở, không sinh hóa đơn nguyên tháng ([invoices.md](invoices.md)).
+- Nhãn **"Trả phòng dd/MM"**: `currentContract.moveOutDate` trong danh sách phòng ([rooms.md](rooms.md)) và `rows[].moveOutDate` của lưới chỉ số
+  ([meters.md](meters.md)) — ngày dự kiến trả (HĐ còn hiệu lực) hoặc ngày trả phòng (đang thanh lý).
+- **Rút báo trả phòng** (người thuê đổi ý ở tiếp): `DELETE /contracts/{id}/notice` → 204, rồi tạo hóa đơn tháng như thường. Chưa báo → 422 `NOTICE_NOT_GIVEN`.
+
 ## Thanh lý
 
 ```mermaid
@@ -785,17 +811,35 @@ sequenceDiagram
 ### Bắt đầu — `POST /contracts/{id}/liquidation/start`
 
 ```json
-{ "actualEndDate": "2026-10-12", "reason": "LesseeUnilateral", "ground": null, "note": "Chuyển công tác" }
+{ "actualEndDate": "2026-10-12", "reason": "LesseeUnilateral", "ground": null, "note": "Chuyển công tác", "finalPeriodCharge": null }
 ```
 
 | Trường | Quy tắc |
 |--------|---------|
-| `actualEndDate` | ≥ `startDate`, ≥ ngày vào ở của mọi người ở, ≥ `roomSince` (HĐ đã chuyển phòng — 422 `END_DATE_BEFORE_ROOM_TRANSFER`, 17/10/2026), ≤ hôm nay + 60 ngày (căn cứ `IndefiniteTermNotice`: + 90 ngày). Được chọn ngày **quá khứ** (người thuê đã đi) |
+| `actualEndDate` | **Ngày cuối người thuê còn ở** (ô chọn ngày ghi "Ở đến hết ngày") — giữ đúng ngày chủ trọ nhập. ≥ `startDate`, ≥ ngày vào ở của mọi người ở, ≥ `roomSince` (HĐ đã chuyển phòng — 422 `END_DATE_BEFORE_ROOM_TRANSFER`, 17/10/2026), ≤ hôm nay + 60 ngày (căn cứ `IndefiniteTermNotice`: + 90 ngày). Được chọn ngày **quá khứ** (người thuê đã đi) |
 | `reason` | `Expired` · `MutualAgreement` · `LesseeUnilateral` · `LessorUnilateral` · `RoomTransfer` · `Abandoned` (bỏ đi không báo) |
 | `ground` | Tùy chọn (nên chọn khi `LessorUnilateral`): `RentArrears3Months` · `WrongPurpose` · `UnauthorizedRenovation` · `IndefiniteTermNotice` (chỉ HĐ không thời hạn) · `Other` |
 | `note` | ≤ 1000; bắt buộc khi `ground = Other` hoặc `reason = Abandoned` |
+| `finalPeriodCharge` | (20/10/2026) **Kỳ cuối** — tiền phòng + dịch vụ của kỳ chứa ngày trả phòng: `FullPeriod` **"Thu trọn kỳ" (mặc định**, cả `null`) · `Daily` "Tính theo ngày ở" · `None` "Không thu" (người thuê có ở, chủ trọ miễn). Không theo "Tính kỳ lẻ" của khu. Điện nước luôn theo công tơ |
 
-Còn phiếu tiền phòng (chưa hủy) của kỳ bắt đầu **sau** `actualEndDate` → 422 `INVOICE_AFTER_END_DATE` (hủy / xóa phiếu đó trước).
+**Nháp hóa đơn tháng** của kỳ bắt đầu **sau** `actualEndDate` (kỳ ảo) ⇒ **tự xóa** khi bắt đầu thanh lý (khoản phát sinh trên nháp về chờ).
+Còn hóa đơn tháng **đã chốt** của kỳ sau `actualEndDate`, **hoặc** hóa đơn tháng khu thu sau của kỳ chứa ngày trả phòng mà ngày trả phòng **trước cuối
+kỳ** (đã tính điện cả kỳ — 20/10/2026) → 422 `INVOICE_AFTER_END_DATE`: hủy hóa đơn đó trước (đã thu ⇒ đảo phiếu thu trước). Số chốt đọc sáng ngày
+chốt kỳ sau **không** tính là "sau ngày trả phòng". Màn thanh lý biết trước bằng `invoicesFromEndDate[].mustCancel` của
+[Xem trước](#xem-trước--get-contractsidliquidationpreview).
+
+**Đổi kỳ cuối** khi hóa đơn trả phòng chưa chốt: `PUT /contracts/{id}/liquidation/final-period-charge` `{ "finalPeriodCharge": "Daily" }` → 204, nháp
+hóa đơn trả phòng (nếu có) **tự tính lại** (giữ ô sửa tay, kèm cảnh báo `EDITED_BASE_CHANGED`). Đã chốt → 422 `FINAL_INVOICE_FINALIZED`; HĐ không đang
+thanh lý → 422 `CONTRACT_NOT_LIQUIDATING`. Muốn thu hơn một kỳ (phạt báo trễ) ⇒ thêm phụ thu trên hóa đơn trả phòng; số khác ⇒ sửa tay kèm lý do.
+
+| Kỳ 01/2–28/2, 3.000.000đ + internet 150.000đ | Ở đến 03/2 | Ở đến 15/2 | Ở đến 25/2 |
+|---|---|---|---|
+| `FullPeriod` Thu trọn kỳ (mặc định) | 3.150.000 | 3.150.000 | 3.150.000 |
+| `Daily` Tính theo ngày ở | 337.500 | 1.687.500 | 2.812.500 |
+| `None` Không thu | 0 | 0 | 0 |
+
+Khu **thu trước** (tiền phòng kỳ cuối đã thu đầu kỳ): lựa chọn quyết số người thuê chịu; phần đã thu dư ⇒ cảnh báo `RENT_OVERPAID` trên hóa đơn trả
+phòng kèm **số gợi ý hoàn** ([invoices.md](invoices.md#hóa-đơn-trả-phòng)).
 
 | Lỗi | Khi nào |
 |-----|---------|
@@ -847,58 +891,94 @@ Bước trả phòng sau khi bắt đầu thanh lý: nhập **chỉ số cuối*
 | 422 `PREVIOUS_PERIOD_NOT_BILLED` | Chưa lập phiếu các kỳ trước |
 | 422 `CONTRACT_NOT_LIQUIDATING` | HĐ chưa bắt đầu thanh lý |
 
-### Xem trước — `GET /contracts/{id}/liquidation/preview` (12/10/2026)
+### Xem trước — `GET /contracts/{id}/liquidation/preview`
 
-Một lần gọi cho màn hình "Thanh lý": còn gì chưa xong trước khi bấm Hoàn tất. Chỉ đọc, gọi được ở mọi trạng thái HĐ.
+**Màn thanh lý gom tất cả** (viết lại 20/10/2026 — CT-UC-08): một lần gọi dựng cả màn hình. Chỉ đọc, gọi được ở mọi trạng thái HĐ. HĐ **còn hiệu lực**
+⇒ thêm `?actualEndDate=2026-02-15` để xem trước khi bắt đầu thanh lý (bỏ trống = ngày dự kiến trả đã báo, không có thì hôm nay); HĐ đang thanh lý /
+đã kết thúc ⇒ dùng ngày đã đặt.
 
 ```json
 {
-  "status": "Liquidating", "actualEndDate": "2026-10-12",
-  "unpaidInvoices": [ { "invoiceId": "…", "invoiceNo": "PB2026-0031", "billingMonth": "2026-10", "type": "Final", "outstanding": 1250000 } ],
-  "outstanding": 1250000, "refundDue": 0,
-  "missingFinalReadingMeterIds": [],
-  "finalInvoiceId": "…", "finalInvoiceStatus": "Finalized", "hasOtherDraftInvoices": false,
-  "pendingRoomCharges": 0,
-  "deposit": { "amount": 3500000, "status": "Holding", "refundedOn": null, "refundedAmount": null, "note": null, "notRefundedReminder": false },
-  "blockers": [], "needsDebtDecision": true, "canComplete": true
+  "status": "Liquidating", "actualEndDate": "2026-02-15",
+  "finalPeriod": { "start": "2026-02-01", "end": "2026-02-15", "days": 15, "periodDays": 28 },
+  "finalPeriodCharge": "FullPeriod",
+  "finalPeriodOptions": [ { "charge": "FullPeriod", "rent": 3000000, "services": 150000 },
+                          { "charge": "Daily", "rent": 1607143, "services": 80357 }, { "charge": "None", "rent": 0, "services": 0 } ],
+  "finalInvoiceRequired": true, "lastBilledEnd": "2025-12-31",
+  "unbilledPeriods": [ { "start": "2026-01-01", "end": "2026-01-31" } ],
+  "invoicesFromEndDate": [ { "invoiceId": "…", "invoiceNo": "PB2026-0040", "periodStart": "2026-02-01", "periodEnd": "2026-02-28",
+                             "status": "Finalized", "totalAmount": 3420000, "paidAmount": 0, "mustCancel": true } ],
+  "unpaidInvoices": [ { "invoiceId": "…", "invoiceNo": "PB2026-0031", "billingMonth": "2026-01", "type": "Regular", "outstanding": 1250000 } ],
+  "outstanding": 1250000, "refundDue": 130000, "needsDebtDecision": true, "needsRefundDecision": true,
+  "pendingCharges": [ { "id": "…", "kind": "Credit", "description": "Giảm cúp nước", "amount": 200000, "status": "Pending", … } ],
+  "pendingRoomCharges": 1, "needsChargesDecision": true,
+  "missingFinalReadingMeterIds": [], "finalInvoiceId": "…", "finalInvoiceStatus": "Finalized", "hasOtherDraftInvoices": false,
+  "deposit": { "amount": 3000000, "status": "Holding", "refundedOn": null, "refundedAmount": null, "note": null, "notRefundedReminder": false },
+  "blockers": [], "canComplete": true
 }
 ```
 
 | Trường | Ý nghĩa / UI |
 |--------|--------------|
-| `blockers` | Các mã **sẽ chặn** Hoàn tất nếu bấm ngay: `CONTRACT_NOT_LIQUIDATING`, `LIQUIDATION_BEFORE_END_DATE`, `FINAL_READING_REQUIRED`, `INVOICE_DRAFT_EXISTS`, `FINAL_INVOICE_REQUIRED`, `REFUND_PENDING` — hiện thành danh sách việc cần làm |
+| `finalPeriod` | Kỳ cuối [đầu kỳ chứa ngày trả phòng, ngày trả phòng] — "Kỳ cuối 01/2–15/2 (15/28 ngày)" |
+| `finalPeriodCharge` / `finalPeriodOptions` | Kỳ cuối đang áp + **số tiền phòng / dịch vụ của cả 3 cách** ⇒ 3 nút có kèm số tiền: "Thu trọn kỳ" (mặc định) / "Tính theo ngày ở" / "Không thu". HĐ còn hiệu lực ⇒ gửi lựa chọn khi bắt đầu thanh lý; đang thanh lý ⇒ `PUT …/liquidation/final-period-charge` |
+| `unbilledPeriods` / `lastBilledEnd` | Kỳ **đã qua** (trước kỳ cuối) **chưa chốt hóa đơn** (chưa có, hoặc chỉ có nháp) ⇒ cảnh báo + 2 nút: **"Tạo hóa đơn"** — người thuê có ở (`POST /invoices/generate` với `contractId`, tháng của kỳ; lập lần lượt từng kỳ, hóa đơn trả phòng bị chặn `PREVIOUS_PERIOD_NOT_BILLED` tới khi đủ) · **"Coi như trả phòng từ `lastBilledEnd`"** — kỳ ảo (người thuê thực ra đã đi): bắt đầu thanh lý với `actualEndDate = lastBilledEnd` (ngày cuối kỳ đã chốt hóa đơn gần nhất); nháp của kỳ sau tự xóa, điện sau ngày đó không tính cho người thuê |
+| `finalInvoiceRequired` | `false` ⇒ **không cần hóa đơn trả phòng**: ngày trả phòng = ngày cuối kỳ đã có hóa đơn tháng, khu thu sau (tiền phòng, dịch vụ, điện đã tính hết; số chốt kỳ là số cuối). Ẩn bước "Lập hóa đơn trả phòng" (vẫn cho lập nếu muốn ghi bồi thường thành hóa đơn — khi đó **điền sẵn chỉ số cuối = số chốt kỳ**, nhập nhỏ hơn ⇒ lỗi thứ tự chỉ số), khoản chờ xử lý ở màn hoàn tất. Khu thu trước luôn `true` (điện kỳ cuối chưa tính) |
+| `invoicesFromEndDate` | Hóa đơn tháng đã lập cho kỳ có / sau ngày trả phòng (lập trước khi biết người thuê đi). Chưa thu ⇒ nút **"Hủy"** (`Draft` ⇒ "Xóa") để hóa đơn trả phòng tính lại theo số ngày ở. `mustCancel = true` ⇒ bắt buộc hủy mới bắt đầu thanh lý được (hóa đơn đã chốt của kỳ sau ngày trả phòng, hoặc đã tính điện tới sau ngày đó); **nháp** kỳ sau ngày trả phòng tự xóa khi bắt đầu thanh lý ⇒ `mustCancel = false`. Đã thu mà không bắt buộc hủy (khu thu trước) ⇒ hóa đơn trả phòng cảnh báo `RENT_OVERPAID`, thêm dòng Hoàn trả ⇒ vào "Cần trả lại" |
+| `blockers` | Mã **chặn cứng** Hoàn tất: `CONTRACT_NOT_LIQUIDATING`, `LIQUIDATION_BEFORE_END_DATE`, `INVOICE_DRAFT_EXISTS`, và khi `finalInvoiceRequired`: `FINAL_READING_REQUIRED`, `FINAL_INVOICE_REQUIRED` — `REFUND_PENDING` **không còn** ở đây (quyết trên màn hoàn tất) |
 | `canComplete` | `blockers` rỗng ⇒ bật nút Hoàn tất |
-| `needsDebtDecision` | Còn nợ (`outstanding > 0`) ⇒ khi hoàn tất phải chọn "Đã thu toàn bộ" hoặc "Bỏ nợ" (xem dưới) |
-| `missingFinalReadingMeterIds` | Công tơ chưa có chỉ số cuối tại ngày trả phòng — nhập khi lập hóa đơn trả phòng |
-| `finalInvoiceId` / `finalInvoiceStatus` | `null` = chưa lập hóa đơn trả phòng; `Draft` = cần chốt; `Finalized` = xong |
-| `hasOtherDraftInvoices` | Còn phiếu nháp kỳ thường — chốt hoặc xóa |
-| `pendingRoomCharges` | Số khoản phát sinh chưa lên phiếu — sẽ vào hóa đơn trả phòng khi lập / tính lại |
-| `refundDue` | Tiền chờ hoàn cho người thuê — xác nhận đã hoàn trên phiếu |
-| `deposit` | Trạng thái cọc — không chặn hoàn tất |
+| `needsDebtDecision` / `outstanding` / `unpaidInvoices` | **Còn nợ** ⇒ "Thu toàn bộ" / "Bỏ nợ" |
+| `needsRefundDecision` / `refundDue` | **Cần trả lại người thuê** (hóa đơn Chờ hoàn) ⇒ ô tích **"Đã trả"** (ngày, cách) |
+| `needsChargesDecision` / `pendingCharges` | **Khoản bù / phụ thu chưa xử lý** (chưa vào hóa đơn nào, chưa đánh dấu — VD phát sinh sau khi chốt hóa đơn trả phòng) ⇒ xác nhận "coi như đã trả / thu tay vào ngày hoàn tất" |
+| `pendingChargeIdsAfterEndDate` | Khoản trong `pendingCharges` **phát sinh sau ngày trả phòng** (thường từ nháp kỳ ảo bị xóa — VD phụ thu tháng người thuê không ở) ⇒ gắn nhãn "Phát sinh sau ngày trả phòng", nút **"Hủy"** từng khoản (`POST /room-charges/{id}/cancel`) trước khi hoàn tất; hệ thống không tự hủy |
+| `deposit` | **Cọc** ⇒ "Trả cọc" / "Không trả cọc" / "Để sau" |
+| `missingFinalReadingMeterIds`, `finalInvoiceId` / `finalInvoiceStatus`, `hasOtherDraftInvoices`, `pendingRoomCharges` | Như trước (chỉ số cuối còn thiếu — rỗng khi `finalInvoiceRequired = false`, hóa đơn trả phòng chưa có / nháp / đã chốt, nháp khác, số khoản chờ) |
+
+Gợi ý màn hình:
+
+```
+Thanh lý phòng 101 – An          Ở đến hết ngày: [15/02/2026]
+Kỳ cuối 01/2–15/2 (15/28 ngày):  (•) Thu trọn kỳ 3.150.000   ( ) Theo ngày ở 1.687.500   ( ) Không thu 0
+⚠ Kỳ 01/1–31/1 chưa chốt hóa đơn         [Tạo hóa đơn]  [Coi như trả phòng từ 31/12]
+⚠ Hóa đơn tháng 2 (nguyên tháng) đã lập, chưa thu   [Hủy]
+Còn nợ 1.250.000đ:          (•) Thu toàn bộ   ( ) Bỏ nợ — lý do [____]
+Cần trả lại 130.000đ:       [✓] Đã trả   ngày [15/02]  cách [Tiền mặt ▾]
+Khoản chưa xử lý (1):       Giảm cúp nước 200.000đ — coi như đã trả tay   [✓]
+Cọc 3.000.000đ:             ( ) Trả cọc [3.000.000]  ( ) Không trả cọc — lý do [____]  (•) Để sau
+                                         [Lập hóa đơn trả phòng]  [Hoàn tất]
+```
 
 HĐ không tồn tại → 404.
 
 ### Hoàn tất — `POST /contracts/{id}/liquidation/complete`
 
+**Một lần bấm** (20/10/2026 — CT-BR-12): gửi kèm mọi quyết định của màn thanh lý.
+
 ```json
-{ "settlement": null, "method": null, "paidAt": null, "reason": null }
+{
+  "settlement": "CollectAll", "method": "Cash", "paidAt": null, "reason": null,
+  "refund": { "refundedOn": "2026-02-15", "method": "Cash" },
+  "pendingCharges": { "method": "Cash" },
+  "deposit": { "action": "Refund", "amount": 2500000, "date": "2026-02-15", "note": "Giữ lại 500.000đ sửa tường" }
+}
 ```
 
-Điều kiện (lỗi theo thứ tự): từ ngày `actualEndDate` (`LIQUIDATION_BEFORE_END_DATE`) · có chỉ số cuối mọi công tơ (`FINAL_READING_REQUIRED`) ·
-không còn phiếu nháp (`INVOICE_DRAFT_EXISTS`) · **hóa đơn trả phòng đã chốt** (`FINAL_INVOICE_REQUIRED`) · không còn phiếu chờ hoàn
-(`REFUND_PENDING`). **Cọc không chặn** — sau khi kết thúc, HĐ chưa đánh dấu hoàn cọc hiện nhắc "Chưa hoàn cọc" ([Tiền cọc](#tiền-cọc)).
+Điều kiện cứng (lỗi theo thứ tự): từ ngày `actualEndDate` (`LIQUIDATION_BEFORE_END_DATE`) · không còn phiếu nháp (`INVOICE_DRAFT_EXISTS`) · khi
+**cần hóa đơn trả phòng** (`finalInvoiceRequired`): có chỉ số cuối mọi công tơ (`FINAL_READING_REQUIRED`) và **hóa đơn trả phòng đã chốt**
+(`FINAL_INVOICE_REQUIRED`). Không cần ⇒ hoàn tất ngay, số chốt kỳ là số cuối.
 
-**Còn nợ** (phiếu đã chốt chưa thu đủ) và không gửi `settlement` → 422 `CONTRACT_HAS_DEBT` (body có `outstanding`) — UI hiện cảnh báo
-"Hợp đồng còn nợ X đ" với 2 nút:
+Các mục chủ trọ phải quyết — thiếu ⇒ 422, UI hiện lựa chọn rồi gửi lại (xử lý theo thứ tự, trong 1 transaction):
 
-| Nút | Gửi lại | Kết quả |
-|-----|---------|---------|
-| **Đã thu toàn bộ** | `{ "settlement": "CollectAll", "method": "Cash", "paidAt": null }` | Ghi 1 phiếu thu đúng số còn nợ (mặc định tiền mặt, hôm nay) |
-| **Bỏ nợ** (người thuê trốn / không đòi được) | `{ "settlement": "WriteOff", "reason": "Bỏ đi không trả" }` | Đóng nợ không thu tiền, phiếu thành `WrittenOff`, **không tính doanh thu**; `reason` bắt buộc; chủ trọ hoặc phó quản lý được cấp quyền (403 `WRITE_OFF_NOT_ALLOWED`) |
+| Mục | Thiếu ⇒ | Gửi | Kết quả |
+|---|---|---|---|
+| **Cần trả lại** (hóa đơn Chờ hoàn) | 422 `REFUND_PENDING` | `refund { refundedOn, method }` | Mọi hóa đơn Chờ hoàn của HĐ được xác nhận **đã hoàn** (ghi chú "Xác nhận khi hoàn tất thanh lý") |
+| **Khoản chưa xử lý** | 422 `PENDING_CHARGES` (`count`, `surcharge`, `credit`) | `pendingCharges { method }` | Mỗi khoản đánh dấu **đã trả / đã thu tay** ngày hôm nay (báo cáo ghi đúng tiền vào / ra) |
+| **Còn nợ** | 422 `CONTRACT_HAS_DEBT` (`outstanding`) | `settlement` (+ `method`, `paidAt`, `reason`) | Như trước: "Đã thu toàn bộ" ghi 1 phiếu thu; "Bỏ nợ" (`reason` bắt buộc, theo quyền — 403 `WRITE_OFF_NOT_ALLOWED`) không tính doanh thu |
+| **Cọc** (không chặn) | — | `deposit { action, amount?, date?, note? }` | `Refund` = Đã hoàn trả cọc (`amount` null = đủ; ít hơn ⇒ `note` bắt buộc — 400 `INVALID_REFUND_AMOUNT`); `Forfeit` = **Không trả cọc** (`note` bắt buộc — 400 `REQUIRED`); `Later` / bỏ trống = Để sau (nhắc "Chưa hoàn cọc"). `date` bỏ trống = hôm nay |
 
-→ 204, HĐ `Ended`, đóng người ở và xe. Sau đó không ghi / đảo phiếu thu cho HĐ này (`CONTRACT_NOT_BILLABLE`).
-Bồi thường tài sản: thêm **phụ thu** trên nháp hóa đơn trả phòng. Phòng vẫn tính "Đang thuê"
-**trong ngày trả phòng**, sang hôm sau mới Trống.
+→ 204, HĐ `Ended`, đóng người ở và xe. Lỗi ở bất kỳ mục nào ⇒ **không lưu gì**. Sau đó không ghi / đảo phiếu thu cho HĐ này
+(`CONTRACT_NOT_BILLABLE`), không thêm khoản phát sinh (`ROOM_CHARGE_NO_OPEN_INVOICE`). Phòng vẫn tính "Đang thuê" **trong ngày trả phòng**,
+sang hôm sau mới Trống. Số cuối gõ sai phát hiện sau đó ⇒ [meters.md](meters.md#sau-thanh-lý-hđ-đã-kết-thúc-20102026).
 
 ## Tài sản bàn giao (khi còn nháp)
 

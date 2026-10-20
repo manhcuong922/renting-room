@@ -43,14 +43,14 @@ public static class TestData
     public static object Address() => new { streetAddress = "Số 5 ngõ 10 Trần Duy Hưng", communeName = "Phường Cầu Giấy", provinceName = "Hà Nội" };
 
     public static async Task<Guid> CreatePropertyAsync(
-        this HttpClient client, string token, bool withLessor = true, int anchorDay = 5, string chargeMode = "Prepaid")
+        this HttpClient client, string token, bool withLessor = true, int anchorDay = 5, string chargeMode = "Prepaid", string prorationMode = "Daily")
     {
         var id = await (await client.PostJsonAsync("/api/v1/properties", new
         {
             code = $"K{Random.Shared.Next(100_000, 999_999)}",
             name = "Khu trọ test",
             address = Address(),
-            billing = new { anchorDay, chargeMode, paymentDueDays = 5, prorationMode = "Daily", noticeDays = 30 }
+            billing = new { anchorDay, chargeMode, paymentDueDays = 5, prorationMode, noticeDays = 30 }
         }, token)).ReadIdAsync();
 
         if (withLessor)

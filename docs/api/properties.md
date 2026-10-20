@@ -95,7 +95,7 @@ Bước 4  Tạo phòng hàng loạt                      POST /properties/{id}/
 | `anchorDay` | **1–28** | "Ngày chốt kỳ thu" — tháng nào cũng có ngày chốt |
 | `chargeMode` | `Prepaid` / `Postpaid` | "Thu tiền phòng đầu kỳ / cuối kỳ" |
 | `paymentDueDays` | 0–60 | "Hạn đóng sau ngày chốt (ngày)" |
-| `prorationMode` | `Daily` / `FullPeriod` | "Tháng lẻ tính theo ngày ở / tính tròn tháng" |
+| `prorationMode` | `Daily` / `FullPeriod` | "Tháng lẻ tính theo ngày ở / tính tròn tháng" — kỳ đầu khi vào ở; **kỳ cuối khi trả phòng không theo cài đặt này** (mặc định thu trọn kỳ, chọn riêng mỗi lần trả phòng — [contracts.md](contracts.md#bắt-đầu--post-contractsidliquidationstart)) |
 | `noticeDays` | 0–180 | "Số ngày báo trước khi trả phòng" (mặc định 30 — báo trước 1 tháng) — **gợi ý** khi tạo HĐ, HĐ giữ riêng |
 | `roundInvoiceTotal` | bool, mặc định `true` | "Làm tròn tổng phiếu xuống nghìn" — dòng "Làm tròn" cuối phiếu |
 

@@ -105,6 +105,7 @@ Quyền: chủ trọ và phó quản lý.
 | `LATER_PERIOD_BILLED` | Đã có phiếu kỳ sau |
 | `NO_PERIOD_IN_MONTH` | HĐ không có kỳ thuộc tháng thu này |
 | `USE_FINAL_INVOICE` | Kỳ chứa ngày trả phòng — lập **hóa đơn trả phòng** thay phiếu thường |
+| `MOVE_OUT_NOTICED` | (20/10/2026) HĐ đã **báo trả phòng** với ngày dự kiến trả ≤ cuối kỳ — bắt đầu thanh lý và lập hóa đơn trả phòng (tính theo số ngày ở); người thuê ở tiếp ⇒ rút báo trả phòng rồi tạo lại ([contracts.md](contracts.md#báo-trả-phòng)) |
 | `MISSING_READING` | (17/10/2026) Thiếu chỉ số cuối kỳ của công tơ đang hoạt động ⇒ **không tạo nháp**. UI: link sang lưới ghi chỉ số tháng đó, nhập xong bấm tạo lại (phòng khác vẫn được tạo) |
 | `PREVIOUS_PERIOD_INCOMPLETE` | (17/10/2026) Kỳ trước còn nháp mang lỗi `MISSING_READING` (chỉ số bị hủy sau khi lập) — nhập lại chỉ số, tính lại nháp kỳ trước rồi mới tạo kỳ này |
 
@@ -112,7 +113,7 @@ Nháp chỉ được tạo khi đủ chỉ số; xóa nháp không mất chỉ s
 
 `withIssues` = số phiếu còn **vấn đề chặn chốt** (`issues` có `severity: "Error"`): `MISSING_READING` (nháp đã có mà chỉ số bị hủy / sửa sau đó — vào lưới ghi chỉ số),
 `FEE_PRICE_MISSING` (khoản chưa có giá), `RENT_TERM_MISSING`, `NEGATIVE_TOTAL` (giảm trừ lớn hơn phần thu). Cảnh báo (`Warning`): `EDITED_BASE_CHANGED`,
-`RENT_OVERPAID` (hóa đơn trả phòng: tiền phòng kỳ cuối đã thu nhiều hơn số ngày ở — message ghi số thừa; thêm dòng Hoàn trả nếu trả lại),
+`RENT_OVERPAID` (hóa đơn trả phòng: tiền phòng kỳ cuối đã thu nhiều hơn số người thuê chịu theo lựa chọn kỳ cuối — `amount` = số thừa, `ref` = hóa đơn đã thu; nút "Thêm hoàn trả"),
 `UNUSUAL_USAGE` (điện nước bất thường — gấp ≥ 3 lần trung bình 3 kỳ trước và tăng ≥ 50, hoặc = 0 khi có người ở: kiểm lại chỉ số),
 `TWO_RENT_PERIODS` (khu vừa đổi sang thu trước: người thuê trả 2 tháng tiền phòng gần nhau — nên báo trước).
 
@@ -314,11 +315,38 @@ thanh toán của HĐ). Sau khi chốt: chỉ số cuối kỳ bị khóa và th
 
 Lập từ hợp đồng đang thanh lý: `POST /contracts/{id}/final-invoice` ([contracts.md](contracts.md#lập-hóa-đơn-trả-phòng--post-contractsidfinal-invoice)).
 Là phiếu bình thường (sửa tay, phụ thu, tính lại, chốt, hủy như trên) cho đoạn cuối **[đầu kỳ cuối, ngày trả phòng]**, chỉ **thu phần còn thiếu**.
+**Kỳ cuối** (20/10/2026 — BL-BR-17): theo lựa chọn của lần trả phòng ([contracts.md](contracts.md#bắt-đầu--post-contractsidliquidationstart)) —
+**"Thu trọn kỳ" (mặc định)** ⇒ tiền phòng và dịch vụ đủ kỳ; "Tính theo ngày ở" ⇒ × số ngày ở / số ngày kỳ (dòng có `prorationFactor`); "Không thu"
+⇒ dòng "Tiền phòng (không thu kỳ cuối)" và dịch vụ 0đ. Điện nước luôn theo công tơ. Không còn gì để thu (khu thu sau, trả phòng đúng cuối kỳ đã có
+hóa đơn tháng) ⇒ **không cần** hóa đơn trả phòng.
+
+**Dòng tóm tắt kỳ cuối** — chi tiết hóa đơn trả phòng có `finalPeriod` (hóa đơn tháng: `null`):
+
+```json
+"finalPeriod": { "stayedUntil": "2026-02-15", "periodStart": "2026-02-01", "periodEnd": "2026-02-28", "days": 15, "periodDays": 28,
+                 "charge": "FullPeriod", "rentBilledInvoiceNo": null }
+```
+
+UI hiện đầu hóa đơn: "Ở đến 15/02 · Kỳ 01/02–28/02 (15/28 ngày) · Tính: trọn kỳ · Tiền phòng kỳ này: thu ở hóa đơn này" — `rentBilledInvoiceNo` có
+giá trị (khu thu trước) ⇒ "đã thu ở hóa đơn PB2026-0040".
+
+**Sửa tay phải rõ ràng**: trên nháp hóa đơn trả phòng sửa được **mọi dòng** (tiền phòng, dịch vụ, điện nước) — **bắt buộc `note`** cho mọi dòng
+(phiếu tháng chỉ bắt buộc với tiền phòng) → thiếu 422 `NOTE_REQUIRED`. Dòng sửa tay có `isManuallyEdited`, `systemAmount` + `note` ⇒ UI hiện
+"Tiền phòng: 3.000.000 → 2.000.000 — Ở nửa tháng, chủ trọ giảm" + nút "Bỏ sửa tay".
+
+**Gợi ý hoàn trả** (khu thu trước): `issues[]` có `RENT_OVERPAID` kèm `amount` và `ref` (hóa đơn tháng đã lập tiền phòng kỳ cuối) ⇒
+nút **"Thêm hoàn trả {amount}"** = `POST /invoices/{id}/manual-lines` `{ "type": "Refund", "amount": amount, "sourceInvoiceId": ref, … }`. Không bấm
+⇒ không hoàn. Trọn kỳ ⇒ không có cảnh báo.
+- `amount` = phần thừa theo lựa chọn kỳ cuối, **không quá số người thuê đã trả thật** cho hóa đơn nguồn (đã thu − bỏ nợ), trừ các dòng hoàn trả đã trỏ
+  tới hóa đơn đó ⇒ bấm nút luôn hoàn được. Đã hoàn đủ ⇒ hết cảnh báo.
+- Hóa đơn nguồn **chưa thu** ⇒ cảnh báo **không có `amount`** (không hiện nút hoàn), nội dung nhắc **hủy hóa đơn tháng** đó để tính lại theo lựa
+  chọn kỳ cuối (màn thanh lý: `invoicesFromEndDate` có nút "Hủy").
+- `finalPeriod.charge`: nháp = lựa chọn đang áp; hóa đơn đã chốt / đã hủy = suy từ dòng tiền phòng của chính hóa đơn (hóa đơn cũ hiện đúng cách đã tính).
 **Khác phiếu tháng** (20/10/2026 — BL-BR-10): **khoản bù** (khoản phát sinh `Credit`, khoản điều chỉnh chỉ số) **luôn vào** hóa đơn trả phòng, kể cả khi lớn
 hơn phần thu ⇒ hóa đơn **âm** ⇒ chốt được ⇒ `RefundPending` (Chờ hoàn) như mục "Hoàn tiền cho người thuê" — không còn khoản bù treo khi trả phòng.
 
-- **Tiền phòng** những ngày đã ở của kỳ cuối nếu chưa thu (đã thu trọn kỳ ⇒ không có dòng; thu thừa ⇒ cảnh báo `RENT_OVERPAID`, chủ trọ thêm dòng **Hoàn trả** nếu trả lại).
-- **Dịch vụ** kỳ cuối nếu kỳ đó chưa có phiếu thường — **trọn tháng** (sửa số lượng / thành tiền trên nháp nếu thỏa thuận khác).
+- **Tiền phòng** kỳ cuối nếu chưa thu, theo lựa chọn kỳ cuối (đã thu ở hóa đơn tháng ⇒ không có dòng; thừa ⇒ `RENT_OVERPAID` gợi ý hoàn).
+- **Dịch vụ** kỳ cuối nếu kỳ đó chưa có phiếu thường — theo cùng lựa chọn (sửa số lượng / thành tiền trên nháp nếu thỏa thuận khác, kèm lý do).
 - **Điện nước** tới **chỉ số cuối** (trả trước: gồm cả kỳ trước nếu chưa thu).
 
-Hóa đơn trả phòng đã chốt là điều kiện hoàn tất thanh lý; còn nợ thì chọn "Đã thu toàn bộ" / "Bỏ nợ"; còn phiếu Chờ hoàn thì xác nhận đã hoàn trước ([contracts.md](contracts.md#hoàn-tất--post-contractsidliquidationcomplete)).
+Hóa đơn trả phòng đã chốt là điều kiện hoàn tất thanh lý (khi còn phần chưa thu — `finalInvoiceRequired`); còn nợ thì chọn "Đã thu toàn bộ" / "Bỏ nợ"; còn phiếu Chờ hoàn thì xác nhận đã hoàn trước ([contracts.md](contracts.md#hoàn-tất--post-contractsidliquidationcomplete)).

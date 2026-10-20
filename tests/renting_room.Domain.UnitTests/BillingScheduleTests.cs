@@ -163,4 +163,13 @@ public sealed class BillingScheduleTests
         schedule.StandardPeriodContaining(D("2026-11-10")).Should()
             .Match<StandardPeriod>(p => p.Start == D("2026-11-01") && p.End == D("2026-11-30") && p.AdjustDays == 0 && !p.IsTransition);
     }
+
+    [Fact]
+    public void DayFactor_IsShareOfStandardPeriodDays_CappedAtOne()
+    {
+        var schedule = BillingSchedule.Single(1, ChargeMode.Postpaid);
+
+        schedule.DayFactor(new DateOnly(2026, 2, 1), new DateOnly(2026, 2, 14)).Should().Be(14m / 28);
+        schedule.DayFactor(new DateOnly(2026, 3, 1), new DateOnly(2026, 3, 31)).Should().Be(1);
+    }
 }

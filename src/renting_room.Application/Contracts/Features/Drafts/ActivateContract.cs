@@ -23,7 +23,7 @@ public sealed record ActivateContractCommand(
 public sealed class ActivateContractHandler(
     IUnitOfWork unitOfWork, IContractRepository contracts, IContractQueries contractQueries, IRoomQueries rooms, IPropertyQueries properties,
     IRenterQueries renters, IOrganizationQueries organizations, IFeeQueries fees, IMeterQueries meters, OccupantChecks occupantChecks,
-    ContractMeterReadings meterReadings, TimeProvider clock)
+    ContractMeterReadings meterReadings, PreviousFinalCorrection previousFinals, TimeProvider clock)
     : IRequestHandler<ActivateContractCommand, Result>
 {
     public async ValueTask<Result> Handle(ActivateContractCommand request, CancellationToken cancellationToken)
@@ -63,6 +63,9 @@ public sealed class ActivateContractHandler(
         var activated = contract.Activate(context);
         if (activated.IsFailure)
             return activated;
+        var previous = await previousFinals.ApplyAsync(contract, contract.BillingStartDate, request.HandoverReadings, cancellationToken);
+        if (previous.IsFailure)
+            return previous;
         var handover = await meterReadings.RecordAsync(
             contract, ReadingKind.Handover, contract.BillingStartDate, request.HandoverReadings, cancellationToken);
         if (handover.IsFailure)

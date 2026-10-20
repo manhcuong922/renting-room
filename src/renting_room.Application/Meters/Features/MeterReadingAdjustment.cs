@@ -22,8 +22,10 @@ public sealed record AdjustReadingResult(
     MeterReadingDto Reading, AdjustmentHandling Handling, InvoiceDetailDto Invoice, RoomChargeDto? Charge, IReadOnlyList<PaymentDto> Payments,
     IReadOnlyList<Warning> Warnings);
 
+/// <param name="NotReturned">HĐ đã kết thúc: "Không trả lại" phần chênh (khoản hủy). <paramref name="Settlement"/> ⇒ "Đã trả lại".</param>
 public sealed record AdjustMeterReadingCommand(
-    Guid ReadingId, decimal Value, string Reason, AdjustmentHandling? Handling = null, AdjustmentSettlement? Settlement = null)
+    Guid ReadingId, decimal Value, string Reason, AdjustmentHandling? Handling = null, AdjustmentSettlement? Settlement = null,
+    bool NotReturned = false)
     : IRequest<Result<AdjustReadingResult>>;
 
 public sealed class AdjustMeterReadingCommandValidator : AbstractValidator<AdjustMeterReadingCommand>
@@ -37,17 +39,21 @@ public sealed class AdjustMeterReadingCommandValidator : AbstractValidator<Adjus
         RuleFor(x => x.Settlement!.Date).Must(d => d <= clock.GetUtcNow().ToBusinessDate())
             .WithErrorCode("INVALID_SETTLED_DATE").WithMessage("Ngày trả / thu không được ở tương lai.").When(x => x.Settlement is not null);
         RuleFor(x => x.Settlement!.Method).IsInEnum().When(x => x.Settlement is not null);
+        RuleFor(x => x.NotReturned).Must(n => !n).When(x => x.Settlement is not null)
+            .WithErrorCode("INVALID_HANDLING").WithMessage("Chọn \"Đã trả lại\" hoặc \"Không trả lại\", không chọn cả hai.");
     }
 }
 
 /// <summary>
 /// MT-UC-09 / MT-BR-19: điều chỉnh chỉ số cuối của đoạn đo trên hóa đơn đã chốt. Khóa HĐ → công tơ → hóa đơn (C-07) rồi kiểm lại mọi điều kiện.
 /// Hóa đơn chưa có tiền ⇒ tính lại trên hóa đơn; đã có tiền ⇒ Xử lý ngay (tính lại + hoàn / thu thêm) hoặc Đẩy sang hóa đơn sau (1 khoản khóa).
+/// HĐ đã kết thúc ⇒ <see cref="AfterEndAdjustment"/>.
 /// </summary>
 public sealed class AdjustMeterReadingHandler(
     IMeterRepository meters, IMeterQueries meterQueries, IInvoiceRepository invoiceRepository, IInvoiceQueries invoices,
     IContractQueries contracts, IFeeQueries fees, ReadingAdjustmentCharges adjustmentCharges, RoomChargeBilling roomCharges,
-    PaymentPosting posting, WriteOffReduction writeOffs, MeterDraftRefresher drafts, IUnitOfWork unitOfWork, TimeProvider clock)
+    PaymentPosting posting, WriteOffReduction writeOffs, MeterDraftRefresher drafts, AfterEndAdjustment afterEnd, IUnitOfWork unitOfWork,
+    TimeProvider clock)
     : IRequestHandler<AdjustMeterReadingCommand, Result<AdjustReadingResult>>
 {
     public static readonly Warning LineManuallyEdited = new("LINE_MANUALLY_EDITED",
@@ -92,9 +98,7 @@ public sealed class AdjustMeterReadingHandler(
         // Nháp kỳ sau bắt đầu từ chỉ số này ⇒ tính lại cùng lệnh (MT-BR-06): khóa HĐ nguồn và HĐ của nháp một lượt.
         var affectedDrafts = await drafts.LockContractsAsync([meterId], ct, segment.ContractId);
         var contract = (await contracts.GetAsync(segment.ContractId, ct))!;
-        if (contract.Status == ContractStatus.Ended)
-            return MeterErrors.AdjustmentContractEnded;
-        if (contract.Status is not (ContractStatus.Active or ContractStatus.Liquidating))
+        if (contract.Status is not (ContractStatus.Active or ContractStatus.Liquidating or ContractStatus.Ended))
             return RoomChargeErrors.NoOpenInvoice;
 
         var meter = (await meters.LockAndLoadAsync([meterId], ct)).Single();
@@ -115,12 +119,18 @@ public sealed class AdjustMeterReadingHandler(
     private async Task<Result<Applied>> ApplyAsync(AdjustMeterReadingCommand request, Locked locked, CancellationToken ct)
     {
         var (contract, meter, source, reading, _) = locked;
+        if (contract.Status == ContractStatus.Ended)
+        {
+            var after = await afterEnd.ApplyAsync(contract, meter, source, reading, request.Value, request.Reason, request.Settlement,
+                request.NotReturned, ct);
+            return after.IsFailure ? after.Error! : new Applied(reading, AdjustmentHandling.AfterEnd, after.Value, [], []);
+        }
         var oldValue = reading.Value;
         var line = source.LineOf(source.SegmentEndingAt(reading.Id)!)!;
         var corrected = meter.Correct(reading.Id, request.Value, request.Reason);
         if (corrected.IsFailure)
             return corrected.Error!;
-        var fallbackPrice = await FallbackPriceAsync(line, ct);
+        var fallbackPrice = await adjustmentCharges.FallbackPriceAsync(line, ct);
         var change = source.PreviewReadingChange(reading.Id, request.Value, fallbackPrice);
         if (change.IsFailure)
             return change.Error!;
@@ -154,15 +164,15 @@ public sealed class AdjustMeterReadingHandler(
             await PaymentMapping.ToDtosAsync(invoices, applied.Payments, ct), applied.Warnings);
 
     /// <summary>
-    /// Đã xác nhận hoàn (hóa đơn âm) ⇒ phải bỏ xác nhận trước; chưa có tiền ⇒ tính lại trên hóa đơn; đã có tiền ⇒ bắt buộc chọn; hóa đơn trả
-    /// phòng đã chốt ⇒ không còn hóa đơn sau.
+    /// Đã xác nhận hoàn (hóa đơn âm) ⇒ phải bỏ xác nhận trước; chưa có tiền ⇒ tính lại trên hóa đơn (trừ khi chọn Đẩy sang — tính lại bị
+    /// chặn vì âm); đã có tiền ⇒ bắt buộc chọn; hóa đơn trả phòng đã chốt ⇒ không còn hóa đơn sau.
     /// </summary>
     private async Task<Result<AdjustmentHandling>> ChooseHandlingAsync(
         AdjustMeterReadingCommand request, Contract contract, Invoice source, CancellationToken ct)
     {
         if (source.RefundedOn is not null)
             return BillingErrors.RefundConfirmed;
-        if (source.PaidAmount == 0)
+        if (source.PaidAmount == 0 && request.Handling != AdjustmentHandling.NextInvoice)
             return AdjustmentHandling.Recalculated;
         if (request.Handling is not { } chosen)
             return MeterErrors.AdjustmentHandlingRequired;
@@ -239,13 +249,5 @@ public sealed class AdjustMeterReadingHandler(
             return charge.Error!;
         source.MarkAdjusted();
         return new Outcome(charge.Value, []);
-    }
-
-    private async Task<LinePrice?> FallbackPriceAsync(InvoiceLine line, CancellationToken ct)
-    {
-        if (line.Price is not null)
-            return null;
-        var fee = await fees.GetWithPricesAsync(line.FeeTypeId!.Value, ct);
-        return fee?.ResolvePrice(line.ServiceTo) is { } price ? LinePrice.Of(price, line.SystemQuantity ?? line.Quantity) : null;
     }
 }

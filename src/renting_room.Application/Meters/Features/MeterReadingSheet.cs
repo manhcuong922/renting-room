@@ -39,7 +39,8 @@ public sealed record MeterReadingSheetRow(
     bool Locked,
     decimal? RecentAverage = null,
     string? UsageWarning = null,
-    SheetInvoiceDto? Invoice = null);
+    SheetInvoiceDto? Invoice = null,
+    DateOnly? MoveOutDate = null);
 
 /// <summary>Hóa đơn của HĐ cho kỳ đang ghi (M06 §3.4) — null = chưa lập.</summary>
 public sealed record SheetInvoiceDto(Guid Id, InvoiceStatus Status, bool IsStale);
@@ -119,7 +120,7 @@ public sealed class GetMeterReadingSheetHandler(
                     current is not null && locked.Contains(current.Id),
                     UsageAnomaly.RecentAverage(recent),
                     consumption is { } used ? UsageAnomaly.Check(fee.Name, fee.Unit, used, recent, contract.OccupantsOn(usage.End).Any()) : null,
-                    billed.GetValueOrDefault((contract.Id, period!.Start))));
+                    billed.GetValueOrDefault((contract.Id, period!.Start)), contract.MoveOutDate));
             }
         }
         return new MeterReadingSheetDto(request.BillingMonth, rows.OrderBy(r => r.Floor).ThenBy(r => r.RoomCode).ThenBy(r => r.FeeTypeName).ToList());

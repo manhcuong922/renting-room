@@ -96,5 +96,5 @@ public sealed class MetersController(ISender sender) : ControllerBase
     [Idempotent]
     [EndpointSummary("Điều chỉnh chỉ số đã chốt (gõ sai): hóa đơn chưa thu ⇒ tính lại trên hóa đơn; đã thu ⇒ Xử lý ngay (tính lại + hoàn / thu thêm) hoặc Đẩy sang hóa đơn sau")]
     public async Task<IResult> AdjustReading(Guid id, AdjustReadingRequest b, CancellationToken ct) =>
-        (await sender.Send(new AdjustMeterReadingCommand(id, b.Value, b.Reason, b.Handling, b.Settlement), ct)).ToHttp();
+        (await sender.Send(new AdjustMeterReadingCommand(id, b.Value, b.Reason, b.Handling, b.Settlement, b.NotReturned ?? false), ct)).ToHttp();
 }

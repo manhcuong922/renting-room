@@ -128,7 +128,7 @@ public sealed class InvoiceSnapshotAndMoveOutTests(ApiFactory factory)
         var month = new DateOnly(today.Year, today.Month, 1);
         var (_, roomId, _, contractId) = await _client.CreateActiveContractAsync(token, month, anchorDay: 1);
         (await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/liquidation/start",
-            new { actualEndDate = month, reason = "MutualAgreement" }, token)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+            new { actualEndDate = month, reason = "MutualAgreement", finalPeriodCharge = "Daily" }, token)).StatusCode.Should().Be(HttpStatusCode.NoContent);
         var draft = await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/final-invoice", new { finalReadings = Array.Empty<object>() }, token);
         draft.StatusCode.Should().Be(HttpStatusCode.Created, await draft.Content.ReadAsStringAsync());
         var moveOutId = (await draft.ReadAsync<JsonElement>()).GetProperty("summary").GetProperty("id").GetGuid();

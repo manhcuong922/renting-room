@@ -25,6 +25,13 @@ Quyền: chủ trọ và phó quản lý.
 - **Vào phiếu nào**: phiếu nháp của HĐ có ngày cuối kỳ ≥ ngày phát sinh.
   - Nháp đã có ⇒ gắn ngay. Chưa có ⇒ khoản **chờ**, tự vào khi lập / tính lại nháp.
   - Kỳ chứa ngày phát sinh đã chốt ⇒ vào phiếu kỳ kế tiếp. Đang trả phòng ⇒ vào hóa đơn trả phòng.
+  - **Hóa đơn trả phòng đã chốt** (20/10/2026 — trước là 422 `ROOM_CHARGE_NO_OPEN_INVOICE`): vẫn tạo được (VD mất chìa khóa phát hiện lúc trả
+    phòng) ⇒ khoản **chưa xử lý** (`Pending`), hiện ở màn thanh lý và được xác nhận "đã trả / thu tay" khi hoàn tất
+    ([contracts.md](contracts.md#hoàn-tất--post-contractsidliquidationcomplete)). HĐ đã kết thúc ⇒ vẫn `ROOM_CHARGE_NO_OPEN_INVOICE`.
+- **Chênh lệch sau thanh lý** (20/10/2026): khoản điều chỉnh của HĐ đã kết thúc ([meters.md](meters.md#sau-thanh-lý-hđ-đã-kết-thúc-20102026)) —
+  "Đã trả lại" = `POST /room-charges/{id}/settle`; **"Không trả lại"** = `POST /room-charges/{id}/waive` (không body) ⇒ khoản hủy, lý do
+  "Không trả lại". Khoản khác → 422 `ROOM_CHARGE_NOT_WAIVABLE`.
+- **HĐ đã kết thúc** (20/10/2026): không bỏ đánh dấu "đã thu / đã trả" được (khoản sẽ treo) → 422 `ROOM_CHARGE_NO_OPEN_INVOICE`; trừ khoản "Chênh lệch sau thanh lý" (sửa nhầm "Đã trả lại").
 - **Khóa theo phiếu**: khoản đã nằm trên phiếu đã chốt thì không đánh dấu / hủy được (422 `ROOM_CHARGE_LOCKED`). Hủy phiếu hoặc xóa nháp ⇒ khoản quay về chờ.
 - **Thêm tay trên nháp** (`POST /invoices/{id}/manual-lines` loại `Surcharge` / `ManualDiscount`) cũng tạo khoản phát sinh của phòng; xóa dòng đó ⇒ khoản bị hủy.
 

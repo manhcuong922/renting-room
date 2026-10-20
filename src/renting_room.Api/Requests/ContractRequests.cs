@@ -32,7 +32,9 @@ public sealed record EndOccupancyRequest(DateOnly MoveOutDate);
 
 public sealed record ActivateContractRequest(IReadOnlyList<MeterReadingInput>? HandoverReadings);
 
-public sealed record CompleteLiquidationRequest(DebtSettlement? Settlement, PaymentMethod? Method, DateOnly? PaidAt, string? Reason);
+public sealed record CompleteLiquidationRequest(
+    DebtSettlement? Settlement, PaymentMethod? Method, DateOnly? PaidAt, string? Reason, LiquidationRefund? Refund = null,
+    LiquidationPendingCharges? PendingCharges = null, LiquidationDeposit? Deposit = null);
 
 public sealed record FinalInvoiceRequest(IReadOnlyList<MeterReadingInput>? FinalReadings);
 
@@ -44,6 +46,8 @@ public sealed record HoldoverRequest(string? Note);
 
 public sealed record RefundDepositRequest(DateOnly RefundedOn, decimal? Amount, string? Note);
 
+public sealed record ForfeitDepositRequest(DateOnly Date, string Note);
+
 public sealed record TransferRoomRequest(
     Guid ToRoomId, IReadOnlyList<MeterReadingInput>? OldRoomReadings, IReadOnlyList<MeterReadingInput>? NewRoomReadings,
     decimal? MonthlyRent, string? Note, TransferRentFrom? RentFrom = null, IReadOnlyList<Guid>? RemoveFeeTypeIds = null);
@@ -52,7 +56,10 @@ public sealed record ResignContractRequest(DateOnly HandoverDate, Guid Represent
 
 public sealed record GiveNoticeRequest(DateOnly NoticeDate, DateOnly PlannedMoveOutDate);
 
-public sealed record StartLiquidationRequest(DateOnly ActualEndDate, TerminationReason Reason, TerminationGround? Ground, string? Note);
+public sealed record StartLiquidationRequest(
+    DateOnly ActualEndDate, TerminationReason Reason, TerminationGround? Ground, string? Note, FinalPeriodCharge? FinalPeriodCharge = null);
+
+public sealed record FinalPeriodChargeRequest(FinalPeriodCharge? FinalPeriodCharge);
 
 public sealed record AssetReturnRequest(string? ConditionAtReturn);
 

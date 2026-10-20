@@ -6,7 +6,10 @@ public enum AdjustmentHandling
 {
     Recalculated,
     Immediate,
-    NextInvoice
+    NextInvoice,
+
+    /// <summary>HĐ đã kết thúc: hóa đơn trả phòng giữ nguyên, phần chênh thành khoản "Chênh lệch sau thanh lý".</summary>
+    AfterEnd
 }
 
 /// <summary>Một lần điều chỉnh chỉ số đã chốt (M07 BL-BR-40) — gắn với hóa đơn nguồn.</summary>

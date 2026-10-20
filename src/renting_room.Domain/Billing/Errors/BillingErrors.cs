@@ -43,6 +43,11 @@ public static class BillingErrors
     public static readonly Error DraftExists = Error.Conflict("INVOICE_DRAFT_EXISTS", "Hợp đồng còn phiếu nháp — chốt hoặc xóa trước.");
     public static readonly Error PreviousNotBilled = Error.BusinessRule("PREVIOUS_PERIOD_NOT_BILLED", "Chưa lập phiếu kỳ trước — lập lần lượt từng kỳ.");
 
+    public static Error PendingCharges(int count, decimal surcharge, decimal credit) =>
+        Error.BusinessRule("PENDING_CHARGES",
+                $"Còn {count} khoản chưa xử lý (phụ thu {surcharge:N0}đ, bù {credit:N0}đ) — xác nhận coi như đã thu / đã trả tay khi hoàn tất.")
+            .WithDetail("count", count).WithDetail("surcharge", surcharge).WithDetail("credit", credit);
+
     public static Error HasDebt(decimal outstanding) =>
         Error.BusinessRule("CONTRACT_HAS_DEBT", $"Hợp đồng còn nợ {outstanding:N0}đ — chọn \"Đã thu toàn bộ\" hoặc \"Bỏ nợ\".")
             .WithDetail("outstanding", outstanding);

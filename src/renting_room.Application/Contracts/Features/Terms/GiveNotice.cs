@@ -12,3 +12,11 @@ public sealed class GiveNoticeHandler(ContractMutation mutation) : IRequestHandl
         new(mutation.RunAsync(request.ContractId,
             contract => Task.FromResult(contract.GiveNotice(request.NoticeDate, request.PlannedMoveOutDate)), cancellationToken));
 }
+
+public sealed record WithdrawNoticeCommand(Guid ContractId) : IRequest<Result>;
+
+public sealed class WithdrawNoticeHandler(ContractMutation mutation) : IRequestHandler<WithdrawNoticeCommand, Result>
+{
+    public ValueTask<Result> Handle(WithdrawNoticeCommand request, CancellationToken cancellationToken) =>
+        new(mutation.RunAsync(request.ContractId, contract => Task.FromResult(contract.WithdrawNotice()), cancellationToken));
+}

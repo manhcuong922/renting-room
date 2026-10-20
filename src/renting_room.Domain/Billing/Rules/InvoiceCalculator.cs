@@ -14,10 +14,12 @@ public static class InvoiceCalculator
         var lines = new List<CalculatedLine>();
         var segments = new List<CalculatedSegment>();
         var issues = new List<InvoiceIssue>();
-        var factor = input.Schedule.RentFactor(period.Start, period.End, input.ProrationMode);
+        var factor = input.Final is { } final
+            ? FinalRentFactor(input.Schedule, period, final.Charge)
+            : input.Schedule.RentFactor(period.Start, period.End, input.ProrationMode);
 
-        if (input.Final is { RentBilled: { } billed })
-            WarnRentOverpaid(contract, period, factor, billed, issues);
+        if (input.Final is { RentBilled: { } billed } settled)
+            WarnRentOverpaid(contract, period, factor, billed, settled, issues);
         else
             AddRent(contract, period, factor, input.Schedule.StandardPeriodContaining(period.Start), lines, issues);
         if (input.Final is not { LastPeriodHasRegular: true })
@@ -27,6 +29,34 @@ public static class InvoiceCalculator
         return new InvoiceCalculation(lines.OrderBy(l => l.SortOrder).ToList(), segments, issues, input.RoundTotal);
     }
 
+    /// <summary>M05 CT-BR-11: số tiền phòng + dịch vụ kỳ cuối theo từng cách tính — màn thanh lý so sánh 3 cách.</summary>
+    public static (decimal Rent, decimal Services) FinalPeriodAmounts(InvoiceCalcInput input, FinalPeriodCharge charge)
+    {
+        var adjusted = input with { Final = new FinalSettlement(null, false, charge) };
+        var lines = new List<CalculatedLine>();
+        var issues = new List<InvoiceIssue>();
+        AddRent(input.Contract, input.Period, FinalRentFactor(input.Schedule, input.Period, charge),
+            input.Schedule.StandardPeriodContaining(input.Period.Start), lines, issues);
+        AddServices(adjusted, lines, issues);
+        return (lines.Where(l => l.Type == InvoiceLineType.Rent).Sum(l => l.Amount),
+            lines.Where(l => l.Type == InvoiceLineType.Service).Sum(l => l.Amount));
+    }
+
+    private static decimal FinalRentFactor(BillingSchedule schedule, BillingPeriod period, FinalPeriodCharge charge) => charge switch
+    {
+        FinalPeriodCharge.Daily => schedule.RentFactor(period.Start, period.End, ProrationMode.Daily),
+        FinalPeriodCharge.None => 0,
+        _ => schedule.RentFactor(period.Start, period.End, ProrationMode.FullPeriod)
+    };
+
+    /// <summary>Hệ số dịch vụ kỳ cuối: trọn kỳ ⇒ null (đủ kỳ), theo ngày ⇒ phần số ngày ở, không thu ⇒ 0. Phiếu tháng: null.</summary>
+    private static decimal? ServiceFactor(InvoiceCalcInput input) => input.Final?.Charge switch
+    {
+        FinalPeriodCharge.Daily when input.Schedule.DayFactor(input.Period.Start, input.Period.End) is var days && days < 1 => days,
+        FinalPeriodCharge.None => 0,
+        _ => null
+    };
+
     private static void AddRent(
         Contract contract, BillingPeriod period, decimal factor, StandardPeriod standard, List<CalculatedLine> lines, List<InvoiceIssue> issues)
     {
@@ -35,9 +65,10 @@ public static class InvoiceCalculator
             issues.Add(new InvoiceIssue("RENT_TERM_MISSING", InvoiceIssue.Error, "Không có giá thuê hiệu lực tại đầu kỳ."));
             return;
         }
-        var name = standard.IsTransition && standard.AdjustDays != 0
-            ? $"Tiền phòng (1 tháng {(standard.AdjustDays > 0 ? "+" : "−")} {Math.Abs(standard.AdjustDays)} ngày — đổi ngày chốt)"
-            : "Tiền phòng";
+        var name = factor == 0 ? "Tiền phòng (không thu kỳ cuối)"
+            : standard.IsTransition && standard.AdjustDays != 0
+                ? $"Tiền phòng (1 tháng {(standard.AdjustDays > 0 ? "+" : "−")} {Math.Abs(standard.AdjustDays)} ngày — đổi ngày chốt)"
+                : "Tiền phòng";
         lines.Add(new CalculatedLine(InvoiceLineType.Rent, null, name, "tháng", period.Start, period.End, 1, rent,
             factor, Invoice.Money(rent * factor), 0));
     }
@@ -46,15 +77,28 @@ public static class InvoiceCalculator
 
     private static DateOnly Min(DateOnly a, DateOnly b) => a < b ? a : b;
 
-    private static void WarnRentOverpaid(Contract contract, BillingPeriod period, decimal factor, decimal billed, List<InvoiceIssue> issues)
+    /// <summary>Khu thu trước: tiền phòng kỳ cuối đã thu nhiều hơn số người thuê chịu theo lựa chọn kỳ cuối ⇒ gợi ý hoàn (không tự hoàn).</summary>
+    private static void WarnRentOverpaid(
+        Contract contract, BillingPeriod period, decimal factor, decimal billed, FinalSettlement final, List<InvoiceIssue> issues)
     {
         if (contract.CurrentRent(period.Start) is not { } rent)
             return;
-        var overpaid = billed - Invoice.Money(rent * factor);
-        if (overpaid > 0)
+        var owed = Invoice.Money(rent * factor);
+        var remaining = billed - owed - final.RentRefunded;
+        if (remaining <= 0)
+            return;
+        var refundable = final.RentCollected - final.RentRefunded;
+        if (refundable <= 0)
+        {
             issues.Add(new InvoiceIssue("RENT_OVERPAID", InvoiceIssue.Warning,
-                $"Tiền phòng kỳ cuối đã thu {billed:N0}đ, ở tới {period.End:dd/MM} tương ứng {billed - overpaid:N0}đ — thừa {overpaid:N0}đ. " +
-                "Thêm dòng Hoàn trả nếu trả lại người thuê."));
+                $"Hóa đơn tháng đã lập tiền phòng kỳ cuối {billed:N0}đ nhưng chưa thu, theo cách tính kỳ cuối người thuê chịu {owed:N0}đ — " +
+                "hủy hóa đơn tháng đó để tính lại theo lựa chọn kỳ cuối.", final.RentInvoiceId));
+            return;
+        }
+        var suggested = Math.Min(remaining, refundable);
+        issues.Add(new InvoiceIssue("RENT_OVERPAID", InvoiceIssue.Warning,
+            $"Tiền phòng kỳ cuối đã lập {billed:N0}đ, theo cách tính kỳ cuối người thuê chịu {owed:N0}đ — gợi ý hoàn {suggested:N0}đ " +
+            "(không quá số người thuê đã trả). Bấm \"Thêm hoàn trả\" nếu trả lại người thuê.", final.RentInvoiceId, suggested));
     }
 
     private static void WarnTwoRentPeriods(InvoiceCalcInput input, List<InvoiceIssue> issues)
@@ -71,6 +115,8 @@ public static class InvoiceCalculator
     private static void AddServices(InvoiceCalcInput input, List<CalculatedLine> lines, List<InvoiceIssue> issues)
     {
         var (contract, period) = (input.Contract, input.Period);
+        // Kỳ cuối: dịch vụ theo cùng lựa chọn với tiền phòng (M07 BL-BR-17); phiếu tháng thu trọn tháng (BL-BR-04).
+        var factor = ServiceFactor(input);
         foreach (var fee in contract.Fees.Where(f => f.Covers(period.Start)))
         {
             if (!input.FeeTypes.TryGetValue(fee.FeeTypeId, out var type) || type.Group != FeeGroup.Service)
@@ -90,7 +136,7 @@ public static class InvoiceCalculator
                 continue;
             }
             lines.Add(new CalculatedLine(InvoiceLineType.Service, type.Id, type.Name, type.Unit, period.Start, period.End, quantity,
-                price.Value, null, Invoice.Money(quantity * price.Value), 100 + type.SortOrder,
+                price.Value, factor, Invoice.Money(quantity * price.Value * (factor ?? 1)), 100 + type.SortOrder,
                 fee.UnitPriceOverride is { } own ? LinePrice.Override(own) : LinePrice.Of(catalog!, quantity)));
         }
     }

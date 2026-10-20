@@ -140,7 +140,8 @@ Gõ sai chỉ số, phát hiện khi hóa đơn đã chốt: `PUT` trả `READIN
 ```
 
 - `reason` bắt buộc (≤ 300). `handling` — chỉ cần khi hóa đơn nguồn **đã có tiền** (đã thu và / hoặc đã bỏ nợ): `Immediate` (**Xử lý ngay**) hoặc
-  `NextInvoice` (**Đẩy sang hóa đơn sau**). `settlement` (tùy chọn, `Immediate`) — ngày + cách trả / thu tiền; bỏ trống = hôm nay, tiền mặt.
+  `NextInvoice` (**Đẩy sang hóa đơn sau**). Hóa đơn **chưa thu** gửi `NextInvoice` cũng được (20/10/2026) — dùng khi tính lại bị chặn
+  `ADJUSTMENT_NEGATIVE_TOTAL`. `settlement` (tùy chọn, `Immediate`) — ngày + cách trả / thu tiền; bỏ trống = hôm nay, tiền mặt.
 - **Hộp thoại gợi ý cho UI**: hóa đơn nguồn chưa thu (`paidAmount = 0`) ⇒ chỉ nhập số mới + lý do. Đã thu ⇒ thêm 2 lựa chọn; HĐ đang thanh lý mà hóa
   đơn trả phòng **đã chốt** (hoặc chỉ số là số cuối lúc trả phòng) ⇒ chỉ hiện "Xử lý ngay".
 
@@ -174,6 +175,31 @@ Gõ sai chỉ số, phát hiện khi hóa đơn đã chốt: `PUT` trả `READIN
 - `warnings`: `LINE_MANUALLY_EDITED` — dòng của hóa đơn đã chốt từng sửa tay: tiền chênh theo số hệ thống, số sửa tay + chênh;
   `MANUAL_AMOUNT_CLAMPED` — số sửa tay + chênh ra âm, đã đặt 0đ (chủ trọ kiểm tra lại).
 - **HĐ đang thanh lý**: hóa đơn trả phòng chưa chốt ⇒ `NextInvoice` vào hóa đơn trả phòng (có thể làm hóa đơn âm — [invoices.md](invoices.md)).
+- **Không làm hóa đơn tháng âm** (20/10/2026): tính lại trên hóa đơn (chưa thu, hoặc `Immediate`) mà khoản giảm / bù trên hóa đơn lớn hơn phần thu còn
+  lại ⇒ 422 `ADJUSTMENT_NEGATIVE_TOTAL`, không đổi gì ⇒ UI gợi ý **"Đẩy sang hóa đơn sau"** (gửi lại `handling: "NextInvoice"`). VD tiền phòng
+  3.000.000 + điện 524.400 − giảm 3.500.000 = 24.400đ, sửa 1.388 → 1.338 (−190.000) ⇒ lỗi; Đẩy sang ⇒ hóa đơn giữ tổng, khoản bù 190.000đ.
+
+#### Sau thanh lý (HĐ đã kết thúc, 20/10/2026)
+
+Người thuê đã đi, mới phát hiện **số cuối lúc trả phòng gõ cao** ⇒ cùng endpoint, trên chỉ số `Final` của HĐ:
+
+```json
+{ "value": 1420, "reason": "Số cuối gõ 1.470", "settlement": { "date": "2026-11-20", "method": "BankTransfer" } }
+```
+
+- Chỉ **giảm** được (tăng → 422 `ADJUSTMENT_AFTER_END_INCREASE` — số cuối gõ thấp thì cho qua). Chỉ số khác của HĐ đã kết thúc → `READING_NEXT_PERIOD_FINALIZED`.
+- Chuỗi chỉ số sửa về đúng; **hóa đơn trả phòng giữ nguyên** (nhãn "Đã điều chỉnh", không "Cần gửi lại"), báo cáo các tháng cũ không đổi.
+  `handling` trả về **`AfterEnd`**, `payments` rỗng.
+- Phần chênh (trừ phần đã bỏ nợ của hóa đơn trả phòng) thành khoản **"Chênh lệch sau thanh lý — …"** (`charge`, `kind: Credit`, không vào hóa đơn nào):
+
+| Body | Khoản |
+|---|---|
+| `settlement { date, method }` — **"Đã trả lại"** | `isSettled: true` ngày đó — báo cáo ghi tiền chi ra |
+| `notReturned: true` — **"Không trả lại"** (không cần lý do) | Hủy, `cancelReason = "Không trả lại"` — báo cáo không đổi |
+| Bỏ trống — **chờ xử lý** | `status: Pending`; quyết sau: `POST /room-charges/{id}/settle` (đã trả lại) hoặc `POST /room-charges/{id}/waive` (không trả lại) |
+
+  Gửi cả `settlement` và `notReturned` → 400 `INVALID_HANDLING`. Điều chỉnh lại sửa chính khoản; khoản đã trả → `ADJUSTMENT_ALREADY_BILLED`.
+  VD điện 3.500đ/kWh, số cuối 1.470 (đúng 1.420) ⇒ khoản 175.000đ. Người mới nhận phòng nhập số nhỏ hơn cũng đi đường này ([contracts.md](contracts.md#kích-hoạt-bàn-giao-phòng)).
 - Lịch sử: `GET /invoices/{id}/adjustments` ([invoices.md](invoices.md#điều-chỉnh-chỉ-số--lịch-sử-và-gửi-lại)).
 
 | Lỗi | Khi nào |
@@ -187,7 +213,8 @@ Gõ sai chỉ số, phát hiện khi hóa đơn đã chốt: `PUT` trả `READIN
 | 422 `ADJUSTMENT_ALREADY_BILLED` | Khoản điều chỉnh lần trước đã thanh toán (đã trả / thu ngay, hoặc đã nằm trên hóa đơn đã chốt) — không điều chỉnh tiếp; phần chênh còn lại nhập khoản phụ thu / bù tay |
 | 422 `REFUND_CONFIRMED` | Hóa đơn nguồn (âm) đã xác nhận "Đã hoàn" — bỏ xác nhận (`DELETE /invoices/{id}/refund`) rồi điều chỉnh |
 | 422 `ADJUSTMENT_NO_NEXT_INVOICE` | `NextInvoice` mà hóa đơn trả phòng đã chốt (không còn hóa đơn sau) |
-| 422 `CONTRACT_ENDED` | HĐ đã kết thúc — chưa hỗ trợ điều chỉnh sau thanh lý |
+| 422 `ADJUSTMENT_NEGATIVE_TOTAL` | Tính lại làm hóa đơn tháng âm — chọn `NextInvoice` |
+| 422 `ADJUSTMENT_AFTER_END_INCREASE` | HĐ đã kết thúc mà số mới lớn hơn số cuối |
 | 422 `READING_NOT_MONOTONIC` | Số mới nhỏ hơn chỉ số trước / lớn hơn chỉ số sau |
 | 422 `READING_ADJUSTMENT_TOO_LARGE` | Khoản điều chỉnh vượt 100.000.000đ |
 
@@ -207,7 +234,7 @@ cho phiếu tháng đó. Hợp đồng **trả sau** (`Postpaid`): kỳ của th
       "usageStart": "2026-11-01", "usageEnd": "2026-11-30", "closingPeriodStart": "2026-11-01", "endsWithFinal": false,
       "previous": { "id": "…", "kind": "Handover", "readingDate": "2026-11-01", "value": 100 },
       "current": null, "consumption": null, "locked": false, "recentAverage": 140, "usageWarning": null,
-      "invoice": { "id": "…", "status": "Draft", "isStale": false }
+      "invoice": { "id": "…", "status": "Draft", "isStale": false }, "moveOutDate": null
     }
   ]
 }
@@ -218,6 +245,7 @@ cho phiếu tháng đó. Hợp đồng **trả sau** (`Postpaid`): kỳ của th
 - **`invoice`** (20/10/2026) = hóa đơn thường của HĐ cho kỳ đang ghi: `{ id, status: Draft | Finalized, isStale }`; `null` = chưa lập. UI dựng cột
   **"Hóa đơn"** và lọc phía client: **Chưa nhập** (`current = null`), **Chưa có hóa đơn** (`invoice = null`), **Cần tính lại** (`isStale`), **Đã chốt**.
   VD khu 34 phòng mới nhập 25 ⇒ "Tạo hóa đơn" tạo 25, bỏ qua 9 (`MISSING_READING`) — lọc "Chưa nhập" ra đúng 9 phòng.
+- **`moveOutDate`** (20/10/2026): ngày dự kiến trả đã báo / ngày trả phòng ⇒ nhãn **"Trả phòng dd/MM"**; kỳ chứa ngày đó không lập hóa đơn tháng.
 - **Bất thường** (MT-BR-08, không chặn lưu): `recentAverage` = trung bình 3 kỳ trước của HĐ (null khi chưa đủ 3 kỳ) — UI tô vàng ngay khi
   nhập nếu sản lượng ≥ 3 × `recentAverage` **và** tăng ≥ 50; hoặc = 0 khi phòng có người ở. Số đã lưu ⇒ server trả câu cảnh báo trong `usageWarning`
   (phiếu nháp có cảnh báo `UNUSUAL_USAGE`).

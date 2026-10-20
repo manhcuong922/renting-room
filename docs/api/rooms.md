@@ -30,6 +30,8 @@ mang nhãn ở danh sách / chi tiết hợp đồng. Hợp đồng quá hạn *
 | Bảo trì / ngừng dùng / khôi phục | `POST /rooms/{id}/maintenance/start` · `/maintenance/end` · `/archive` · `/restore` |
 | Nhóm phòng của khu (dùng cho giảm giá theo nhóm sau này) | `/properties/{propertyId}/room-groups`, `/room-groups/{id}` |
 
+`currentContract.moveOutDate` (20/10/2026): ngày dự kiến trả đã báo / ngày trả phòng khi đang thanh lý ⇒ nhãn **"Trả phòng dd/MM"** trên ô phòng.
+
 Ô phòng trên sơ đồ gợi ý: `code` to · giá niêm yết · `currentContract.representativeName` · `currentContract.occupantCount` 👤 (kèm "/ maxOccupants" nếu có khai — chỉ mô tả loại phòng, không cảnh báo).
 Bấm ô Trống → nút "Tạo hợp đồng" (mở wizard với `roomId` điền sẵn).
 
@@ -72,7 +74,8 @@ Sắp xếp sẵn theo mã khu → mã phòng.
         "startDate": "2026-10-02",
         "endDate": "2027-10-02",
         "occupantCount": 1,
-        "flags": []
+        "flags": [],
+        "moveOutDate": null
       },
       "version": "946",
       "outstandingAmount": 2378000

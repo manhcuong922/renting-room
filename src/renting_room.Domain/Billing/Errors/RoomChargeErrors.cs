@@ -18,6 +18,8 @@ public static class RoomChargeErrors
         .WithDetail("limit", limit);
     public static readonly Error System = Error.BusinessRule("ROOM_CHARGE_SYSTEM",
         "Khoản do hệ thống tạo (chốt điện nước khi chuyển phòng / điều chỉnh chỉ số) — không sửa / hủy tay; chỉ đánh dấu đã trả / đã thu ngay. Khoản điều chỉnh chỉ số đổi bằng cách điều chỉnh lại chỉ số.");
+    public static readonly Error NotWaivable = Error.BusinessRule("ROOM_CHARGE_NOT_WAIVABLE",
+        "Chỉ khoản \"Chênh lệch sau thanh lý\" đang chờ xử lý (hợp đồng đã kết thúc) mới chọn \"Không trả lại\" được.");
     public static readonly Error NotSettled = Error.BusinessRule("ROOM_CHARGE_NOT_SETTLED", "Khoản chưa đánh dấu đã thanh toán.");
     public static readonly Error InvalidSettledDate = Error.Validation("INVALID_SETTLED_DATE", "Ngày thanh toán không được ở tương lai.");
     public static readonly Error InvalidIncurredDate = Error.Validation("INVALID_INCURRED_DATE", "Ngày phát sinh không được ở tương lai.");

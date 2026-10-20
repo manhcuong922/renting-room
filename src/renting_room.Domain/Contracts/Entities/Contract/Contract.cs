@@ -72,6 +72,9 @@ public sealed partial class Contract : TenantEntity
 
     public DateOnly? LiquidationStartedOn { get; private set; }
 
+    /// <summary>CT-BR-11: tiền phòng + dịch vụ kỳ cuối của lần trả phòng này — null = thu trọn kỳ.</summary>
+    public FinalPeriodCharge? FinalPeriodCharge { get; private set; }
+
     public DateOnly? HoldoverSince { get; private set; }
     public string? HoldoverNote { get; private set; }
 
