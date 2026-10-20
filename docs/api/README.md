@@ -7,7 +7,7 @@
 >
 > **Đổi 17/10/2026 (UI cần sửa):** chuyển phòng luôn từ hôm nay — bỏ `date`, bỏ `POST …/transfer-room/cancel`, chuyển nhầm thì chuyển lại về
 > phòng cũ trong ngày ([contracts.md](contracts.md#chuyển-phòng)); điện nước phòng cũ cộng vào dòng điện của phiếu, không còn khoản chốt; tạo phiếu
-> thiếu chỉ số ⇒ bỏ qua `MISSING_READING` (không tạo nháp), phiếu quyết toán khu thu trước tách 2 dòng điện ([invoices.md](invoices.md));
+> thiếu chỉ số ⇒ bỏ qua `MISSING_READING` (không tạo nháp), hóa đơn trả phòng khu thu trước tách 2 dòng điện ([invoices.md](invoices.md));
 > thay / tháo công tơ lùi vào kỳ đã chốt ⇒ `METER_PERIOD_LOCKED` ([meters.md](meters.md)).
 >
 > **Thêm 18/10/2026:** thực thu tách khỏi bỏ nợ — hiện "Đã thu" bằng `collectedAmount`, thêm "Đã bỏ nợ" `writtenOffAmount` ([invoices.md](invoices.md),
@@ -101,7 +101,7 @@ Mỗi dòng ghi endpoint chính và file mô tả chi tiết.
 │       ├── Người ở, đồng thuê, đổi người đứng tên, chuyển người
 │       ├── Giá thuê, dịch vụ, xe, tài sản, cọc
 │       ├── Gia hạn · Ở tiếp · Chuyển phòng (chuyển nhầm ⇒ chuyển lại trong ngày)
-│       └── Thanh lý: xem trước → phiếu quyết toán → hoàn tất   GET …/liquidation/preview
+│       └── Thanh lý: xem trước → hóa đơn trả phòng → hoàn tất   GET …/liquidation/preview
 ├── Hằng tháng
 │   ├── Ghi chỉ số điện nước                   GET …/meter-reading-sheet · PUT …/meter-readings   meters.md
 │   ├── Phiếu tiền phòng                       POST /invoices/generate[-bulk] · GET /invoices · /invoices/totals   invoices.md

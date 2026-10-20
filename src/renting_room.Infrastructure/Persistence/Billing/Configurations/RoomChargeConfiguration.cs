@@ -7,7 +7,6 @@ using renting_room.Domain.Properties;
 
 namespace renting_room.Infrastructure.Persistence.Configurations;
 
-/// <summary>M07 BL-BR-30..37 — khoản phát sinh (phụ thu / bù) của phòng đang có người thuê.</summary>
 internal sealed class RoomChargeConfiguration : IEntityTypeConfiguration<RoomCharge>
 {
     public void Configure(EntityTypeBuilder<RoomCharge> builder)
@@ -20,12 +19,15 @@ internal sealed class RoomChargeConfiguration : IEntityTypeConfiguration<RoomCha
             t.HasCheckConstraint("ck_room_charges_meter_closing",
                 "meter_id IS NULL OR (start_reading_id IS NOT NULL AND end_reading_id IS NOT NULL AND fee_type_id IS NOT NULL "
                 + "AND quantity IS NOT NULL AND unit_price IS NOT NULL)");
+            t.HasCheckConstraint("ck_room_charges_reading_adjustment",
+                "source_invoice_id IS NULL OR (fee_type_id IS NOT NULL AND source_usage_start IS NOT NULL)");
         });
         builder.HasKey(c => c.Id);
         builder.ConfigureAuditable();
         builder.Ignore(c => c.IsCancelled);
         builder.Ignore(c => c.IsPending);
         builder.Ignore(c => c.IsSystem);
+        builder.Ignore(c => c.IsReadingAdjustment);
         builder.Ignore(c => c.LineType);
 
         builder.HasOne<Contract>()
@@ -46,6 +48,8 @@ internal sealed class RoomChargeConfiguration : IEntityTypeConfiguration<RoomCha
         builder.Property(c => c.UnitPrice).HasColumnType("numeric(18,2)");
 
         builder.HasIndex(c => new { c.OrganizationId, c.RoomId, c.IncurredOn }).HasDatabaseName("ix_room_charges_room");
+        builder.HasIndex(c => new { c.SourceInvoiceId, c.FeeTypeId, c.SourceUsageStart }).HasDatabaseName(DbConstraints.ReadingAdjustmentUnique)
+            .IsUnique().HasFilter("source_invoice_id IS NOT NULL AND cancelled_at IS NULL");
         // MT-BR-06: tra chỉ số đang bị khoản chốt khóa theo công tơ.
         builder.HasIndex(c => c.MeterId).HasDatabaseName("ix_room_charges_meter_closing").HasFilter("meter_id IS NOT NULL AND cancelled_at IS NULL");
         builder.HasIndex(c => new { c.OrganizationId, c.ContractId }).HasDatabaseName("ix_room_charges_pending")

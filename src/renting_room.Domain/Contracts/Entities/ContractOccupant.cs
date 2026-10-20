@@ -2,7 +2,6 @@ using renting_room.Domain.Common;
 
 namespace renting_room.Domain.Contracts;
 
-/// <summary>Người ở thực tế (có thể khác người đại diện ký) — ngày vào/ra riêng (CT-BR-08).</summary>
 public sealed class ContractOccupant : TenantEntity
 {
     private ContractOccupant() { } // EF Core
@@ -24,17 +23,14 @@ public sealed class ContractOccupant : TenantEntity
     public Guid ContractId { get; private set; }
     public Guid RenterId { get; private set; }
 
-    /// <summary>CT-BR-49: người ở thường hoặc đồng thuê (có tên trên HĐ). Người đứng tên luôn lưu <see cref="OccupantRole.Resident"/>.</summary>
     public OccupantRole Role { get; private set; }
     public DateOnly MoveInDate { get; private set; }
     public DateOnly? MoveOutDate { get; private set; }
     public DateOnly? ExpectedEndDate { get; private set; }
     public string? Relationship { get; private set; }
 
-    /// <summary>CT-BR-28: quan hệ với người đứng tên HĐ (null với chính người đứng tên và dữ liệu cũ).</summary>
     public OccupantRelationship? RelationshipType { get; private set; }
 
-    /// <summary>CT-BR-30: người chưa thành niên đã có đồng ý của cha, mẹ hoặc người giám hộ.</summary>
     public bool GuardianConsent { get; private set; }
     public string? Note { get; private set; }
 
@@ -44,7 +40,6 @@ public sealed class ContractOccupant : TenantEntity
 
     public bool IsStayingOn(DateOnly date) => MoveInDate <= date && (MoveOutDate is null || MoveOutDate >= date);
 
-    /// <summary>Khoảng ở giao với [from, ∞).</summary>
     public bool OverlapsFrom(DateOnly from) => MoveOutDate is null || MoveOutDate >= from;
 
     internal bool MoveOut(DateOnly date)
@@ -63,7 +58,6 @@ public sealed class ContractOccupant : TenantEntity
         return true;
     }
 
-    /// <summary>CT-BR-51: người làm mốc khai quan hệ đổi ⇒ quan hệ cũ không còn đúng, khai lại.</summary>
     internal bool ClearRelationship()
     {
         if (RelationshipType is null && Relationship is null)

@@ -12,7 +12,6 @@ public sealed class SettleRoomChargeCommandValidator : AbstractValidator<SettleR
     public SettleRoomChargeCommandValidator() => RuleFor(x => x.Method).IsInEnum();
 }
 
-/// <summary>BL-UC-16: đánh dấu khoản đã thanh toán / đã hoàn ngay ⇒ dòng trên nháp (nếu có) ra khỏi tổng.</summary>
 public sealed class SettleRoomChargeHandler(RoomChargeBilling roomCharges, TimeProvider clock)
     : IRequestHandler<SettleRoomChargeCommand, Result<RoomChargeDto>>
 {

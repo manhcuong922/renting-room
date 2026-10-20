@@ -27,17 +27,6 @@ public static partial class IdempotencyEndpointExtensions
     internal static partial Regex KeyFormat();
 }
 
-/// <summary>
-/// C-08: cùng user + cùng Idempotency-Key ⇒ thao tác chỉ chạy MỘT lần.
-/// <list type="bullet">
-/// <item>Lần đầu: chạy bình thường, lưu response (mã hóa).</item>
-/// <item>Gửi lại sau khi xong: trả đúng response cũ + header <c>Idempotent-Replayed: true</c>.</item>
-/// <item>Gửi lại khi lần đầu còn đang chạy (double-click, retry song song): 409, client thử lại sau.</item>
-/// <item>Cùng key nhưng nội dung khác: 422 (lỗi phía client).</item>
-/// <item>Lần đầu lỗi hệ thống (5xx / exception): key bị xóa để client retry được.</item>
-/// </list>
-/// Đặt SAU Authentication/Authorization: request bị từ chối quyền không chiếm key.
-/// </summary>
 internal sealed class IdempotencyMiddleware(RequestDelegate next, ILogger<IdempotencyMiddleware> logger)
 {
     public async Task InvokeAsync(

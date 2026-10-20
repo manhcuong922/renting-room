@@ -28,7 +28,6 @@ public static class ProblemResponses
             problem.Extensions.TryAdd(TraceIdKey, Activity.Current?.Id ?? context.HttpContext.TraceIdentifier);
         });
 
-    /// <summary>Lỗi nghiệp vụ (Result) → ProblemDetails với HTTP status tương ứng.</summary>
     public static ProblemHttpResult ToProblem(this Error error)
     {
         var status = StatusFor(error.Type);

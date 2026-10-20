@@ -34,7 +34,6 @@ public static class RoomTransferWarnings
         "Đã chuyển lại về phòng cũ — có giá thuê / dịch vụ đổi lúc chuyển chưa tự trả lại được, kiểm tra và sửa nếu cần.");
 }
 
-/// <summary>CT-BR-14: những gì một lần chuyển phòng đã đổi ngoài phòng + chỉ số — lưu kèm lần chuyển để chuyển lại trong ngày hoàn nguyên được.</summary>
 internal sealed record TransferUndo(
     DateOnly? RentFrom, decimal? RentAfter, decimal? RentBefore, bool RentTermAdded, Guid? RentChargeId, IReadOnlyList<TransferUndoFee> Fees)
 {
@@ -45,7 +44,6 @@ internal sealed record TransferUndo(
 
 internal sealed record TransferUndoFee(Guid FeeTypeId, decimal Quantity, decimal? UnitPriceOverride, DateOnly From);
 
-/// <summary>Mốc giá thuê lần chuyển phòng ghi (nếu có) — gom dần trong lúc áp giá.</summary>
 internal sealed class TransferRentChange
 {
     public DateOnly? From { get; private set; }
@@ -61,18 +59,12 @@ internal sealed class TransferRentChange
     }
 }
 
-/// <summary>CT-BR-48: kỳ áp giá thuê mới khi chuyển phòng — bỏ trống ⇒ theo số ngày đã ở phòng cũ trong kỳ (quá nửa kỳ ⇒ kỳ sau).</summary>
 public enum TransferRentFrom
 {
     CurrentPeriod,
     NextPeriod
 }
 
-/// <param name="OldRoomReadings">Chỉ số cuối các công tơ phòng cũ hôm nay — bắt buộc.</param>
-/// <param name="NewRoomReadings">Chỉ số nhận phòng các công tơ phòng mới; null / value null = số mới nhất.</param>
-/// <param name="MonthlyRent">Giá thuê sau khi chuyển; null = giá niêm yết phòng mới, phòng chưa có giá niêm yết thì giữ giá đang áp (CT-BR-48).</param>
-/// <param name="RentFrom">Kỳ áp giá mới — cả kỳ, không chia ngày theo từng phòng; null = tự chọn theo quy tắc nửa kỳ.</param>
-/// <param name="RemoveFeeTypeIds">Dịch vụ không dùng ở phòng mới ⇒ thôi tính từ kỳ chưa chốt đầu tiên.</param>
 public sealed record TransferRoomCommand(
     Guid ContractId, Guid ToRoomId, IReadOnlyList<MeterReadingInput>? OldRoomReadings,
     IReadOnlyList<MeterReadingInput>? NewRoomReadings, decimal? MonthlyRent, string? Note, TransferRentFrom? RentFrom = null,
@@ -120,7 +112,6 @@ public sealed class TransferRoomHandler(
         if (contract.Status != ContractStatus.Active)
             return ContractErrors.NotActive;
 
-        // CT-BR-14: chuyển nhầm — về đúng phòng vừa rời ngay trong ngày chuyển ⇒ xóa lần chuyển.
         var undoing = contract.RoomMoves.MaxBy(m => m.FromDate) is { } last && last.RoomId == request.ToRoomId && contract.RoomSince == today;
         var result = undoing
             ? await UndoLastTransferAsync(contract, contract.RoomMoves.MaxBy(m => m.FromDate)!, cancellationToken)
@@ -141,7 +132,6 @@ public sealed class TransferRoomHandler(
         if (await BilledAfterAsync(contract, today, ct))
             return ContractErrors.TransferAlreadyBilled;
 
-        // CT-BR-47: chỉ số cuối phòng cũ + chỉ số nhận phòng mới là sản lượng đã lưu — phiếu của kỳ cộng vào dòng điện nước.
         var closing = await meterReadings.RecordAsync(contract, ReadingKind.Final, today, request.OldRoomReadings, ct);
         if (closing.IsFailure)
             return closing.Error!;
@@ -164,13 +154,11 @@ public sealed class TransferRoomHandler(
         var removedFees = await RemoveFeesAsync(contract, request.RemoveFeeTypeIds, ct);
         if (removedFees.IsFailure)
             return removedFees.Error!;
-        // CT-BR-14: ghi lại những gì lần chuyển đã đổi để chuyển lại trong ngày hoàn nguyên được.
         var recorded = contract.RecordTransferUndo(new TransferUndo(
             rentChange.From, rentChange.After, rentChange.Before, rentChange.TermAdded, rentChange.ChargeId, removedFees.Value!).ToJson());
         return recorded.IsFailure ? recorded.Error! : warnings;
     }
 
-    /// <summary>CT-BR-48: dịch vụ không dùng ở phòng mới ⇒ thôi tính từ kỳ chưa chốt đầu tiên; trả về bản cũ để hoàn nguyên được.</summary>
     private async Task<Result<IReadOnlyList<TransferUndoFee>>> RemoveFeesAsync(Contract contract, IReadOnlyList<Guid>? feeTypeIds, CancellationToken ct)
     {
         var feesFrom = await invoiceLocks.GetFirstOpenPeriodStartAsync(contract.Id, ct) ?? contract.StartDate;
@@ -186,15 +174,10 @@ public sealed class TransferRoomHandler(
         return removedFees;
     }
 
-    /// <summary>
-    /// CT-BR-48: giá mới áp cho <b>cả kỳ</b> — kỳ chứa ngày chuyển nếu ở phòng cũ không quá nửa kỳ, ngược lại từ kỳ sau (chủ trọ chọn khác được).
-    /// Kỳ được chọn đã chốt tiền phòng ⇒ mốc giá ghi từ kỳ chưa chốt đầu tiên + khoản phát sinh chênh lệch cả kỳ.
-    /// </summary>
     private async Task<Result> ApplyRentAsync(
         Contract contract, TransferRoomCommand request, DateOnly date, List<Warning> warnings, TransferRentChange change, CancellationToken ct)
     {
         var room = (await rooms.FindAsync(request.ToRoomId, ct))!;
-        // Không gửi giá ⇒ lấy giá niêm yết phòng mới (phòng chưa có giá niêm yết thì giữ giá đang áp).
         if ((request.MonthlyRent ?? room.ListedRent) is not { } rent)
             return Result.Success();
         if (request.MonthlyRent is null && rent != contract.CurrentRent(date))
@@ -230,7 +213,6 @@ public sealed class TransferRoomHandler(
         if (!fromThisPeriod || effectiveFrom == period.Start || billedRent is not { } billed || billed == rent)
             return Result.Success();
 
-        // Kỳ chuyển đã chốt tiền phòng theo giá cũ ⇒ thu / bù phần chênh cả kỳ bằng khoản phát sinh thường (sửa / hủy được).
         var charge = RoomCharge.Create(contract.PropertyId, contract.RoomId, contract.Id,
             rent > billed ? RoomChargeKind.Surcharge : RoomChargeKind.Credit,
             $"Chênh lệch tiền phòng kỳ {period.Start:dd/MM}–{period.End:dd/MM} (chuyển phòng)", Math.Abs(rent - billed), date,
@@ -243,7 +225,6 @@ public sealed class TransferRoomHandler(
         return Result.Success();
     }
 
-    /// <summary>CT-BR-48: phòng cũ có công tơ của một khoản mà phòng mới không có (hoặc ngược lại) ⇒ nhắc đổi dịch vụ tính theo đầu người.</summary>
     private async Task<IReadOnlyList<Warning>> MeterWarningsAsync(Guid oldRoomId, Guid newRoomId, DateOnly date, CancellationToken ct)
     {
         var meters = await meterQueries.ListActiveFeesAsync([oldRoomId, newRoomId], date, ct);
@@ -258,7 +239,6 @@ public sealed class TransferRoomHandler(
             .ToList();
     }
 
-    /// <summary>Phòng mới: cùng khu, đang dùng, không HĐ nào chiếm từ ngày D (HĐ hiệu lực / giữ chỗ / lịch sử chuyển phòng).</summary>
     private async Task<Result> CheckTargetAsync(Contract contract, Guid roomId, DateOnly date, CancellationToken ct)
     {
         if (roomId == contract.RoomId)
@@ -287,17 +267,11 @@ public sealed class TransferRoomHandler(
             && await meterQueries.AnyReadingAfterAsync(endIds, date, ct);
     }
 
-    /// <summary>
-    /// CT-BR-14: xóa lần chuyển phòng hôm nay (chuyển nhầm) — HĐ về phòng cũ như chưa từng chuyển: hủy khoản chênh lệch tiền phòng (và khoản chốt
-    /// điện nước của dữ liệu cũ), hủy chỉ số cuối phòng cũ và các chỉ số của HĐ trên công tơ phòng mới, trả lại giá thuê / dịch vụ theo dữ liệu
-    /// lưu kèm lần chuyển; phần không hoàn được ⇒ cảnh báo. Gọi trong transaction của lệnh chuyển phòng (đã khóa 2 phòng + HĐ).
-    /// </summary>
     private async Task<Result<IReadOnlyList<Warning>>> UndoLastTransferAsync(Contract contract, ContractRoomMove last, CancellationToken ct)
     {
         var (oldRoomId, newRoomId, date) = (last.RoomId, contract.RoomId, contract.RoomSince);
         if (await RoomTakenAsync(contract.Id, oldRoomId, date, ct))
             return ContractErrors.TransferRoomUnavailable;
-        // Đã lập phiếu (nháp / đã chốt) cho phòng mới từ ngày chuyển ⇒ xóa nháp / hủy phiếu đó trước.
         if (await invoiceQueries.HasInvoiceForRoomFromAsync(contract.Id, newRoomId, date, ct))
             return ContractErrors.TransferCancelBilled;
 
@@ -329,10 +303,6 @@ public sealed class TransferRoomHandler(
         return complete;
     }
 
-    /// <summary>
-    /// Khoản chênh lệch tiền phòng của lần chuyển (+ khoản chốt điện nước của lần chuyển ghi trước 17/10/2026): đã đánh dấu đã thu / đã trả ⇒ chặn
-    /// (tránh người thuê mất tiền đã trả); đã vào phiếu đã chốt ⇒ chặn; đang trên nháp ⇒ xóa dòng; rồi hủy khoản.
-    /// </summary>
     private async Task<Result> CancelTransferChargesAsync(
         Guid contractId, Guid oldRoomId, DateOnly date, Guid? rentChargeId, DateTimeOffset now, CancellationToken ct)
     {

@@ -18,8 +18,7 @@ internal sealed class InvoiceConfiguration : IEntityTypeConfiguration<Invoice>
         builder.ToTable("invoices", t =>
         {
             t.HasCheckConstraint("ck_invoices_period", "period_end >= period_start");
-            // BL-BR-10: giảm trừ không vượt phần thu; chỉ dòng hoàn trả được làm tổng âm (BL-BR-27).
-            t.HasCheckConstraint("ck_invoices_total", "subtotal + discount_total >= 0 OR status = 'Draft'");
+            t.HasCheckConstraint("ck_invoices_total", "subtotal + discount_total >= 0 OR status = 'Draft' OR invoice_type = 'Final'");
             t.HasCheckConstraint("ck_invoices_refund",
                 "refund_total <= 0 AND total_amount = subtotal + discount_total + refund_total + rounding_amount");
             t.HasCheckConstraint("ck_invoices_rounding", "rounding_amount > -1000 AND rounding_amount < 1000");
@@ -31,7 +30,6 @@ internal sealed class InvoiceConfiguration : IEntityTypeConfiguration<Invoice>
         });
         builder.HasKey(i => i.Id);
         builder.HasAlternateKey(i => new { i.OrganizationId, i.Id }).HasName("ak_invoices_organization_id_id");
-        // Đích FK của phân bổ thanh toán: (org, contract, invoice) ⇒ DB chặn phân bổ chéo hợp đồng (M08).
         builder.HasAlternateKey(i => new { i.OrganizationId, i.ContractId, i.Id }).HasName("ak_invoices_organization_contract_id");
         builder.ConfigureAuditable();
 
@@ -52,7 +50,8 @@ internal sealed class InvoiceConfiguration : IEntityTypeConfiguration<Invoice>
         builder.Property(i => i.SnapshotRepresentativeName).HasMaxLength(200).IsRequired();
         builder.Property(i => i.Note).HasMaxLength(1000);
         builder.Property(i => i.VoidReason).HasMaxLength(300);
-        // BL-BR-20: nháp "Cần tính lại" — lọc nhanh theo khu.
+        builder.HasIndex(i => new { i.OrganizationId, i.PropertyId }, "ix_invoices_needs_resend").HasDatabaseName("ix_invoices_needs_resend")
+            .HasFilter("needs_resend");
         builder.HasIndex(i => new { i.OrganizationId, i.PropertyId }, "ix_invoices_stale_drafts").HasDatabaseName("ix_invoices_stale_drafts")
             .HasFilter("status = 'Draft' AND is_stale");
         builder.Property(i => i.RefundMethod).HasConversion<string>().HasMaxLength(16);
@@ -80,7 +79,6 @@ internal sealed class InvoiceConfiguration : IEntityTypeConfiguration<Invoice>
         builder.Navigation(i => i.Lines).UsePropertyAccessMode(PropertyAccessMode.Field);
         builder.Navigation(i => i.Segments).UsePropertyAccessMode(PropertyAccessMode.Field);
 
-        // BL-BR-01: mỗi (HĐ, loại, kỳ) tối đa 1 phiếu chưa hủy; số phiếu duy nhất trong tổ chức.
         builder.HasIndex(i => new { i.ContractId, i.Type, i.PeriodStart }, DbConstraints.InvoicePeriodUnique)
             .HasDatabaseName(DbConstraints.InvoicePeriodUnique).IsUnique().HasFilter("status <> 'Void'");
         builder.HasIndex(i => new { i.OrganizationId, i.InvoiceNo }, "ux_invoices_invoice_no")

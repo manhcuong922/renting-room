@@ -26,7 +26,6 @@ public sealed class InstallMeterCommandValidator : AbstractValidator<InstallMete
     }
 }
 
-/// <summary>MT-UC-01: lắp công tơ cho phòng — khoản thu phải là điện nước theo công tơ, cùng khu, chưa ngừng dùng (MT-BR-01/02).</summary>
 public sealed class InstallMeterHandler(
     IRoomQueries rooms, IFeeQueries fees, IMeterRepository meters, IMeterQueries meterQueries, IUnitOfWork unitOfWork)
     : IRequestHandler<InstallMeterCommand, Result<Guid>>

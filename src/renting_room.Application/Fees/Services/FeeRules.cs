@@ -18,7 +18,6 @@ internal static class FeeRules
 
     public const int MaxTiers = 10;
 
-    /// <summary>Bậc tăng dần theo <c>UpTo</c>, chỉ bậc cuối để trống (không giới hạn); giá mỗi bậc như giá theo công tơ.</summary>
     public static bool IsValidTiers(IReadOnlyList<PriceTier> tiers) =>
         tiers.Count is > 0 and <= MaxTiers
         && tiers.Take(tiers.Count - 1).All(t => t.UpTo is > 0)

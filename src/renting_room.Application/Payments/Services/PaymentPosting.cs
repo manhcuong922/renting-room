@@ -28,12 +28,36 @@ public sealed class PaymentPosting(
         if (allocations.IsFailure)
             return allocations.Error!;
 
-        // PM-BR-15: năm của số phiếu thu = năm của ngày lập (không phải ngày thu) — ghi bù đầu năm không làm lộn thứ tự số.
         var receiptNo = await numbers.NextAsync(currentUser.OrganizationId!.Value, "PT", clock.GetUtcNow().ToBusinessDate().Year, ct);
         var payment = Payment.Record(contract.PropertyId, contract.Id, receiptNo, total, method, paidAt, payerName, reference, note,
             allocations.Value!, kind);
         foreach (var (id, part) in allocations.Value!)
             open.Single(i => i.Id == id).ApplyPayment(part, kind == PaymentKind.WriteOff);
+        payments.Add(payment);
+        return payment;
+    }
+
+    /// <summary>M08 PM-BR-37: phiếu hoàn tiền (số PC) cho hóa đơn đã khóa — giảm "đã thu" đúng số hoàn.</summary>
+    public async Task<Payment> PostRefundAsync(Contract contract, Invoice invoice, decimal amount, DateOnly paidAt, PaymentMethod method, string note, CancellationToken ct)
+    {
+        var receiptNo = await numbers.NextAsync(currentUser.OrganizationId!.Value, "PC", clock.GetUtcNow().ToBusinessDate().Year, ct);
+        var refund = Payment.Record(contract.PropertyId, contract.Id, receiptNo, amount, method, paidAt, null, null, note, [(invoice.Id, amount)],
+            PaymentKind.Refund);
+        invoice.ApplyPayment(-amount);
+        payments.Add(refund);
+        return refund;
+    }
+
+    /// <summary>Ghi phiếu với phân bổ cho trước vào các hóa đơn đã khóa (VD ghi lại phiếu bỏ nợ sau khi giảm phần bỏ nợ).</summary>
+    public async Task<Payment> PostAllocatedAsync(
+        Contract contract, IReadOnlyDictionary<Guid, Invoice> locked, IReadOnlyList<(Guid InvoiceId, decimal Amount)> allocations, PaymentMethod method,
+        DateOnly paidAt, string? note, PaymentKind kind, CancellationToken ct)
+    {
+        var receiptNo = await numbers.NextAsync(currentUser.OrganizationId!.Value, "PT", clock.GetUtcNow().ToBusinessDate().Year, ct);
+        var payment = Payment.Record(contract.PropertyId, contract.Id, receiptNo, allocations.Sum(a => a.Amount), method, paidAt, null, null, note,
+            allocations, kind);
+        foreach (var (id, part) in allocations)
+            locked[id].ApplyPayment(part, kind == PaymentKind.WriteOff);
         payments.Add(payment);
         return payment;
     }
@@ -61,7 +85,6 @@ public sealed class PaymentPosting(
         if (amount > open.Sum(i => i.Outstanding))
             return PaymentErrors.ExceedsDebt;
 
-        // PM-BR-06: hạn thanh toán sớm nhất trước, rồi kỳ cũ hơn.
         var remaining = amount;
         var result = new List<(Guid, decimal)>();
         foreach (var invoice in open.OrderBy(i => i.DueDate).ThenBy(i => i.PeriodStart))

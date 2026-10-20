@@ -23,7 +23,6 @@ public sealed class DeleteDraftInvoiceHandler(
         if (await invoiceQueries.HasLaterInvoiceAsync(invoice, cancellationToken))
             return Result.Failure(BillingErrors.NotLatest);
 
-        // BL-BR-35: khoản phát sinh của nháp quay về chờ.
         await roomCharges.DetachAllAsync(invoice.Id, cancellationToken);
         invoices.Remove(invoice);
         await unitOfWork.SaveChangesAsync(cancellationToken);

@@ -11,12 +11,10 @@ using renting_room.Domain.Properties;
 
 namespace renting_room.Application.Meters;
 
-/// <param name="LastValue">Chỉ số gần nhất (gợi ý số cuối công tơ cũ không được nhỏ hơn).</param>
 public sealed record ReplaceSheetRowDto(Guid MeterId, Guid RoomId, string RoomCode, string? Floor, string? SerialNo, decimal? LastValue, DateOnly? LastDate);
 
 public sealed record GetReplaceSheetQuery(Guid PropertyId, Guid FeeTypeId) : IRequest<Result<IReadOnlyList<ReplaceSheetRowDto>>>;
 
-/// <summary>MT-UC-08: lưới thay công tơ hàng loạt — mỗi phòng của khu có công tơ đang hoạt động của khoản thu (điện / nước).</summary>
 public sealed class GetReplaceSheetHandler(IPropertyQueries properties, IMeterQueries meterQueries, IRoomQueries roomQueries)
     : IRequestHandler<GetReplaceSheetQuery, Result<IReadOnlyList<ReplaceSheetRowDto>>>
 {
@@ -38,15 +36,12 @@ public sealed class GetReplaceSheetHandler(IPropertyQueries properties, IMeterQu
     }
 }
 
-/// <param name="OldFinalValue">Số cuối công tơ cũ tại ngày thay.</param>
-/// <param name="NewInitialValue">Chỉ số đầu công tơ mới — mặc định 0.</param>
 public sealed record BulkReplaceRow(Guid MeterId, decimal OldFinalValue, string? NewSerialNo, decimal? NewInitialValue);
 
 public sealed record BulkReplaceRowError(int Index, Guid MeterId, string Code, string Message);
 
 public sealed record BulkReplaceResult(int Replaced, IReadOnlyList<Guid> NewMeterIds);
 
-/// <summary>MT-UC-08 / MT-BR-18: thay hàng loạt cùng 1 ngày (VD điện lực thay cả khu) — chỉ gửi dòng có thay.</summary>
 public sealed record BulkReplaceMetersCommand(Guid PropertyId, Guid FeeTypeId, DateOnly ReplacedOn, IReadOnlyList<BulkReplaceRow> Rows, string? Note)
     : IRequest<Result<BulkReplaceResult>>;
 
@@ -71,10 +66,6 @@ public sealed class BulkReplaceMetersCommandValidator : AbstractValidator<BulkRe
     }
 }
 
-/// <summary>
-/// Mỗi dòng = đúng lệnh thay công tơ đơn (MT-UC-02, MT-BR-09). Khóa công tơ theo id, kiểm hết các dòng — lỗi bất kỳ ⇒ 422 kèm danh sách dòng lỗi,
-/// không lưu dòng nào (MT-BR-07). Kỳ có thay: tính tiền tự cộng 2 công tơ (MT-BR-15); nháp của phòng ⇒ "Cần tính lại" (BL-BR-20).
-/// </summary>
 public sealed class BulkReplaceMetersHandler(IMeterRepository meterRepository, IInvoiceQueries invoices, IUnitOfWork unitOfWork)
     : IRequestHandler<BulkReplaceMetersCommand, Result<BulkReplaceResult>>
 {

@@ -1,7 +1,5 @@
 namespace renting_room.Domain.Properties;
 
-/// <summary>Cài đặt kỳ thu của khu — mọi HĐ của khu dùng chung (PR-BR-09); <c>NoticeDays</c> chỉ là gợi ý khi tạo HĐ.</summary>
-/// <param name="RoundInvoiceTotal">BL-BR-29 (H1): bỏ phần lẻ dưới 1.000đ của tổng phiếu — mặc định bật.</param>
 public sealed record BillingSettings(
     int AnchorDay, ChargeMode ChargeMode, int PaymentDueDays, ProrationMode ProrationMode, int NoticeDays, bool RoundInvoiceTotal = true)
 {

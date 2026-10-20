@@ -5,7 +5,6 @@ namespace renting_room.Application.Identity;
 /// <summary>Refresh token: thu hồi bằng lệnh UPDATE nguyên tử (không load entity), an toàn khi chạy song song.</summary>
 public interface IRefreshTokenRepository
 {
-    /// <summary>Chỉ đọc.</summary>
     Task<RefreshToken?> FindByHashAsync(string tokenHash, CancellationToken cancellationToken);
 
     Task<Guid?> FindFamilyIdByHashAsync(string tokenHash, CancellationToken cancellationToken);

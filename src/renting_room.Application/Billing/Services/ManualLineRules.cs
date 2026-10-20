@@ -9,7 +9,6 @@ internal static class ManualLineRules
 {
     public const decimal MaxAmount = 100_000_000;
 
-    /// <summary>BL-BR-23 / BL-BR-27: phụ thu / giảm tay / hoàn trả — nội dung, lý do bắt buộc, số tiền dương ≤ 100 triệu.</summary>
     public static void Apply<T>(
         AbstractValidator<T> v, Expression<Func<T, InvoiceLineType>> type, Expression<Func<T, string>> description,
         Expression<Func<T, string>> note, Expression<Func<T, decimal>> amount, Expression<Func<T, decimal?>> quantity,

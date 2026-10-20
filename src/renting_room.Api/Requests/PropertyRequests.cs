@@ -12,7 +12,6 @@ public sealed record UpdatePropertyRequest(
     LandParcelInput? Land,
     uint Version);
 
-/// <param name="TransitionAdjustDays">K4: số ngày tiền phòng cộng (+) / trừ (−) ở kỳ chuyển tiếp — null = theo gợi ý.</param>
 public sealed record UpdatePropertyBillingRequest(
     int AnchorDay, ChargeMode ChargeMode, int PaymentDueDays, ProrationMode ProrationMode, int NoticeDays, int? TransitionAdjustDays,
     bool? RoundInvoiceTotal = null);

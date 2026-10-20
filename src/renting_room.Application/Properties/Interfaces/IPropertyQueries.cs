@@ -3,7 +3,6 @@ using renting_room.Domain.Properties;
 
 namespace renting_room.Application.Properties;
 
-/// <summary>Đọc thông tin khu (chỉ trong tổ chức hiện tại).</summary>
 public interface IPropertyQueries
 {
     Task<bool> ExistsAsync(Guid id, CancellationToken cancellationToken);
@@ -18,12 +17,10 @@ public interface IPropertyQueries
 
     Task<IReadOnlyList<PropertyStatus>> GetStatusesAsync(IReadOnlyCollection<Guid> ids, CancellationToken cancellationToken);
 
-    /// <summary>Khu (chỉ đọc) để dựng DTO / tính toán — không dùng để sửa.</summary>
     Task<Property?> GetAsync(Guid id, CancellationToken cancellationToken);
 
     Task<PagedResult<PropertySummaryDto>> ListAsync(ListPropertiesQuery request, DateOnly today, CancellationToken cancellationToken);
 
-    /// <summary>Còn HĐ nháp / hiệu lực / thanh lý, hoặc HĐ đã kết thúc mà hôm nay vẫn là ngày trả phòng.</summary>
     Task<bool> HasOpenContractsAsync(Guid propertyId, DateOnly today, CancellationToken cancellationToken);
 
     /// <summary>Ngày cuối kỳ muộn nhất của phiếu (chưa hủy) của khu; null = khu chưa có phiếu.</summary>
@@ -31,7 +28,6 @@ public interface IPropertyQueries
 
     Task<bool> HasDraftInvoicesAsync(Guid propertyId, CancellationToken cancellationToken);
 
-    /// <summary>Cài đặt kỳ thu của khu (PR-BR-09) — mọi HĐ của khu dùng chung.</summary>
     Task<PropertyBilling> GetBillingAsync(Guid propertyId, CancellationToken cancellationToken);
 
     Task<IReadOnlyDictionary<Guid, PropertyBilling>> GetBillingsAsync(IEnumerable<Guid> propertyIds, CancellationToken cancellationToken);

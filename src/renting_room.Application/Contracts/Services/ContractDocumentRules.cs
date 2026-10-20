@@ -10,7 +10,6 @@ using renting_room.Domain.Contracts;
 
 namespace renting_room.Application.Contracts;
 
-/// <summary>Đọc / ghi phần văn bản hợp đồng (điều khoản, định nghĩa trường, giá trị trường) lưu dạng jsonb.</summary>
 public static class ContractDocumentJson
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
@@ -179,7 +178,6 @@ public sealed class CustomFieldDefinitionValidator : AbstractValidator<CustomFie
     }
 }
 
-/// <summary>Quy tắc dùng chung cho danh sách điều khoản / trường của mẫu và hợp đồng.</summary>
 internal static class ContractDocumentRules
 {
     public const int MaxClauses = 30;

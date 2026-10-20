@@ -2,7 +2,6 @@ using renting_room.Domain.Common;
 
 namespace renting_room.Domain.Contracts;
 
-/// <summary>Tài sản bàn giao kèm phòng (CT-UC-13) — căn cứ trừ cọc khi trả phòng.</summary>
 public sealed class ContractAsset : TenantEntity
 {
     private ContractAsset() { } // EF Core
@@ -36,6 +35,5 @@ public sealed class ContractAsset : TenantEntity
         Note = TextNormalizer.TrimToNull(input.Note);
     }
 
-    /// <summary>CT-BR-23 (đổi 10/10/2026): chỉ ghi tình trạng lúc trả — tiền bồi thường thu bằng phụ thu trên phiếu (BL-BR-23).</summary>
     internal void RecordReturn(string? condition) => ConditionAtReturn = TextNormalizer.TrimToNull(condition);
 }

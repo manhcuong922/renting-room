@@ -13,7 +13,6 @@ public sealed record SheetData(string Name, IReadOnlyList<SheetRow> Rows);
 /// </summary>
 public interface ISpreadsheetReader
 {
-    /// <summary>Tổng dung lượng sau giải nén tối đa của một file xlsx.</summary>
     const long MaxUncompressedBytes = 20 * 1024 * 1024;
 
     IReadOnlyList<SheetData> Read(byte[] content);

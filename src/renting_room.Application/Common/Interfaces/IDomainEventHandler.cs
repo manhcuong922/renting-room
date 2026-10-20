@@ -11,5 +11,4 @@ public interface IDomainEventHandler
     Task HandleAsync(DomainEventBatch batch, CancellationToken cancellationToken);
 }
 
-/// <param name="OrganizationId">Tổ chức của các entity phát sự kiện.</param>
 public sealed record DomainEventBatch(Guid OrganizationId, IReadOnlyList<IDomainEvent> Events);

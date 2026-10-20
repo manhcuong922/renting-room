@@ -10,7 +10,6 @@ namespace renting_room.Application.Rooms;
 
 public sealed record BulkRoomFloor(string? Floor, IReadOnlyList<string> Codes);
 
-/// <summary>Tạo hàng loạt theo tầng — all-or-nothing: một mã trùng thì không tạo phòng nào.</summary>
 public sealed record BulkCreateRoomsCommand(
     Guid PropertyId,
     IReadOnlyList<BulkRoomFloor> Floors,

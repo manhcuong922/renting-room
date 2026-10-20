@@ -30,7 +30,6 @@ public sealed record MoveOccupantRequest(
 
 public sealed record EndOccupancyRequest(DateOnly MoveOutDate);
 
-/// <summary>Số người ở không bị giới hạn (PR-BR-06) — client cũ gửi <c>overrideCapacity</c> thì bị bỏ qua.</summary>
 public sealed record ActivateContractRequest(IReadOnlyList<MeterReadingInput>? HandoverReadings);
 
 public sealed record CompleteLiquidationRequest(DebtSettlement? Settlement, PaymentMethod? Method, DateOnly? PaidAt, string? Reason);
@@ -45,7 +44,6 @@ public sealed record HoldoverRequest(string? Note);
 
 public sealed record RefundDepositRequest(DateOnly RefundedOn, decimal? Amount, string? Note);
 
-/// <summary>Ngày chuyển luôn là hôm nay (CT-BR-14) — body không có ngày.</summary>
 public sealed record TransferRoomRequest(
     Guid ToRoomId, IReadOnlyList<MeterReadingInput>? OldRoomReadings, IReadOnlyList<MeterReadingInput>? NewRoomReadings,
     decimal? MonthlyRent, string? Note, TransferRentFrom? RentFrom = null, IReadOnlyList<Guid>? RemoveFeeTypeIds = null);

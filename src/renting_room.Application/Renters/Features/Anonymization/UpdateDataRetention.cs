@@ -15,7 +15,6 @@ public sealed class UpdateDataRetentionCommandValidator : AbstractValidator<Upda
             .WithErrorCode("OUT_OF_RANGE").WithMessage("Thời gian giữ dữ liệu từ 36 đến 120 tháng.");
 }
 
-/// <summary>RT-BR-06: chủ trọ đặt thời gian giữ / tắt ẩn danh tự động — thay đổi được audit (ai, lúc nào, giá trị cũ → mới).</summary>
 public sealed class UpdateDataRetentionHandler(IOrganizationRepository organizations, IUnitOfWork unitOfWork, ICurrentUser currentUser)
     : IRequestHandler<UpdateDataRetentionCommand, DataRetentionDto>
 {

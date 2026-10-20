@@ -136,14 +136,11 @@ internal sealed class ContractQueries(AppDbContext db) : IContractQueries
         }
         if (request.Overdue == true)
             query = query.Where(c => c.Status == ContractStatus.Active && c.EndDate < today);
-        // CT-BR-27: nhóm hợp đồng không cọc / có cọc.
-        // Thiếu tài liệu: HĐ nháp / đang ở / đang thanh lý chưa có bản ký (giấy / ảnh / PDF).
         if (request.MissingSignedDocument is { } missing)
             query = query.Where(c => (c.Status == ContractStatus.Draft || c.Status == ContractStatus.Active || c.Status == ContractStatus.Liquidating)
                 && c.HasSignedDocument != missing);
         if (request.HasDeposit is { } hasDeposit)
             query = hasDeposit ? query.Where(c => c.DepositAmount > 0) : query.Where(c => c.DepositAmount == 0);
-        // M08 PM-BR-35: HĐ đã kết thúc có cọc mà chưa đánh dấu hoàn trả.
         if (request.DepositNotRefunded == true)
             query = query.Where(c => c.Status == ContractStatus.Ended && c.DepositAmount > 0 && c.DepositStatus == DepositStatus.Holding);
         if (!string.IsNullOrWhiteSpace(request.Search))

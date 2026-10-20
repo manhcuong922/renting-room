@@ -2,7 +2,6 @@ using renting_room.Domain.Common;
 
 namespace renting_room.Domain.Contracts;
 
-/// <summary>Xe đăng ký gửi (CT-UC-14).</summary>
 public sealed class ContractVehicle : TenantEntity
 {
     private ContractVehicle() { } // EF Core
@@ -28,6 +27,8 @@ public sealed class ContractVehicle : TenantEntity
     public DateOnly? RegisteredTo { get; private set; }
     public string? Note { get; private set; }
 
+    public Guid? ResignedToContractId { get; private set; }
+
     public bool IsActive => RegisteredTo is null;
 
     internal void MoveStart(DateOnly date) => RegisteredFrom = date;
@@ -44,7 +45,20 @@ public sealed class ContractVehicle : TenantEntity
         RegisteredTo = date;
     }
 
-    /// <summary>RT-BR-06: ẩn danh — biển số, hiệu – màu nhận diện được người; chỉ xe đã kết thúc.</summary>
+    internal void EndForResign(DateOnly date, Guid newContractId)
+    {
+        End(date);
+        ResignedToContractId = newContractId;
+    }
+
+    internal void Reopen()
+    {
+        RegisteredTo = null;
+        ResignedToContractId = null;
+    }
+
+    internal void ForgetResign() => ResignedToContractId = null;
+
     internal bool EraseIdentity()
     {
         if (IsActive || (PlateNumber is null && BrandColor is null))

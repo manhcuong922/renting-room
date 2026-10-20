@@ -8,7 +8,6 @@ using renting_room.Domain.Contracts;
 
 namespace renting_room.Application.Billing;
 
-// Xác nhận đã hoàn tiền (phiếu tổng âm)
 public sealed record ConfirmInvoiceRefundCommand(Guid Id, DateOnly RefundedOn, PaymentMethod Method, string? Note) : IRequest<Result<InvoiceDetailDto>>;
 
 public sealed class ConfirmInvoiceRefundCommandValidator : AbstractValidator<ConfirmInvoiceRefundCommand>
@@ -20,7 +19,6 @@ public sealed class ConfirmInvoiceRefundCommandValidator : AbstractValidator<Con
     }
 }
 
-/// <summary>BL-BR-27: chủ trọ xác nhận đã trả lại người thuê phần tổng âm của phiếu đã chốt (ngày, cách hoàn, ghi chú).</summary>
 public sealed class ConfirmInvoiceRefundHandler(
     IUnitOfWork unitOfWork, IInvoiceRepository invoices, IInvoiceQueries invoiceQueries, IContractQueries contracts, TimeProvider clock)
     : IRequestHandler<ConfirmInvoiceRefundCommand, Result<InvoiceDetailDto>>

@@ -12,9 +12,6 @@ public sealed record BulkManualLineOutcome(Guid? InvoiceId, Guid RoomId, string 
 
 public sealed record BulkManualLineResult(int Added, IReadOnlyList<BulkManualLineOutcome> Results);
 
-/// <summary>
-/// Phạm vi: danh sách phiếu, hoặc khu + tháng thu (lọc phòng / tầng) — chỉ phiếu nháp. Một dòng giống nhau thêm vào từng phiếu.
-/// </summary>
 public sealed record BulkAddManualLineCommand(
     IReadOnlyList<Guid>? InvoiceIds, Guid? PropertyId, string? BillingMonth, IReadOnlyList<Guid>? RoomIds, string? Floor,
     InvoiceLineType Type, string Description, decimal? Quantity, decimal? UnitPrice, decimal Amount, string Note, Guid? FeeTypeId,
@@ -31,13 +28,11 @@ public sealed class BulkAddManualLineCommandValidator : AbstractValidator<BulkAd
         RuleFor(x => x.InvoiceIds).Must(i => i is null || i.Count <= 1000).WithErrorCode("OUT_OF_RANGE");
         RuleFor(x => x.RoomIds).Must(r => r is null || r.Count <= 1000).WithErrorCode("OUT_OF_RANGE");
         ManualLineRules.Apply(this, x => x.Type, x => x.Description, x => x.Note, x => x.Amount, x => x.Quantity, x => x.UnitPrice);
-        // BL-BR-27 (E): hoàn trả gắn phiếu nguồn riêng của từng phòng ⇒ không thêm hàng loạt.
         RuleFor(x => x.Type).NotEqual(InvoiceLineType.Refund)
             .WithErrorCode("REFUND_NOT_BULK").WithMessage("Hoàn trả thêm từng phiếu (chọn phiếu nguồn đã thu) — không thêm hàng loạt.");
     }
 }
 
-/// <summary>BL-UC-05: thêm phụ thu / giảm trừ / hoàn trả cho 1 phòng hay nhiều phòng một lúc — mỗi phiếu 1 transaction, trả kết quả từng phiếu.</summary>
 public sealed class BulkAddManualLineHandler(
     IUnitOfWork unitOfWork, IInvoiceRepository invoices, IInvoiceQueries invoiceQueries, IRoomQueries rooms, RoomChargeBilling roomCharges,
     TimeProvider clock)

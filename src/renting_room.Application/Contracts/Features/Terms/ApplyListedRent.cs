@@ -6,10 +6,6 @@ using renting_room.Domain.Properties;
 
 namespace renting_room.Application.Contracts;
 
-/// <summary>
-/// Chủ trọ sửa giá niêm yết của phòng rồi chọn "áp cho người đang thuê": HĐ đang hiệu lực của phòng đổi giá từ kỳ chưa chốt đầu tiên
-/// (lịch sử giữ nguyên). Không tự đổi khi sửa giá phòng — giá thỏa thuận có thể khác giá niêm yết.
-/// </summary>
 public sealed record ApplyListedRentCommand(Guid RoomId) : IRequest<Result>;
 
 public sealed class ApplyListedRentHandler(IRoomQueries rooms, IContractQueries contracts, ISender sender, TimeProvider clock) : IRequestHandler<ApplyListedRentCommand, Result>

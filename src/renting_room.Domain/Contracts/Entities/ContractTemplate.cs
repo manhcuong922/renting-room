@@ -2,11 +2,6 @@ using renting_room.Domain.Common;
 
 namespace renting_room.Domain.Contracts;
 
-/// <summary>
-/// Mẫu hợp đồng của tổ chức (CT-BR-25): tiêu đề, các điều khoản, và danh sách trường tùy biến.
-/// Hợp đồng nháp chép nội dung mẫu vào chính nó ⇒ sửa / ngừng dùng mẫu không đổi hợp đồng đã kích hoạt.
-/// Điều khoản và trường lưu dạng JSON đã được Application kiểm tra.
-/// </summary>
 public sealed class ContractTemplate : TenantEntity
 {
     private ContractTemplate() { } // EF Core
@@ -17,7 +12,6 @@ public sealed class ContractTemplate : TenantEntity
     public string ClausesJson { get; private set; } = "[]";
     public string FieldDefinitionsJson { get; private set; } = "[]";
 
-    /// <summary>CT-BR-27: hợp đồng dùng mẫu này không đặt cọc (tiền cọc luôn = 0).</summary>
     public bool NoDeposit { get; private set; }
     public DateTimeOffset? ArchivedAt { get; private set; }
 

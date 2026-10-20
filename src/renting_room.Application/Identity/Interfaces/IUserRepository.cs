@@ -13,10 +13,8 @@ public interface IUserRepository
     /// <summary>Tài khoản thuộc tổ chức (null = không thuộc tổ chức nào).</summary>
     Task<User?> GetInOrganizationForUpdateAsync(Guid id, Guid? organizationId, CancellationToken cancellationToken);
 
-    /// <summary>Tài khoản không phải SystemAdmin (ID-BR-11).</summary>
     Task<User?> GetNonAdminForUpdateAsync(Guid id, CancellationToken cancellationToken);
 
-    /// <summary>ID-BR-02: SĐT là tên đăng nhập, unique toàn hệ thống.</summary>
     Task<bool> IsPhoneTakenAsync(string phoneNormalized, Guid? excludeId, CancellationToken cancellationToken);
 
     Task<bool> IsEmailTakenAsync(string emailNormalized, Guid? excludeId, CancellationToken cancellationToken);

@@ -8,8 +8,6 @@ using renting_room.Application.Renters;
 
 namespace renting_room.Application.Rooms;
 
-// ============================================================ RT-UC-04: lịch sử thuê theo phòng, tìm theo tên người
-
 public enum TenancyRole
 {
     Representative,
@@ -21,11 +19,8 @@ public enum TenancyRole
 /// <param name="ToDate">Ngày cuối ở phòng; null = đang ở.</param>
 public sealed record TenancyOccupantDto(Guid RenterId, string FullName, TenancyRole Role, DateOnly FromDate, DateOnly? ToDate);
 
-/// <summary>Một người đứng tên HĐ trong một lần ở phòng (đổi người đứng tên giữa chừng ⇒ nhiều dòng).</summary>
 public sealed record TenancyRepresentativeDto(Guid RenterId, string FullName, DateOnly FromDate, DateOnly? ToDate);
 
-/// <summary>Một lần một HĐ ở phòng (HĐ chuyển đi rồi quay lại ⇒ 2 dòng).</summary>
-/// <param name="RepresentativeName">Người đứng tên cuối lần ở đó.</param>
 public sealed record RoomTenancyDto(
     Guid ContractId, string ContractNo, ContractStatus Status, DateOnly FromDate, DateOnly? ToDate, bool IsCurrent, string RepresentativeName,
     IReadOnlyList<TenancyOccupantDto> Occupants, IReadOnlyList<TenancyRepresentativeDto> Representatives);
@@ -36,7 +31,6 @@ public sealed record PersonTenancyDto(
 
 public sealed record GetRoomTenancyHistoryQuery(Guid RoomId) : IRequest<Result<IReadOnlyList<RoomTenancyDto>>>;
 
-/// <param name="Search">Một phần họ tên (không phân biệt dấu / hoa thường), tối thiểu 2 ký tự.</param>
 public sealed record SearchTenancyHistoryQuery(string Search, Guid? PropertyId) : IRequest<IReadOnlyList<PersonTenancyDto>>;
 
 public sealed class SearchTenancyHistoryQueryValidator : AbstractValidator<SearchTenancyHistoryQuery>
@@ -48,13 +42,11 @@ public sealed class SearchTenancyHistoryQueryValidator : AbstractValidator<Searc
 
 internal static class TenancyHistoryRules
 {
-    /// <summary>Ai đứng tên HĐ theo thời gian (CT-BR-51): những người đứng tên trước, rồi người hiện tại.</summary>
     public static IEnumerable<(Guid RenterId, DateOnly From, DateOnly? To)> Representatives(Contract contract) =>
         contract.RepresentativeHistory.OrderBy(h => h.FromDate)
             .Select(h => (h.RenterId, h.FromDate, (DateOnly?)(h.ToDate > h.FromDate ? h.ToDate.AddDays(-1) : h.ToDate)))
             .Append((contract.RepresentativeRenterId, contract.RepresentativeSince ?? contract.StartDate, contract.ActualEndDate));
 
-    /// <summary>Những người đứng tên trong lần ở phòng đó, kèm khoảng ngày đứng tên nằm trong lần ở.</summary>
     public static IEnumerable<(Guid RenterId, DateOnly From, DateOnly? To)> RepresentativesIn(Contract contract, RoomStay stay) =>
         from representative in Representatives(contract)
         let period = Within(stay, representative.From, representative.To)
@@ -75,7 +67,6 @@ internal static class TenancyHistoryRules
         return end is { } last && last < start ? null : (start, end);
     }
 
-    /// <summary>Các người ở của HĐ có mặt trong lần ở phòng đó, kèm khoảng ngày thực ở.</summary>
     public static IEnumerable<(ContractOccupant Occupant, DateOnly From, DateOnly? To)> OccupantsIn(Contract contract, RoomStay stay) =>
         from occupant in contract.Occupants
         let period = Within(stay, occupant.MoveInDate, occupant.MoveOutDate ?? contract.ActualEndDate)
@@ -83,7 +74,6 @@ internal static class TenancyHistoryRules
         select (occupant, period.Value.From, period.Value.To);
 }
 
-/// <summary>RT-UC-04: ai đã / đang ở phòng này — theo từng lần ở của từng HĐ (tính cả lịch sử chuyển phòng), mới nhất trước.</summary>
 public sealed class GetRoomTenancyHistoryHandler(IRoomQueries rooms, IContractQueries contractQueries, IRenterQueries renters, TimeProvider clock)
     : IRequestHandler<GetRoomTenancyHistoryQuery, Result<IReadOnlyList<RoomTenancyDto>>>
 {
@@ -116,7 +106,6 @@ public sealed class GetRoomTenancyHistoryHandler(IRoomQueries rooms, IContractQu
     }
 }
 
-/// <summary>RT-UC-04: tìm theo tên — người đó đã ở (hoặc đứng tên) phòng nào, HĐ nào, từ ngày nào tới ngày nào.</summary>
 public sealed class SearchTenancyHistoryHandler(IRenterQueries renters, IContractQueries contractQueries, IRoomQueries rooms)
     : IRequestHandler<SearchTenancyHistoryQuery, IReadOnlyList<PersonTenancyDto>>
 {
@@ -143,7 +132,6 @@ public sealed class SearchTenancyHistoryHandler(IRenterQueries renters, IContrac
                 rows.AddRange(TenancyHistoryRules.OccupantsIn(contract, stay).Where(x => people.ContainsKey(x.Occupant.RenterId))
                     .Select(x => new PersonTenancyDto(x.Occupant.RenterId, people[x.Occupant.RenterId], stay.RoomId, roomCode, contract.Id,
                         contract.ContractNo, TenancyHistoryRules.RoleOf(contract, stay, x.Occupant), x.From, x.To)));
-                // Người đứng tên không ở trong phòng (VD bố mẹ ký cho con) vẫn là người thuê của phòng.
                 foreach (var representative in TenancyHistoryRules.RepresentativesIn(contract, stay))
                     if (people.TryGetValue(representative.RenterId, out var name) && contract.Occupants.All(o => o.RenterId != representative.RenterId))
                         rows.Add(new PersonTenancyDto(representative.RenterId, name, stay.RoomId, roomCode, contract.Id, contract.ContractNo,

@@ -10,7 +10,6 @@ public static class AuditPolicy
     /// <summary>Thay cho giá trị trường nhạy cảm — chỉ cho biết trường có giá trị / đã đổi, không lộ nội dung.</summary>
     public const string RedactedValue = "[redacted]";
 
-    /// <summary>Thay đổi liên tục, không mang nghĩa nghiệp vụ; sự kiện đăng nhập ghi ở bảng riêng (M01 §11).</summary>
     private static readonly HashSet<Type> IgnoredEntityTypes = [typeof(RefreshToken)];
 
     /// <summary>Đã có cột riêng trên dòng audit (entity_id, organization_id, user_id, occurred_at) hoặc là token concurrency.</summary>

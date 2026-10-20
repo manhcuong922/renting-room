@@ -7,7 +7,6 @@ namespace renting_room.Application.Renters;
 
 public sealed record ArchiveRenterCommand(Guid Id, bool Archived) : IRequest<Result>;
 
-/// <summary>RT-BR-05: ẩn / hiện lại hồ sơ. Người còn HĐ nháp / hiệu lực / thanh lý thì không ẩn được.</summary>
 public sealed class ArchiveRenterHandler(IRenterRepository renters, IRenterQueries renterQueries, IUnitOfWork unitOfWork, TimeProvider clock)
     : IRequestHandler<ArchiveRenterCommand, Result>
 {

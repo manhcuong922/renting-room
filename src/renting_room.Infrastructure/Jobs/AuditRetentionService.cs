@@ -39,7 +39,6 @@ public sealed class AuditRetentionService(
         while (await timer.WaitForNextTickAsync(stoppingToken));
     }
 
-    /// <returns>Số dòng nhật ký đã xóa.</returns>
     public async Task<int> RunAsync(DateTimeOffset now, CancellationToken cancellationToken)
     {
         var cutoff = now.AddYears(-options.Value.RetentionYears);

@@ -2,12 +2,6 @@ using renting_room.Domain.Contracts;
 
 namespace renting_room.Application.Contracts;
 
-/// <summary>
-/// Điểm xuất phát cho chủ trọ. Điều khoản theo mẫu thực tế + các nội dung Luật Nhà ở 2023 Điều 163 yêu cầu
-/// (bàn giao, quyền và nghĩa vụ, chấm dứt, giải quyết tranh chấp). Điện / nước / dịch vụ KHÔNG còn là trường tùy biến:
-/// khai báo bằng khoản thu (M04) — vừa tính tiền vừa in vào văn bản (05-contract Q7). Trường tùy biến chỉ cho thỏa thuận
-/// mà khoản thu không thể hiện được.
-/// </summary>
 public static class ContractTemplatePresets
 {
     private static readonly CustomFieldDefinition[] LivingRules =
@@ -82,7 +76,6 @@ public static class ContractTemplatePresets
             .. LivingRules
         ]);
 
-    /// <summary>CT-BR-27: không đặt cọc ⇒ bù rủi ro bằng trả tiền thuê trước và quyền chấm dứt khi chậm trả.</summary>
     public static readonly ContractTemplateInput RoomRentalNoDeposit = new(
         "Thuê phòng trọ không cọc (mẫu chuẩn)",
         ContractType.RoomRental,

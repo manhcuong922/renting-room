@@ -7,13 +7,10 @@ using renting_room.Domain.Contracts;
 
 namespace renting_room.Application.Billing;
 
-/// <summary>Trạng thái hiển thị của khoản phát sinh (BL-UC-17) — dẫn xuất từ phiếu đang chứa nó.</summary>
 public enum RoomChargeStatus
 {
-    /// <summary>Chờ vào phiếu.</summary>
     Pending,
 
-    /// <summary>Đang trên phiếu nháp — còn sửa / hủy được.</summary>
     OnDraft,
 
     /// <summary>Đã vào phiếu đã chốt — khóa.</summary>
@@ -21,14 +18,12 @@ public enum RoomChargeStatus
     Cancelled
 }
 
-/// <param name="IsSystem">BL-BR-38: khoản chốt điện nước khi chuyển phòng — không sửa / hủy tay; kèm khoản thu, sản lượng, đơn giá.</param>
 public sealed record RoomChargeDto(
     Guid Id, Guid RoomId, string RoomCode, Guid ContractId, RoomChargeKind Kind, string Description, decimal Amount, DateOnly IncurredOn,
     string Reason, bool IsSettled, DateOnly? SettledOn, PaymentMethod? SettledMethod, RoomChargeStatus Status, Guid? InvoiceId,
     string? InvoiceNo, string? BillingMonth, string? CancelReason, DateTimeOffset CreatedAt, bool IsSystem = false, Guid? FeeTypeId = null,
     decimal? Quantity = null, decimal? UnitPrice = null);
 
-/// <summary>"Đã thanh toán / đã hoàn ngay" khi tạo khoản hoặc thêm dòng tay trên nháp (BL-BR-31).</summary>
 public sealed record ChargeSettlement(DateOnly SettledOn, PaymentMethod Method);
 
 /// <summary>
@@ -40,10 +35,6 @@ public sealed class RoomChargeBilling(
 {
     public const string NotAttachedCode = "ROOM_CHARGE_NOT_ATTACHED";
 
-    /// <summary>
-    /// Gắn các khoản đang chờ của HĐ vào nháp: ngày phát sinh ≤ ngày cuối kỳ (phiếu quyết toán: mọi khoản còn chờ). Khoản bù chưa trả làm phần thu
-    /// âm ⇒ chưa gắn, nháp có cảnh báo (BL-BR-33).
-    /// </summary>
     public async Task AttachPendingAsync(Invoice draft, CancellationToken ct)
     {
         var pending = await charges.ListPendingByContractAsync(draft.ContractId, ct);
@@ -66,10 +57,6 @@ public sealed class RoomChargeBilling(
         return Result.Failure(added.Error!);
     }
 
-    /// <summary>
-    /// BL-BR-34: thêm dòng tay trên nháp. Phụ thu / giảm trừ ⇒ tạo luôn khoản phát sinh của phòng gắn vào nháp này (theo dõi được theo phòng,
-    /// chọn đã thanh toán hay chưa); hoàn trả theo phiếu nguồn (BL-BR-27) là dòng thường.
-    /// </summary>
     public Result AddManualLine(
         Invoice invoice, InvoiceLineType type, string description, decimal? quantity, decimal? unitPrice, decimal amount,
         string note, Guid? feeTypeId, Guid? sourceInvoiceId, ChargeSettlement? settlement, DateOnly today)
@@ -98,7 +85,6 @@ public sealed class RoomChargeBilling(
         return Result.Success();
     }
 
-    /// <summary>Nháp bị xóa / phiếu bị hủy ⇒ khoản quay về chờ (BL-BR-35).</summary>
     public async Task DetachAllAsync(Guid invoiceId, CancellationToken ct)
     {
         foreach (var charge in await charges.ListByInvoiceAsync(invoiceId, ct))

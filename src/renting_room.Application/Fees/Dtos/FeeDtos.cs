@@ -3,7 +3,6 @@ using renting_room.Domain.Fees;
 
 namespace renting_room.Application.Fees;
 
-/// <param name="Tiers">FE-BR-15: giá theo bậc (chỉ điện nước theo công tơ); null ⇒ một giá (<c>UnitPrice</c>).</param>
 public sealed record FeePriceInput(DateOnly EffectiveFrom, decimal? UnitPrice, string? Note, IReadOnlyList<PriceTier>? Tiers = null);
 
 public sealed record FeePriceDto(Guid Id, DateOnly EffectiveFrom, decimal UnitPrice, string? Note, IReadOnlyList<PriceTier>? Tiers);

@@ -35,6 +35,7 @@ public static class DbConstraints
     public const string FinalReadingUnique = "ux_meter_readings_final";
     public const string InvoicePeriodUnique = "ux_invoices_period";
     public const string SegmentEndReadingUnique = "ux_invoice_meter_segments_end";
+    public const string ReadingAdjustmentUnique = "ux_room_charges_reading_adjustment";
 
     /// <summary>EXCLUDE constraint tạo bằng SQL trong migration (EF không khai báo được).</summary>
     public const string ContractRoomPeriodExclusion = "ex_contracts_room_period";
@@ -62,6 +63,7 @@ public static class DbConstraints
         [FinalReadingUnique] = MeterErrors.ContractReadingExists,
         [InvoicePeriodUnique] = Error.Conflict("INVOICE_EXISTS", "Kỳ này đã có phiếu — tải lại."),
         [SegmentEndReadingUnique] = BillingErrors.DraftStale,
+        [ReadingAdjustmentUnique] = BillingErrors.ConcurrencyConflict,
         [ContractRoomPeriodExclusion] = ContractErrors.RoomPeriodOverlap,
         [OccupantPeriodExclusion] = ContractErrors.OccupantOverlap,
         [RoomMovePeriodExclusion] = ContractErrors.TransferRoomUnavailable

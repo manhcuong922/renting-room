@@ -10,11 +10,6 @@ public sealed record MeterReadingInput(Guid MeterId, decimal? Value);
 
 public sealed class ContractMeterReadings(IMeterRepository meters, IMeterQueries meterQueries)
 {
-    /// <summary>
-    /// Ghi chỉ số <paramref name="kind"/> tại <paramref name="date"/> cho <b>mọi</b> công tơ của phòng đang đo tại ngày đó.
-    /// Nhận phòng (MT-BR-13): mỗi công tơ phải có dòng, value null = số mới nhất. Chỉ số cuối (MT-UC-05, lập phiếu quyết toán):
-    /// đã có thì value null = giữ, có số = sửa; chưa có thì bắt buộc nhập số. Thiếu ⇒ lỗi kèm danh sách công tơ; công tơ lạ ⇒ lỗi.
-    /// </summary>
     public async Task<Result> RecordAsync(
         Contract contract, ReadingKind kind, DateOnly date, IReadOnlyList<MeterReadingInput>? inputs, CancellationToken ct)
     {
@@ -56,7 +51,6 @@ public sealed class ContractMeterReadings(IMeterRepository meters, IMeterQueries
         return Result.Success();
     }
 
-    /// <summary>CT-BR-12: công tơ đang đo tại ngày trả phòng mà chưa có chỉ số cuối của HĐ.</summary>
     public async Task<IReadOnlyList<Guid>> MissingFinalAsync(Contract contract, DateOnly date, CancellationToken ct)
     {
         var ids = await meterQueries.ListActiveIdsInRoomAsync(contract.RoomId, date, ct);
@@ -64,7 +58,7 @@ public sealed class ContractMeterReadings(IMeterRepository meters, IMeterQueries
         return active.Where(m => m.FindFinal(contract.Id, contract.RoomSince) is null).Select(m => m.Id).ToList();
     }
 
-    /// <summary>Hủy thanh lý ⇒ hủy chỉ số cuối đã ghi của HĐ (chưa bị khóa vì phiếu quyết toán chưa chốt).</summary>
+    /// <summary>Hủy thanh lý ⇒ hủy chỉ số cuối đã ghi của HĐ (chưa bị khóa vì hóa đơn trả phòng chưa chốt).</summary>
     public async Task VoidFinalAsync(Contract contract, DateTimeOffset now, CancellationToken ct)
     {
         var ids = await meterQueries.ListIdsInRoomAsync(contract.RoomId, ct);

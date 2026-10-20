@@ -161,6 +161,70 @@ public sealed class InvoiceTests
         invoice.Segments.Should().OnlyContain(s => s.Voided);
     }
 
+    [Fact]
+    public void LinePrice_TieredSplitsQuantityPerTier_AmountMatchesFeePrice()
+    {
+        var fee = FeeType.Create(PropertyId, "Điện bậc", FeeGroup.Metered, null, "kWh", false, null, 0);
+        var price = fee.AddPrice(Start, 0, null, null, [new PriceTier(50, 2000), new PriceTier(null, 3000)]).Value!;
+
+        var snapshot = LinePrice.Of(price, 88);
+
+        snapshot.Source.Should().Be(LinePriceSource.Catalog);
+        snapshot.EffectiveFrom.Should().Be(Start);
+        snapshot.Tiers!.Select(t => (t.Quantity, t.Amount)).Should().Equal((50m, 100_000m), (38m, 114_000m));
+        snapshot.Amount(88).Should().Be(price.Amount(88));
+        snapshot.Amount(30).Should().Be(price.Amount(30), "tính lại với sản lượng khác theo đúng bộ giá đã lưu");
+        snapshot.WithQuantity(30).Tiers!.Select(t => t.Quantity).Should().Equal(30m, 0m);
+        LinePrice.Override(50_000).Amount(2).Should().Be(100_000);
+    }
+
+    [Fact]
+    public void ReadingAdjustment_RecalculatesMeteredLineOnFinalizedInvoice_FlagsAdjustedAndResend()
+    {
+        var contract = Active(ChargeMode.Postpaid);
+        var period = Periods(contract, Start).First();
+        var meter = MeterWithHandover(contract, 108);
+        meter.Record(ReadingKind.Periodic, period.End, 196, contract.Id, null, period.Start);
+        var invoice = Invoice.CreateDraft(PropertyId, RoomId, contract.Id, period, "101", "HD", "A", Calculate(contract, period, meter));
+        invoice.Finalize("PB2026-000001", Start, 5, DateTimeOffset.UtcNow).IsSuccess.Should().BeTrue();
+        var line = invoice.Lines.Single(l => l.Type == InvoiceLineType.Metered);
+        line.Price!.UnitPrice.Should().Be(3800);
+        var total = invoice.TotalAmount;
+        var reading = meter.FindPeriodic(contract.Id, period.Start)!;
+
+        var change = invoice.ApplyReadingChange(reading.Id, 180, null);
+
+        change.IsSuccess.Should().BeTrue();
+        change.Value!.Difference.Should().Be(-16 * 3800);
+        line.Quantity.Should().Be(72);
+        line.Amount.Should().Be(72 * 3800);
+        invoice.TotalAmount.Should().Be(total - 16 * 3800);
+        invoice.Segments.Single().EndValue.Should().Be(180);
+        invoice.IsAdjusted.Should().BeTrue();
+        invoice.NeedsResend.Should().BeTrue();
+        invoice.MarkResent().IsSuccess.Should().BeTrue();
+        invoice.NeedsResend.Should().BeFalse();
+    }
+
+    [Fact]
+    public void CreditLargerThanCharges_RefusedOnMonthlyInvoice_AllowedOnMoveOutInvoice()
+    {
+        var contract = Active(ChargeMode.Postpaid, fees: []);
+        var period = Periods(contract, Start).First();
+        var calculation = Calculate(contract, period);
+        var monthly = Invoice.CreateDraft(PropertyId, RoomId, contract.Id, period, "101", "HD", "A", calculation);
+        var moveOut = Invoice.CreateDraft(PropertyId, RoomId, contract.Id, period, "101", "HD", "A", calculation, InvoiceType.Final);
+        var credit = monthly.NetCharges + 1_000_000;
+
+        monthly.AddManualLine(InvoiceLineType.ManualDiscount, "Giảm", null, null, credit, "Cúp nước", null, roomChargeId: Guid.NewGuid())
+            .Error.Should().Be(BillingErrors.NegativeTotal);
+        moveOut.AddManualLine(InvoiceLineType.ManualDiscount, "Giảm", null, null, credit, "Cúp nước", null, roomChargeId: Guid.NewGuid())
+            .IsSuccess.Should().BeTrue();
+        moveOut.Finalize("PB2026-000002", Start, 5, DateTimeOffset.UtcNow).IsSuccess.Should().BeTrue();
+        moveOut.TotalAmount.Should().BeNegative();
+        moveOut.PaymentStatus(Start).Should().Be(InvoicePaymentStatus.RefundPending);
+    }
+
     [Theory]
     [InlineData(40, 40 * 2000)]
     [InlineData(88, 50 * 2000 + 38 * 3000)]

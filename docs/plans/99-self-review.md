@@ -39,7 +39,7 @@
 | R-27 ✅ | Phân bổ thanh toán song song | `paid_amount` > tổng; cache lệch Σ phân bổ | Khóa contract → invoice; cập nhật cache cùng transaction; CHECK | PM-BR-05, M08 §10 |
 | R-28 ✅ | Phân bổ tiền của HĐ A vào phiếu của HĐ B | Công nợ sai | FK composite `(organization_id, contract_id, invoice_id)` | M08 §4, M07 §4 |
 | R-29 ✅ | Void phiếu đã có tiền | Tiền "mồ côi" | Void yêu cầu `paid_amount = 0` | BL-BR-15 |
-| R-31 ✅ | Prepaid: thanh lý giữa kỳ đã thu trọn tháng | Thu thừa tiền phòng những ngày không ở | Phiếu quyết toán cảnh báo `RENT_OVERPAID`; chủ trọ thêm dòng **Hoàn trả** (phiếu nguồn = phiếu đã thu) ⇒ phiếu âm "Chờ hoàn" → xác nhận đã hoàn | BL-BR-17, BL-BR-27 |
+| R-31 ✅ | Prepaid: thanh lý giữa kỳ đã thu trọn tháng | Thu thừa tiền phòng những ngày không ở | Hóa đơn trả phòng cảnh báo `RENT_OVERPAID`; chủ trọ thêm dòng **Hoàn trả** (phiếu nguồn = phiếu đã thu) ⇒ phiếu âm "Chờ hoàn" → xác nhận đã hoàn | BL-BR-17, BL-BR-27 |
 | R-32 ✅ | Người thuê bỏ trốn còn nợ | Không bao giờ hoàn tất thanh lý được | Xóa nợ `WriteOff` có lý do, không tính doanh thu | PM-BR-16 |
 | R-33 ✅ | Thanh lý khi đã lập phiếu kỳ sau ngày trả phòng | Thu tiền kỳ người thuê không ở | Chặn bắt đầu thanh lý nếu còn phiếu/chỉ số sau `actual_end_date` | CT-BR-11 |
 | R-34 ✅ | Hủy thanh lý sau khi phòng đã có HĐ mới | 2 HĐ chồng lấn | EXCLUDE kiểm lại khi `actual_end_date = NULL` → 409 | M05 §3.3 |
@@ -73,7 +73,7 @@
 | R-57 ✅ | Người dưới 18 tuổi đứng tên ký | Hợp đồng có thể vô hiệu (BLDS Điều 117) | Cảnh báo (09/10/2026 — trước chặn): bản giấy cần người giám hộ ký | CT-BR-18 |
 | R-58 ✅ | Đơn giá điện nước chỉ nằm ở danh mục khu | Chủ trọ đổi giá → không chứng minh được giá đã thỏa thuận lúc ký | `utility_price_snapshot` | CT-BR-19 |
 | R-59 ✅ | Kết thúc hợp đồng không ghi lý do | Chủ trọ đơn phương chấm dứt ngoài các trường hợp luật cho phép mà không được cảnh báo | `termination_reason` + `termination_ground` theo Điều 172 (ground tùy chọn từ 09/10/2026) | CT-BR-21 |
-| R-60 ✅ | Không có biên bản tài sản bàn giao | Tranh chấp khi trả phòng | `contract_assets` ghi tình trạng lúc giao / lúc trả; bồi thường = phụ thu trên phiếu quyết toán | CT-BR-23 |
+| R-60 ✅ | Không có biên bản tài sản bàn giao | Tranh chấp khi trả phòng | `contract_assets` ghi tình trạng lúc giao / lúc trả; bồi thường = phụ thu trên hóa đơn trả phòng | CT-BR-23 |
 | R-61 ✅ | Mật khẩu tạm không hết hạn | Mật khẩu tạm bị lộ dùng được mãi | Hạn 72h | ID-BR-20 |
 
 ## B3. Rà nghiệp vụ sau khi code M01 (phó quản lý), M02, M03 (cơ bản), M05 — 02/10/2026
@@ -172,8 +172,8 @@
 
 | # | Vấn đề | Kịch bản lỗi | Xử lý | Nơi sửa |
 |---|--------|--------------|-------|---------|
-| R-125 ✅ | Prepaid: phiếu kỳ cuối lập trước khi báo trả phòng | Điện nước kỳ cuối không ai thu | Phiếu quyết toán thu phần còn thiếu; tiền phòng đã thu thừa ⇒ cảnh báo `RENT_OVERPAID`, chủ trọ thêm dòng Hoàn trả (BL-BR-27) | BL-UC-11, BL-BR-02/17 |
-| R-126 ✅ | Hoàn tất thanh lý không xét tiền | HĐ kết thúc còn nợ / sót tiền | Bắt phiếu quyết toán đã chốt; còn nợ ⇒ cảnh báo + "Đã thu toàn bộ" / "Bỏ nợ" | CT-BR-12, PM-UC-14, PM-BR-16 |
+| R-125 ✅ | Prepaid: phiếu kỳ cuối lập trước khi báo trả phòng | Điện nước kỳ cuối không ai thu | Hóa đơn trả phòng thu phần còn thiếu; tiền phòng đã thu thừa ⇒ cảnh báo `RENT_OVERPAID`, chủ trọ thêm dòng Hoàn trả (BL-BR-27) | BL-UC-11, BL-BR-02/17 |
+| R-126 ✅ | Hoàn tất thanh lý không xét tiền | HĐ kết thúc còn nợ / sót tiền | Bắt hóa đơn trả phòng đã chốt; còn nợ ⇒ cảnh báo + "Đã thu toàn bộ" / "Bỏ nợ" | CT-BR-12, PM-UC-14, PM-BR-16 |
 | R-127 ✅ | PM-BR-13 (HĐ kết thúc không thu) mâu thuẫn code (cho thu) | Khó hiểu khi nào được thu | Hoàn tất buộc hết nợ ⇒ HĐ kết thúc không cần thu nữa — giữ PM-BR-13, sửa code | PM-BR-13 |
 | R-128 ✅ | Số phiếu thu lấy năm ngày thu | Ghi bù đầu năm ⇒ số PT lộn năm | Năm của ngày lập | PM-BR-15 |
 | R-130 ✅ | Chỉ một giá điện nước | Khu tính theo bậc (như EVN) không dùng được | Bản giá một giá hoặc theo bậc | FE-BR-15, BL-BR-05 |
@@ -187,7 +187,7 @@
 |---|--------|--------------|-------|---------|
 | R-134 ✅ | Chu kỳ đóng tiền phòng nhiều tháng cắt tại `end_date` | Chu kỳ 3 tháng từ 01/08, hết hạn 15/09 rồi gia hạn / ở tiếp ⇒ 16/09–31/10 không phiếu nào thu tiền phòng; trả phòng sớm ⇒ thu thừa nhiều tháng | **Bỏ chu kỳ nhiều tháng**, chỉ thu hằng tháng (chưa có phương án xử lý trọn) | BL-BR-03/26, C-05, migration `RemoveRentCycleAddInvoiceRefund` |
 | R-135 ✅ | M04 lấy giá tại đầu kỳ, M07 / code lấy tại cuối kỳ (điện nước) và đầu kỳ (dịch vụ) | Hai tài liệu nói khác nhau; dịch vụ tăng giá vẫn tính giá cũ cả kỳ | **Giá theo phiên bản**: mọi khoản lấy bản mới nhất tới ngày cuối khoảng tính, áp cả dòng, không chia nửa kỳ | FE-BR-10/11, BL-BR-04/05 |
-| R-136 ✅ | Trả phòng sớm khi đã đóng trọn kỳ: phiếu quyết toán bỏ qua, không dấu vết | Chủ trọ quên nghĩa vụ trả lại tiền phòng chưa ở | Cảnh báo `RENT_OVERPAID` + nhóm dòng **Hoàn trả** (nhập tay, được làm tổng âm, xác nhận đã hoàn; chặn hoàn tất thanh lý khi còn Chờ hoàn) | BL-BR-17/27, CT-BR-12 |
+| R-136 ✅ | Trả phòng sớm khi đã đóng trọn kỳ: hóa đơn trả phòng bỏ qua, không dấu vết | Chủ trọ quên nghĩa vụ trả lại tiền phòng chưa ở | Cảnh báo `RENT_OVERPAID` + nhóm dòng **Hoàn trả** (nhập tay, được làm tổng âm, xác nhận đã hoàn; chặn hoàn tất thanh lý khi còn Chờ hoàn) | BL-BR-17/27, CT-BR-12 |
 | R-137 ✅ | Bỏ nợ: plan `method = WriteOff` + `write_off_reason`, code `kind` + `note` | Báo cáo doanh thu lọc theo `method` sẽ sai; thêm WriteOff vào phương thức thanh toán của HĐ | Giữ code (`kind`), sửa plan | PM-BR-16/18, M10 E6 |
 | R-138 ✅ | Hoàn tiền cho người thuê đi qua phiếu thu hay phiếu tiền phòng | Hai module mâu thuẫn | Hoàn trả đi qua dòng phiếu tiền phòng (BL-BR-27); M08 không có ghi có / số dư có (để sau cùng thanh toán online) | BL-BR-27 |
 | R-139 ✅ | Phụ thu chỉ thêm từng phiếu | Phụ thu chung cả khu / tầng phải bấm từng phòng | Thêm dòng tay cho nhiều phòng một lúc (`POST /invoices/manual-lines`) | BL-UC-05 |
@@ -198,7 +198,7 @@
 | # | Vấn đề | Kịch bản lỗi | Xử lý | Nơi sửa |
 |---|--------|--------------|-------|---------|
 | R-141 ✅ | "Tháng thu" chưa có định nghĩa chung cho cả khu (ngày chốt theo từng HĐ, cho chọn 1–31) | Mỗi phòng một kỳ; chu kỳ 30 ngày thì ngày thu trôi, 13 kỳ / năm, tháng 12 có 2 kỳ | **Ngày chốt cố định hằng tháng của khu** (1–28), mọi phòng dùng chung; ngày tạo phiếu không ảnh hưởng kỳ | C-05, M02 PR-BR-09, M05 CT-BR-04 |
-| R-142 ✅ | Thu trước / thu sau, tính theo ngày, hạn thanh toán chọn theo từng HĐ | Cùng khu, ngày 05/11 phòng thu trước cần phiếu tháng 11, phòng thu sau cần phiếu tháng 10 — "tạo phiếu tháng này" lệch | Cài đặt kỳ thu **theo khu**; tạo phiếu cả khu, lọc bớt phòng có vấn đề; trả phòng giữa tháng ⇒ phiếu quyết toán riêng | M02 PR-BR-09, M07 |
+| R-142 ✅ | Thu trước / thu sau, tính theo ngày, hạn thanh toán chọn theo từng HĐ | Cùng khu, ngày 05/11 phòng thu trước cần phiếu tháng 11, phòng thu sau cần phiếu tháng 10 — "tạo phiếu tháng này" lệch | Cài đặt kỳ thu **theo khu**; tạo phiếu cả khu, lọc bớt phòng có vấn đề; trả phòng giữa tháng ⇒ hóa đơn trả phòng riêng | M02 PR-BR-09, M07 |
 | R-143 ✅ | Giá áp theo ngày bấm tạo phiếu | Phiếu tháng 10 tạo 01/11 dính giá tháng 11; cùng tháng hai phòng hai giá; lập bù phiếu cũ dùng giá hôm nay | Giá = bản mới nhất có hiệu lực tới **ngày cuối kỳ được tính** (thu trước: điện nước theo kỳ dùng điện); kỳ đã có phiếu chốt thì khóa giá kỳ đó ⇒ giá mới chỉ từ kỳ sau | FE-BR-07/10, BL-BR-04/05 |
 | R-144 ✅ | Dịch vụ tính theo ngày ở kỳ lẻ | Vào ở 3 ngày vẫn bị chia lẻ wifi / giữ xe, khó thỏa thuận | Dịch vụ **thu trọn tháng**, chủ trọ sửa số lượng trên nháp; điện nước không đổi | BL-BR-04 |
 | R-145 ✅ | Quy tắc giảm / tăng tự động (theo %, nhiều tháng) | Phức tạp, chủ trọ không dùng giảm % | **Bỏ**; dùng phụ thu / giảm trừ / hoàn trả cho 1 hoặc nhiều phòng | M07 BL-UC-10, BL-BR-08/09/19 |
@@ -224,7 +224,7 @@
 
 | # | Vấn đề | Kịch bản lỗi | Xử lý | Nơi sửa |
 |---|--------|--------------|-------|---------|
-| R-160 ✅ | Bồi thường tài sản không có chỗ ghi tiền | Chủ trọ tính tay, dễ quên thu | Bồi thường = **phụ thu** trên phiếu quyết toán (không cơ chế riêng) | M05 CT-BR-23 |
+| R-160 ✅ | Bồi thường tài sản không có chỗ ghi tiền | Chủ trọ tính tay, dễ quên thu | Bồi thường = **phụ thu** trên hóa đơn trả phòng (không cơ chế riêng) | M05 CT-BR-23 |
 | R-162 ✅ | Bỏ nợ chỉ có khi hoàn tất thanh lý | Người thuê trả 2tr / 3tr, chủ trọ cho 1tr mà phiếu vẫn "còn nợ" mãi, phải sửa phiếu đã chốt | "Thanh toán + bỏ phần còn lại" 1 thao tác, bỏ nợ bất kỳ lúc nào, chỉ chủ trọ, lý do bắt buộc | M08 PM-BR-16, 29 |
 | R-163 ✅ | Phiếu tháng mới không cho thấy nợ cũ | Gửi phiếu tháng 12 mà người thuê không biết còn nợ tháng 11 ⇒ chuyển thiếu | Phiếu hiện "Nợ các kỳ trước" + "Tổng cần thanh toán" (chỉ hiển thị); thu vẫn FIFO | M08 PM-UC-18 |
 | R-164 ✅ | Hoàn trả nhập tự do | Hoàn tiền người thuê chưa từng trả; hoàn 2 lần cho cùng một sai sót | Hoàn trả bắt buộc phiếu nguồn, ≤ số đã thu thật − các lần hoàn trước | M07 BL-BR-27 |
@@ -275,7 +275,7 @@ Nguồn duy nhất cho "còn gì chưa làm". Từng plan chỉ ghi "chưa code"
 
 | # | Vấn đề | Kịch bản | Đề xuất |
 |---|--------|----------|---------|
-| G-01 ✅ (11/10/2026: giới hạn khoản bù chưa trả ≤ 1 tháng tiền phòng — M07 BL-BR-30) | **Khoản bù lớn hơn phiếu quyết toán** | Bù chưa trả lớn hơn phần thu ⇒ "chờ phiếu sau" (BL-BR-33); phiếu quyết toán là phiếu cuối ⇒ khoản treo mãi, người thuê không nhận được | Phiếu quyết toán cho phép khoản bù làm tổng âm ⇒ trạng thái "Chờ hoàn", xác nhận đã hoàn như dòng Hoàn trả (BL-BR-27) |
+| G-01 ✅ (11/10/2026: giới hạn khoản bù chưa trả ≤ 1 tháng tiền phòng — M07 BL-BR-30) | **Khoản bù lớn hơn hóa đơn trả phòng** | Bù chưa trả lớn hơn phần thu ⇒ "chờ phiếu sau" (BL-BR-33); hóa đơn trả phòng là phiếu cuối ⇒ khoản treo mãi, người thuê không nhận được | Hóa đơn trả phòng cho phép khoản bù làm tổng âm ⇒ trạng thái "Chờ hoàn", xác nhận đã hoàn như dòng Hoàn trả (BL-BR-27) |
 | G-02 ✗ không làm (chốt 11/10/2026: khoản bù ít xảy ra, xử lý bên ngoài) | **Tạo khoản phát sinh cho nhiều phòng** | Mất nước cả khu, bù 50k mỗi phòng giữa tháng: phải tạo từng phòng. Thêm tay nhiều phòng chỉ dùng được khi phòng **đã có nháp** (BL-UC-05) | `POST /room-charges/bulk` theo khu / tầng / danh sách phòng, kết quả từng phòng |
 | G-03 ✗ không làm (hủy rồi tạo lại) | **Sửa khoản phát sinh** | Gõ nhầm số tiền / nội dung khoản đang chờ: phải hủy rồi tạo lại | Giữ nguyên (đơn giản, có lý do hủy để truy vết) — hoặc cho sửa khi chưa vào phiếu đã chốt |
 | G-04 | **Phụ thu đã thu ngay không có phiếu thu** | Khoản `is_settled` không sinh số `PT…` ⇒ không có chứng từ đưa người thuê; tiền chỉ vào báo cáo qua M10 (chưa làm) | Giữ nguyên tới khi làm M10 E6; nếu cần chứng từ thì cân nhắc sinh phiếu thu |
@@ -307,7 +307,7 @@ Nguồn duy nhất cho "còn gì chưa làm". Từng plan chỉ ghi "chưa code"
 
 | # | Bất cập | Quyết định 17/10/2026 |
 |---|---------|------------------------|
-| A-1 | Hủy được phiếu tháng cuối khi đã có phiếu quyết toán (cùng kỳ) ⇒ mất tiền phòng kỳ cuối | Phiếu quyết toán chưa hủy là mới nhất — M07 BL-BR-22 |
+| A-1 | Hủy được phiếu tháng cuối khi đã có hóa đơn trả phòng (cùng kỳ) ⇒ mất tiền phòng kỳ cuối | Hóa đơn trả phòng chưa hủy là mới nhất — M07 BL-BR-22 |
 | A-2 | Nháp thiếu chỉ số vẫn lập được, kỳ sau gộp sản lượng 2 tháng (giá bậc thu dư) | Thiếu chỉ số ⇒ không tạo nháp `MISSING_READING`; kỳ trước nháp lỗi ⇒ `PREVIOUS_PERIOD_INCOMPLETE` — M07 BL-BR-21 |
 | A-3 | Thay / tháo công tơ lùi ngày vào kỳ đã chốt ⇒ mất phần sản lượng | Ca hiếm, chặn đơn giản `METER_PERIOD_LOCKED` — M06 MT-BR-09/10 |
 | A-4 | Hủy chuyển phòng hủy luôn khoản chốt "đã thu ngay" ⇒ thu 2 lần | Bỏ khoản chốt (CT-BR-47) + bỏ lệnh hủy; chuyển lại trong ngày = xóa lần chuyển — M05 CT-BR-14 |
@@ -315,12 +315,14 @@ Nguồn duy nhất cho "còn gì chưa làm". Từng plan chỉ ghi "chưa code"
 | A-7 | Sửa dòng hoàn trả vượt số đã thu | Kiểm cả khi sửa dòng và khi chốt — M07 BL-BR-27 |
 | A-8 | Ký lại lỗi trùng biển số khi người ở lại có xe | Kết thúc xe ở HĐ cũ trong cùng giao dịch — M05 CT-UC-21 |
 | A-9 | Ngày trả phòng trước ngày chuyển phòng ⇒ lỗi 500 | Chuyển phòng luôn hôm nay; thanh lý ≥ ngày vào phòng hiện tại — M05 CT-BR-11, 14 |
-| A-10 | Giá bậc tính trên sản lượng gộp 2 kỳ | Phiếu quyết toán: mỗi kỳ sử dụng 1 dòng, tính riêng; chuyển phòng / thay công tơ cộng sản lượng vào dòng của kỳ — M07 BL-BR-05 (đổi thu trước → thu sau vẫn gộp: không có chỉ số mốc) |
+| A-10 | Giá bậc tính trên sản lượng gộp 2 kỳ | Hóa đơn trả phòng: mỗi kỳ sử dụng 1 dòng, tính riêng; chuyển phòng / thay công tơ cộng sản lượng vào dòng của kỳ — M07 BL-BR-05 (đổi thu trước → thu sau vẫn gộp: không có chỉ số mốc) |
 | A-12 | Nhập Excel: chỉ số cũ không cảnh báo; trùng giấy tờ khác tên chỉ cảnh báo | Luôn cảnh báo chỉ số trước ngày tính tiền; khác họ tên / ngày sinh ⇒ lỗi dòng — M03 RT-UC-10 |
 | A-5 | Bỏ nợ hiện là "đã thu" | ✅ 18/10/2026: API tách thực thu / bỏ nợ (`collectedAmount`, `writtenOffAmount`) — M08 PM-BR-36 |
 | A-11 | Gõ sai chỉ số khi phiếu đã chốt / đã thu: phải đảo thu → hủy phiếu → sửa → chốt lại → thu lại | ✅ 18/10/2026: điều chỉnh chỉ số đã chốt, tự tạo khoản bù / phụ thu kỳ sau — M06 MT-UC-09, MT-BR-19 |
-| A-11b ⏳ | (rà soát 18/10/2026) Điều chỉnh chỉ số rồi hủy phiếu nguồn ⇒ lập lại phiếu đã đúng mà khoản bù vẫn còn ⇒ trừ 2 lần | Chốt 18/10/2026: phiếu nguồn chưa thu ⇒ điều chỉnh = hủy + lập lại nháp, không tạo khoản; đã thu ⇒ khoản lưu phiếu nguồn, hủy phiếu nguồn thì khoản tự hủy — M06 MT-BR-19, M07 BL-BR-15. **Chưa code** (chờ session sửa kiến trúc xong) |
-| A-8b ⏳ | (rà soát 18/10/2026) Ký lại không thành (hủy HĐ nháp / hủy thanh lý) ⇒ xe của người ở lại đã kết thúc ở HĐ cũ không được mở lại | Chốt 18/10/2026: mở lại các xe đã kết thúc lúc ký lại (như cọc); biển số đã ở HĐ khác ⇒ cảnh báo `VEHICLE_NOT_RESTORED` — M05 CT-UC-21. **Chưa code** (chờ session sửa kiến trúc xong) |
+| A-11b | (rà soát 18/10/2026) Điều chỉnh chỉ số rồi hủy phiếu nguồn ⇒ lập lại phiếu đã đúng mà khoản bù vẫn còn ⇒ trừ 2 lần; điều chỉnh nhiều lần sinh nhiều khoản | **Thay bản 18/10 — chốt lại 20/10/2026 (Lượt 1)**: hóa đơn nguồn chưa thu ⇒ tính lại ngay trên hóa đơn; đã thu ⇒ chủ trọ chọn **Xử lý ngay** (tính lại, phiếu hoàn / thu thêm, thu dư trừ vào bỏ nợ trước) hoặc **Đẩy sang hóa đơn sau** (giữ tổng, 1 khoản điều chỉnh khóa / dòng, điều chỉnh lại sửa chính khoản, hóa đơn nguồn hủy ⇒ khoản tự hủy); theo giai đoạn HĐ (thanh lý: vào hóa đơn trả phòng; hóa đơn trả phòng đã chốt: chỉ Xử lý ngay); lịch sử + nhãn "Đã điều chỉnh" / "Cần gửi lại" — M06 MT-BR-19, M07 BL-BR-40, M08 PM-BR-37 |
+| L1 | (rà 20/10/2026 — Lượt 1) Nháp không tự tính lại khi sửa chỉ số; chốt hóa đơn không khóa công tơ (sửa chỉ số đúng lúc chốt ⇒ kỳ sau thu trùng); khoản bù lớn hơn hóa đơn trả phòng bị treo rồi mất khi hoàn tất thanh lý; không xem được bộ giá đã áp; lưới chỉ số không biết phòng nào đã có hóa đơn | Chốt 20/10/2026: sửa / hủy / lưu chỉ số ⇒ nháp tự tính lại (M06 MT-BR-06); chốt khóa HĐ → công tơ → hóa đơn (M07 BL-BR-12); hóa đơn trả phòng được âm khi trừ khoản bù (BL-BR-10); bộ giá lưu trên dòng (BL-BR-39); lưới chỉ số trả trạng thái hóa đơn (M06 §3.4); đổi tên "hóa đơn trả phòng" ⇒ "hóa đơn trả phòng". Mục 19 (đổi giá đúng lúc chốt): **không làm** — hóa đơn đã chốt không tính lại giá. ✅ code 20/10/2026 (cùng A-11b) |
+| L2 ⏳ | (rà 20/10/2026 — Lượt 2) Trả phòng: hoàn tất thanh lý phải qua nhiều màn, khoản treo bị bỏ quên, không thêm được khoản sau khi hóa đơn trả phòng đã chốt; ngày báo trả phòng không dùng khi tạo hóa đơn tháng; hợp đồng đã kết thúc không sửa được số cuối gõ cao; người mới nhập số nhỏ hơn số cuối người cũ bị chặn | Chốt hướng 20/10/2026, **chưa code**: màn hoàn tất gom nợ / tiền cần trả lại / khoản treo / cọc (trả, không trả kèm lý do, để sau); kỳ cuối "tính theo ngày ở" hoặc "thu trọn kỳ" chọn riêng mỗi lần trả phòng (tiền phòng + dịch vụ); cảnh báo kỳ trước chưa có hóa đơn / hóa đơn lập sau ngày trả phòng; bỏ qua khi tạo hóa đơn tháng nếu đã báo trả phòng trong kỳ; điều chỉnh số cuối HĐ đã kết thúc ⇒ "Chênh lệch sau thanh lý" (đã trả lại / không trả lại, không cần lý do), giữ nguyên hóa đơn cũ; người mới nhập số nhỏ hơn ⇒ cảnh báo, hỏi nguyên nhân; gõ thấp ⇒ cho qua |
+| A-8b | (rà soát 18/10/2026) Ký lại không thành (hủy HĐ nháp / hủy thanh lý) ⇒ xe của người ở lại đã kết thúc ở HĐ cũ không được mở lại | Chốt 18/10/2026: mở lại các xe đã kết thúc lúc ký lại (như cọc); biển số đã ở HĐ khác ⇒ cảnh báo `VEHICLE_NOT_RESTORED` — M05 CT-UC-21. ✅ code 20/10/2026 |
 | B, C | Bảo mật / dữ liệu cá nhân; các điểm cần chủ trọ quyết | Chờ quyết định |
 
 ### C3. Có trong plan, chưa code

@@ -26,7 +26,6 @@ public sealed class MeterReading : TenantEntity
     public decimal Value { get; private set; }
     public Guid? ContractId { get; private set; }
 
-    /// <summary>Đợt 2 (M07): kỳ của chỉ số <see cref="ReadingKind.Periodic"/>.</summary>
     public DateOnly? ClosingPeriodStart { get; internal set; }
     public string? Note { get; private set; }
     public DateTimeOffset? VoidedAt { get; private set; }
@@ -38,7 +37,6 @@ public sealed class MeterReading : TenantEntity
         VoidReason = reason;
     }
 
-    /// <returns>true nếu có giá trị đổi.</returns>
     internal bool Correct(decimal value, string? note)
     {
         var text = TextNormalizer.TrimToNull(note) ?? Note;

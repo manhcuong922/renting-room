@@ -16,7 +16,6 @@ internal sealed class MeterConfiguration : IEntityTypeConfiguration<Meter>
         builder.HasAlternateKey(m => new { m.OrganizationId, m.Id }).HasName("ak_meters_organization_id_id");
         builder.ConfigureAuditable();
 
-        // MT-BR-02: FK gồm property_id ⇒ phòng và khoản thu bắt buộc cùng khu với công tơ.
         builder.HasOne<Room>()
             .WithMany()
             .HasForeignKey(m => new { m.OrganizationId, m.PropertyId, m.RoomId })
@@ -40,7 +39,6 @@ internal sealed class MeterConfiguration : IEntityTypeConfiguration<Meter>
             .OnDelete(DeleteBehavior.Cascade);
         builder.Navigation(m => m.Readings).UsePropertyAccessMode(PropertyAccessMode.Field);
 
-        // MT-BR-01: mỗi (phòng, khoản thu) tối đa 1 công tơ đang hoạt động.
         builder.HasIndex(m => new { m.RoomId, m.FeeTypeId }).IsUnique()
             .HasFilter("removed_date IS NULL").HasDatabaseName(DbConstraints.MeterActiveUnique);
         builder.HasIndex(m => new { m.OrganizationId, m.FeeTypeId }).HasDatabaseName("ix_meters_fee_type");

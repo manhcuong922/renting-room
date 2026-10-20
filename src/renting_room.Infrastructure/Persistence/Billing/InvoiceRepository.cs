@@ -44,6 +44,8 @@ internal sealed class InvoiceRepository(AppDbContext db) : IInvoiceRepository
 
     public void Add(Invoice invoice) => db.Invoices.Add(invoice);
 
+    public void AddAdjustment(InvoiceAdjustment adjustment) => db.InvoiceAdjustments.Add(adjustment);
+
     public void Remove(Invoice invoice) => db.Invoices.Remove(invoice);
 
     /// <summary>Bảng invoices / meters / fee_types không qua global filter trong SQL thô ⇒ luôn kèm điều kiện tổ chức.</summary>

@@ -3,6 +3,8 @@
 > Theo khuôn [_TEMPLATE.md](_TEMPLATE.md). Pháp lý: L11 (dữ liệu cá nhân), C-11. Hiện thực **BL-UC-13** của [07-billing.md](07-billing.md).
 > Hướng dẫn tạo bot và lấy token: [../guides/zalo-bot-setup.md](../guides/zalo-bot-setup.md).
 
+> **Bổ sung 20/10/2026 (M07 BL-BR-40)**: hóa đơn đã chốt bị tính lại do điều chỉnh chỉ số mang nhãn `needs_resend` ("Cần gửi lại"). Khi làm phần gửi hóa đơn: hóa đơn có nhãn này phải được **gửi lại** cho người thuê (tin ghi rõ "Hóa đơn đã điều chỉnh: …"), gửi xong ⇒ bỏ nhãn. Trước khi có M11: chủ trọ tự gửi rồi bấm "Đã gửi lại" (`POST /invoices/{id}/resent`).
+
 ## 1. Mục tiêu & phạm vi
 
 **Mục tiêu**: sau khi chốt phiếu, hệ thống tự gửi phiếu báo tiền cho **người đứng tên hợp đồng** qua Zalo Bot và / hoặc email,

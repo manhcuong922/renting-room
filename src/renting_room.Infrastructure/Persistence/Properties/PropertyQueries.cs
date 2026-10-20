@@ -44,7 +44,6 @@ internal sealed class PropertyQueries(AppDbContext db, IOrganizationQueries orga
         }
 
         var total = await query.CountAsync(cancellationToken);
-        // PR-BR-02: số phòng đang thuê đếm cùng điều kiện với trạng thái phòng (ngày chuyển phòng, ngày trả phòng vẫn tính).
         var occupied = db.OccupiedRoomIds(today);
         var rows = await query
             .OrderBy(p => p.Code)
@@ -58,7 +57,6 @@ internal sealed class PropertyQueries(AppDbContext db, IOrganizationQueries orga
             })
             .ToListAsync(cancellationToken);
 
-        // PR-BR-17: khu không khai bên cho thuê riêng ⇒ xét thông tin chủ trọ.
         var organizationLessorComplete = rows.Count > 0
             && (await organizations.GetDefaultLessorAsync(rows[0].Property.OrganizationId, cancellationToken))?.IsComplete(today) == true;
         var items = rows.Select(r => new PropertySummaryDto(

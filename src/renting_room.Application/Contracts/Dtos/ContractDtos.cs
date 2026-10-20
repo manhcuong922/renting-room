@@ -7,14 +7,8 @@ using renting_room.Domain.Renters;
 
 namespace renting_room.Application.Contracts;
 
-/// <summary>Cài đặt kỳ thu của khu (chỉ đọc trên HĐ — PR-BR-09, CT-BR-04).</summary>
 public sealed record BillingSettingsInput(int AnchorDay, ChargeMode ChargeMode, ProrationMode ProrationMode, int PaymentDueDays);
 
-/// <summary>
-/// Nội dung hợp đồng (tạo nháp / sửa nháp). Trường null ⇒ lấy mặc định từ khu / phòng / mẫu.
-/// <c>BillingStartDate</c> = "Tính tiền từ ngày" (K5, null = ngày bắt đầu); ngày chốt / thu trước–thu sau là của khu (CT-BR-04).
-/// Có <c>TemplateId</c> ⇒ loại, tiêu đề, điều khoản lấy từ mẫu (ghi đè được tiêu đề / điều khoản), <c>CustomFields</c> theo trường của mẫu.
-/// </summary>
 public sealed record ContractInput(
     Guid RepresentativeRenterId,
     DateOnly StartDate,
@@ -40,8 +34,6 @@ public sealed record ContractInput(
     Guid? HouseholdHeadRenterId = null,
     IReadOnlyList<ContractFeeRequest>? Fees = null);
 
-/// <param name="RelationshipType">Quan hệ với người đứng tên — bắt buộc với người không đứng tên (CT-BR-28).</param>
-/// <param name="GuardianConsent">Người chưa thành niên: đã có đồng ý của cha, mẹ hoặc người giám hộ (CT-BR-30).</param>
 public sealed record OccupantRequest(
     Guid RenterId, DateOnly? MoveInDate, DateOnly? ExpectedEndDate, string? Relationship, string? Note,
     OccupantRelationship? RelationshipType = null, bool? GuardianConsent = null, OccupantRole? Role = null);
@@ -143,20 +135,13 @@ public sealed record ContractDetailDto(
     DateOnly? RepresentativeSince = null,
     IReadOnlyList<RepresentativeHistoryDto>? RepresentativeHistory = null);
 
-/// <summary>CT-BR-51: người đã thôi đứng tên HĐ và khoảng thời gian họ đứng tên.</summary>
 public sealed record RepresentativeHistoryDto(Guid RenterId, string FullName, DateOnly FromDate, DateOnly ToDate);
 
-/// <summary>
-/// M08 PM-BR-32..35: cọc chỉ theo dõi. <paramref name="Status"/> null = HĐ không cọc; <paramref name="NotRefundedReminder"/> = HĐ đã kết thúc mà
-/// chưa đánh dấu hoàn cọc ("Chưa hoàn cọc").
-/// </summary>
 public sealed record ContractDepositDto(
     decimal Amount, DepositStatus? Status, DateOnly? RefundedOn, decimal? RefundedAmount, string? Note, bool NotRefundedReminder);
 
-/// <summary>CT-BR-14: phòng HĐ đã ở trước khi chuyển (ngày chuyển đi vẫn tính là ở).</summary>
 public sealed record RoomMoveDto(Guid RoomId, string RoomCode, DateOnly FromDate, DateOnly ToDate);
 
-/// <summary>Văn bản hợp đồng (CT-BR-25): loại, tiêu đề, điều khoản, định nghĩa trường (chụp từ mẫu) và giá trị đã nhập.</summary>
 public sealed record ContractDocumentDto(
     Guid? TemplateId,
     ContractType ContractType,
@@ -174,11 +159,6 @@ public sealed record ContractDocumentDto(
         ContractDocumentJson.Values(contract.CustomFieldValues));
 }
 
-/// <summary>
-/// CT-BR-19 / LEG-01: bản chụp lúc ký — đủ thông tin để in lại hợp đồng đúng như đã ký (Luật Nhà ở 2023 Điều 163):
-/// bên cho thuê, bên thuê (người đứng tên), mô tả phòng, địa chỉ khu, tài khoản nhận tiền. Lưu jsonb, BẤT BIẾN.
-/// Số giấy tờ giữ dạng mã hóa (base64), không bao giờ trả ra API.
-/// </summary>
 public sealed record SigningSnapshot(
     LessorPart Lessor,
     PartyPart? Representative,   // null: hợp đồng kích hoạt trước khi có bản chụp bên thuê
@@ -198,7 +178,6 @@ public sealed record SigningSnapshot(
         renter.IdNumberEncrypted is null ? null : Convert.ToBase64String(renter.IdNumberEncrypted), renter.IdNumberLast4,
         renter.IdIssueDate, renter.IdIssuePlace, renter.PermanentAddress, renter.Phone);
 
-    /// <summary>CT-BR-51: đổi người đứng tên ⇒ chụp lại phần bên thuê; bên cho thuê, phòng giữ nguyên như lúc ký.</summary>
     public SigningSnapshot WithRepresentative(Renter representative) => this with { Representative = PartyOf(representative) };
 
     public static SigningSnapshot From(Property property, LessorDetails lessor, Room room, Renter representative, DateTimeOffset now) => new(
@@ -216,7 +195,6 @@ public sealed record SigningSnapshot(
 
     public string ToJson() => JsonSerializer.Serialize(this, Json);
 
-    /// <summary>RT-BR-06: bên thuê chỉ còn tên ẩn danh — xóa ngày sinh, giấy tờ, nơi cấp, địa chỉ, SĐT.</summary>
     public SigningSnapshot WithAnonymizedRepresentative(string anonymizedName) => this with
     {
         Representative = Representative is null ? null

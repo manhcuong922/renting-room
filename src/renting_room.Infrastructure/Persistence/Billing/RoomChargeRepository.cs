@@ -24,5 +24,13 @@ internal sealed class RoomChargeRepository(AppDbContext db) : IRoomChargeReposit
                 && ((c.MeterId != null && c.RoomId == oldRoomId && c.IncurredOn == date) || c.Id == rentChargeId))
             .ToListAsync(cancellationToken);
 
+    public Task<RoomCharge?> FindReadingAdjustmentForUpdateAsync(
+        Guid sourceInvoiceId, Guid feeTypeId, DateOnly usageStart, CancellationToken cancellationToken) =>
+        db.RoomCharges.FirstOrDefaultAsync(c => c.SourceInvoiceId == sourceInvoiceId && c.FeeTypeId == feeTypeId
+            && c.SourceUsageStart == usageStart && c.CancelledAt == null, cancellationToken);
+
+    public async Task<IReadOnlyList<RoomCharge>> ListReadingAdjustmentsAsync(Guid sourceInvoiceId, CancellationToken cancellationToken) =>
+        await db.RoomCharges.Where(c => c.SourceInvoiceId == sourceInvoiceId && c.CancelledAt == null).ToListAsync(cancellationToken);
+
     public void Add(RoomCharge charge) => db.RoomCharges.Add(charge);
 }

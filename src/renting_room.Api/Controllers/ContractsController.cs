@@ -13,7 +13,6 @@ using renting_room.Security;
 
 namespace renting_room.Controllers;
 
-/// <summary>Hợp đồng (M05 — phần cơ bản). Vòng đời: Draft → Active → Liquidating → Ended; Draft → Cancelled.</summary>
 [ApiController]
 [Route("api/v1")]
 [Tags("Contracts")]
@@ -89,7 +88,7 @@ public sealed class ContractsController(ISender sender) : ControllerBase
     [HttpPost("contracts/{id:guid}/cancel")]
     [EndpointSummary("Hủy hợp đồng nháp")]
     public async Task<IResult> Cancel(Guid id, CancelContractRequest body, CancellationToken ct) =>
-        (await sender.Send(new CancelContractCommand(id, body.Reason), ct)).ToHttp();
+        (await sender.Send(new CancelContractCommand(id, body.Reason), ct)).ToWarnings();
 
     [HttpPost("contracts/{id:guid}/activate")]
     [Idempotent(required: false)]
@@ -164,7 +163,7 @@ public sealed class ContractsController(ISender sender) : ControllerBase
     {
         var result = await sender.Send(new TransferRoomCommand(id, b.ToRoomId, b.OldRoomReadings, b.NewRoomReadings, b.MonthlyRent, b.Note, b.RentFrom,
             b.RemoveFeeTypeIds), ct);
-        return result.IsSuccess ? Results.Ok(new { warnings = result.Value }) : result.ToHttp();
+        return result.ToWarnings();
     }
 
     [HttpPost("contracts/{id:guid}/re-sign")]
@@ -179,7 +178,7 @@ public sealed class ContractsController(ISender sender) : ControllerBase
         (await sender.Send(new GiveNoticeCommand(id, b.NoticeDate, b.PlannedMoveOutDate), ct)).ToHttp();
 
     [HttpGet("contracts/{id:guid}/liquidation/preview")]
-    [EndpointSummary("Xem trước thanh lý: phiếu còn nợ, tiền chờ hoàn, chỉ số cuối còn thiếu, phiếu quyết toán, cọc, những gì còn chặn hoàn tất")]
+    [EndpointSummary("Xem trước thanh lý: phiếu còn nợ, tiền chờ hoàn, chỉ số cuối còn thiếu, hóa đơn trả phòng, cọc, những gì còn chặn hoàn tất")]
     public async Task<IResult> PreviewLiquidation(Guid id, CancellationToken ct) =>
         (await sender.Send(new GetLiquidationPreviewQuery(id), ct)).ToHttp();
 
@@ -191,17 +190,17 @@ public sealed class ContractsController(ISender sender) : ControllerBase
     [HttpPost("contracts/{id:guid}/liquidation/cancel")]
     [EndpointSummary("Hủy thanh lý, quay lại đang hiệu lực")]
     public async Task<IResult> CancelLiquidation(Guid id, CancellationToken ct) =>
-        (await sender.Send(new CancelLiquidationCommand(id), ct)).ToHttp();
+        (await sender.Send(new CancelLiquidationCommand(id), ct)).ToWarnings();
 
     [HttpPost("contracts/{id:guid}/liquidation/complete")]
-    [EndpointSummary("Hoàn tất thanh lý: cần phiếu quyết toán đã chốt; còn nợ ⇒ settlement CollectAll (đã thu toàn bộ) / WriteOff (bỏ nợ)")]
+    [EndpointSummary("Hoàn tất thanh lý: cần hóa đơn trả phòng đã chốt; còn nợ ⇒ settlement CollectAll (đã thu toàn bộ) / WriteOff (bỏ nợ)")]
     public async Task<IResult> CompleteLiquidation(
         Guid id, [FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] CompleteLiquidationRequest? body, CancellationToken ct) =>
         (await sender.Send(new CompleteLiquidationCommand(id, body?.Settlement, body?.Method, body?.PaidAt, body?.Reason), ct)).ToHttp();
 
     [HttpPost("contracts/{id:guid}/final-invoice")]
     [Idempotent(required: false)]
-    [EndpointSummary("Lập phiếu quyết toán khi trả phòng (nhập chỉ số cuối) — nháp sửa được như phiếu thường")]
+    [EndpointSummary("Lập hóa đơn trả phòng khi trả phòng (nhập chỉ số cuối) — nháp sửa được như phiếu thường")]
     public async Task<IResult> CreateFinalInvoice(
         Guid id, [FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] FinalInvoiceRequest? body, CancellationToken ct)
     {
@@ -225,7 +224,7 @@ public sealed class ContractsController(ISender sender) : ControllerBase
         (await sender.Send(new RemoveAssetCommand(id, assetId), ct)).ToHttp();
 
     [HttpPost("contracts/{id:guid}/assets/{assetId:guid}/return")]
-    [EndpointSummary("Ghi tình trạng tài sản khi trả phòng (bồi thường: thêm phụ thu trên phiếu quyết toán)")]
+    [EndpointSummary("Ghi tình trạng tài sản khi trả phòng (bồi thường: thêm phụ thu trên hóa đơn trả phòng)")]
     public async Task<IResult> RecordAssetReturn(Guid id, Guid assetId, AssetReturnRequest b, CancellationToken ct) =>
         (await sender.Send(new RecordAssetReturnCommand(id, assetId, b.ConditionAtReturn), ct)).ToHttp();
 

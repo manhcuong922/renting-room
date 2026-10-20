@@ -26,7 +26,6 @@ internal sealed class InvoiceMeterSegmentConfiguration : IEntityTypeConfiguratio
         builder.Property(s => s.RoomCode).HasMaxLength(20);
         builder.Property(s => s.MeterSerial).HasMaxLength(50);
 
-        // Một khoảng chỉ số không thể bị tính 2 lần (M06 §10).
         builder.HasIndex(s => s.EndReadingId, DbConstraints.SegmentEndReadingUnique).HasDatabaseName(DbConstraints.SegmentEndReadingUnique)
             .IsUnique().HasFilter("NOT voided");
         builder.HasIndex(s => s.StartReadingId, "ux_invoice_meter_segments_start").HasDatabaseName("ux_invoice_meter_segments_start")

@@ -23,10 +23,8 @@ public static class WriteOffErrors
         "Số tiền trả đã bằng số còn nợ — dùng \"Đã thu\", không cần bỏ phần còn lại.");
 }
 
-/// <summary>Bỏ nợ trên 1 phiếu (F2, PM-BR-16/29): khóa HĐ, kiểm HĐ còn thu được; chủ trọ hoặc phó quản lý được cấp quyền.</summary>
 internal static class WriteOffGuard
 {
-    /// <summary>PM-BR-16: chủ trọ luôn được; phó quản lý chỉ khi chủ trọ bật quyền bỏ nợ cho riêng người đó.</summary>
     public static async Task<bool> IsAllowedAsync(IUserQueries users, ICurrentUser currentUser, CancellationToken ct) =>
         currentUser.Role == UserRole.OrgOwner
         || (currentUser.Role == UserRole.OrgManager && currentUser.UserId is { } userId
@@ -59,7 +57,6 @@ public sealed class WriteOffInvoiceCommandValidator : AbstractValidator<WriteOff
     }
 }
 
-/// <summary>PM-UC-16: bỏ nợ (một phần / toàn bộ) phiếu đã chốt bất kỳ lúc nào HĐ còn hiệu lực / đang thanh lý — không tính doanh thu.</summary>
 public sealed class WriteOffInvoiceHandler(
     IUserQueries users, IInvoiceQueries invoices, IContractQueries contracts, IUnitOfWork unitOfWork, PaymentPosting posting,
     ICurrentUser currentUser, TimeProvider clock)
@@ -105,10 +102,6 @@ public sealed class PayAndWriteOffCommandValidator : AbstractValidator<PayAndWri
     }
 }
 
-/// <summary>
-/// PM-BR-29: 1 transaction trên 1 phiếu — phiếu thu tiền thật (số người thuê trả) + phiếu bỏ nợ phần còn lại (VD nợ 3tr, trả 2tr, cho 1tr).
-/// Trả dần (phần còn lại vẫn là nợ) thì dùng "Đã thu" bình thường.
-/// </summary>
 public sealed class PayAndWriteOffHandler(
     IUserQueries users, IInvoiceQueries invoices, IContractQueries contracts, IUnitOfWork unitOfWork, PaymentPosting posting,
     ICurrentUser currentUser)

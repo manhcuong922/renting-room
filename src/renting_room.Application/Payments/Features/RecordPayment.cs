@@ -10,7 +10,6 @@ using renting_room.Domain.Payments;
 
 namespace renting_room.Application.Payments;
 
-/// <param name="InvoiceId">Có ⇒ thu cho đúng phiếu này (nút "Đã thu"); null ⇒ phân bổ tự động phiếu cũ nhất trước (PM-BR-06).</param>
 public sealed record RecordPaymentCommand(
     Guid ContractId, decimal Amount, PaymentMethod Method, DateOnly PaidAt, Guid? InvoiceId, string? PayerName, string? Reference, string? Note)
     : IRequest<Result<PaymentDto>>;
@@ -29,10 +28,6 @@ public sealed class RecordPaymentCommandValidator : AbstractValidator<RecordPaym
     }
 }
 
-/// <summary>
-/// PM-UC-01 (đợt 1 — thu bằng tay): HĐ đang hiệu lực / thanh lý (PM-BR-13); phân bổ chỉ định 1 phiếu hoặc tự động phiếu cũ nhất trước.
-/// Chưa có số dư có ⇒ không thu vượt số còn nợ.
-/// </summary>
 public sealed class RecordPaymentHandler(
     IContractQueries contracts, IInvoiceQueries invoiceQueries, IUnitOfWork unitOfWork, PaymentPosting posting)
     : IRequestHandler<RecordPaymentCommand, Result<PaymentDto>>

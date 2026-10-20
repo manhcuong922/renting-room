@@ -4,11 +4,6 @@ namespace renting_room.Domain.Contracts;
 
 public sealed partial class Contract
 {
-    // Cọc (chỉ theo dõi — M08 PM-BR-32..34)
-    /// <summary>
-    /// PM-BR-33: "Đã hoàn trả cọc" — ở mọi trạng thái HĐ. <paramref name="amount"/> null = đủ cọc; trả ít hơn (giữ lại một phần / mất cọc)
-    /// ⇒ ghi chú bắt buộc.
-    /// </summary>
     public Result RefundDeposit(DateOnly refundedOn, decimal? amount, string? note, DateOnly today)
     {
         if (!HasDeposit)
@@ -29,7 +24,6 @@ public sealed partial class Contract
         return Result.Success();
     }
 
-    /// <summary>Bỏ đánh dấu hoàn trả / chuyển cọc (nhập nhầm) ⇒ về "Đang giữ cọc".</summary>
     public Result CancelDepositRefund()
     {
         if (DepositStatus == DepositStatus.Holding)
@@ -41,7 +35,6 @@ public sealed partial class Contract
         return Result.Success();
     }
 
-    /// <summary>PM-BR-34: ký lại — cọc của HĐ cũ chuyển sang HĐ mới (HĐ mới chép cọc thỏa thuận).</summary>
     public void MarkDepositTransferred(string newContractNo)
     {
         if (!HasDeposit || DepositStatus != DepositStatus.Holding)
@@ -50,10 +43,6 @@ public sealed partial class Contract
         DepositNote = TransferredNote(newContractNo);
     }
 
-    /// <summary>
-    /// PM-BR-34: ký lại không thành — HĐ nháp nối tiếp bị hủy (<paramref name="newContractNo"/> = số HĐ đó) hoặc HĐ này hủy thanh lý (null) ⇒ cọc về
-    /// "Đang giữ" để còn nhắc hoàn cọc khi HĐ kết thúc.
-    /// </summary>
     public void RevertDepositTransfer(string? newContractNo = null)
     {
         if (DepositStatus != DepositStatus.Transferred || (newContractNo is not null && DepositNote != TransferredNote(newContractNo)))

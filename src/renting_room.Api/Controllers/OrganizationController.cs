@@ -11,10 +11,6 @@ using renting_room.Security;
 
 namespace renting_room.Controllers;
 
-/// <summary>
-/// Thông tin tổ chức (ID-UC-03), bên cho thuê mặc định = thông tin chủ trọ, khai một lần cho mọi khu không khai riêng (PR-BR-17),
-/// thời gian giữ dữ liệu cá nhân người thuê và ẩn danh tự động (RT-BR-06).
-/// </summary>
 [ApiController]
 [Route("api/v1")]
 [Tags("Organization members")]

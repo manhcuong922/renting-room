@@ -23,7 +23,6 @@ public sealed class RemoveMeterCommandValidator : AbstractValidator<RemoveMeterC
     }
 }
 
-/// <summary>MT-UC-03 / MT-BR-10: gỡ công tơ (không thay) — bắt buộc số cuối; phòng đang có HĐ ⇒ cảnh báo.</summary>
 public sealed class RemoveMeterHandler(IMeterRepository meters, IInvoiceQueries invoices, IContractQueries contracts, IUnitOfWork unitOfWork)
     : IRequestHandler<RemoveMeterCommand, Result<MeterRemovedDto>>
 {

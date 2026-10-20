@@ -17,7 +17,6 @@ public sealed class Renter : TenantEntity
     public string? Phone { get; private set; }
     public string? Email { get; private set; }
     public string Nationality { get; private set; } = "VN";
-    /// <summary>RT-BR-01: null = chưa có giấy tờ (chỉ được khi dưới <see cref="IdRequiredAge"/> tuổi lúc khai).</summary>
     public IdDocumentType? IdType { get; private set; }
     public byte[]? IdNumberEncrypted { get; private set; }
     public string? IdNumberHash { get; private set; }
@@ -32,12 +31,10 @@ public sealed class Renter : TenantEntity
     public string? Note { get; private set; }
     public DateTimeOffset? ArchivedAt { get; private set; }
 
-    /// <summary>RT-BR-06: đã ẩn danh — dữ liệu cá nhân đã xóa, không sửa / không dùng cho HĐ mới được nữa.</summary>
     public DateTimeOffset? AnonymizedAt { get; private set; }
 
     public bool IsAnonymized => AnonymizedAt is not null;
 
-    /// <summary>RT-BR-01: tuổi được cấp CCCD — từ tuổi này bắt buộc có số giấy tờ.</summary>
     public const int IdRequiredAge = 14;
 
     public bool HasIdNumber => IdNumberEncrypted is { Length: > 0 };
@@ -92,12 +89,6 @@ public sealed class Renter : TenantEntity
 
     public static string AnonymizedName(Guid renterId) => $"Đã ẩn danh #{renterId.ToString("N")[^4..].ToUpperInvariant()}";
 
-    /// <summary>
-    /// RT-BR-06: xóa mọi dữ liệu nhận diện (họ tên, ngày sinh, giấy tờ, liên hệ, địa chỉ, nghề nghiệp, ghi chú); giữ id, giới tính, quốc tịch
-    /// để liên kết tài chính và thống kê còn nguyên. Xóa cả giấy tờ ⇒ cùng CCCD đăng ký lại là hồ sơ mới.
-    /// Không đảo ngược.
-    /// </summary>
-    /// <param name="keepName">Hết thời gian giữ (tự động): giữ họ tên để còn tra lịch sử phòng; theo yêu cầu của người thuê: xóa cả tên.</param>
     public void Anonymize(DateTimeOffset now, bool keepName = false)
     {
         if (IsAnonymized)

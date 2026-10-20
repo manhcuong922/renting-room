@@ -4,17 +4,6 @@ using renting_room.Domain.Renters;
 
 namespace renting_room.Domain.Contracts;
 
-/// <summary>
-/// CT-BR-28..30 — kiểm tra quan hệ người ở với người đứng tên:
-/// <list type="bullet">
-/// <item>Người ở không phải người đứng tên phải khai quan hệ; "Khác" phải ghi rõ.</item>
-/// <item>Quan hệ có giới tính (vợ, chồng, cha, mẹ, con rể…) phải khớp giới tính người ở (bỏ qua khi giới tính "Khác").</item>
-/// <item>Cha / mẹ đẻ, ông bà, cụ phải lớn tuổi hơn; con đẻ, cháu nội ngoại, chắt phải nhỏ tuổi hơn người đứng tên.</item>
-/// <item>Vợ / chồng: tối đa 1 người cùng thời gian; đủ tuổi kết hôn (nam ≥ 20, nữ ≥ 18 — Luật HN&amp;GĐ 2014 Điều 8).</item>
-/// <item>Người chưa thành niên: phải có ý kiến đồng ý của cha, mẹ hoặc người giám hộ (Luật Cư trú 2020 Điều 28),
-/// trừ khi người đứng tên chính là cha / mẹ / người giám hộ (con đẻ, con nuôi, người được giám hộ).</item>
-/// </list>
-/// </summary>
 public static class OccupantRelationshipRules
 {
     public const int MaleMarriageAge = 20;
@@ -47,7 +36,6 @@ public static class OccupantRelationshipRules
 
     public static bool IsSpouse(OccupantRelationship? r) => r is OccupantRelationship.Wife or OccupantRelationship.Husband;
 
-    /// <param name="reference">Chủ hộ (CT-BR-36) — mặc định là người đứng tên; người này không khai quan hệ.</param>
     public static IReadOnlyList<OccupantRuleViolation> Check(
         PersonFacts reference, IReadOnlyList<(OccupantInput Input, PersonFacts Person)> occupants)
     {
@@ -91,7 +79,6 @@ public static class OccupantRelationshipRules
             yield return new(i, "guardianConsent", ContractErrors.GuardianConsentRequired);
     }
 
-    /// <summary>Vợ ⇒ người ở nữ ≥ 18, người đứng tên (chồng) ≥ 20; Chồng ⇒ ngược lại.</summary>
     private static bool BothOfMarriageAge(OccupantRelationship relation, PersonFacts person, PersonFacts representative, DateOnly on)
     {
         var (occupantMin, representativeMin) = relation == OccupantRelationship.Wife
@@ -100,7 +87,6 @@ public static class OccupantRelationshipRules
         return person.DateOfBirth.AgeOn(on) >= occupantMin && representative.DateOfBirth.AgeOn(on) >= representativeMin;
     }
 
-    /// <summary>Tối đa 1 vợ/chồng ở cùng thời gian (khoảng ở giao nhau).</summary>
     private static IEnumerable<OccupantRuleViolation> CheckSingleSpouse(IReadOnlyList<(OccupantInput Input, PersonFacts Person)> occupants)
     {
         var spouses = occupants.Select((o, i) => (o.Input, Index: i)).Where(o => IsSpouse(o.Input.RelationshipType)).ToList();

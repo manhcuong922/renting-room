@@ -29,10 +29,10 @@ public sealed record InvoiceSummaryDto(
     bool IsStale = false,
     decimal RoundingAmount = 0,
     decimal CollectedAmount = 0,
-    decimal WrittenOffAmount = 0);
+    decimal WrittenOffAmount = 0,
+    bool IsAdjusted = false,
+    bool NeedsResend = false);
 
-/// <param name="RoomCode">Phòng của đoạn đo (chuyển phòng ⇒ dòng Điện nước có đoạn của phòng cũ và phòng mới) — UI hiện mỗi đoạn một hàng (BL-BR-05).</param>
-/// <param name="StartDate">Ngày ghi chỉ số đầu; <paramref name="EndDate"/> — chỉ số cuối. Các trường bản chụp null ở phiếu lập trước 18/10/2026 mà không tìm lại được.</param>
 public sealed record InvoiceSegmentDto(
     Guid MeterId, Guid StartReadingId, Guid EndReadingId, decimal StartValue, decimal EndValue, decimal Consumption,
     Guid? RoomId = null, string? RoomCode = null, string? MeterSerial = null, DateOnly? StartDate = null, DateOnly? EndDate = null);
@@ -58,20 +58,14 @@ public sealed record InvoiceLineDto(
     IReadOnlyList<InvoiceSegmentDto> Segments,
     Guid? SourceInvoiceId = null,
     Guid? RoomChargeId = null,
-    bool IsSettled = false);
+    bool IsSettled = false,
+    LinePrice? Price = null);
 
-/// <summary>F1 (PM-UC-18): phiếu kỳ trước của cùng HĐ còn nợ — chỉ hiển thị, không cộng vào phiếu.</summary>
 public sealed record PreviousDebtDto(Guid InvoiceId, string? InvoiceNo, string BillingMonth, DateOnly? DueDate, decimal Outstanding);
 
-/// <summary>PM-BR-31: phiếu còn nợ của HĐ đứng trước trong chuỗi ký lại — chỉ hiển thị, thu tiền ghi trên HĐ đó.</summary>
 public sealed record PreviousContractDebtDto(
     Guid ContractId, string ContractNo, Guid InvoiceId, string? InvoiceNo, string BillingMonth, DateOnly? DueDate, decimal Outstanding);
 
-/// <param name="RefundTotal">Σ dòng hoàn trả (≤ 0).</param>
-/// <param name="RefundedOn">Ngày chủ trọ xác nhận đã trả lại người thuê phần tổng âm (BL-BR-27).</param>
-/// <param name="PreviousDebts">F1: "Nợ các kỳ trước" — chỉ có ở <c>GET /invoices/{id}</c>.</param>
-/// <param name="TotalDue">F1: "Tổng cần thanh toán" = còn phải trả của phiếu này (nháp: tổng phiếu) + nợ các kỳ trước.</param>
-/// <param name="PreviousContractDebts">Nợ của HĐ trước khi ký lại (PM-BR-31) — danh sách riêng, <b>không</b> cộng vào <paramref name="TotalDue"/>.</param>
 public sealed record InvoiceDetailDto(
     InvoiceSummaryDto Summary,
     decimal Subtotal,
@@ -98,7 +92,7 @@ internal static class InvoiceMapping
         i.Id, i.InvoiceNo, i.Type, i.Status, i.PaymentStatus(today), i.PropertyId, i.RoomId, i.SnapshotRoomCode, i.ContractId,
         i.SnapshotContractNo, i.SnapshotRepresentativeName, $"{i.BillingMonth:yyyy-MM}", i.PeriodStart, i.PeriodEnd,
         i.TotalAmount, i.PaidAmount, i.Outstanding, i.RefundDue, i.DueDate, i.Issues.Count(x => x.Severity == InvoiceIssue.Error), i.Version.ToString(),
-        i.IsStale, i.RoundingAmount, i.CollectedAmount, i.WrittenOffAmount);
+        i.IsStale, i.RoundingAmount, i.CollectedAmount, i.WrittenOffAmount, i.IsAdjusted, i.NeedsResend);
 
     public static InvoiceDetailDto ToDetail(this Invoice i, DateOnly today) => new(
         i.ToSummary(today), i.Subtotal, i.DiscountTotal, i.RefundTotal, i.RefundedOn, i.RefundMethod, i.RefundNote, i.IssueDate,
@@ -109,6 +103,6 @@ internal static class InvoiceMapping
                 ? i.Segments.Where(s => s.BelongsTo(l)).OrderBy(s => s.StartDate).ThenBy(s => s.StartValue)
                     .Select(s => new InvoiceSegmentDto(s.MeterId, s.StartReadingId, s.EndReadingId, s.StartValue, s.EndValue, s.Consumption,
                         s.RoomId, s.RoomCode, s.MeterSerial, s.StartDate, s.EndDate)).ToList()
-                : [], l.SourceInvoiceId, l.RoomChargeId, l.IsSettled)).ToList(),
+                : [], l.SourceInvoiceId, l.RoomChargeId, l.IsSettled, l.Price)).ToList(),
         i.Issues, i.Note, i.FinalizedAt, i.VoidedAt, i.VoidReason);
 }

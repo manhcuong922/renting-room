@@ -6,7 +6,6 @@ using renting_room.Domain.Contracts;
 
 namespace renting_room.Application.Contracts;
 
-/// <summary>Danh sách kỳ thu (C-05) — để UI chọn ngày áp dụng giá mới, xem lịch thu.</summary>
 public sealed record GetBillingPeriodsQuery(Guid ContractId, DateOnly? Until) : IRequest<Result<IReadOnlyList<BillingPeriod>>>;
 
 public sealed class GetBillingPeriodsHandler(IContractQueries contracts, IPropertyQueries properties, TimeProvider clock)
@@ -28,7 +27,6 @@ public sealed class GetBillingPeriodsHandler(IContractQueries contracts, IProper
         if (until > maxUntil)
             until = maxUntil;
 
-        // Chỉ ngày trả phòng thực tế mới cắt kỳ: hết hạn mà chưa thanh lý thì vẫn tiếp tục thu (CT-BR-03).
         var schedule = (await properties.GetBillingAsync(contract.PropertyId, cancellationToken)).Schedule;
         var periods = schedule.ContractPeriods(contract.BillingStartDate, contract.ActualEndDate, until);
         return Result.Success(periods);

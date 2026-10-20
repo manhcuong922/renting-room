@@ -40,7 +40,6 @@ public sealed partial class Contract
         return Result.Success();
     }
 
-    /// <summary>Ghi chú nội bộ của chủ trọ (không phải nội dung đã ký) — sửa được ở mọi trạng thái trừ đã hủy.</summary>
     public Result UpdateNote(string? note)
     {
         if (Status == ContractStatus.Cancelled)
@@ -118,7 +117,6 @@ public sealed partial class Contract
         _fees.Clear();
         _fees.AddRange(fees.Select(f => new ContractFee(Id, PropertyId, f, StartDate)));
 
-        // Dời ngày bắt đầu nháp về sau ⇒ xe đã đăng ký không được giữ trước ngày bắt đầu HĐ (phí giữ xe M07 tính theo ngày này).
         foreach (var vehicle in _vehicles.Where(v => v.IsActive && v.RegisteredFrom < StartDate))
             vehicle.MoveStart(StartDate);
 
@@ -127,7 +125,6 @@ public sealed partial class Contract
         BillingChanged();
     }
 
-    // Kích hoạt (bàn giao phòng)
     public Result Activate(ActivationContext context)
     {
         if (Status != ContractStatus.Draft)
@@ -139,8 +136,6 @@ public sealed partial class Contract
         if (_occupants.Count == 0)
             return Result.Failure(ContractErrors.NoOccupant);
 
-        // Không ghi ngày ký: HĐ nhập lại (bắt đầu trong quá khứ) coi như ký ngày bắt đầu; HĐ mới coi như ký hôm nay.
-        // Không được muộn hơn ngày hiệu lực đã thỏa thuận (CT-BR-20: hiệu lực không trước ngày ký).
         var defaultSignedDate = StartDate < context.Today ? StartDate : context.Today;
         var signedDate = SignedDate
             ?? (EffectiveDate is { } agreedEffective && agreedEffective < defaultSignedDate ? agreedEffective : defaultSignedDate);
@@ -155,7 +150,6 @@ public sealed partial class Contract
         return Result.Success();
     }
 
-    /// <summary>Đánh dấu đã có / chưa có bản HĐ ký (giấy, ảnh, PDF) và ghi chú nơi cất — mọi trạng thái trừ đã hủy.</summary>
     public Result SetSignedDocument(bool hasSignedDocument, string? note)
     {
         if (Status == ContractStatus.Cancelled)

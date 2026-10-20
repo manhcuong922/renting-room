@@ -4,7 +4,6 @@ using renting_room.Domain.Identity;
 
 namespace renting_room.Infrastructure.Persistence.Configurations;
 
-/// <summary>M01 §11: nhật ký đăng nhập — không FK tới users (giữ dòng kể cả khi tên đăng nhập không tồn tại).</summary>
 internal sealed class LoginEventConfiguration : IEntityTypeConfiguration<LoginEvent>
 {
     public void Configure(EntityTypeBuilder<LoginEvent> builder)

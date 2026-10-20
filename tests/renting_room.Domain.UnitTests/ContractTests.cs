@@ -199,6 +199,41 @@ public sealed class ContractTests
     }
 
     [Fact]
+    public void ResignNotCompleted_ReopensOnlyVehiclesEndedByThatResign_SkipsTakenPlates()
+    {
+        var contract = NewActiveWith(Representative, OccupantA);
+        var handover = Start.AddMonths(2);
+        contract.RegisterVehicle(new VehicleInput(OccupantA, VehicleType.Motorbike, "29B112345", null, Start, null));
+        contract.RegisterVehicle(new VehicleInput(OccupantA, VehicleType.Motorbike, "29B154321", null, Start, null));
+        var earlier = contract.RegisterVehicle(new VehicleInput(OccupantA, VehicleType.Bicycle, null, null, Start, null)).Value!;
+        contract.EndVehicle(earlier.Id, Start.AddMonths(1)).IsSuccess.Should().BeTrue();
+        var draftId = Guid.NewGuid();
+
+        contract.ResignVehicles([OccupantA], handover, handover.AddDays(1), draftId).Should().HaveCount(2);
+        contract.VehiclesEndedByResign(Guid.NewGuid()).Should().BeEmpty();
+        var notRestored = contract.ReopenResignedVehicles(draftId, new HashSet<string> { "29B154321" });
+
+        notRestored.Should().ContainSingle(v => v.PlateNumber == "29B154321");
+        contract.Vehicles.Single(v => v.PlateNumber == "29B112345").IsActive.Should().BeTrue();
+        contract.Vehicles.Single(v => v.PlateNumber == "29B154321").IsActive.Should().BeFalse();
+        contract.Vehicles.Single(v => v.Id == earlier.Id).RegisteredTo.Should().Be(Start.AddMonths(1), "xe kết thúc trước lần ký lại không bị đụng");
+        contract.VehiclesEndedByResign().Should().BeEmpty("xe đã xét bỏ dấu ký lại");
+    }
+
+    [Fact]
+    public void ResignDraft_ReleasePlates_EndsOnlyThosePlates()
+    {
+        var draft = NewDraft();
+        draft.RegisterVehicle(new VehicleInput(null, VehicleType.Motorbike, "29B112345", null, Start, null));
+        draft.RegisterVehicle(new VehicleInput(null, VehicleType.Motorbike, "30A12345", null, Start, null));
+
+        draft.ReleasePlates(["29B112345"]);
+
+        draft.Vehicles.Single(v => v.PlateNumber == "29B112345").RegisteredTo.Should().Be(Start);
+        draft.Vehicles.Single(v => v.PlateNumber == "30A12345").IsActive.Should().BeTrue();
+    }
+
+    [Fact]
     public void Activate_ImportedContract_DefaultSignedDateNotAfterAgreedEffectiveDate()
     {
         // HĐ nhập lại: bắt đầu 01/09, thỏa thuận hiệu lực từ 25/08 (đặt cọc trước), không ghi ngày ký.

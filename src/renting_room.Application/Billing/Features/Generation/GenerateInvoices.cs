@@ -12,9 +12,6 @@ using renting_room.Domain.Properties;
 
 namespace renting_room.Application.Billing;
 
-/// <param name="RoomIds">Lọc phòng (null = cả khu).</param>
-/// <param name="RecalculateExistingDrafts">Kỳ đã có phiếu nháp ⇒ tính lại (giữ ô sửa tay) thay vì bỏ qua.</param>
-/// <param name="ContractId">Chỉ lập cho 1 HĐ cụ thể của khu (BL-UC-01).</param>
 public sealed record GenerateInvoicesCommand(
     Guid PropertyId, string BillingMonth, IReadOnlyList<Guid>? RoomIds, string? Floor, bool RecalculateExistingDrafts, Guid? ContractId = null)
     : IRequest<Result<GenerateInvoicesResult>>;
@@ -28,11 +25,6 @@ public sealed class GenerateInvoicesCommandValidator : AbstractValidator<Generat
     }
 }
 
-/// <summary>
-/// BL-UC-01: tạo phiếu nháp kỳ có tháng thu = tháng chọn cho từng HĐ của khu — mỗi HĐ 1 transaction, khóa HĐ (C-07).
-/// Bỏ qua kèm lý do: đã có phiếu, đã lập kỳ sau, chưa lập kỳ trước (BL-BR-21 — kỳ đầu = kỳ chứa "Tính tiền từ ngày"), không có kỳ trong tháng,
-/// thiếu chỉ số (nháp chỉ lập khi đủ chỉ số), kỳ trước còn nháp thiếu chỉ số.
-/// </summary>
 public sealed class GenerateInvoicesHandler(
     IUnitOfWork unitOfWork, IContractRepository contracts, IContractQueries contractQueries, IInvoiceRepository invoiceRepository,
     IPropertyQueries properties, IRoomQueries rooms, IRenterQueries renters, InvoiceInputLoader inputs, RoomChargeBilling roomCharges)
@@ -79,7 +71,6 @@ public sealed class GenerateInvoicesHandler(
         var period = BillingMonths.PeriodIn(contract, month, schedule);
         if (period is null)
             return ("NO_PERIOD_IN_MONTH", false);
-        // BL-BR-02: kỳ chứa ngày trả phòng do phiếu quyết toán đảm nhận.
         if (contract.ActualEndDate is { } actualEnd && actualEnd <= period.End)
             return ("USE_FINAL_INVOICE", false);
 
@@ -89,16 +80,13 @@ public sealed class GenerateInvoicesHandler(
             return ("EXISTS", false);
         if (existing is null && invoices.Any(i => i.PeriodStart > period.Start))
             return ("LATER_PERIOD_BILLED", false);
-        // BL-BR-21: lập lần lượt từ kỳ đầu (kỳ chứa "Tính tiền từ ngày") — không để kỳ sau nuốt / bỏ sót kỳ trước.
         if (existing is null && period.Start != contract.BillingStartDate && invoices.All(i => i.PeriodEnd != period.Start.AddDays(-1)))
             return ("PREVIOUS_PERIOD_NOT_BILLED", false);
-        // BL-BR-21 (17/10/2026): nháp kỳ trước mất chỉ số sau khi lập ⇒ không lập kỳ sau, tránh kỳ sau gộp sản lượng của kỳ trước.
         if (existing is null && invoices.Any(i => i.Status == InvoiceStatus.Draft && i.PeriodStart < period.Start
                 && i.Issues.Any(x => x.Code == MissingReadingCode)))
             return ("PREVIOUS_PERIOD_INCOMPLETE", false);
 
         var calculation = InvoiceCalculator.Calculate(await inputs.LoadAsync(contract, period, existing?.Id, ct));
-        // Nháp chỉ lập khi đủ chỉ số; nháp đã có thì vẫn tính lại (lỗi hiện trên nháp, chặn chốt).
         if (existing is null && calculation.Issues.Any(x => x.Code == MissingReadingCode))
             return (MissingReadingCode, false);
         Invoice invoice;
@@ -114,7 +102,6 @@ public sealed class GenerateInvoicesHandler(
                 roomCode, contract.ContractNo, representative, calculation);
             invoiceRepository.Add(invoice);
         }
-        // BL-BR-32/36: khoản phát sinh đang chờ của HĐ tự vào nháp.
         await roomCharges.AttachPendingAsync(invoice, ct);
 
         await unitOfWork.SaveChangesAsync(ct);

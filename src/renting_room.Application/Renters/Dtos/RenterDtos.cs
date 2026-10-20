@@ -31,7 +31,6 @@ public sealed record RenterDto(
 
 internal static class RenterProjection
 {
-    /// <summary>SĐT người thuê: di động VN chuẩn hóa, hoặc số quốc tế dạng +[mã nước][số] cho người nước ngoài.</summary>
     public static string? NormalizePhone(string? phone)
     {
         if (string.IsNullOrWhiteSpace(phone))

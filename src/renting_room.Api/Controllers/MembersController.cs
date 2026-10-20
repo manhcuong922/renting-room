@@ -10,7 +10,6 @@ using renting_room.Security;
 
 namespace renting_room.Controllers;
 
-/// <summary>Thành viên tổ chức: chủ trọ + phó quản lý (M01 §3.3).</summary>
 [ApiController]
 [Route("api/v1")]
 [Tags("Organization members")]

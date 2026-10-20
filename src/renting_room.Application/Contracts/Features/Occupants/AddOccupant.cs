@@ -24,10 +24,6 @@ public sealed class AddOccupantCommandValidator : AbstractValidator<AddOccupantC
     }
 }
 
-/// <summary>
-/// CT-BR-28..30: quan hệ với người đứng tên hợp lệ; CT-BR-31: HĐ đang hiệu lực ⇒ người mới không đang ở phòng khác;
-/// CT-BR-49: đồng thuê phải có giấy tờ; CT-BR-50: không vừa là người ở thường ở đây vừa đứng tên HĐ khác.
-/// </summary>
 public sealed class AddOccupantHandler(ContractMutation mutation, OccupantChecks occupantChecks)
     : IRequestHandler<AddOccupantCommand, Result>
 {

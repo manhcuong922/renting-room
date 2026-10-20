@@ -13,11 +13,6 @@ using renting_room.Security;
 
 namespace renting_room.Controllers;
 
-/// <summary>
-/// Import Excel (PR-UC-11 phòng, RT-UC-10 người thuê đang ở): tải mẫu → tải file lên xem trước (đọc + kiểm, server không giữ gì) → sửa trên
-/// màn → gửi lại các dòng (JSON) để lưu phần hợp lệ. Chỉ chủ trọ. Upload multipart field <c>file</c>; API dùng Bearer token nên không cần
-/// chống CSRF. Server bỏ qua mọi id do client gửi (tra theo mã phòng / số giấy tờ).
-/// </summary>
 [ApiController]
 [Route("api/v1")]
 [Tags("Imports")]

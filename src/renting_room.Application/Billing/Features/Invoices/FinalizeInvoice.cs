@@ -2,10 +2,12 @@ using FluentValidation;
 using Mediator;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Contracts;
+using renting_room.Application.Meters;
 using renting_room.Application.Properties;
 using renting_room.Domain.Billing;
 using renting_room.Domain.Common;
 using renting_room.Domain.Contracts;
+using renting_room.Domain.Meters;
 
 namespace renting_room.Application.Billing;
 
@@ -17,12 +19,8 @@ public sealed class FinalizeInvoiceHandler(InvoiceFinalizer finalizer) : IReques
         await finalizer.FinalizeAsync(request.Id, cancellationToken);
 }
 
-/// <summary>
-/// BL-BR-11/12/13: khóa HĐ → phiếu (C-07); tính lại phần hệ thống và so với nháp (bỏ qua ô sửa tay) — lệch ⇒ 409 DRAFT_STALE;
-/// còn vấn đề chặn ⇒ 422; cấp số PB, hạn thanh toán = hôm nay + số ngày của HĐ.
-/// </summary>
 public sealed class InvoiceFinalizer(
-    IUnitOfWork unitOfWork, IInvoiceRepository invoices, IInvoiceQueries invoiceQueries, IContractRepository contracts,
+    IUnitOfWork unitOfWork, IInvoiceRepository invoices, IInvoiceQueries invoiceQueries, IContractRepository contracts, IMeterQueries meters,
     IPropertyQueries properties, InvoiceInputLoader inputs, IDocumentNumberGenerator numbers, ICurrentUser currentUser, TimeProvider clock)
 {
     public async Task<Result<InvoiceDetailDto>> FinalizeAsync(Guid id, CancellationToken ct)
@@ -33,8 +31,12 @@ public sealed class InvoiceFinalizer(
 
         await using var transaction = await unitOfWork.BeginTransactionAsync(ct);
         await unitOfWork.LockForUpdateAsync<Contract>(contractId.Value, ct);
-        await unitOfWork.LockForUpdateAsync<Invoice>(id, ct);
         var contract = (await contracts.GetForUpdateAsync(contractId.Value, ct))!;
+        // Sửa chỉ số cùng phòng khóa HĐ → công tơ → nháp: chờ lệnh chốt xong, không lọt giữa lúc tính lại và lúc lưu (M06 §10).
+        var roomIds = contract.RoomStays.Select(s => s.RoomId).Distinct().ToList();
+        foreach (var meterId in (await meters.ListRoomMetersAsync(roomIds, ct)).Select(m => m.Id).Order())
+            await unitOfWork.LockForUpdateAsync<Meter>(meterId, ct);
+        await unitOfWork.LockForUpdateAsync<Invoice>(id, ct);
         var invoice = (await invoices.GetForUpdateAsync(id, ct))!;
         if (invoice.Status != InvoiceStatus.Draft)
             return BillingErrors.NotDraft;

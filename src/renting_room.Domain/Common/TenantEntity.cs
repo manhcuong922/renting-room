@@ -1,6 +1,5 @@
 namespace renting_room.Domain.Common;
 
-/// <summary>Đánh dấu dữ liệu thuộc về một tổ chức (chủ trọ) — được cô lập bởi global query filter (C-01).</summary>
 public interface ITenantEntity
 {
     Guid OrganizationId { get; }

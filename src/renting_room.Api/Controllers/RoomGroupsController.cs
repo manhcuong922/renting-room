@@ -8,7 +8,6 @@ using renting_room.Security;
 
 namespace renting_room.Controllers;
 
-/// <summary>Nhóm phòng của khu (M02).</summary>
 [ApiController]
 [Route("api/v1")]
 [Tags("Room groups")]

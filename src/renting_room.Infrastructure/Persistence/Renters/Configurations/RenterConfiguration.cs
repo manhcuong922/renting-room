@@ -9,7 +9,6 @@ internal sealed class RenterConfiguration : IEntityTypeConfiguration<Renter>
 {
     public void Configure(EntityTypeBuilder<Renter> builder)
     {
-        // RT-BR-01: có loại giấy tờ thì có số (và ngược lại); bắt buộc theo tuổi kiểm ở Application.
         builder.ToTable("renters", t => t.HasCheckConstraint("ck_renters_id_document", "(id_type IS NULL) = (id_number_hash IS NULL)"));
         builder.HasKey(r => r.Id);
         builder.HasAlternateKey(r => new { r.OrganizationId, r.Id }).HasName("ak_renters_organization_id_id");

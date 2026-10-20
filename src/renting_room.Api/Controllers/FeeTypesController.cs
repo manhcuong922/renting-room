@@ -11,7 +11,6 @@ using renting_room.Security;
 
 namespace renting_room.Controllers;
 
-/// <summary>Khoản thu & bảng giá của khu (M04): điện nước theo công tơ; dịch vụ theo phòng / đầu người / số gói (giữ xe…).</summary>
 [ApiController]
 [Route("api/v1")]
 [Tags("Fee types")]

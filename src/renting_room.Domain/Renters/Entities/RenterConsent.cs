@@ -2,10 +2,6 @@ using renting_room.Domain.Common;
 
 namespace renting_room.Domain.Renters;
 
-/// <summary>
-/// RT-UC-05: ghi nhận người thuê đồng ý cho chủ trọ thu thập / xử lý dữ liệu cá nhân theo một mục đích. Rút lại thì giữ dòng, ghi ngày rút.
-/// Chỉ là ghi nhận — không chặn nghiệp vụ nào.
-/// </summary>
 public sealed class RenterConsent : TenantEntity
 {
     private RenterConsent() { } // EF Core

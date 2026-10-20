@@ -8,12 +8,6 @@ using renting_room.Domain.Renters;
 
 namespace renting_room.Application.Contracts;
 
-/// <summary>
-/// Phần giấy tờ / pháp lý của HĐ (chốt 09/10/2026): chỉ <b>cảnh báo</b>, không chặn tạo / kích hoạt / thu tiền — HĐ trong phần mềm là hồ sơ
-/// thuê để tính tiền, bản có giá trị pháp lý là bản giấy. Gồm: bên cho thuê chưa đủ thông tin (chưa in được HĐ đầy đủ), người đứng tên thiếu
-/// SĐT / chưa đủ 18 tuổi tại ngày ký, quan hệ người ở chưa khai / chưa hợp lý, người chưa thành niên thiếu đồng ý của người giám hộ
-/// (CT-BR-18, 19, 28–30). "Chưa có bản HĐ ký" là cờ <see cref="ContractFlag.MissingSignedDocument"/>.
-/// </summary>
 public sealed class ContractPaperWarnings(
     OccupantChecks occupantChecks, IPropertyQueries properties, IOrganizationQueries organizations, IRenterQueries renters)
 {
@@ -25,7 +19,6 @@ public sealed class ContractPaperWarnings(
             return [];
 
         var warnings = new List<Warning>();
-        // CT-BR-50: HĐ nháp chưa bị chặn — báo trước điều sẽ chặn khi kích hoạt.
         if (contract.Status == ContractStatus.Draft && await occupantChecks.FindRoleConflictAsync(contract, ct) is { } conflict)
             warnings.Add(new Warning(conflict.Code, conflict.Message));
         var property = (await properties.GetAsync(contract.PropertyId, ct))!;
@@ -45,7 +38,6 @@ public sealed class ContractPaperWarnings(
         }
 
         var staying = contract.Occupants.Where(o => o.MoveOutDate is null || o.MoveOutDate >= today).ToList();
-        // RT-BR-01: người ở từ 14 tuổi chưa có giấy tờ (VD vừa qua 14 tuổi) ⇒ nhắc bổ sung.
         var stayingIds = staying.Select(o => o.RenterId).ToList();
         var missingId = await renters.ListMissingIdNumberAsync(stayingIds, ct);
         warnings.AddRange(missingId.Where(r => r.DateOfBirth.AgeOn(today) >= Renter.IdRequiredAge)

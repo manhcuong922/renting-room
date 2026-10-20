@@ -37,18 +37,25 @@ public static class MeterErrors
     public static readonly Error ReadingLocked = Error.BusinessRule("READING_LOCKED",
         "Chỉ số đã dùng cho phiếu đã chốt — dùng \"Điều chỉnh chỉ số đã chốt\" (tạo khoản bù / phụ thu vào kỳ sau).");
 
-    // MT-BR-19: điều chỉnh chỉ số đã chốt.
     public static readonly Error ReadingNotLocked = Error.BusinessRule("READING_NOT_LOCKED",
         "Chỉ số chưa dùng cho phiếu đã chốt — sửa trực tiếp, không cần điều chỉnh.");
     public static readonly Error ReadingNotAdjustable = Error.BusinessRule("READING_NOT_ADJUSTABLE",
         "Chỉ điều chỉnh được chỉ số cuối của đoạn đo trên phiếu đã chốt.");
     public static readonly Error ReadingNextPeriodFinalized = Error.BusinessRule("READING_NEXT_PERIOD_FINALIZED",
         "Kỳ sau đã chốt phiếu bắt đầu từ chỉ số này — tổng 2 kỳ đã tự bù nhau, không cần điều chỉnh.");
+    public static readonly Error AdjustmentHandlingRequired = Error.Validation("ADJUSTMENT_HANDLING_REQUIRED",
+        "Hóa đơn đã thu tiền — chọn \"Xử lý ngay\" (tính lại trên hóa đơn) hoặc \"Đẩy sang hóa đơn sau\".");
+    public static readonly Error AdjustmentAlreadyBilled = Error.BusinessRule("ADJUSTMENT_ALREADY_BILLED",
+        "Khoản điều chỉnh lần trước đã thanh toán (đã trả / thu ngay, hoặc đã nằm trên hóa đơn đã chốt) — không điều chỉnh tiếp chỉ số này được; " +
+        "phần chênh còn lại xử lý bằng khoản phụ thu / bù nhập tay.");
+    public static readonly Error AdjustmentNoNextInvoice = Error.BusinessRule("ADJUSTMENT_NO_NEXT_INVOICE",
+        "Hóa đơn trả phòng đã chốt — không còn hóa đơn sau, chọn \"Xử lý ngay\".");
+    public static readonly Error AdjustmentContractEnded = Error.BusinessRule("CONTRACT_ENDED",
+        "Hợp đồng đã kết thúc — chưa hỗ trợ điều chỉnh chỉ số sau khi thanh lý.");
     public static readonly Error ReadingUnchanged = Error.Validation("READING_UNCHANGED", "Chỉ số mới trùng chỉ số hiện tại.");
     public static readonly Error AdjustmentTooLarge = Error.BusinessRule("READING_ADJUSTMENT_TOO_LARGE",
         "Tiền chênh quá lớn — kiểm tra lại chỉ số.");
 
-    /// <summary>MT-BR-09/10: ngày thay / tháo thuộc kỳ sử dụng đã chốt phiếu ⇒ phần sản lượng sau chỉ số cuối kỳ sẽ không phiếu nào tính.</summary>
     public static Error PeriodLocked(DateOnly lockedUntil) =>
         Error.BusinessRule("METER_PERIOD_LOCKED",
                 $"Kỳ sử dụng tới {lockedUntil:dd/MM/yyyy} đã chốt phiếu — chọn ngày thay / tháo từ {lockedUntil.AddDays(1):dd/MM/yyyy}.")

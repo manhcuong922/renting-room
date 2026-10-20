@@ -6,7 +6,6 @@ using renting_room.Domain.Identity;
 
 namespace renting_room.Application.Identity.Organizations;
 
-/// <summary>ID-UC-03: thông tin tổ chức của người đang đăng nhập — chủ trọ tự sửa, mã tổ chức không đổi.</summary>
 public sealed record OrganizationInfoDto(
     Guid Id, string Code, string Name, string? ContactName, string? ContactPhone, string? ContactEmail, string? TaxCode, string? Address);
 

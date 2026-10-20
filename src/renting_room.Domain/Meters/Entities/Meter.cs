@@ -2,10 +2,6 @@ using renting_room.Domain.Common;
 
 namespace renting_room.Domain.Meters;
 
-/// <summary>
-/// Công tơ của 1 phòng cho 1 khoản thu theo chỉ số (MT-BR-01/02). Có phiên bản: thay công tơ = tháo bản cũ (bắt buộc số cuối)
-/// + lắp bản mới cùng ngày (MT-BR-09). Chỉ số nằm trong aggregate để kiểm đơn điệu ngay trong domain (MT-BR-03).
-/// </summary>
 public sealed class Meter : TenantEntity
 {
     public const decimal MaxValue = 99_999_999.99m;
@@ -53,30 +49,22 @@ public sealed class Meter : TenantEntity
         return meter;
     }
 
-    /// <summary>Chỉ số còn hiệu lực theo thứ tự thời gian (MT-BR-03).</summary>
     public IEnumerable<MeterReading> Ordered =>
         _readings.Where(r => r.VoidedAt is null).OrderBy(r => r.ReadingDate).ThenBy(r => r.Kind).ThenBy(SequenceKey);
 
-    /// <summary>"Dùng số mới nhất" (MT-BR-13): chỉ số gần nhất có ngày ≤ <paramref name="date"/>.</summary>
     public MeterReading? LatestOnOrBefore(DateOnly date) => Ordered.LastOrDefault(r => r.ReadingDate <= date);
 
     public MeterReading? Latest => Ordered.LastOrDefault();
 
     public MeterReading? Find(Guid readingId) => _readings.FirstOrDefault(r => r.Id == readingId && r.VoidedAt is null);
 
-    /// <summary>Chỉ số cuối kỳ của HĐ cho kỳ sử dụng bắt đầu <paramref name="closingPeriodStart"/> (MT-BR-04).</summary>
     public MeterReading? FindPeriodic(Guid contractId, DateOnly closingPeriodStart) =>
         Ordered.FirstOrDefault(r => r.Kind == ReadingKind.Periodic && r.ContractId == contractId && r.ClosingPeriodStart == closingPeriodStart);
 
-    /// <summary>
-    /// Chỉ số cuối của HĐ trên công tơ này (MT-BR-04). HĐ có thể rời phòng rồi quay lại ⇒ <paramref name="since"/> = ngày vào phòng của lần ở
-    /// đang xét, để không lấy nhầm chỉ số cuối của lần ở trước; <paramref name="until"/> = ngày rời phòng của lần ở đó (không lấy của lần ở sau).
-    /// </summary>
     public MeterReading? FindFinal(Guid contractId, DateOnly? since = null, DateOnly? until = null) =>
         Ordered.LastOrDefault(r => r.Kind == ReadingKind.Final && r.ContractId == contractId && (since is null || r.ReadingDate >= since)
             && (until is null || r.ReadingDate <= until));
 
-    /// <summary>Chỉ số nhận phòng của HĐ trên công tơ này trong lần ở [<paramref name="from"/>, <paramref name="to"/>] (MT-BR-13, MT-BR-04).</summary>
     public MeterReading? FindHandover(Guid contractId, DateOnly? from = null, DateOnly? to = null) =>
         Ordered.LastOrDefault(r => r.Kind == ReadingKind.Handover && r.ContractId == contractId
             && (from is null || r.ReadingDate >= from) && (to is null || r.ReadingDate <= to));
@@ -110,7 +98,6 @@ public sealed class Meter : TenantEntity
         return reading;
     }
 
-    /// <summary>MT-BR-10: tháo công tơ — bắt buộc số cuối; không được trước chỉ số đã ghi.</summary>
     public Result Remove(DateOnly date, decimal finalValue, string? note)
     {
         if (!IsActive)
@@ -130,7 +117,6 @@ public sealed class Meter : TenantEntity
         return Result.Success();
     }
 
-    /// <summary>MT-BR-09: thay công tơ = tháo bản cũ (số cuối) + lắp bản mới cùng ngày (số ban đầu).</summary>
     public Result<Meter> ReplaceWith(DateOnly date, decimal oldFinalValue, string? newSerialNo, decimal newInitialValue, string? note)
     {
         var removed = Remove(date, oldFinalValue, note);
@@ -143,7 +129,6 @@ public sealed class Meter : TenantEntity
         return next;
     }
 
-    /// <summary>MT-UC-06: sửa giá trị chỉ số (nhập sai) — vẫn phải đơn điệu với chỉ số trước / sau.</summary>
     public Result<MeterReading> Correct(Guid readingId, decimal value, string? note)
     {
         var reading = _readings.FirstOrDefault(r => r.Id == readingId && r.VoidedAt is null);
@@ -160,10 +145,6 @@ public sealed class Meter : TenantEntity
         return reading;
     }
 
-    /// <summary>
-    /// MT-UC-06: hủy chỉ số ghi nhầm / ghi thừa — chỉ chỉ số cuối kỳ và kiểm tra; chỉ số lắp / tháo, nhận phòng, cuối HĐ gắn với vòng đời
-    /// công tơ / HĐ nên chỉ hủy qua thao tác gốc (hủy thanh lý, hủy chuyển phòng).
-    /// </summary>
     public Result VoidEntry(Guid readingId, string reason, DateTimeOffset now)
     {
         var reading = Find(readingId);

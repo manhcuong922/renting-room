@@ -2,7 +2,6 @@ using renting_room.Domain.Common;
 
 namespace renting_room.Domain.Properties;
 
-/// <summary>Phòng — đơn vị cho thuê nhỏ nhất, thuộc 1 khu. Không lưu "đang thuê": suy ra từ hợp đồng.</summary>
 public sealed class Room : TenantEntity
 {
     public const int MaxOccupantsLimit = 20;
@@ -13,7 +12,6 @@ public sealed class Room : TenantEntity
     public string Code { get; private set; } = null!;
     public string? Floor { get; private set; }
     public decimal? AreaM2 { get; private set; }
-    /// <summary>PR-BR-06: số người theo loại phòng — chỉ mô tả, không giới hạn số người ở (chủ trọ quyết định).</summary>
     public int? MaxOccupants { get; private set; }
     public decimal? ListedRent { get; private set; }
     public decimal? DefaultDeposit { get; private set; }

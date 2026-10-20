@@ -15,9 +15,8 @@ public sealed class VoidMeterReadingCommandValidator : AbstractValidator<VoidMet
     public VoidMeterReadingCommandValidator() => RuleFor(x => x.Reason).RequiredText(300, "Lý do hủy");
 }
 
-/// <summary>MT-UC-06: hủy chỉ số ghi nhầm / ghi thừa (cuối kỳ, kiểm tra) chưa bị khóa — giữ dòng kèm lý do, nháp liên quan "Cần tính lại".</summary>
 public sealed class VoidMeterReadingHandler(
-    IMeterRepository meters, IMeterQueries meterQueries, IInvoiceQueries invoices, IUnitOfWork unitOfWork, TimeProvider clock)
+    IMeterRepository meters, IMeterQueries meterQueries, IInvoiceQueries invoices, IUnitOfWork unitOfWork, TimeProvider clock, MeterDraftRefresher drafts)
     : IRequestHandler<VoidMeterReadingCommand, Result>
 {
     public async ValueTask<Result> Handle(VoidMeterReadingCommand request, CancellationToken cancellationToken)
@@ -27,6 +26,7 @@ public sealed class VoidMeterReadingHandler(
             return Result.Failure(MeterErrors.ReadingNotFound);
 
         await using var transaction = await unitOfWork.BeginTransactionAsync(cancellationToken);
+        var affected = await drafts.LockContractsAsync([meterId.Value], cancellationToken);
         var meter = (await meters.LockAndLoadAsync([meterId.Value], cancellationToken)).Single();
         if ((await invoices.GetLockedReadingIdsAsync([meter.Id], cancellationToken)).Contains(request.ReadingId))
             return Result.Failure(MeterErrors.ReadingLocked);
@@ -34,6 +34,7 @@ public sealed class VoidMeterReadingHandler(
         if (voided.IsFailure)
             return voided;
 
+        await drafts.RecalculateAsync(affected, cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return voided;

@@ -11,7 +11,6 @@ internal sealed class FeeTypeConfiguration : IEntityTypeConfiguration<FeeType>
     {
         builder.ToTable("fee_types", t =>
         {
-            // FE-BR-03 / FE-BR-02: cách tính chỉ cho nhóm Dịch vụ; số gói mặc định / loại xe chỉ cho PerUnit; mã hệ thống chỉ cho Metered.
             t.HasCheckConstraint("ck_fee_types_charge_basis", "(fee_group = 'Service') = (charge_basis IS NOT NULL)");
             t.HasCheckConstraint("ck_fee_types_default_quantity",
                 "charge_basis = 'PerUnit' OR default_quantity IS NULL");
@@ -46,7 +45,6 @@ internal sealed class FeeTypeConfiguration : IEntityTypeConfiguration<FeeType>
             .OnDelete(DeleteBehavior.Cascade);
         builder.Navigation(f => f.Prices).UsePropertyAccessMode(PropertyAccessMode.Field);
 
-        // FE-BR-01 / FE-BR-04: tên (không phân biệt hoa thường) và mã hệ thống duy nhất trong khu, tính trên khoản chưa ngừng dùng.
         builder.HasIndex(f => new { f.PropertyId, f.NameNormalized }).IsUnique()
             .HasFilter("archived_at IS NULL").HasDatabaseName(DbConstraints.FeeNameUnique);
         builder.HasIndex(f => new { f.PropertyId, f.SystemCode }).IsUnique()

@@ -10,7 +10,6 @@ using renting_room.Domain.Renters;
 
 namespace renting_room.Application.Contracts;
 
-/// <summary>Dữ liệu đã giải mã / tra cứu sẵn để dựng văn bản hợp đồng (CT-UC-15).</summary>
 internal sealed record ContractPrintData(
     Contract Contract,
     SigningSnapshot? Snapshot,
@@ -154,7 +153,6 @@ internal static class ContractPrintBuilder
                 $"{IdLabel(r.IdType)} số: {d.RepresentativeIdNumber ?? Blank}, cấp ngày {DateOrBlank(r.IdIssueDate)} tại {r.IdIssuePlace ?? Blank}\n" +
                 $"Nơi thường trú: {r.PermanentAddress ?? Blank}\nĐiện thoại: {r.Phone ?? Blank}");
 
-        // CT-BR-49: đồng thuê có tên trên HĐ cùng người đứng tên.
         var coTenants = d.Occupants.Where(o => o.Occupant.Role == OccupantRole.CoTenant && o.Renter.Id != d.Contract.RepresentativeRenterId).ToList();
         if (coTenants.Count > 0)
             yield return Text("Người đồng thuê: " + string.Join("; ", coTenants.Select(o => $"{o.Renter.FullName} ({o.IdNumber})")));
@@ -206,10 +204,6 @@ internal static class ContractPrintBuilder
         return string.Join('\n', lines);
     }
 
-    /// <summary>
-    /// Thỏa thuận lúc ký (bản chụp đơn giá CT-BR-19) + các thay đổi sau đó theo kỳ (phụ lục khoản thu) — giống cách in giá thuê.
-    /// Khoản lúc ký chưa có giá ⇒ lấy giá của khu có hiệu lực tại ngày bắt đầu.
-    /// </summary>
     private static string FeesText(ContractPrintData d)
     {
         var c = d.Contract;
@@ -240,7 +234,6 @@ internal static class ContractPrintBuilder
         return lines.Count == 0 ? "Không phát sinh." : string.Join('\n', lines);
     }
 
-    /// <summary>Mô tả cách tính 1 khoản thu bằng lời — đúng cách tính sẽ dùng khi lập phiếu (M07).</summary>
     private static string Describe(
         string name, FeeGroup group, ChargeBasis? basis, string unit, decimal quantity, decimal? unitPrice, IReadOnlyList<PriceTier>? tiers = null)
     {

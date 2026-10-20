@@ -17,7 +17,6 @@ public sealed class RefundDepositCommandValidator : AbstractValidator<RefundDepo
     }
 }
 
-/// <summary>M08 PM-BR-33: "Đã hoàn trả cọc" — cọc chỉ để theo dõi, không ghi tiền vào / ra, không trừ vào phiếu.</summary>
 public sealed class RefundDepositHandler(ContractMutation mutation, TimeProvider clock) : IRequestHandler<RefundDepositCommand, Result>
 {
     public ValueTask<Result> Handle(RefundDepositCommand request, CancellationToken cancellationToken) =>
@@ -27,7 +26,6 @@ public sealed class RefundDepositHandler(ContractMutation mutation, TimeProvider
 
 public sealed record CancelDepositRefundCommand(Guid ContractId) : IRequest<Result>;
 
-/// <summary>Bỏ đánh dấu hoàn trả / chuyển cọc (nhập nhầm) ⇒ "Đang giữ cọc".</summary>
 public sealed class CancelDepositRefundHandler(ContractMutation mutation) : IRequestHandler<CancelDepositRefundCommand, Result>
 {
     public ValueTask<Result> Handle(CancelDepositRefundCommand request, CancellationToken cancellationToken) =>

@@ -23,7 +23,6 @@ public sealed class ReplaceMeterCommandValidator : AbstractValidator<ReplaceMete
     }
 }
 
-/// <summary>MT-UC-02 / MT-BR-09: thay công tơ (phiên bản) — số cuối công tơ cũ + số ban đầu công tơ mới, 1 transaction.</summary>
 public sealed class ReplaceMeterHandler(IMeterRepository meters, IInvoiceQueries invoices, IUnitOfWork unitOfWork)
     : IRequestHandler<ReplaceMeterCommand, Result<Guid>>
 {

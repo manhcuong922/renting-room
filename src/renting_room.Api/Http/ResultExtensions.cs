@@ -7,12 +7,14 @@ namespace renting_room.Http;
 /// <summary>Chuyển <see cref="Result"/> của tầng Application thành HTTP response.</summary>
 public static class ResultExtensions
 {
-    /// <summary>Thành công không có dữ liệu → 204; lỗi nghiệp vụ → ProblemDetails.</summary>
     public static IResult ToHttp(this Result result) =>
         result.IsSuccess ? Results.NoContent() : result.Error!.ToProblem();
 
     public static IResult ToHttp<T>(this Result<T> result) =>
         result.IsSuccess ? Results.Ok(result.Value) : result.Error!.ToProblem();
+
+    public static IResult ToWarnings(this Result<IReadOnlyList<Warning>> result) =>
+        result.IsSuccess ? Results.Ok(new { warnings = result.Value }) : result.Error!.ToProblem();
 
     public static IResult ToCreated(this Result<CreatedWithWarnings> result, string collectionRoute) =>
         result.IsSuccess

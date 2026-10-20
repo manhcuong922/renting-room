@@ -7,7 +7,6 @@ using renting_room.Domain.Renters;
 
 namespace renting_room.Application.Contracts;
 
-// Đổi người đứng tên (CT-BR-51)
 /// <param name="HouseholdHeadRenterId">Chủ hộ mới (phải đang ở); null = giữ chủ hộ hiện tại, không có thì người đứng tên mới.</param>
 /// <param name="OldRepresentativeMovesOut">Người đứng tên cũ rời đi cùng ngày ⇒ ghi chuyển đi + kết thúc xe của họ.</param>
 public sealed record ChangeRepresentativeCommand(
@@ -18,10 +17,6 @@ public sealed class ChangeRepresentativeCommandValidator : AbstractValidator<Cha
     public ChangeRepresentativeCommandValidator() => RuleFor(x => x.RenterId).NotEmpty().WithErrorCode("REQUIRED");
 }
 
-/// <summary>
-/// CT-UC-25 / CT-BR-51: đổi người đứng tên trên cùng HĐ — nợ, cọc, khoản phát sinh, chuỗi chỉ số giữ nguyên (người mới nhận nợ cũ theo thỏa thuận
-/// bên ngoài của người thuê). Bản ký về "Thiếu tài liệu", bản chụp lúc ký thay phần bên thuê.
-/// </summary>
 public sealed class ChangeRepresentativeHandler(ContractMutation mutation, IRenterQueries renters, OccupantChecks occupantChecks, TimeProvider clock) : IRequestHandler<ChangeRepresentativeCommand, Result>
 {
     public async ValueTask<Result> Handle(ChangeRepresentativeCommand request, CancellationToken cancellationToken)

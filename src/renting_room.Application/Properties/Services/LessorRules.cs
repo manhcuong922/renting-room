@@ -7,8 +7,6 @@ using renting_room.Domain.Properties;
 
 namespace renting_room.Application.Properties;
 
-// Bên cho thuê (PR-BR-12 → 17)
-/// <summary>Các trường khai bên cho thuê — dùng chung cho bên cho thuê mặc định của tổ chức (chủ trọ) và bên cho thuê riêng của khu.</summary>
 public interface ILessorFields
 {
     LessorType Type { get; }
@@ -61,7 +59,6 @@ internal static class LessorRules
             v.RuleFor(x => x.RepresentativeName!).RequiredText(200, "Người đại diện");
             v.RuleFor(x => x.RepresentativeTitle!).RequiredText(100, "Chức vụ người đại diện");
         });
-        // PR-BR-13: có số giấy ủy quyền thì phải có ngày (và ngược lại).
         v.RuleFor(x => x.AuthorizationDocDate)
             .NotNull().When(x => !string.IsNullOrWhiteSpace(x.AuthorizationDocNo)).WithErrorCode("REQUIRED");
     }

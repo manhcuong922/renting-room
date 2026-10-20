@@ -57,7 +57,7 @@ public sealed partial class DemoDataSeeder
             }
         }
 
-        // Trả phòng sớm trong kỳ đã thu trọn tiền phòng ⇒ phiếu quyết toán có cảnh báo RENT_OVERPAID + dòng hoàn trả ⇒ tổng âm.
+        // Trả phòng sớm trong kỳ đã thu trọn tiền phòng ⇒ hóa đơn trả phòng có cảnh báo RENT_OVERPAID + dòng hoàn trả ⇒ tổng âm.
         async Task<InvoiceDetailDto> MoveOutEarly(DemoRoom room, Guid contract, DateOnly periodStart, DateOnly leftOn)
         {
             await Send(new StartLiquidationCommand(contract, leftOn, TerminationReason.MutualAgreement, null, "Trả phòng sớm theo thỏa thuận"));
@@ -73,7 +73,7 @@ public sealed partial class DemoDataSeeder
             return await FinalizeAsync(final.Summary.Id, leftOn.AddDays(1));
         }
 
-        // B01 — Trả phòng sớm kỳ này: phiếu quyết toán Chờ hoàn (chủ trọ chưa trả lại tiền) — HĐ còn đang thanh lý.
+        // B01 — Trả phòng sớm kỳ này: hóa đơn trả phòng Chờ hoàn (chủ trọ chưa trả lại tiền) — HĐ còn đang thanh lý.
         var b01 = await Room("B01");
         var c01 = await ContractAsync(b01.Id, await RenterAsync("Cao Văn Bình", new DateOnly(1996, 2, 2), Gender.Male, Phone(21)),
             Period(-2), PrepaidRent, b01.Meters, fees: standard);
@@ -146,5 +146,17 @@ public sealed partial class DemoDataSeeder
             [new(staying, Period(0), null, null, null, OccupantRelationship.Wife)], fees: standard);
         await History(b06, c06, 0, 0);
         await Send(new ResignContractCommand(c06, _today, staying, null));
+
+        // B09 — ký lại không thành (CT-UC-21): người ở cùng có xe 29K1-246.80, ký lại rồi đổi ý ⇒ hủy HĐ nháp mới: xe mở lại trên HĐ cũ
+        // (đang thanh lý tới hôm nay), cọc về "Đang giữ" (PM-BR-34).
+        var b09 = await Room("B09");
+        var holder = await RenterAsync("Lạc Văn Hùng", new DateOnly(1990, 6, 6), Gender.Male, Phone(41));
+        var roommate = await RenterAsync("Lạc Thị Hoa", new DateOnly(1995, 3, 3), Gender.Female, Phone(42));
+        var c09 = await ContractAsync(b09.Id, holder, Period(-1), PrepaidRent, b09.Meters,
+            [new(roommate, Period(-1), null, null, null, OccupantRelationship.Wife)], fees: standard);
+        await History(b09, c09, -1, 0);
+        await Send(new RegisterVehicleCommand(c09, roommate, VehicleType.Motorbike, "29K124680", "Air Blade đen", Period(-1), null));
+        var resigned = await Send(new ResignContractCommand(c09, _today, roommate, null));
+        await Send(new CancelContractCommand(resigned.Id, "Người ở cùng đổi ý, không ký hợp đồng mới"));
     }
 }

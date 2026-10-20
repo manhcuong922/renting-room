@@ -10,13 +10,10 @@ using renting_room.Domain.Properties;
 
 namespace renting_room.Application.Imports;
 
-// RT-UC-10: import người thuê đang ở — chỉ tạo mới khi chuyển từ sổ sang phần mềm
-/// <param name="Errors">Lỗi của cả phòng (phòng không có / đang có HĐ, thiếu người đứng tên…); lỗi từng người nằm ở dòng.</param>
 public sealed record TenancyRoomDto(
     string RoomCode, IReadOnlyList<int> RowNumbers, bool IsValid, DateOnly? StartDate, DateOnly? BillingStartDate,
     IReadOnlyList<ImportIssue> Errors, IReadOnlyList<ImportIssue> Warnings);
 
-/// <summary>Kế hoạch tạo 1 lượt thuê — chỉ có khi cả phòng hợp lệ.</summary>
 internal sealed record TenancyPlan(
     string RoomCode, Guid RoomId, IReadOnlyList<TenancyImportRow> Rows, DateOnly StartDate, DateOnly BillingStartDate, decimal MonthlyRent,
     decimal DepositAmount);
@@ -24,7 +21,6 @@ internal sealed record TenancyPlan(
 internal sealed record TenancyCheck(
     IReadOnlyList<ImportRowResult<TenancyImportRow>> Rows, IReadOnlyList<TenancyRoomDto> Rooms, IReadOnlyList<TenancyPlan> Plans);
 
-/// <summary>Kiểm các dòng theo dữ liệu hiện tại — dùng chung cho xem trước và lưu (RT-UC-10).</summary>
 internal sealed class TenancyImportChecker(
     IRenterQueries renters, IContractQueries contracts, IRoomQueries roomQueries, IMeterQueries meters, ICurrentUser currentUser,
     IPersonalDataProtector protector, IValidator<CreateRenterCommand> renterValidator)
@@ -39,13 +35,11 @@ internal sealed class TenancyImportChecker(
         void Warn(TenancyImportRow r, string? key, string code, string message) =>
             warnings[r.RowNumber].Add(new(code, message, key is null ? null : TenancyImportTemplate.Headers[key]));
 
-        // RT-UC-10 (11/10/2026): phòng có nhiều dòng "Đứng tên" ⇒ dòng đầu là người đứng tên, các dòng sau là đồng thuê (M05 CT-BR-49).
         var mainRepresentatives = rows.Where(r => r.RoomCode is not null && TenancyImportTemplate.IsRepresentative(r.Role))
             .GroupBy(r => r.RoomCode!).Select(g => g.Min(r => r.RowNumber)).ToHashSet();
         bool IsMainRepresentative(TenancyImportRow r) =>
             TenancyImportTemplate.IsRepresentative(r.Role) && (r.RoomCode is null || mainRepresentatives.Contains(r.RowNumber));
 
-        // 1. Từng dòng.
         foreach (var row in rows)
         {
             if (row.RoomCode is null)
@@ -79,7 +73,6 @@ internal sealed class TenancyImportChecker(
                 Warn(row, "relationship", "RELATIONSHIP_REQUIRED", "Chưa khai quan hệ với người đứng tên (khai sau trên HĐ được).");
         }
 
-        // 2. Cùng một người trong file (theo số giấy tờ).
         foreach (var person in rows.Where(r => TenancyImportTemplate.PersonKey(r) is not null).GroupBy(r => TenancyImportTemplate.PersonKey(r)!))
         {
             var list = person.ToList();
@@ -93,7 +86,6 @@ internal sealed class TenancyImportChecker(
                 sameRoom.ToList().ForEach(r => Error(r, "idNumber", "DUPLICATE_IN_ROOM", "Một người xuất hiện 2 lần trong cùng phòng."));
         }
 
-        // 3. So với dữ liệu đang có: hồ sơ cùng số giấy tờ, người đang ở HĐ khác.
         var organizationId = currentUser.OrganizationId!.Value;
         var hashes = rows.Where(r => r is { IdType: not null, IdNumber: not null })
             .ToDictionary(r => r.RowNumber, r => protector.ProtectIdNumber(organizationId, r.IdType!.Value, r.IdNumber!).Hash);
@@ -108,7 +100,6 @@ internal sealed class TenancyImportChecker(
             if (match is null)
                 continue;
             Warn(row, "idNumber", "RENTER_EXISTS", "Đã có hồ sơ cùng số giấy tờ — dùng lại hồ sơ đó, không sửa.");
-            // RT-UC-10 (17/10/2026): khác họ tên / ngày sinh thường là gõ nhầm số giấy tờ ⇒ chặn, tránh gắn nhầm người vào HĐ.
             if (TextNormalizer.ToSearchText(match.FullName) != TextNormalizer.ToSearchText(row.FullName ?? "") || match.DateOfBirth != row.DateOfBirth)
                 Error(row, "idNumber", "RENTER_IDENTITY_MISMATCH",
                     $"Số giấy tờ trùng hồ sơ {match.FullName} ({match.DateOfBirth:dd/MM/yyyy}) nhưng họ tên / ngày sinh trong file khác — kiểm tra lại số giấy tờ.");
@@ -119,15 +110,12 @@ internal sealed class TenancyImportChecker(
                 Error(row, "idNumber", "OCCUPANT_LIVES_ELSEWHERE", $"Người này đang ở phòng {stay.RoomCode} (HĐ {stay.ContractNo}) — thanh lý / chuyển phòng ở màn HĐ trước.");
         }
 
-        // 4. Theo phòng.
         var periodStart = property.BillingSchedule.StandardPeriodContaining(today).Start;
         var roomCodes = rows.Where(r => r.RoomCode is not null).Select(r => r.RoomCode!).Distinct().ToList();
         var roomsByCode = await roomQueries.ListByCodesAsync(property.Id, roomCodes, ct);
         var roomIds = roomsByCode.Values.Select(r => r.Id).ToList();
         var openContracts = (await contracts.ListOpenInRoomsAsync(roomIds, ct))
             .GroupBy(c => c.RoomId).ToDictionary(g => g.Key, g => g.First());
-        // Phòng đã có HĐ khác ở tới ngày nào: HĐ đã kết thúc (ngày trả phòng) / đã chuyển đi (ngày chuyển — CT-BR-14). Bước kích hoạt chặn nếu
-        // ngày đó ≥ ngày bắt đầu HĐ mới ⇒ xem trước phải báo cùng điều kiện.
         var occupiedUntil = (await contracts.ListOccupiedUntilAsync(roomIds, ct))
             .GroupBy(x => x.RoomId).ToDictionary(g => g.Key, g => g.Max(x => x.Until));
         var lastReadings = (await meters.ListLastReadingsAsync(roomIds, ct)).ToLookup(m => m.RoomId);

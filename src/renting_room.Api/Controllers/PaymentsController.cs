@@ -7,7 +7,6 @@ using renting_room.Requests;
 
 namespace renting_room.Controllers;
 
-/// <summary>Thu tiền, bỏ nợ, đảo phiếu thu (M08).</summary>
 [ApiController]
 [Route("api/v1")]
 [Tags("Payments")]
@@ -30,7 +29,6 @@ public sealed class PaymentsController(ISender sender) : ControllerBase
         return result.IsSuccess ? Results.Created($"{Route}/{result.Value!.Id}", result.Value) : result.ToHttp();
     }
 
-    // F2 (PM-BR-16/29): bỏ nợ bất kỳ lúc nào — chủ trọ hoặc phó quản lý được cấp quyền (kiểm trong handler).
     [HttpPost("invoices/{id:guid}/write-off")]
     [Idempotent]
     [EndpointSummary("Bỏ nợ phiếu (mặc định toàn bộ số còn nợ) — chủ trọ / phó quản lý được cấp quyền, lý do bắt buộc, không tính doanh thu")]

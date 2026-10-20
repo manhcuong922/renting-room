@@ -9,8 +9,6 @@ using renting_room.Domain.Fees;
 
 namespace renting_room.Application.Contracts;
 
-// ============================================================ FE-UC-08: phòng đang dùng dịch vụ — thêm / bớt hàng loạt
-
 /// <param name="ContractId">HĐ đang hiệu lực / đang thanh lý của phòng (null = phòng trống ⇒ không thêm được).</param>
 /// <param name="IsUsing">HĐ đang đăng ký dịch vụ (hôm nay hoặc đã hẹn từ kỳ sau).</param>
 public sealed record FeeUsageRowDto(
@@ -45,7 +43,6 @@ public sealed class GetFeeUsageHandler(IFeeQueries fees, IRoomQueries roomQuerie
         var rows = rooms.Select(room =>
             {
                 var contract = contracts.Where(c => c.RoomId == room.Id).MinBy(c => c.StartDate);
-                // Đang dùng: bản đăng ký hiệu lực hôm nay, hoặc đã hẹn từ kỳ sau (chưa tới ngày).
                 var usage = contract?.Fees.Where(f => f.FeeTypeId == fee.Id && (f.Covers(today) || f.EffectiveFrom > today))
                     .MinBy(f => f.EffectiveFrom);
                 return new FeeUsageRowDto(room.Id, room.Code, room.Floor, contract?.Id, contract?.ContractNo,
@@ -66,10 +63,6 @@ public enum FeeUsageAction
 
 public sealed record FeeUsageResultRow(Guid ContractId, bool Succeeded, string? ErrorCode, string? ErrorMessage);
 
-/// <summary>
-/// FE-UC-08: thêm / bớt một dịch vụ cho nhiều HĐ một lúc — mỗi HĐ áp từ kỳ chưa chốt đầu tiên của nó (CT-BR-06, CT-UC-05), transaction riêng,
-/// HĐ lỗi không làm hỏng HĐ khác (kết quả từng phòng). <c>Quantity</c> / <c>UnitPriceOverride</c> chỉ dùng khi thêm.
-/// </summary>
 public sealed record BulkContractFeeCommand(
     Guid FeeTypeId, FeeUsageAction Action, IReadOnlyList<Guid> ContractIds, decimal? Quantity, decimal? UnitPriceOverride)
     : IRequest<Result<IReadOnlyList<FeeUsageResultRow>>>;

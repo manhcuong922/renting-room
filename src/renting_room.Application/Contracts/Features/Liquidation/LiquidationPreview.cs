@@ -10,9 +10,6 @@ namespace renting_room.Application.Contracts;
 
 public sealed record LiquidationUnpaidInvoiceDto(Guid InvoiceId, string? InvoiceNo, string BillingMonth, InvoiceType Type, decimal Outstanding);
 
-/// <param name="FinalInvoiceStatus">null = chưa lập phiếu quyết toán.</param>
-/// <param name="Blockers">Các mã sẽ chặn "hoàn tất thanh lý" nếu bấm ngay bây giờ (CT-BR-12).</param>
-/// <param name="NeedsDebtDecision">Còn nợ ⇒ khi hoàn tất phải chọn "đã thu toàn bộ" hoặc "bỏ nợ".</param>
 public sealed record LiquidationPreviewDto(
     ContractStatus Status, DateOnly? ActualEndDate, IReadOnlyList<LiquidationUnpaidInvoiceDto> UnpaidInvoices, decimal Outstanding, decimal RefundDue,
     IReadOnlyList<Guid> MissingFinalReadingMeterIds, Guid? FinalInvoiceId, InvoiceStatus? FinalInvoiceStatus, bool HasOtherDraftInvoices,
@@ -20,9 +17,6 @@ public sealed record LiquidationPreviewDto(
 
 public sealed record GetLiquidationPreviewQuery(Guid ContractId) : IRequest<Result<LiquidationPreviewDto>>;
 
-/// <summary>
-/// CT-UC-08: tổng hợp một lần những gì cần xem trước khi hoàn tất thanh lý — cùng các điều kiện mà lệnh hoàn tất kiểm (CT-BR-12), chỉ đọc.
-/// </summary>
 public sealed class GetLiquidationPreviewHandler(
     IContractQueries contracts, IInvoiceQueries invoiceQueries, IRoomChargeQueries roomCharges, ContractMeterReadings meterReadings, TimeProvider clock)
     : IRequestHandler<GetLiquidationPreviewQuery, Result<LiquidationPreviewDto>>

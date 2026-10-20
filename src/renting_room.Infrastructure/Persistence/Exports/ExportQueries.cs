@@ -15,7 +15,6 @@ internal sealed class ExportQueries(AppDbContext db) : IExportQueries
         ExportRentersQuery request, DateOnly from, DateOnly to, CancellationToken cancellationToken) =>
         await Renters(request, from, to).ToListAsync(cancellationToken);
 
-    /// <summary>Người ở có thời gian ở giao với [from, to] trong HĐ đã bàn giao (nháp / đã hủy không tính).</summary>
     private IQueryable<RenterExportRow> Renters(ExportRentersQuery request, DateOnly fromDate, DateOnly toDate)
     {
         var query =

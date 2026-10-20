@@ -2,7 +2,6 @@ using renting_room.Domain.Common;
 
 namespace renting_room.Domain.Properties;
 
-/// <summary>Nhóm phòng trong cùng 1 khu (VD "Tầng 3") — dùng để áp điều chỉnh giá theo nhóm (M07).</summary>
 public sealed class RoomGroup : TenantEntity
 {
     private readonly List<RoomGroupMember> _members = [];
@@ -30,7 +29,6 @@ public sealed class RoomGroup : TenantEntity
         Description = TextNormalizer.TrimToNull(description);
     }
 
-    /// <summary>Thay toàn bộ thành viên. Phòng phải cùng khu — kiểm ở Application và chặn bởi FK composite (PR-BR-07).</summary>
     public void SetMembers(IEnumerable<Guid> roomIds)
     {
         var target = roomIds.ToHashSet();

@@ -12,11 +12,6 @@ namespace renting_room.Application.Contracts;
 public sealed record DataReviewIssue(
     Guid ContractId, string ContractNo, string PropertyCode, string RoomCode, string Code, string Message, Guid? RenterId, string? RenterName);
 
-/// <summary>
-/// CT-UC-20 (Q10): rà HĐ đang hiệu lực / đang thanh lý tìm dữ liệu cần xem lại — thường do sửa hồ sơ sau khi ký hoặc dữ liệu cũ.
-/// Chỉ đọc, không sửa gì. Gồm: quan hệ người ở không còn hợp lý (CT-BR-28..30), người đứng tên &lt; 18 tuổi tại ngày ký,
-/// một người ở 2 phòng (CT-BR-31), khoản thu chưa có giá (dịch vụ của HĐ + điện nước theo công tơ của phòng — sẽ không lập được phiếu, M07).
-/// </summary>
 public sealed record GetContractDataReviewQuery(Guid? PropertyId) : IRequest<IReadOnlyList<DataReviewIssue>>;
 
 public sealed class GetContractDataReviewHandler(
@@ -47,7 +42,6 @@ public sealed class GetContractDataReviewHandler(
             DataReviewIssue Issue(string code, string message, Guid? renterId = null) => new(
                 c.Id, c.ContractNo, property, room, code, message, renterId, renterId is { } id ? people.GetValueOrDefault(id).Name : null);
 
-            // Quan hệ người ở theo hồ sơ hiện tại (người còn ở hoặc sắp vào).
             var staying = c.Occupants.Where(o => o.MoveOutDate is null || o.MoveOutDate >= today).ToList();
             if (people.TryGetValue(c.ReferenceRenterId, out var reference))
             {
@@ -84,7 +78,6 @@ public sealed class GetContractDataReviewHandler(
         return contracts.ToDictionary(c => c.Id, c => (codes[c.RoomId].PropertyCode, codes[c.RoomId].RoomCode));
     }
 
-    /// <summary>CT-BR-31 rà lại trên dữ liệu đã lưu (dữ liệu cũ trước khi có kiểm tra, hoặc nhập lùi ngày).</summary>
     private static IEnumerable<DataReviewIssue> LivingInTwoRooms(
         List<Contract> contracts, Dictionary<Guid, (string Property, string Room)> codes, Dictionary<Guid, string> names, DateOnly today)
     {

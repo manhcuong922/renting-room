@@ -12,7 +12,6 @@ using renting_room.Security;
 
 namespace renting_room.Controllers;
 
-/// <summary>Khu trọ (M02) — chủ trọ và phó quản lý.</summary>
 [ApiController]
 [Route("api/v1")]
 [Tags("Properties")]

@@ -368,7 +368,7 @@ từ phòng 203 sang 206 ngày 13/10):
   hiển thị dữ liệu hiện tại của khu/phòng/người thuê kèm ghi chú "sẽ chốt khi kích hoạt").
 - **Tab Người ở**: `occupants` (đang ở = `moveOutDate` null hoặc ≥ hôm nay), nút Thêm / Chuyển đi.
 - **Tab Giá thuê**: `rentTerms` theo thời gian (dòng cuối có `effectiveFrom` ≤ hôm nay là giá hiện hành) + nút Sửa giá thuê.
-- **Tab Tài sản bàn giao**: `assets`, cột tình trạng khi trả hiện ở giai đoạn thanh lý (bồi thường: thêm phụ thu trên phiếu quyết toán).
+- **Tab Tài sản bàn giao**: `assets`, cột tình trạng khi trả hiện ở giai đoạn thanh lý (bồi thường: thêm phụ thu trên hóa đơn trả phòng).
 - **Tab Xe**: `vehicles` (đang gửi = `registeredTo` null).
 - **Tab Kỳ thu**: `GET /contracts/{id}/billing-periods`.
 - **Tab Nội quy**: `houseRulesSnapshot`.
@@ -453,7 +453,7 @@ UI: trang "Cần xem lại" hoặc badge số lượng trên dashboard; mỗi d�
 
 - `PUT /contracts/{id}` — `{ "contract": { …như khi tạo… }, "version": "965" }` → 204. Đổi người đứng tên / người ở mà còn xe đăng ký cho người không thuộc HĐ nữa → 422 `VEHICLE_OWNER_NOT_IN_CONTRACT` (kết thúc đăng ký xe đó trước). **Thay toàn bộ** nội dung, kể cả danh sách
   `occupants`, `templateId`, `customFields` (gửi đủ). Văn bản (tiêu đề, điều khoản, trường) chỉ sửa được khi còn nháp. Không đổi được phòng — muốn đổi phòng thì hủy nháp và tạo mới.
-- `POST /contracts/{id}/cancel` — `{ "reason": "Khách đổi ý" }` (bắt buộc, ≤ 500) → 204. Xe đã đăng ký ở nháp được giải phóng biển số.
+- `POST /contracts/{id}/cancel` — `{ "reason": "Khách đổi ý" }` (bắt buộc, ≤ 500) → **200** `{ "warnings": [] }` (đổi 20/10/2026, trước là 204). Xe đã đăng ký ở nháp được giải phóng biển số. Nháp ký lại ⇒ HĐ cũ: cọc về `Holding`, xe kết thúc lúc ký lại **mở lại**; biển số đã đăng ký ở HĐ khác ⇒ cảnh báo `VEHICLE_NOT_RESTORED` (kèm biển số trong `message`), xe đó giữ trạng thái kết thúc — hiện cảnh báo cho chủ trọ.
 
 ## Kích hoạt (bàn giao phòng)
 
@@ -739,7 +739,7 @@ chuyển tiếp (chuyển thẳng → 400 `ROOM_TRANSFER_INVALID_DATE`).
 
 `transferDeposit` (mặc định `true`): cọc của HĐ cũ ghi **"Đã chuyển sang HĐ mới"** (HĐ mới chép cọc thỏa thuận); `false` ⇒ HĐ cũ vẫn
 "Đang giữ cọc" để đánh dấu hoàn trả sau ([Tiền cọc](#tiền-cọc)). Ký lại không thành (17/10/2026): **hủy HĐ nháp mới** hoặc **hủy thanh lý
-HĐ cũ** ⇒ cọc HĐ cũ tự về `Holding` (UI tải lại chi tiết HĐ cũ).
+HĐ cũ** ⇒ cọc HĐ cũ tự về `Holding`, xe kết thúc lúc ký lại **mở lại** trên HĐ cũ (20/10/2026); biển số đã ở HĐ khác ⇒ cảnh báo `VEHICLE_NOT_RESTORED` trong response của lệnh hủy. Hủy thanh lý khi nháp ký lại vẫn còn ⇒ xe cùng biển số trên nháp bị kết thúc (nhả biển số), nháp giữ nguyên. UI tải lại chi tiết HĐ cũ.
 
 → **201** `{ "id": "<HĐ nháp mới>", "warnings": [] }`. Trong 1 thao tác:
 1. HĐ cũ **bắt đầu thanh lý** tại `handoverDate` (lý do `MutualAgreement`, ghi chú tự sinh).
@@ -818,16 +818,18 @@ Cảnh báo (trong `warnings` của chi tiết HĐ khi đang thanh lý): `LESSOR
 { "conditionAtReturn": "Hỏng remote" }
 ```
 
-Chỉ ghi tình trạng. **Bồi thường = phụ thu** "Bồi thường …" chủ trọ thêm trên nháp phiếu quyết toán ([invoices.md](invoices.md)).
+Chỉ ghi tình trạng. **Bồi thường = phụ thu** "Bồi thường …" chủ trọ thêm trên nháp hóa đơn trả phòng ([invoices.md](invoices.md)).
 
-### Hủy thanh lý — `POST /contracts/{id}/liquidation/cancel` → quay lại `Active`.
+### Hủy thanh lý — `POST /contracts/{id}/liquidation/cancel` → quay lại `Active`, **200** `{ "warnings": [] }` (đổi 20/10/2026, trước là 204).
+
+Thanh lý để ký lại ⇒ cọc về `Holding`, xe kết thúc lúc ký lại mở lại; `warnings` có thể chứa `VEHICLE_NOT_RESTORED` (xem [Ký lại](#ký-lại-cho-người-còn-ở)).
 
 Bị chặn nếu phòng đã có HĐ mới (409 `ROOM_PERIOD_OVERLAP`), người ở đã sang phòng khác (409 `OCCUPANT_LIVES_ELSEWHERE`), hoặc
-phiếu quyết toán **đã chốt** (422 `FINAL_INVOICE_FINALIZED` — hủy phiếu đó trước). Nháp quyết toán bị xóa, chỉ số cuối bị hủy.
+hóa đơn trả phòng **đã chốt** (422 `FINAL_INVOICE_FINALIZED` — hủy phiếu đó trước). Nháp quyết toán bị xóa, chỉ số cuối bị hủy.
 
-### Lập phiếu quyết toán — `POST /contracts/{id}/final-invoice`
+### Lập hóa đơn trả phòng — `POST /contracts/{id}/final-invoice`
 
-Bước trả phòng sau khi bắt đầu thanh lý: nhập **chỉ số cuối** từng công tơ (ngày trả phòng) → hệ thống lập **phiếu quyết toán nháp**
+Bước trả phòng sau khi bắt đầu thanh lý: nhập **chỉ số cuối** từng công tơ (ngày trả phòng) → hệ thống lập **hóa đơn trả phòng nháp**
 (`summary.type = "Final"` — xem [invoices.md](invoices.md#phiếu-quyết-toán)) — sửa tay / phụ thu (VD phạt báo trễ) như phiếu thường rồi chốt.
 
 ```json
@@ -840,7 +842,7 @@ Bước trả phòng sau khi bắt đầu thanh lý: nhập **chỉ số cuối*
 |-----|---------|
 | 422 `FINAL_READING_REQUIRED` (`meterIds`) | Thiếu chỉ số cuối của công tơ nào |
 | 422 `READING_NOT_MONOTONIC` | Chỉ số cuối nhỏ hơn chỉ số trước |
-| 409 `FINAL_INVOICE_EXISTS` | Đã có phiếu quyết toán — mở phiếu đó |
+| 409 `FINAL_INVOICE_EXISTS` | Đã có hóa đơn trả phòng — mở phiếu đó |
 | 409 `INVOICE_DRAFT_EXISTS` | Còn phiếu nháp — chốt / xóa trước |
 | 422 `PREVIOUS_PERIOD_NOT_BILLED` | Chưa lập phiếu các kỳ trước |
 | 422 `CONTRACT_NOT_LIQUIDATING` | HĐ chưa bắt đầu thanh lý |
@@ -867,10 +869,10 @@ Một lần gọi cho màn hình "Thanh lý": còn gì chưa xong trước khi b
 | `blockers` | Các mã **sẽ chặn** Hoàn tất nếu bấm ngay: `CONTRACT_NOT_LIQUIDATING`, `LIQUIDATION_BEFORE_END_DATE`, `FINAL_READING_REQUIRED`, `INVOICE_DRAFT_EXISTS`, `FINAL_INVOICE_REQUIRED`, `REFUND_PENDING` — hiện thành danh sách việc cần làm |
 | `canComplete` | `blockers` rỗng ⇒ bật nút Hoàn tất |
 | `needsDebtDecision` | Còn nợ (`outstanding > 0`) ⇒ khi hoàn tất phải chọn "Đã thu toàn bộ" hoặc "Bỏ nợ" (xem dưới) |
-| `missingFinalReadingMeterIds` | Công tơ chưa có chỉ số cuối tại ngày trả phòng — nhập khi lập phiếu quyết toán |
-| `finalInvoiceId` / `finalInvoiceStatus` | `null` = chưa lập phiếu quyết toán; `Draft` = cần chốt; `Finalized` = xong |
+| `missingFinalReadingMeterIds` | Công tơ chưa có chỉ số cuối tại ngày trả phòng — nhập khi lập hóa đơn trả phòng |
+| `finalInvoiceId` / `finalInvoiceStatus` | `null` = chưa lập hóa đơn trả phòng; `Draft` = cần chốt; `Finalized` = xong |
 | `hasOtherDraftInvoices` | Còn phiếu nháp kỳ thường — chốt hoặc xóa |
-| `pendingRoomCharges` | Số khoản phát sinh chưa lên phiếu — sẽ vào phiếu quyết toán khi lập / tính lại |
+| `pendingRoomCharges` | Số khoản phát sinh chưa lên phiếu — sẽ vào hóa đơn trả phòng khi lập / tính lại |
 | `refundDue` | Tiền chờ hoàn cho người thuê — xác nhận đã hoàn trên phiếu |
 | `deposit` | Trạng thái cọc — không chặn hoàn tất |
 
@@ -883,7 +885,7 @@ HĐ không tồn tại → 404.
 ```
 
 Điều kiện (lỗi theo thứ tự): từ ngày `actualEndDate` (`LIQUIDATION_BEFORE_END_DATE`) · có chỉ số cuối mọi công tơ (`FINAL_READING_REQUIRED`) ·
-không còn phiếu nháp (`INVOICE_DRAFT_EXISTS`) · **phiếu quyết toán đã chốt** (`FINAL_INVOICE_REQUIRED`) · không còn phiếu chờ hoàn
+không còn phiếu nháp (`INVOICE_DRAFT_EXISTS`) · **hóa đơn trả phòng đã chốt** (`FINAL_INVOICE_REQUIRED`) · không còn phiếu chờ hoàn
 (`REFUND_PENDING`). **Cọc không chặn** — sau khi kết thúc, HĐ chưa đánh dấu hoàn cọc hiện nhắc "Chưa hoàn cọc" ([Tiền cọc](#tiền-cọc)).
 
 **Còn nợ** (phiếu đã chốt chưa thu đủ) và không gửi `settlement` → 422 `CONTRACT_HAS_DEBT` (body có `outstanding`) — UI hiện cảnh báo
@@ -895,7 +897,7 @@ không còn phiếu nháp (`INVOICE_DRAFT_EXISTS`) · **phiếu quyết toán đ
 | **Bỏ nợ** (người thuê trốn / không đòi được) | `{ "settlement": "WriteOff", "reason": "Bỏ đi không trả" }` | Đóng nợ không thu tiền, phiếu thành `WrittenOff`, **không tính doanh thu**; `reason` bắt buộc; chủ trọ hoặc phó quản lý được cấp quyền (403 `WRITE_OFF_NOT_ALLOWED`) |
 
 → 204, HĐ `Ended`, đóng người ở và xe. Sau đó không ghi / đảo phiếu thu cho HĐ này (`CONTRACT_NOT_BILLABLE`).
-Bồi thường tài sản: thêm **phụ thu** trên nháp phiếu quyết toán. Phòng vẫn tính "Đang thuê"
+Bồi thường tài sản: thêm **phụ thu** trên nháp hóa đơn trả phòng. Phòng vẫn tính "Đang thuê"
 **trong ngày trả phòng**, sang hôm sau mới Trống.
 
 ## Tài sản bàn giao (khi còn nháp)

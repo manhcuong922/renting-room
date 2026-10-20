@@ -9,8 +9,6 @@ using renting_room.Domain.Common;
 
 namespace renting_room.Application.Imports;
 
-// PR-UC-11: import phòng từ Excel — xem trước (không giữ) → sửa → lưu dòng hợp lệ
-/// <summary>PR-UC-11 bước 1: đọc file, kiểm từng dòng — <b>không lưu gì, server không giữ gì</b>.</summary>
 public sealed record PreviewRoomImportCommand(Guid PropertyId, byte[] Content) : IRequest<Result<ImportPreviewDto<RoomImportRow>>>;
 
 public sealed class PreviewRoomImportHandler(

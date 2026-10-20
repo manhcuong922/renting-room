@@ -11,7 +11,6 @@ using renting_room.Domain.Properties;
 
 namespace renting_room.Application.Meters;
 
-// MT-UC-01: lắp công tơ hàng loạt cho nhiều phòng của khu
 public sealed record BulkInstallRowError(int Index, Guid RoomId, string Code, string Message);
 
 public sealed record BulkInstallResult(int Installed, IReadOnlyList<Guid> MeterIds);
@@ -35,7 +34,6 @@ public sealed class BulkInstallMetersCommandValidator : AbstractValidator<BulkIn
     }
 }
 
-/// <summary>Mỗi dòng = đúng lệnh lắp công tơ đơn (MT-BR-01/02); kiểm hết các dòng — lỗi bất kỳ ⇒ không lưu dòng nào (MT-BR-07).</summary>
 public sealed class BulkInstallMetersHandler(
     IFeeQueries fees, IRoomQueries rooms, IMeterRepository meterRepository, IMeterQueries meterQueries, IUnitOfWork unitOfWork)
     : IRequestHandler<BulkInstallMetersCommand, Result<BulkInstallResult>>

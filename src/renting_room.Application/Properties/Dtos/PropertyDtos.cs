@@ -9,14 +9,9 @@ public sealed record AddressInput(string StreetAddress, string CommuneName, stri
 
 public sealed record LandParcelInput(string? ParcelNo, string? MapSheetNo, string? OwnershipCertificateNo);
 
-/// <summary>
-/// Cài đặt kỳ thu của khu (PR-BR-09): ngày chốt 1–28, thu trước / thu sau, hạn thanh toán, tính kỳ lẻ, số ngày báo trước gợi ý,
-/// làm tròn tổng phiếu xuống nghìn (BL-BR-29 — null = bật).
-/// </summary>
 public sealed record PropertyBillingInput(
     int AnchorDay, ChargeMode ChargeMode, int PaymentDueDays, ProrationMode ProrationMode, int NoticeDays, bool? RoundInvoiceTotal = null);
 
-/// <summary>Một lần đổi ngày chốt / cách thu khi khu đã có phiếu (K4): kỳ chuyển tiếp [EffectiveFrom, TransitionEnd].</summary>
 public sealed record BillingChangeDto(
     DateOnly EffectiveFrom, DateOnly TransitionEnd, int AnchorDay, ChargeMode ChargeMode, int DeviationDays, int AdjustDays);
 
@@ -34,7 +29,6 @@ public sealed record PropertySummaryDto(
     bool LessorComplete,
     bool IsArchived);
 
-/// <summary>Số giấy tờ bên cho thuê chỉ trả 4 số cuối (LEG-06) — xem đầy đủ qua endpoint reveal có ghi log.</summary>
 public sealed record LessorDto(
     LessorType Type,
     string Name,
@@ -73,7 +67,6 @@ public sealed record PropertyDetailDto(
 
 internal static class PropertyMapping
 {
-    /// <summary><c>lessor</c> = bên cho thuê hiệu lực (PR-BR-17): riêng của khu, không có thì của chủ trọ (<c>LessorInherited</c>).</summary>
     public static async Task<PropertyDetailDto> ToDetailAsync(this Property p, IOrganizationQueries organizations, DateOnly today, CancellationToken ct)
     {
         var (lessor, inherited) = await LessorSource.EffectiveAsync(organizations, p, ct);

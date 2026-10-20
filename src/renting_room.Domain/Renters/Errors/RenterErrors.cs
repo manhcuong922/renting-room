@@ -14,7 +14,6 @@ public static class RenterErrors
     public static readonly Error IdNumberExists = Error.Conflict("RENTER_ID_NUMBER_EXISTS",
         "Số giấy tờ đã có trong hệ thống — hãy dùng lại hồ sơ cũ (một người được đứng tên nhiều phòng).");
 
-    /// <summary>RT-BR-02: kèm <c>existingRenterId</c> để UI mở / chọn hồ sơ cũ.</summary>
     public static readonly Error IdNumberRequired = Error.Validation("ID_NUMBER_REQUIRED", "Từ 14 tuổi phải có số giấy tờ.");
 
     public static Error IdNumberExistsFor(Guid existingRenterId) => IdNumberExists.WithDetail("existingRenterId", existingRenterId);

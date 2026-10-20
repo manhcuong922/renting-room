@@ -13,7 +13,6 @@ public sealed class CancelRoomChargeCommandValidator : AbstractValidator<CancelR
     public CancelRoomChargeCommandValidator() => RuleFor(x => x.Reason).RequiredText(300, "Lý do hủy");
 }
 
-/// <summary>BL-BR-35: hủy khoản chưa nằm trên phiếu đã chốt; đang trên nháp ⇒ xóa dòng.</summary>
 public sealed class CancelRoomChargeHandler(RoomChargeBilling roomCharges, TimeProvider clock)
     : IRequestHandler<CancelRoomChargeCommand, Result<RoomChargeDto>>
 {

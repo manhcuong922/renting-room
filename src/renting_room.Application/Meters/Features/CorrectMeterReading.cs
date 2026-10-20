@@ -19,8 +19,7 @@ public sealed class CorrectMeterReadingCommandValidator : AbstractValidator<Corr
     }
 }
 
-/// <summary>MT-UC-06: sửa chỉ số nhập sai (VD chỉnh chỉ số nhận phòng 100 → 108) — vẫn đơn điệu; đã dùng cho phiếu đã chốt ⇒ khóa (MT-BR-06).</summary>
-public sealed class CorrectMeterReadingHandler(IMeterRepository meters, IMeterQueries meterQueries, IInvoiceQueries invoices, IUnitOfWork unitOfWork)
+public sealed class CorrectMeterReadingHandler(IMeterRepository meters, IMeterQueries meterQueries, IInvoiceQueries invoices, IUnitOfWork unitOfWork, MeterDraftRefresher drafts)
     : IRequestHandler<CorrectMeterReadingCommand, Result<MeterReadingDto>>
 {
     public async ValueTask<Result<MeterReadingDto>> Handle(CorrectMeterReadingCommand request, CancellationToken cancellationToken)
@@ -30,6 +29,7 @@ public sealed class CorrectMeterReadingHandler(IMeterRepository meters, IMeterQu
             return MeterErrors.ReadingNotFound;
 
         await using var transaction = await unitOfWork.BeginTransactionAsync(cancellationToken);
+        var affected = await drafts.LockContractsAsync([meterId.Value], cancellationToken);
         var meter = (await meters.LockAndLoadAsync([meterId.Value], cancellationToken)).Single();
         if ((await invoices.GetLockedReadingIdsAsync([meter.Id], cancellationToken)).Contains(request.ReadingId))
             return MeterErrors.ReadingLocked;
@@ -37,6 +37,7 @@ public sealed class CorrectMeterReadingHandler(IMeterRepository meters, IMeterQu
         if (corrected.IsFailure)
             return corrected.Error!;
 
+        await drafts.RecalculateAsync(affected, cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return corrected.Value!.ToDto();

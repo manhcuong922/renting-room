@@ -17,7 +17,6 @@ public sealed class ReversePaymentCommandValidator : AbstractValidator<ReversePa
     public ReversePaymentCommandValidator() => RuleFor(x => x.Reason).RequiredText(500, "Lý do đảo");
 }
 
-/// <summary>PM-UC-04 / PM-BR-07: đảo phiếu thu nhập sai — hủy phân bổ, giảm tiền đã thu của các phiếu báo.</summary>
 public sealed class ReversePaymentHandler(
     IPaymentRepository payments, IPaymentQueries paymentQueries, IInvoiceRepository invoices, IInvoiceQueries invoiceQueries,
     IContractQueries contracts, IUnitOfWork unitOfWork, TimeProvider clock)
@@ -56,8 +55,12 @@ internal static class PaymentReversal
 
         var ids = reversed.Value!.Select(a => a.InvoiceId).ToList();
         var invoices = await invoiceRepository.LockForUpdateAsync(ids, ct);
+        // Phiếu hoàn tiền đã giảm "đã thu" của hóa đơn ⇒ đảo nó là tăng lại, không được vượt tổng.
+        var sign = payment.Kind == PaymentKind.Refund ? 1 : -1;
+        if (sign > 0 && reversed.Value!.Any(a => invoices[a.InvoiceId].PaidAmount + a.Amount > invoices[a.InvoiceId].TotalAmount))
+            return PaymentErrors.ExceedsDebt;
         foreach (var (invoiceId, amount) in reversed.Value!)
-            invoices[invoiceId].ApplyPayment(-amount, payment.Kind == PaymentKind.WriteOff);
+            invoices[invoiceId].ApplyPayment(sign * amount, payment.Kind == PaymentKind.WriteOff);
         return payment;
     }
 }

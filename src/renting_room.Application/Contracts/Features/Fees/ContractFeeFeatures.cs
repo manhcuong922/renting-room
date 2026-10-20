@@ -35,10 +35,6 @@ internal static class ContractFeeRules
 
     public static bool IsValidOverride(decimal? p) => p is null || (p >= 0 && p <= MaxOverride && decimal.Round(p.Value, 2) == p);
 
-    /// <summary>
-    /// Chuyển yêu cầu thành dữ liệu domain: khoản thu phải thuộc khu của HĐ và chưa ngừng dùng; dịch vụ khác <c>PerUnit</c> luôn số lượng 1.
-    /// Điện / nước theo công tơ đi theo công tơ của phòng, không gắn vào HĐ (FE-BR-17).
-    /// </summary>
     public static Result<ContractFeeInput> ToInput(FeeType? fee, Guid propertyId, decimal? quantity, decimal? unitPriceOverride)
     {
         if (fee is null || fee.PropertyId != propertyId)
@@ -53,9 +49,6 @@ internal static class ContractFeeRules
         return new ContractFeeInput(fee.Id, fee.IsPerUnit ? quantity ?? fee.AttachQuantity : 1, unitPriceOverride);
     }
 
-    /// <summary>
-    /// <paramref name="requested"/> null ⇒ gắn các khoản "tự gắn" của khu (FE-UC-01); danh sách rỗng ⇒ không khoản nào.
-    /// </summary>
     public static async Task<Result<IReadOnlyCollection<ContractFeeInput>>> ResolveAsync(
         IFeeQueries feeQueries, Guid propertyId, IReadOnlyList<ContractFeeRequest>? requested, CancellationToken ct)
     {
@@ -78,10 +71,6 @@ internal static class ContractFeeRules
         return inputs;
     }
 
-    /// <summary>
-    /// Khoản thu gắn với HĐ + điện / nước theo công tơ mà <b>phòng thực có công tơ</b> trong thời gian HĐ (FE-BR-17, M06) —
-    /// phòng tính nước theo đầu người không có công tơ nước nên không có dòng nước theo công tơ.
-    /// </summary>
     public static async Task<IReadOnlyDictionary<Guid, FeeType>> LoadTypesAsync(
         IFeeQueries fees, IMeterQueries meters, Contract contract, CancellationToken ct)
     {
@@ -111,9 +100,6 @@ internal static class ContractFeeRules
     }
 }
 
-// ============================================================ HĐ đang hiệu lực: đổi / gỡ khoản thu từ đầu kỳ
-
-/// <param name="EffectiveFrom">Bỏ trống ⇒ kỳ chưa chốt đầu tiên (CT-UC-05).</param>
 public sealed record ChangeContractFeeCommand(Guid ContractId, Guid FeeTypeId, decimal? Quantity, decimal? UnitPriceOverride, DateOnly? EffectiveFrom)
     : IRequest<Result>;
 
@@ -128,7 +114,6 @@ public sealed class ChangeContractFeeCommandValidator : AbstractValidator<Change
     }
 }
 
-/// <summary>CT-BR-06: đổi số lượng / giá riêng hoặc gắn thêm khoản thu từ đầu một kỳ chưa chốt phiếu.</summary>
 public sealed class ChangeContractFeeHandler(ContractMutation mutation, IFeeQueries fees, IPropertyQueries properties, IInvoiceLockReader invoiceLocks)
     : IRequestHandler<ChangeContractFeeCommand, Result>
 {

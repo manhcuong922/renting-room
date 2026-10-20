@@ -10,8 +10,6 @@ using renting_room.Application.Rooms;
 
 namespace renting_room.Application.Properties;
 
-// ============================================================ Cài đặt kỳ thu của khu (PR-BR-09, K4 — BL-BR-28)
-
 internal static class BillingChangePlanner
 {
     /// <summary>
@@ -27,10 +25,6 @@ internal static class BillingChangePlanner
 
 public sealed record TransitionRoomDto(Guid ContractId, string RoomCode, decimal MonthlyRent, decimal PerDay, decimal SuggestedAmount);
 
-/// <param name="EffectiveFrom">Đầu kỳ chuyển tiếp (null = khu chưa có phiếu ⇒ áp lại từ đầu, không có kỳ chuyển tiếp).</param>
-/// <param name="DeviationDays">Kỳ chuyển tiếp dư (+) / thiếu (−) so với kỳ theo ngày chốt cũ.</param>
-/// <param name="SuggestedAdjustDays">BL-BR-28: lệch ≤ 3 ngày ⇒ 0; còn lại đủ số ngày lệch. Chủ trọ chọn 0..dư (hoặc thiếu..0).</param>
-/// <param name="Rooms">HĐ đang ở: tiền phòng 1 ngày (theo kỳ cũ) và số tiền ứng với số ngày gợi ý.</param>
 public sealed record BillingChangePreviewDto(
     DateOnly? EffectiveFrom,
     DateOnly? TransitionEnd,
@@ -41,7 +35,6 @@ public sealed record BillingChangePreviewDto(
     bool HasDraftInvoices,
     IReadOnlyList<TransitionRoomDto> Rooms);
 
-/// <summary>K4: xem trước kỳ chuyển tiếp khi đổi ngày chốt / thu trước–thu sau (chưa lưu).</summary>
 public sealed record PreviewBillingChangeQuery(Guid PropertyId, int AnchorDay, ChargeMode ChargeMode) : IRequest<Result<BillingChangePreviewDto>>;
 
 public sealed class PreviewBillingChangeQueryValidator : AbstractValidator<PreviewBillingChangeQuery>
@@ -82,7 +75,6 @@ public sealed class PreviewBillingChangeHandler(IPropertyQueries properties, ICo
     }
 }
 
-/// <param name="TransitionAdjustDays">Số ngày tiền phòng cộng (+) / trừ (−) ở kỳ chuyển tiếp; null = gợi ý (BL-BR-28).</param>
 public sealed record UpdatePropertyBillingCommand(Guid PropertyId, PropertyBillingInput Billing, int? TransitionAdjustDays)
     : IRequest<Result<PropertyDetailDto>>;
 
@@ -95,10 +87,6 @@ public sealed class UpdatePropertyBillingCommandValidator : AbstractValidator<Up
     }
 }
 
-/// <summary>
-/// PR-BR-09 / K4: hạn thanh toán, tính kỳ lẻ, báo trước áp ngay. Đổi ngày chốt / thu trước–thu sau: khu chưa có phiếu ⇒ áp lại từ đầu; đã có
-/// ⇒ từ kỳ chưa lập phiếu đầu tiên của khu với kỳ chuyển tiếp (đổi lại khi kỳ đó chưa lập phiếu ⇒ ghi đè). Còn phiếu nháp ⇒ 422.
-/// </summary>
 public sealed class UpdatePropertyBillingHandler(
     IPropertyRepository properties, IPropertyQueries queries, IOrganizationQueries organizations, IUnitOfWork unitOfWork, TimeProvider clock)
     : IRequestHandler<UpdatePropertyBillingCommand, Result<PropertyDetailDto>>
