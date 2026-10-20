@@ -30,7 +30,7 @@ public sealed class CreateRoomChargeCommandValidator : AbstractValidator<CreateR
 }
 
 public sealed class CreateRoomChargeHandler(
-    IUnitOfWork unitOfWork, IRoomQueries rooms, IContractQueries contracts, IInvoiceQueries invoiceQueries, IRoomChargeRepository roomChargeRepository,
+    IUnitOfWork unitOfWork, IRoomQueries rooms, IContractQueries contracts, IRoomChargeRepository roomChargeRepository,
     IRoomChargeQueries roomChargeQueries, RoomChargeBilling roomCharges, TimeProvider clock)
     : IRequestHandler<CreateRoomChargeCommand, Result<RoomChargeDto>>
 {
@@ -47,9 +47,8 @@ public sealed class CreateRoomChargeHandler(
 
         await using var transaction = await unitOfWork.BeginTransactionAsync(cancellationToken);
         await unitOfWork.LockForUpdateAsync<Contract>(tenancy.Id, cancellationToken);
-        var status = (await contracts.GetStatusAsync(tenancy.Id, cancellationToken))!.Value;
-        var finalClosed = await invoiceQueries.HasFinalizedFinalAsync(tenancy.Id, cancellationToken);
-        if (status == ContractStatus.Ended || (status == ContractStatus.Liquidating && finalClosed))
+        // Hóa đơn trả phòng đã chốt ⇒ khoản chờ, xác nhận khi hoàn tất thanh lý (M05 CT-BR-12); HĐ đã kết thúc ⇒ không còn nơi xử lý.
+        if (await contracts.GetStatusAsync(tenancy.Id, cancellationToken) == ContractStatus.Ended)
             return RoomChargeErrors.NoOpenInvoice;
 
         if (request.Kind == RoomChargeKind.Credit && request.Settlement is null

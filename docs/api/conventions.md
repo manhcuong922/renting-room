@@ -142,7 +142,8 @@ Vượt giới hạn → **429 `TOO_MANY_REQUESTS`** + header `Retry-After` (gi�
 | `Gender` | `Male` Nam · `Female` Nữ · `Other` Khác |
 | `LessorType` | `Individual` Cá nhân · `Organization` Tổ chức |
 | `ChargeMode` | `Prepaid` Thu đầu kỳ (điện nước tính kỳ trước) · `Postpaid` Thu cuối kỳ |
-| `ProrationMode` | `Daily` Tính theo ngày ở · `FullPeriod` Tính tròn tháng |
+| `ProrationMode` | `Daily` Tính theo ngày ở · `FullPeriod` Tính tròn tháng (kỳ lẻ khi vào ở) |
+| `FinalPeriodCharge` | `FullPeriod` Thu trọn kỳ (mặc định) · `Daily` Tính theo ngày ở · `None` Không thu — kỳ cuối khi trả phòng |
 | `RoomDisplayStatus` | `Vacant` Trống · `Reserved` Giữ chỗ · `Occupied` Đang thuê · `Maintenance` Bảo trì · `Archived` Ngừng dùng |
 | `ContractStatus` | `Draft` Nháp · `Active` Đang hiệu lực · `Liquidating` Đang thanh lý · `Ended` Đã kết thúc · `Cancelled` Đã hủy |
 | `PaymentMethod` | `Cash` Tiền mặt · `BankTransfer` Chuyển khoản · `EWallet` Ví điện tử |

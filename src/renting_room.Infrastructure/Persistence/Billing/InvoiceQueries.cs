@@ -105,6 +105,20 @@ internal sealed class InvoiceQueries(AppDbContext db) : IInvoiceQueries
                 i.PeriodStart))
             .ToListAsync(cancellationToken);
 
+    public async Task<IReadOnlyList<Guid>> ListRefundPendingIdsAsync(Guid contractId, CancellationToken cancellationToken) =>
+        await db.Invoices.Where(i => i.ContractId == contractId && i.Status == InvoiceStatus.Finalized && i.TotalAmount < 0 && i.RefundedOn == null)
+            .Select(i => i.Id).ToListAsync(cancellationToken);
+
+    public async Task<IReadOnlyList<InvoiceFromEndRow>> ListRegularEndingAfterAsync(Guid contractId, DateOnly date, CancellationToken cancellationToken) =>
+        await db.Invoices.AsNoTracking()
+            .Where(i => i.ContractId == contractId && i.Type == InvoiceType.Regular && i.Status != InvoiceStatus.Void && i.PeriodEnd > date)
+            .OrderBy(i => i.PeriodStart)
+            .Select(i => new InvoiceFromEndRow(i.Id, i.InvoiceNo, i.PeriodStart, i.PeriodEnd, i.Status, i.TotalAmount, i.PaidAmount,
+                // Nháp kỳ sau ngày trả phòng tự xóa khi bắt đầu thanh lý (CT-BR-11) ⇒ không bắt hủy.
+                !(i.Status == InvoiceStatus.Draft && i.PeriodStart > date)
+                && (i.PeriodStart > date || (i.PeriodEnd > date && i.Segments.Any(s => !s.Voided && (s.UsageStart == null || s.UsageStart == i.PeriodStart))))))
+            .ToListAsync(cancellationToken);
+
     public async Task<IReadOnlyList<InvoicePeriodRow>> ListPeriodsAsync(Guid contractId, CancellationToken cancellationToken) =>
         await db.Invoices.AsNoTracking().Where(i => i.ContractId == contractId && i.Status != InvoiceStatus.Void)
             .Select(i => new InvoicePeriodRow(i.Type, i.Status, i.PeriodStart, i.PeriodEnd)).ToListAsync(cancellationToken);
@@ -140,7 +154,11 @@ internal sealed class InvoiceQueries(AppDbContext db) : IInvoiceQueries
         db.Invoices.AnyAsync(i => i.ContractId == contractId && i.Status != InvoiceStatus.Void && i.Status == InvoiceStatus.Draft, cancellationToken);
 
     public Task<bool> HasInvoiceAfterAsync(Guid contractId, DateOnly date, CancellationToken cancellationToken) =>
-        db.Invoices.AnyAsync(i => i.ContractId == contractId && i.Status != InvoiceStatus.Void && i.PeriodStart > date, cancellationToken);
+        db.Invoices.AnyAsync(i => i.ContractId == contractId && i.Status != InvoiceStatus.Void
+            // Kỳ sau ngày trả phòng, hoặc đã tính điện của chính kỳ chứa ngày trả phòng (khu thu sau) — điện tới cuối kỳ, sau ngày trả phòng.
+            // Số chốt đọc sáng ngày chốt kỳ sau vẫn thuộc kỳ trước nên không xét ngày đọc số.
+            && (i.PeriodStart > date || (i.PeriodEnd > date && i.Segments.Any(s => !s.Voided && (s.UsageStart == null || s.UsageStart == i.PeriodStart)))),
+            cancellationToken);
 
     public Task<bool> HasInvoiceForRoomFromAsync(Guid contractId, Guid roomId, DateOnly date, CancellationToken cancellationToken) =>
         db.Invoices.AnyAsync(i => i.ContractId == contractId && i.Status != InvoiceStatus.Void && i.RoomId == roomId
@@ -209,13 +227,14 @@ internal sealed class InvoiceQueries(AppDbContext db) : IInvoiceQueries
                 .ToListAsync(cancellationToken))
             .Select(s => (s.MeterId, s.EndReadingId, s.PeriodStart)).ToList();
 
-        List<decimal>? rentLines = null;
+        List<(Guid InvoiceId, decimal Amount)>? rentLines = null;
         var hasRegular = false;
         if (isFinal)
         {
-            rentLines = await others.SelectMany(i => i.Lines)
-                .Where(l => l.Type == InvoiceLineType.Rent && l.ServiceFrom <= periodStart && l.ServiceTo >= periodStart)
-                .Select(l => l.Amount).ToListAsync(cancellationToken);
+            rentLines = (await others.SelectMany(i => i.Lines)
+                    .Where(l => l.Type == InvoiceLineType.Rent && l.ServiceFrom <= periodStart && l.ServiceTo >= periodStart)
+                    .Select(l => new { l.InvoiceId, l.Amount }).ToListAsync(cancellationToken))
+                .Select(l => (l.InvoiceId, l.Amount)).ToList();
             hasRegular = await others.AnyAsync(i => i.Type == InvoiceType.Regular && i.PeriodStart == periodStart, cancellationToken);
         }
         var recent = (await others.Where(i => i.Type == InvoiceType.Regular && i.PeriodStart < periodStart)

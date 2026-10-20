@@ -151,6 +151,11 @@ public sealed class ContractsController(ISender sender) : ControllerBase
     public async Task<IResult> RefundDeposit(Guid id, RefundDepositRequest b, CancellationToken ct) =>
         (await sender.Send(new RefundDepositCommand(id, b.RefundedOn, b.Amount, b.Note), ct)).ToHttp();
 
+    [HttpPost("contracts/{id:guid}/deposit/forfeit")]
+    [EndpointSummary("\"Không trả cọc\" — cọc không hoàn, lý do bắt buộc (M08 PM-BR-33)")]
+    public async Task<IResult> ForfeitDeposit(Guid id, ForfeitDepositRequest b, CancellationToken ct) =>
+        (await sender.Send(new ForfeitDepositCommand(id, b.Date, b.Note), ct)).ToHttp();
+
     [HttpDelete("contracts/{id:guid}/deposit/refund")]
     [EndpointSummary("Bỏ đánh dấu hoàn trả / chuyển cọc (nhập nhầm)")]
     public async Task<IResult> CancelDepositRefund(Guid id, CancellationToken ct) =>
@@ -177,15 +182,26 @@ public sealed class ContractsController(ISender sender) : ControllerBase
     public async Task<IResult> GiveNotice(Guid id, GiveNoticeRequest b, CancellationToken ct) =>
         (await sender.Send(new GiveNoticeCommand(id, b.NoticeDate, b.PlannedMoveOutDate), ct)).ToHttp();
 
+    [HttpDelete("contracts/{id:guid}/notice")]
+    [EndpointSummary("Rút báo trả phòng — người thuê ở tiếp (CT-UC-07)")]
+    public async Task<IResult> WithdrawNotice(Guid id, CancellationToken ct) =>
+        (await sender.Send(new WithdrawNoticeCommand(id), ct)).ToHttp();
+
     [HttpGet("contracts/{id:guid}/liquidation/preview")]
-    [EndpointSummary("Xem trước thanh lý: phiếu còn nợ, tiền chờ hoàn, chỉ số cuối còn thiếu, hóa đơn trả phòng, cọc, những gì còn chặn hoàn tất")]
-    public async Task<IResult> PreviewLiquidation(Guid id, CancellationToken ct) =>
-        (await sender.Send(new GetLiquidationPreviewQuery(id), ct)).ToHttp();
+    [EndpointSummary("Màn thanh lý: kỳ cuối, kỳ trước chưa có hóa đơn, hóa đơn tháng từ ngày trả phòng, nợ, tiền cần trả lại, khoản chưa xử lý, cọc " +
+        "(HĐ còn hiệu lực: ?actualEndDate= để xem trước)")]
+    public async Task<IResult> PreviewLiquidation(Guid id, DateOnly? actualEndDate, CancellationToken ct) =>
+        (await sender.Send(new GetLiquidationPreviewQuery(id, actualEndDate), ct)).ToHttp();
 
     [HttpPost("contracts/{id:guid}/liquidation/start")]
     [EndpointSummary("Bắt đầu thanh lý (bên cho thuê đơn phương ⇒ phải nêu căn cứ Điều 172)")]
     public async Task<IResult> StartLiquidation(Guid id, StartLiquidationRequest b, CancellationToken ct) =>
-        (await sender.Send(new StartLiquidationCommand(id, b.ActualEndDate, b.Reason, b.Ground, b.Note), ct)).ToHttp();
+        (await sender.Send(new StartLiquidationCommand(id, b.ActualEndDate, b.Reason, b.Ground, b.Note, b.FinalPeriodCharge), ct)).ToHttp();
+
+    [HttpPut("contracts/{id:guid}/liquidation/final-period-charge")]
+    [EndpointSummary("Kỳ cuối: FullPeriod / null = thu trọn kỳ (mặc định), Daily = theo ngày ở, None = không thu — nháp hóa đơn trả phòng tự tính lại (CT-BR-11)")]
+    public async Task<IResult> ChangeFinalPeriodCharge(Guid id, FinalPeriodChargeRequest b, CancellationToken ct) =>
+        (await sender.Send(new ChangeFinalPeriodChargeCommand(id, b.FinalPeriodCharge), ct)).ToHttp();
 
     [HttpPost("contracts/{id:guid}/liquidation/cancel")]
     [EndpointSummary("Hủy thanh lý, quay lại đang hiệu lực")]
@@ -193,10 +209,12 @@ public sealed class ContractsController(ISender sender) : ControllerBase
         (await sender.Send(new CancelLiquidationCommand(id), ct)).ToWarnings();
 
     [HttpPost("contracts/{id:guid}/liquidation/complete")]
-    [EndpointSummary("Hoàn tất thanh lý: cần hóa đơn trả phòng đã chốt; còn nợ ⇒ settlement CollectAll (đã thu toàn bộ) / WriteOff (bỏ nợ)")]
+    [EndpointSummary("Hoàn tất thanh lý một lần: refund (cần trả lại), pendingCharges (khoản chưa xử lý), settlement (còn nợ: CollectAll / WriteOff), " +
+        "deposit (trả / không trả / để sau) — cần hóa đơn trả phòng đã chốt khi còn phần chưa thu")]
     public async Task<IResult> CompleteLiquidation(
         Guid id, [FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] CompleteLiquidationRequest? body, CancellationToken ct) =>
-        (await sender.Send(new CompleteLiquidationCommand(id, body?.Settlement, body?.Method, body?.PaidAt, body?.Reason), ct)).ToHttp();
+        (await sender.Send(new CompleteLiquidationCommand(id, body?.Settlement, body?.Method, body?.PaidAt, body?.Reason, body?.Refund,
+            body?.PendingCharges, body?.Deposit), ct)).ToHttp();
 
     [HttpPost("contracts/{id:guid}/final-invoice")]
     [Idempotent(required: false)]

@@ -26,7 +26,8 @@ internal static class RoomStatusQuery
                     c.StartDate,
                     c.EndDate,
                     c.Occupants.Count(o => o.MoveInDate <= today && (o.MoveOutDate == null || o.MoveOutDate >= today)),
-                    null))
+                    null,
+                    c.Status == ContractStatus.Liquidating ? c.ActualEndDate : c.Status == ContractStatus.Active ? c.PlannedMoveOutDate : null))
                 .FirstOrDefault(),
             Outstanding = db.Invoices.Where(i => db.Contracts.Any(c => c.Id == i.ContractId && c.RoomId == r.Id)
                     && i.Status == InvoiceStatus.Finalized && i.PaidAmount < i.TotalAmount)

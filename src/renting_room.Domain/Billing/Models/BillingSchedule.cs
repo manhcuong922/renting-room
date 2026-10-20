@@ -80,6 +80,14 @@ public sealed class BillingSchedule
         return (decimal)(to.DayNumber - start.DayNumber + 1) / standard.Days * standard.RentMonths;
     }
 
+    /// <summary>Phần số ngày [<paramref name="start"/>, <paramref name="end"/>] trong kỳ chuẩn chứa <paramref name="start"/> (≤ 1).</summary>
+    public decimal DayFactor(DateOnly start, DateOnly end)
+    {
+        var standard = StandardPeriodContaining(start);
+        var to = end < standard.End ? end : standard.End;
+        return Math.Min((decimal)(to.DayNumber - start.DayNumber + 1) / standard.Days, 1);
+    }
+
     public BillingSchedule ChangeFrom(DateOnly from, int anchorDay, ChargeMode chargeMode, int? adjustDays)
     {
         if (StandardPeriodContaining(from).Start != from)

@@ -184,7 +184,9 @@ public sealed class BillingTests(ApiFactory factory)
         var skipped = await GenerateAsync(s, s.Start);
         skipped.GetProperty("skipped")[0].GetProperty("reason").GetString().Should().Be("EXISTS");
 
-        // CT-BR-11: còn phiếu kỳ sau ngày trả phòng ⇒ không bắt đầu thanh lý.
+        // CT-BR-11: còn hóa đơn đã chốt của kỳ sau ngày trả phòng ⇒ không bắt đầu thanh lý (nháp kỳ sau thì tự xóa — 20/10/2026).
+        await FinalizeAsync(s, Id(await InvoiceForAsync(s, s.Start)));
+        await FinalizeAsync(s, Id(invoice));
         (await (await _client.PostJsonAsync($"/api/v1/contracts/{s.ContractId}/liquidation/start",
                 new { actualEndDate = s.Start.AddDays(20), reason = "MutualAgreement" }, s.Token))
             .ReadProblemCodeAsync()).Should().Be("INVOICE_AFTER_END_DATE");
@@ -259,7 +261,7 @@ public sealed class BillingTests(ApiFactory factory)
         // Đã đóng trọn tiền phòng tháng 2 nhưng ở 15 ngày ⇒ phiếu quyết toán nhắc phần thu thừa, không tự hoàn.
         var moveOut = secondMonth.AddDays(14);
         (await _client.PostJsonAsync($"/api/v1/contracts/{s.ContractId}/liquidation/start",
-            new { actualEndDate = moveOut, reason = "MutualAgreement" }, s.Token)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+            new { actualEndDate = moveOut, reason = "MutualAgreement", finalPeriodCharge = "Daily" }, s.Token)).StatusCode.Should().Be(HttpStatusCode.NoContent);
         var final = await (await _client.PostJsonAsync($"/api/v1/contracts/{s.ContractId}/final-invoice",
             new { finalReadings = new[] { new { meterId = s.MeterId, value = (decimal?)170 } } }, s.Token)).ReadAsync<JsonElement>();
         final.GetProperty("issues").EnumerateArray().Select(i => i.GetProperty("code").GetString()).Should().Contain("RENT_OVERPAID");

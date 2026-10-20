@@ -1,4 +1,5 @@
 using renting_room.Application.Common.Interfaces;
+using renting_room.Application.Fees;
 using renting_room.Domain.Billing;
 using renting_room.Domain.Common;
 using renting_room.Domain.Contracts;
@@ -11,8 +12,18 @@ namespace renting_room.Application.Billing;
 /// gọi, đã khóa HĐ và hóa đơn nguồn.
 /// </summary>
 public sealed class ReadingAdjustmentCharges(
-    IRoomChargeRepository charges, IInvoiceRepository invoices, RoomChargeBilling roomCharges, IUnitOfWork unitOfWork, TimeProvider clock)
+    IRoomChargeRepository charges, IInvoiceRepository invoices, RoomChargeBilling roomCharges, IFeeQueries fees, IUnitOfWork unitOfWork,
+    TimeProvider clock)
 {
+    /// <summary>Dòng lập trước khi lưu bộ giá (BL-BR-39) ⇒ bản giá hiệu lực ngày cuối kỳ của dòng; dòng đã có bộ giá ⇒ null.</summary>
+    public async Task<LinePrice?> FallbackPriceAsync(InvoiceLine line, CancellationToken ct)
+    {
+        if (line.Price is not null)
+            return null;
+        var fee = await fees.GetWithPricesAsync(line.FeeTypeId!.Value, ct);
+        return fee?.ResolvePrice(line.ServiceTo) is { } price ? LinePrice.Of(price, line.SystemQuantity ?? line.Quantity) : null;
+    }
+
     /// <summary>
     /// Khoản hiện có của dòng nguồn. Khoản đã thanh toán — đã trả / thu ngay, hoặc đã nằm trên hóa đơn đã chốt — thì tiền đã đi rồi: sửa / hủy nó
     /// làm trả / thu 2 lần ⇒ <see cref="MeterErrors.AdjustmentAlreadyBilled"/>.

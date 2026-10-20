@@ -24,6 +24,20 @@ public sealed class RefundDepositHandler(ContractMutation mutation, TimeProvider
             contract.RefundDeposit(request.RefundedOn, request.Amount, request.Note, clock.GetUtcNow().ToBusinessDate())), cancellationToken));
 }
 
+public sealed record ForfeitDepositCommand(Guid ContractId, DateOnly Date, string Note) : IRequest<Result>;
+
+public sealed class ForfeitDepositCommandValidator : AbstractValidator<ForfeitDepositCommand>
+{
+    public ForfeitDepositCommandValidator() => RuleFor(x => x.Note).RequiredText(500, "Lý do không trả cọc");
+}
+
+public sealed class ForfeitDepositHandler(ContractMutation mutation, TimeProvider clock) : IRequestHandler<ForfeitDepositCommand, Result>
+{
+    public ValueTask<Result> Handle(ForfeitDepositCommand request, CancellationToken cancellationToken) =>
+        new(mutation.RunAsync(request.ContractId, contract => Task.FromResult(
+            contract.ForfeitDeposit(request.Date, request.Note, clock.GetUtcNow().ToBusinessDate())), cancellationToken));
+}
+
 public sealed record CancelDepositRefundCommand(Guid ContractId) : IRequest<Result>;
 
 public sealed class CancelDepositRefundHandler(ContractMutation mutation) : IRequestHandler<CancelDepositRefundCommand, Result>

@@ -6,5 +6,8 @@ public enum DepositStatus
 
     Refunded,
 
-    Transferred
+    Transferred,
+
+    /// <summary>Không hoàn cọc (mất cọc theo điều khoản) — PM-BR-33, lý do bắt buộc.</summary>
+    Forfeited
 }

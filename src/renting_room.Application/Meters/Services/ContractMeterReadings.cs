@@ -6,7 +6,8 @@ using renting_room.Domain.Meters;
 namespace renting_room.Application.Meters;
 
 /// <param name="Value">null = "Dùng số mới nhất" (chỉ số gần nhất ≤ ngày) — chỉ cho chỉ số nhận phòng.</param>
-public sealed record MeterReadingInput(Guid MeterId, decimal? Value);
+/// <param name="CorrectPreviousFinal">Chỉ số nhận phòng nhỏ hơn số cuối của HĐ trước: "số cuối người cũ gõ nhầm" ⇒ điều chỉnh số đó (M05 CT-BR-02).</param>
+public sealed record MeterReadingInput(Guid MeterId, decimal? Value, bool CorrectPreviousFinal = false);
 
 public sealed class ContractMeterReadings(IMeterRepository meters, IMeterQueries meterQueries)
 {

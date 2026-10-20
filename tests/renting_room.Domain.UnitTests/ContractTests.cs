@@ -528,4 +528,33 @@ public sealed class ContractTests
         contract.DepositStatus.Should().Be(DepositStatus.Transferred);
         contract.DepositNote.Should().Contain("HD2026-0002");
     }
+
+    [Fact]
+    public void WithdrawNotice_ClearsNotice_SecondTimeRefused_MoveOutDateFollowsStatus()
+    {
+        var contract = NewActive();
+        var planned = contract.StartDate.AddMonths(2);
+        contract.GiveNotice(contract.StartDate.AddMonths(1), planned).IsSuccess.Should().BeTrue();
+        contract.MoveOutDate.Should().Be(planned);
+
+        contract.WithdrawNotice().IsSuccess.Should().BeTrue();
+        contract.PlannedMoveOutDate.Should().BeNull();
+        contract.MoveOutDate.Should().BeNull();
+        contract.WithdrawNotice().Error.Should().Be(ContractErrors.NoticeNotGiven);
+    }
+
+    [Fact]
+    public void ForfeitDeposit_RequiresReason_ThenCancelReturnsToHolding()
+    {
+        var contract = NewActive();
+        var today = contract.StartDate.AddMonths(1);
+        contract.ForfeitDeposit(today, " ", today).Error.Should().Be(ContractErrors.ForfeitReasonRequired);
+
+        contract.ForfeitDeposit(today, "Trả phòng trước hạn", today).IsSuccess.Should().BeTrue();
+        contract.DepositStatus.Should().Be(DepositStatus.Forfeited);
+        contract.DepositRefundedAmount.Should().Be(0);
+        contract.ForfeitDeposit(today, "Lần 2", today).Error.Should().Be(ContractErrors.DepositAlreadyRefunded);
+        contract.CancelDepositRefund().IsSuccess.Should().BeTrue();
+        contract.DepositStatus.Should().Be(DepositStatus.Holding);
+    }
 }

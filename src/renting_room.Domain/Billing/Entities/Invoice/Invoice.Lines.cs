@@ -13,7 +13,8 @@ public sealed partial class Invoice
             return Result.Failure(BillingErrors.LineNotFound);
         if (!line.IsSystem)
             return UpdateManualLine(lineId, line.Description, quantity, unitPrice, amount ?? Math.Abs(line.Amount), note);
-        if (line.Type == InvoiceLineType.Rent && string.IsNullOrWhiteSpace(note))
+        // Hóa đơn trả phòng: mọi dòng sửa tay phải có lý do để người thuê thấy rõ (M07 BL-UC-11); phiếu tháng chỉ bắt buộc với tiền phòng.
+        if ((line.Type == InvoiceLineType.Rent || Type == InvoiceType.Final) && string.IsNullOrWhiteSpace(note))
             return Result.Failure(BillingErrors.NoteRequired);
 
         var q = quantity ?? line.Quantity;

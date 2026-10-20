@@ -24,6 +24,25 @@ public sealed partial class Contract
         return Result.Success();
     }
 
+    /// <summary>PM-BR-33 "Không trả cọc": cọc đang giữ ⇒ không hoàn, ghi ngày + lý do.</summary>
+    public Result ForfeitDeposit(DateOnly date, string? note, DateOnly today)
+    {
+        if (!HasDeposit)
+            return Result.Failure(ContractErrors.NoDeposit);
+        if (DepositStatus != DepositStatus.Holding)
+            return Result.Failure(ContractErrors.DepositAlreadyRefunded);
+        if (date > today)
+            return Result.Failure(ContractErrors.InvalidRefundDate);
+        if (TextNormalizer.TrimToNull(note) is not { } reason)
+            return Result.Failure(ContractErrors.ForfeitReasonRequired);
+
+        DepositStatus = DepositStatus.Forfeited;
+        DepositRefundedOn = date;
+        DepositRefundedAmount = 0;
+        DepositNote = reason;
+        return Result.Success();
+    }
+
     public Result CancelDepositRefund()
     {
         if (DepositStatus == DepositStatus.Holding)

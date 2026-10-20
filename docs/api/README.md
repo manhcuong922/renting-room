@@ -13,6 +13,13 @@
 > **Thêm 18/10/2026:** thực thu tách khỏi bỏ nợ — hiện "Đã thu" bằng `collectedAmount`, thêm "Đã bỏ nợ" `writtenOffAmount` ([invoices.md](invoices.md),
 > [payments.md](payments.md)); `segments` có `roomCode` / ngày để hiện từng phòng dưới dòng Điện; **điều chỉnh chỉ số đã chốt**
 > `POST /meter-readings/{id}/adjust` tự tạo khoản bù / phụ thu ([meters.md](meters.md#điều-chỉnh-chỉ-số-đã-chốt-18102026--mt-uc-09)).
+> **Đổi 20/10/2026 — Lượt 2 (UI cần sửa):** màn thanh lý gom tất cả + hoàn tất một lần (`refund`, `pendingCharges`, `deposit` trong body;
+> `REFUND_PENDING` không còn là blocker — [contracts.md](contracts.md#thanh-lý)); kỳ cuối `finalPeriodCharge` **Thu trọn kỳ (mặc định)** / Theo ngày ở / Không thu (áp cả dịch vụ), màn thanh lý hiện số tiền 3 cách; kỳ ảo ⇒
+> "Coi như trả phòng từ `lastBilledEnd`"; không còn gì để thu ⇒ không cần hóa đơn trả phòng (`finalInvoiceRequired`); sửa tay hóa đơn trả phòng bắt buộc
+> lý do; `RENT_OVERPAID` có `amount` / `ref` (nút "Thêm hoàn trả"); chi tiết hóa đơn trả phòng có `finalPeriod`;
+> cọc "Không trả cọc" (`Forfeited`); báo trả phòng ⇒ bỏ qua hóa đơn tháng (`MOVE_OUT_NOTICED`), nhãn `moveOutDate`, rút báo trả phòng; khoản tạo được sau
+> khi chốt hóa đơn trả phòng; điều chỉnh số cuối sau thanh lý (`handling: AfterEnd`, `POST /room-charges/{id}/waive`), người mới nhập số nhỏ hơn
+> (`HANDOVER_BELOW_PREVIOUS_FINAL`, `correctPreviousFinal`); điều chỉnh làm hóa đơn tháng âm ⇒ `ADJUSTMENT_NEGATIVE_TOTAL` ([meters.md](meters.md)).
 > [`openapi.json`](openapi.json): danh sách endpoint và kiểu **request** đầy đủ; **hầu hết endpoint chưa khai kiểu response** —
 > cấu trúc dữ liệu trả về lấy từ ví dụ JSON trong các file `.md` này, không sinh kiểu response từ `openapi.json`.
 

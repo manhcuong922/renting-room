@@ -33,6 +33,12 @@ public interface IInvoiceQueries
 
     Task<IReadOnlyList<InvoiceBalanceRow>> ListForBalanceAsync(Guid contractId, CancellationToken cancellationToken);
 
+    /// <summary>Hóa đơn đã chốt tổng âm chưa xác nhận đã hoàn (Chờ hoàn) của HĐ.</summary>
+    Task<IReadOnlyList<Guid>> ListRefundPendingIdsAsync(Guid contractId, CancellationToken cancellationToken);
+
+    /// <summary>M05 CT-UC-08: hóa đơn tháng chưa hủy có kỳ kết thúc sau <paramref name="date"/> (kỳ chứa / sau ngày trả phòng).</summary>
+    Task<IReadOnlyList<InvoiceFromEndRow>> ListRegularEndingAfterAsync(Guid contractId, DateOnly date, CancellationToken cancellationToken);
+
     Task<IReadOnlyList<InvoicePeriodRow>> ListPeriodsAsync(Guid contractId, CancellationToken cancellationToken);
 
     Task<IReadOnlyList<PreviousDebtDto>> ListPreviousDebtsAsync(
@@ -92,6 +98,11 @@ public sealed record InvoiceBalanceRow(
     Guid Id, string? InvoiceNo, DateOnly BillingMonth, InvoiceType Type, InvoiceStatus Status, decimal TotalAmount, decimal PaidAmount,
     decimal WrittenOffAmount, DateOnly? DueDate, DateOnly PeriodStart);
 
+/// <param name="MustCancel">Kỳ bắt đầu sau ngày trả phòng hoặc đã tính điện nước tới sau ngày đó — phải hủy mới thanh lý được (CT-BR-11).</param>
+public sealed record InvoiceFromEndRow(
+    Guid InvoiceId, string? InvoiceNo, DateOnly PeriodStart, DateOnly PeriodEnd, InvoiceStatus Status, decimal TotalAmount, decimal PaidAmount,
+    bool MustCancel);
+
 public sealed record InvoicePeriodRow(InvoiceType Type, InvoiceStatus Status, DateOnly PeriodStart, DateOnly PeriodEnd);
 
 public sealed record InvoiceRef(Guid Id, string? InvoiceNo, InvoiceStatus Status, DateOnly BillingMonth);
@@ -112,5 +123,5 @@ public sealed record MeteredUsageRow(Guid ContractId, Guid FeeTypeId, DateOnly P
 
 public sealed record InvoiceSourceData(
     IReadOnlyList<Meter> Meters, IReadOnlyList<(Guid MeterId, Guid EndReadingId, DateOnly PeriodStart)> PreviousSegments,
-    IReadOnlyList<decimal>? FinalRentAmounts, bool HasRegularInFinalPeriod, IReadOnlyList<(Guid FeeTypeId, DateOnly PeriodStart, decimal Quantity)> RecentUsage,
+    IReadOnlyList<(Guid InvoiceId, decimal Amount)>? FinalRentAmounts, bool HasRegularInFinalPeriod, IReadOnlyList<(Guid FeeTypeId, DateOnly PeriodStart, decimal Quantity)> RecentUsage,
     HashSet<Guid> ClosedReadingIds, IReadOnlyDictionary<Guid, string> RoomCodes);

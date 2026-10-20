@@ -8,6 +8,7 @@ public static class ContractErrors
     public static readonly Error ContractNoTaken = Error.Conflict("CONTRACT_NO_TAKEN", "Số hợp đồng đã tồn tại.");
     public static readonly Error NotDraft = Error.BusinessRule("CONTRACT_NOT_DRAFT", "Chỉ thao tác được khi hợp đồng còn là bản nháp.");
     public static readonly Error NotActive = Error.BusinessRule("CONTRACT_NOT_ACTIVE", "Hợp đồng không ở trạng thái đang hiệu lực.");
+    public static readonly Error NoticeNotGiven = Error.BusinessRule("NOTICE_NOT_GIVEN", "Hợp đồng chưa báo trả phòng.");
     public static readonly Error NotLiquidating = Error.BusinessRule("CONTRACT_NOT_LIQUIDATING", "Hợp đồng không ở trạng thái đang thanh lý.");
     public static readonly Error NotEditable = Error.BusinessRule("CONTRACT_NOT_EDITABLE", "Hợp đồng đã kết thúc hoặc đã hủy.");
     public static readonly Error NoDeposit = Error.BusinessRule("NO_DEPOSIT", "Hợp đồng không có cọc.");
@@ -17,6 +18,7 @@ public static class ContractErrors
     public static readonly Error InvalidRefundAmount = Error.Validation("INVALID_REFUND_AMOUNT",
         "Số tiền hoàn trả từ 0 đến số tiền cọc; trả ít hơn cọc thì ghi rõ lý do.");
     public static readonly Error InvalidRefundDate = Error.Validation("INVALID_REFUND_DATE", "Ngày hoàn trả không được ở tương lai.");
+    public static readonly Error ForfeitReasonRequired = Error.Validation("REQUIRED", "Nhập lý do không trả cọc.");
     public static readonly Error TransferSameRoom = Error.Validation("ROOM_TRANSFER_SAME_ROOM", "Phòng mới trùng phòng hiện tại.");
     public static readonly Error TransferOtherProperty = Error.BusinessRule("ROOM_TRANSFER_OTHER_PROPERTY",
         "Chỉ chuyển sang phòng cùng khu — khác khu thì thanh lý và lập HĐ mới (chuyển cọc).");
@@ -106,7 +108,7 @@ public static class ContractErrors
     public static readonly Error IndefiniteGroundOnly = Error.BusinessRule("INDEFINITE_GROUND_ONLY",
         "Căn cứ \"thông báo chấm dứt hợp đồng không thời hạn\" chỉ dùng cho hợp đồng không thời hạn.");
     public static readonly Error InvoiceAfterEndDate = Error.BusinessRule("INVOICE_AFTER_END_DATE",
-        "Đã có phiếu tiền phòng cho kỳ sau ngày trả phòng — hủy / xóa phiếu đó trước.");
+        "Đã có hóa đơn tháng cho kỳ sau ngày trả phòng (hoặc đã tính điện nước tới sau ngày đó) — hủy / xóa hóa đơn đó trước (đã thu ⇒ đảo phiếu thu trước).");
     public static readonly Error NotExpired = Error.BusinessRule("CONTRACT_NOT_EXPIRED", "Hợp đồng chưa quá ngày hết hạn.");
     public static readonly Error HoldoverAlready = Error.Conflict("HOLDOVER_ALREADY", "Đã ghi nhận ở tiếp chưa ký lại.");
     public static readonly Error ResignNoOccupantLeft = Error.BusinessRule("RESIGN_NO_OCCUPANT_LEFT",

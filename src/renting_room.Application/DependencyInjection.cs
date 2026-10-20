@@ -30,8 +30,11 @@ public static class DependencyInjection
         services.AddScoped<Billing.MeterDraftRefresher>();
         services.AddScoped<Billing.ReadingAdjustmentCharges>();
         services.AddScoped<Payments.WriteOffReduction>();
+        services.AddScoped<Meters.AfterEndAdjustment>();
+        services.AddScoped<Meters.PreviousFinalCorrection>();
         services.AddScoped<Meters.ContractMeterReadings>();
         services.AddScoped<Contracts.ContractMutation>();
+        services.AddScoped<Contracts.LiquidationDrafts>();
         services.AddScoped<Contracts.OccupantChecks>();
         services.AddScoped<Contracts.ResignVehicleRestorer>();
         services.AddScoped<Contracts.ContractPaperWarnings>();

@@ -1,4 +1,5 @@
 using renting_room.Domain.Common;
+using renting_room.Domain.Meters;
 
 namespace renting_room.Domain.Billing;
 
@@ -51,14 +52,19 @@ public sealed partial class Invoice
         if (change.IsFailure)
             return change;
 
-        var (line, _, newQuantity, _, newAmount, _) = change.Value!;
-        var price = (line.Price ?? fallbackPrice)!.WithQuantity(newQuantity);
-        var clamped = line.ApplyAdjustment(newQuantity, newAmount, change.Value!.Difference, price);
+        var preview = change.Value!;
+        var line = preview.Line;
+        var lineAmount = line.IsManuallyEdited ? Math.Max(line.Amount + preview.Difference, 0) : preview.NewAmount;
+        if (RejectsNegative(NetCharges - line.Amount + lineAmount))
+            return Result.Failure<MeteredLineChange>(MeterErrors.AdjustmentNegativeTotal);
+
+        var price = (line.Price ?? fallbackPrice)!.WithQuantity(preview.NewQuantity);
+        var clamped = line.ApplyAdjustment(preview.NewQuantity, preview.NewAmount, preview.Difference, price);
         SegmentEndingAt(endReadingId)!.ChangeEnd(newEndValue);
         Recompute();
         IsAdjusted = true;
         NeedsResend = true;
-        return change.Value with { ManualAmountClamped = clamped };
+        return preview with { ManualAmountClamped = clamped };
     }
 
     public void MarkAdjusted() => IsAdjusted = true;

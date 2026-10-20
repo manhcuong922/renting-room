@@ -56,6 +56,7 @@ internal sealed class ContractConfiguration : IEntityTypeConfiguration<Contract>
         builder.Property(c => c.DepositRefundedAmount).HasColumnType("numeric(18,0)");
         builder.Property(c => c.DepositNote).HasMaxLength(500);
         builder.Ignore(c => c.HasDeposit);
+        builder.Ignore(c => c.MoveOutDate);
         builder.Property(c => c.PaymentMethods)
             .HasColumnType("text[]")
             .HasConversion(
@@ -74,6 +75,7 @@ internal sealed class ContractConfiguration : IEntityTypeConfiguration<Contract>
         builder.Property(c => c.TerminationReason).HasConversion<string>().HasMaxLength(24);
         builder.Property(c => c.TerminationGround).HasConversion<string>().HasMaxLength(32);
         builder.Property(c => c.TerminationNote).HasMaxLength(1000);
+        builder.Property(c => c.FinalPeriodCharge).HasConversion<string>().HasMaxLength(16);
         builder.Property(c => c.HoldoverNote).HasMaxLength(500);
         builder.Property(c => c.CancelReason).HasMaxLength(500);
 

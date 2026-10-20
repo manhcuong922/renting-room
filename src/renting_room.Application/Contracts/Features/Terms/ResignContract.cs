@@ -1,3 +1,5 @@
+using renting_room.Domain.Properties;
+using renting_room.Application.Properties;
 using FluentValidation;
 using Mediator;
 using renting_room.Application.Billing;
@@ -25,7 +27,8 @@ public sealed class ResignContractCommandValidator : AbstractValidator<ResignCon
 
 public sealed class ResignContractHandler(
     ContractMutation mutation, IUnitOfWork unitOfWork, IContractRepository contracts, IContractQueries contractQueries, IInvoiceQueries invoices,
-    OccupantChecks occupantChecks, ICurrentUser currentUser, IContractNumberGenerator numberGenerator, TimeProvider clock)
+    OccupantChecks occupantChecks, ICurrentUser currentUser, IContractNumberGenerator numberGenerator, LiquidationDrafts drafts,
+    IPropertyQueries properties, TimeProvider clock)
     : IRequestHandler<ResignContractCommand, Result<CreatedWithWarnings>>
 {
     public ValueTask<Result<CreatedWithWarnings>> Handle(ResignContractCommand request, CancellationToken cancellationToken) =>
@@ -37,11 +40,18 @@ public sealed class ResignContractHandler(
             if (!await occupantChecks.HasIdNumberAsync(request.RepresentativeRenterId, cancellationToken))
                 return ContractErrors.RepresentativeIdRequired;
 
+            await drafts.DeleteAfterAsync(old.Id, request.HandoverDate, cancellationToken);
             if (await invoices.HasInvoiceAfterAsync(old.Id, request.HandoverDate, cancellationToken))
                 return ContractErrors.InvoiceAfterEndDate;
             var contractNo = await ContractNumbers.NextAsync(contractQueries, numberGenerator, currentUser, clock, cancellationToken);
+            // Người thuê không rời đi: HĐ mới tính tiếp từ X+1 theo "Tính kỳ lẻ" của khu ⇒ kỳ cuối HĐ cũ bù cho đúng 1 kỳ (CT-BR-11);
+            // X là ngày cuối kỳ ⇒ HĐ mới bắt đầu kỳ sau, không chồng ngày ⇒ thu trọn kỳ.
+            var billing = await properties.GetBillingAsync(old.PropertyId, cancellationToken);
+            var finalCharge = billing.Schedule.StandardPeriodContaining(request.HandoverDate).End == request.HandoverDate ? FinalPeriodCharge.FullPeriod
+                : billing.ProrationMode == ProrationMode.Daily ? FinalPeriodCharge.Daily
+                : FinalPeriodCharge.None;
             var liquidation = old.StartLiquidation(request.HandoverDate, TerminationReason.MutualAgreement, null,
-                $"Ký lại cho người còn ở — hợp đồng mới {contractNo}", clock.GetUtcNow().ToBusinessDate());
+                $"Ký lại cho người còn ở — hợp đồng mới {contractNo}", clock.GetUtcNow().ToBusinessDate(), finalCharge);
             if (liquidation.IsFailure)
                 return liquidation.Error!;
 

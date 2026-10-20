@@ -15,6 +15,7 @@ public sealed record BulkReplaceMetersRequest(Guid FeeTypeId, DateOnly ReplacedO
 
 public sealed record VoidReadingRequest(string Reason);
 
-public sealed record AdjustReadingRequest(decimal Value, string Reason, AdjustmentHandling? Handling, AdjustmentSettlement? Settlement);
+public sealed record AdjustReadingRequest(
+    decimal Value, string Reason, AdjustmentHandling? Handling, AdjustmentSettlement? Settlement, bool? NotReturned = null);
 
 public sealed record BulkInstallMetersRequest(Guid FeeTypeId, DateOnly InstalledDate, IReadOnlyList<BulkInstallRow> Rows);

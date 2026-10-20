@@ -193,9 +193,10 @@ public sealed class RoomChargeTests(ApiFactory factory)
     }
 
     [Fact]
-    public async Task MoveOut_ChargeGoesToFinalInvoice_ThenNoOpenInvoice_AndRoomTransferKeepsChargeWithTenant()
+    public async Task MoveOut_ChargeGoesToFinalInvoice_ThenPending_EndedNoOpenInvoice_AndRoomTransferKeepsChargeWithTenant()
     {
-        // 9. Đang thanh lý, chưa có phiếu quyết toán ⇒ khoản vào phiếu quyết toán; đã chốt ⇒ không còn phiếu để đưa vào.
+        // 9. Đang thanh lý, chưa có hóa đơn trả phòng ⇒ khoản vào hóa đơn trả phòng; đã chốt ⇒ khoản chờ, xử lý khi hoàn tất (20/10/2026);
+        // HĐ đã kết thúc ⇒ không còn nơi xử lý.
         var owner = await _client.CreateActiveOwnerAsync();
         var token = owner.Tokens.AccessToken;
         var today = TestData.Today(factory);
@@ -208,6 +209,9 @@ public sealed class RoomChargeTests(ApiFactory factory)
         ChargeLine(final, damage).Should().NotBeNull("bồi thường = phụ thu trên phiếu quyết toán");
         var finalId = final.GetProperty("summary").GetProperty("id").GetGuid();
         (await _client.PostJsonAsync($"/api/v1/invoices/{finalId}/finalize", null, token)).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await CreatedAsync(s, "Surcharge", 50_000, today)).GetProperty("status").GetString().Should().Be("Pending");
+        (await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/liquidation/complete",
+            new { settlement = "CollectAll", pendingCharges = new { method = "Cash" } }, token)).StatusCode.Should().Be(HttpStatusCode.NoContent);
         (await (await CreateAsync(s, "Surcharge", 50_000, today)).ReadProblemCodeAsync()).Should().Be("ROOM_CHARGE_NO_OPEN_INVOICE");
 
         // 10. Chuyển phòng (luôn hôm nay): khoản ghi ở phòng cũ trong ngày chuyển thuộc HĐ đã chuyển đi, đi theo HĐ vào phiếu tháng này.

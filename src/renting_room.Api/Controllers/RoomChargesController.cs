@@ -49,4 +49,9 @@ public sealed class RoomChargesController(ISender sender) : ControllerBase
     [EndpointSummary("Hủy khoản phát sinh (chưa nằm trên phiếu đã chốt)")]
     public async Task<IResult> Cancel(Guid id, CancelRoomChargeRequest b, CancellationToken ct) =>
         (await sender.Send(new CancelRoomChargeCommand(id, b.Reason), ct)).ToHttp();
+
+    [HttpPost("room-charges/{id:guid}/waive")]
+    [EndpointSummary("\"Không trả lại\" khoản Chênh lệch sau thanh lý đang chờ (M06 MT-BR-19) — khoản hủy, báo cáo không đổi")]
+    public async Task<IResult> Waive(Guid id, CancellationToken ct) =>
+        (await sender.Send(new WaiveRoomChargeCommand(id), ct)).ToHttp();
 }

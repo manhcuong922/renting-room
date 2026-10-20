@@ -255,7 +255,7 @@ public sealed class MeterReadingAdjustmentTests(ApiFactory factory)
     }
 
     [Fact]
-    public async Task Liquidating_NextInvoiceGoesToMoveOutInvoice_FinalizedMoveOutOnlyImmediate_EndedRefused()
+    public async Task Liquidating_NextInvoiceGoesToMoveOutInvoice_FinalizedMoveOutOnlyImmediate_EndedGoesAfterEnd()
     {
         var s = await ArrangeAsync();
         var (invoiceId, readingId) = await FinalizedPreviousAsync(s, 1388);
@@ -281,7 +281,9 @@ public sealed class MeterReadingAdjustmentTests(ApiFactory factory)
 
         (await _client.PostJsonAsync($"/api/v1/contracts/{s.ContractId}/liquidation/complete", null, s.Token))
             .StatusCode.Should().Be(HttpStatusCode.NoContent);
-        (await (await AdjustAsync(s, finalReading, 1385, "Immediate")).ReadProblemCodeAsync()).Should().Be("CONTRACT_ENDED");
+        var afterEnd = await OkAsync(await AdjustAsync(s, finalReading, 1385, "Immediate"));
+        afterEnd.GetProperty("handling").GetString().Should().Be("AfterEnd", "HĐ đã kết thúc ⇒ Chênh lệch sau thanh lý (Lượt 2)");
+        afterEnd.GetProperty("payments").EnumerateArray().Should().BeEmpty();
     }
 
     [Fact]
@@ -357,7 +359,7 @@ public sealed class MeterReadingAdjustmentTests(ApiFactory factory)
         var (invoiceId, _) = await FinalizedPreviousAsync(s, 1388);
         await PayAsync(s, invoiceId, Total(await InvoiceAsync(s, invoiceId)));
         (await _client.PostJsonAsync($"/api/v1/contracts/{s.ContractId}/liquidation/start",
-            new { actualEndDate = s.Month, reason = "MutualAgreement" }, s.Token)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+            new { actualEndDate = s.Month, reason = "MutualAgreement", finalPeriodCharge = "Daily" }, s.Token)).StatusCode.Should().Be(HttpStatusCode.NoContent);
         var moveOut = await _client.PostJsonAsync($"/api/v1/contracts/{s.ContractId}/final-invoice",
             new { finalReadings = new[] { new { meterId = s.MeterId, value = 1400m } } }, s.Token);
         var moveOutId = Id(await moveOut.ReadAsync<JsonElement>());
@@ -391,5 +393,32 @@ public sealed class MeterReadingAdjustmentTests(ApiFactory factory)
 
         result.GetProperty("warnings").EnumerateArray().Select(w => w.GetProperty("code").GetString()).Should().Contain("MANUAL_AMOUNT_CLAMPED");
         Metered(result.GetProperty("invoice")).GetProperty("amount").GetDecimal().Should().Be(0);
+    }
+
+    [Fact]
+    public async Task RecalculationWouldMakeMonthlyInvoiceNegative_Rejected_PushToNextInvoiceAllowedEvenUnpaid()
+    {
+        var s = await ArrangeAsync();
+        (await SaveAsync(s, s.Previous, s.Month, 1388)).StatusCode.Should().Be(HttpStatusCode.OK);
+        var draft = await GenerateAsync(s, s.Previous);
+        var rentLine = draft.GetProperty("lines").EnumerateArray().Single(l => l.GetProperty("type").GetString() == "Rent").GetProperty("id").GetGuid();
+        (await _client.PutJsonAsync($"/api/v1/invoices/{Id(draft)}/lines/{rentLine}", new { amount = 3_000_000, note = "Sửa nhà" }, s.Token))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+        (await _client.PostJsonAsync($"/api/v1/invoices/{Id(draft)}/manual-lines",
+            new { type = "ManualDiscount", description = "Miễn tiền tháng sửa nhà", amount = 3_500_000, note = "Sửa nhà" }, s.Token))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+        await FinalizeAsync(s, Id(draft));
+        var before = Total(await InvoiceAsync(s, Id(draft)));
+        before.Should().BeLessThan(50 * Price, "tiền phòng 3.000.000 + điện 524.400 − giảm 3.500.000 (làm tròn)");
+        var readingId = await PeriodicIdAsync(s, 1388);
+
+        (await (await AdjustAsync(s, readingId, 1338)).ReadProblemCodeAsync()).Should().Be("ADJUSTMENT_NEGATIVE_TOTAL");
+        Total(await InvoiceAsync(s, Id(draft))).Should().Be(before, "không đổi gì");
+        (await PeriodicIdAsync(s, 1388)).Should().Be(readingId);
+
+        var pushed = await OkAsync(await AdjustAsync(s, readingId, 1338, "NextInvoice"));
+        pushed.GetProperty("handling").GetString().Should().Be("NextInvoice");
+        pushed.GetProperty("charge").GetProperty("amount").GetDecimal().Should().Be(50 * Price);
+        Total(pushed.GetProperty("invoice")).Should().Be(before);
     }
 }
