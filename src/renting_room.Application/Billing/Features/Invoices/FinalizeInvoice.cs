@@ -21,7 +21,8 @@ public sealed class FinalizeInvoiceHandler(InvoiceFinalizer finalizer) : IReques
 
 public sealed class InvoiceFinalizer(
     IUnitOfWork unitOfWork, IInvoiceRepository invoices, IInvoiceQueries invoiceQueries, IContractRepository contracts, IMeterQueries meters,
-    IPropertyQueries properties, InvoiceInputLoader inputs, IDocumentNumberGenerator numbers, ICurrentUser currentUser, TimeProvider clock)
+    IPropertyQueries properties, InvoiceInputLoader inputs, IDocumentNumberGenerator numbers, ICurrentUser currentUser, FinalInvoiceSettlement settlement,
+    TimeProvider clock)
 {
     public async Task<Result<InvoiceDetailDto>> FinalizeAsync(Guid id, CancellationToken ct)
     {
@@ -60,6 +61,12 @@ public sealed class InvoiceFinalizer(
         var finalized = invoice.Finalize(invoiceNo, today, billing.PaymentDueDays, now);
         if (finalized.IsFailure)
             return finalized.Error!;
+        if (invoice.Type == InvoiceType.Final)
+        {
+            var settled = await settlement.ApplyAsync(contract, invoice, today, ct);
+            if (settled.IsFailure)
+                return settled.Error!;
+        }
 
         await unitOfWork.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);

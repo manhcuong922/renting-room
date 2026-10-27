@@ -11,6 +11,8 @@ public sealed partial class Invoice
         var line = _lines.FirstOrDefault(l => l.Id == lineId);
         if (line is null)
             return Result.Failure(BillingErrors.LineNotFound);
+        if (line.IsSettlement)
+            return Result.Failure(BillingErrors.SettlementLineLocked);
         if (!line.IsSystem)
             return UpdateManualLine(lineId, line.Description, quantity, unitPrice, amount ?? Math.Abs(line.Amount), note);
         // Hóa đơn trả phòng: mọi dòng sửa tay phải có lý do để người thuê thấy rõ (M07 BL-UC-11); phiếu tháng chỉ bắt buộc với tiền phòng.
@@ -35,6 +37,8 @@ public sealed partial class Invoice
         var line = _lines.FirstOrDefault(l => l.Id == lineId);
         if (line is null)
             return Result.Failure(BillingErrors.LineNotFound);
+        if (line.IsSettlement)
+            return Result.Failure(BillingErrors.SettlementLineLocked);
         if (!line.IsSystem)
             return RemoveManualLine(lineId);
 

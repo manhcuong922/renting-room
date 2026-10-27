@@ -207,6 +207,7 @@ Người thuê đã đi, mới phát hiện **số cuối lúc trả phòng gõ 
 | 422 `READING_NOT_LOCKED` | Chỉ số chưa dùng cho hóa đơn đã chốt — dùng `PUT` sửa trực tiếp |
 | 422 `READING_NOT_ADJUSTABLE` | Không phải chỉ số cuối của đoạn đo trên hóa đơn đã chốt (VD chỉ số đầu kỳ) |
 | 422 `READING_NEXT_PERIOD_FINALIZED` | Hóa đơn kỳ sau đã chốt, bắt đầu từ chỉ số này — tổng 2 kỳ đã tự bù nhau |
+| 422 `INVOICE_CARRIED_OVER` | (27/10/2026) HĐ chưa kết thúc, nợ của hóa đơn nguồn đã chuyển vào hóa đơn trả phòng (VD thay công tơ trong kỳ, sửa số cuối công tơ cũ) — hủy hóa đơn trả phòng trước |
 | 400 `READING_UNCHANGED` | Số mới trùng số hiện tại |
 | 400 `ADJUSTMENT_HANDLING_REQUIRED` | Hóa đơn đã có tiền mà chưa chọn `handling` |
 | 400 `INVALID_HANDLING` / `INVALID_SETTLED_DATE` | `handling` khác 2 giá trị trên / ngày `settlement` ở tương lai |

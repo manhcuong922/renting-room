@@ -18,10 +18,14 @@ public sealed class GetInvoiceHandler(IInvoiceQueries invoices, IContractQueries
         if (invoice is null)
             return BillingErrors.NotFound;
 
-        var previous = await invoices.ListPreviousDebtsAsync(invoice.ContractId, invoice.Id, invoice.PeriodStart, cancellationToken);
+        // Hóa đơn trả phòng đã gom nợ các hóa đơn trước thành dòng kết toán (BL-BR-41) — không liệt kê / cộng lần 2.
+        var previous = invoice.Type == InvoiceType.Final
+            ? []
+            : await invoices.ListPreviousDebtsAsync(invoice.ContractId, invoice.Id, invoice.PeriodStart, cancellationToken);
         var own = invoice.Status == InvoiceStatus.Draft ? Math.Max(invoice.TotalAmount, 0) : invoice.Outstanding;
         var earlier = await PreviousContractDebtsAsync(invoice.ContractId, cancellationToken);
-        return invoice.ToDetail(clock.GetUtcNow().ToBusinessDate()) with
+        var today = clock.GetUtcNow().ToBusinessDate();
+        return invoice.ToDetail(today, await invoices.LoadAsync(invoice, today, cancellationToken)) with
         {
             PreviousDebts = previous, TotalDue = own + previous.Sum(d => d.Outstanding),
             PreviousContractDebts = earlier, PreviousContractDue = earlier.Sum(d => d.Outstanding),

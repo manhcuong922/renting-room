@@ -20,9 +20,14 @@ internal sealed class InvoiceConfiguration : IEntityTypeConfiguration<Invoice>
             t.HasCheckConstraint("ck_invoices_period", "period_end >= period_start");
             t.HasCheckConstraint("ck_invoices_total", "subtotal + discount_total >= 0 OR status = 'Draft' OR invoice_type = 'Final'");
             t.HasCheckConstraint("ck_invoices_refund",
-                "refund_total <= 0 AND total_amount = subtotal + discount_total + refund_total + rounding_amount");
+                "refund_total <= 0 AND total_amount = subtotal + discount_total + refund_total + settlement_total + rounding_amount");
+            // BL-BR-41: kết toán (nợ chuyển − cọc) chỉ trên hóa đơn trả phòng; phần nợ chuyển đi nằm trong paid_amount, đi cùng hóa đơn nhận.
+            t.HasCheckConstraint("ck_invoices_settlement", "settlement_total = 0 OR invoice_type = 'Final'");
+            t.HasCheckConstraint("ck_invoices_carried_over",
+                "carried_over_amount >= 0 AND written_off_amount + carried_over_amount <= paid_amount AND (carried_over_amount = 0) = (carried_to_invoice_id IS NULL)");
             t.HasCheckConstraint("ck_invoices_rounding", "rounding_amount > -1000 AND rounding_amount < 1000");
-            t.HasCheckConstraint("ck_invoices_refunded", "refunded_on IS NULL OR (total_amount < 0 AND refund_method IS NOT NULL)");
+            t.HasCheckConstraint("ck_invoices_refunded", "refunded_on IS NULL OR (total_amount < 0 AND (refund_method IS NOT NULL OR refund_waived))");
+            t.HasCheckConstraint("ck_invoices_refund_waived", "NOT refund_waived OR (refunded_on IS NOT NULL AND refund_method IS NULL)");
             t.HasCheckConstraint("ck_invoices_paid", "paid_amount >= 0 AND paid_amount <= GREATEST(total_amount, 0)");
             t.HasCheckConstraint("ck_invoices_written_off", "written_off_amount >= 0 AND written_off_amount <= paid_amount");
             t.HasCheckConstraint("ck_invoices_number", "status = 'Draft' OR (invoice_no IS NOT NULL AND issue_date IS NOT NULL AND due_date IS NOT NULL)");
@@ -43,7 +48,7 @@ internal sealed class InvoiceConfiguration : IEntityTypeConfiguration<Invoice>
         builder.Property(i => i.Status).HasConversion<string>().HasMaxLength(12);
         builder.Property(i => i.InvoiceNo).HasMaxLength(20);
         foreach (var money in new[] { nameof(Invoice.Subtotal), nameof(Invoice.DiscountTotal), nameof(Invoice.TotalAmount), nameof(Invoice.PaidAmount), nameof(Invoice.WrittenOffAmount), nameof(Invoice.RefundTotal),
-                     nameof(Invoice.RoundingAmount) })
+                     nameof(Invoice.RoundingAmount), nameof(Invoice.SettlementTotal), nameof(Invoice.CarriedOverAmount) })
             builder.Property(money).HasColumnType("numeric(18,0)");
         builder.Property(i => i.SnapshotRoomCode).HasMaxLength(20).IsRequired();
         builder.Property(i => i.SnapshotContractNo).HasMaxLength(30).IsRequired();

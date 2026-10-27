@@ -157,7 +157,10 @@ public static class TestData
         return await response.ReadIdAsync();
     }
 
-    /// <summary>Trả phòng trọn quy trình (CT-UC-08): lập phiếu quyết toán (kèm chỉ số cuối) → chốt → hoàn tất, còn nợ thì "Đã thu toàn bộ".</summary>
+    /// <summary>
+    /// Trả phòng trọn quy trình (CT-UC-08): lập hóa đơn trả phòng (kèm chỉ số cuối) → chốt → hoàn tất: còn nợ thì "Đã thu toàn bộ", cọc dư
+    /// (kết toán — BL-BR-41) thì "Đã trả".
+    /// </summary>
     public static async Task SettleAndCompleteAsync(this HttpClient client, string token, Guid contractId, object? finalReadings = null)
     {
         var final = await client.PostJsonAsync($"/api/v1/contracts/{contractId}/final-invoice", new { finalReadings }, token);
@@ -165,7 +168,9 @@ public static class TestData
         var invoiceId = (await final.ReadAsync<System.Text.Json.JsonElement>()).GetProperty("summary").GetProperty("id").GetGuid();
         var finalized = await client.PostJsonAsync($"/api/v1/invoices/{invoiceId}/finalize", null, token);
         finalized.StatusCode.Should().Be(HttpStatusCode.OK, await finalized.Content.ReadAsStringAsync());
-        var completed = await client.PostJsonAsync($"/api/v1/contracts/{contractId}/liquidation/complete", new { settlement = "CollectAll" }, token);
+        var issueDate = (await finalized.ReadAsync<System.Text.Json.JsonElement>()).GetProperty("issueDate").GetString();
+        var completed = await client.PostJsonAsync($"/api/v1/contracts/{contractId}/liquidation/complete",
+            new { settlement = "CollectAll", refund = new { refundedOn = issueDate, method = "Cash" } }, token);
         completed.StatusCode.Should().Be(HttpStatusCode.NoContent, await completed.Content.ReadAsStringAsync());
     }
 }

@@ -29,7 +29,7 @@ public sealed class EditInvoiceLineHandler(
     : IRequestHandler<EditInvoiceLineCommand, Result<InvoiceDetailDto>>
 {
     public async ValueTask<Result<InvoiceDetailDto>> Handle(EditInvoiceLineCommand request, CancellationToken cancellationToken) =>
-        await InvoiceAccess.MutateAsync(unitOfWork, invoices, request.InvoiceId, clock.GetUtcNow().ToBusinessDate(), async invoice =>
+        await InvoiceAccess.MutateAsync(unitOfWork, invoices, invoiceQueries, request.InvoiceId, clock.GetUtcNow().ToBusinessDate(), async invoice =>
         {
             if (await IsSystemChargeLineAsync(roomChargeQueries, invoice, request.LineId, cancellationToken))
                 return Result.Failure(RoomChargeErrors.System);

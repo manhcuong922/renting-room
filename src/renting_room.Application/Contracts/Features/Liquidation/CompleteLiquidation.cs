@@ -10,13 +10,17 @@ using renting_room.Application.Properties;
 using renting_room.Domain.Billing;
 using renting_room.Domain.Common;
 using renting_room.Domain.Contracts;
+using renting_room.Domain.Identity;
 using renting_room.Domain.Meters;
 using renting_room.Domain.Payments;
 
 namespace renting_room.Application.Contracts;
 
-/// <summary>"Đã trả" — xác nhận đã hoàn mọi hóa đơn Chờ hoàn của HĐ (M07 BL-BR-27).</summary>
-public sealed record LiquidationRefund(DateOnly RefundedOn, PaymentMethod Method);
+/// <summary>
+/// "Đã trả" — xác nhận đã hoàn mọi hóa đơn Chờ hoàn của HĐ (M07 BL-BR-27), hoặc "Không hoàn" (<paramref name="Waive"/>, vd người thuê bỏ đi):
+/// chỉ chủ trọ, bắt buộc <paramref name="Reason"/>, không có <paramref name="Method"/>.
+/// </summary>
+public sealed record LiquidationRefund(DateOnly RefundedOn, PaymentMethod? Method = null, bool Waive = false, string? Reason = null);
 
 /// <summary>Khoản bù / phụ thu chưa xử lý coi như đã trả / thu tay vào ngày hoàn tất (BL-BR-31).</summary>
 public sealed record LiquidationPendingCharges(PaymentMethod Method);
@@ -56,7 +60,12 @@ public sealed class CompleteLiquidationCommandValidator : AbstractValidator<Comp
             .WithErrorCode("REQUIRED").WithMessage("Nhập lý do bỏ nợ.");
         RuleFor(x => x.PaidAt).Must(d => d is null || d <= clock.GetUtcNow().ToBusinessDate())
             .WithErrorCode("INVALID_PAID_AT").WithMessage("Ngày thu không được ở tương lai.");
-        RuleFor(x => x.Refund!.Method).IsInEnum().When(x => x.Refund is not null);
+        RuleFor(x => x.Refund!.Method).IsInEnum().When(x => x.Refund?.Method is not null);
+        RuleFor(x => x.Refund!.Method).NotNull().When(x => x.Refund is { Waive: false })
+            .WithErrorCode("REQUIRED").WithMessage("Chọn cách đã hoàn tiền.");
+        RuleFor(x => x.Refund!.Reason).NotEmpty().When(x => x.Refund is { Waive: true })
+            .WithErrorCode("REQUIRED").WithMessage("Nhập lý do không hoàn tiền.");
+        RuleFor(x => x.Refund!.Reason).OptionalText(300).When(x => x.Refund is not null);
         RuleFor(x => x.PendingCharges!.Method).IsInEnum().When(x => x.PendingCharges is not null);
         RuleFor(x => x.Deposit!.Action).IsInEnum().When(x => x.Deposit is not null);
         RuleFor(x => x.Deposit!.Amount).OptionalMoney().When(x => x.Deposit is not null);
@@ -116,9 +125,13 @@ public sealed class CompleteLiquidationHandler(
             return Result.Success();
         if (refund is null)
             return Result.Failure(BillingErrors.RefundPending(await invoiceQueries.GetRefundDueAsync(contract.Id, ct)));
+        if (refund.Waive && currentUser.Role != UserRole.OrgOwner)
+            return Result.Failure(BillingErrors.RefundWaiveNotAllowed);
         foreach (var invoice in (await invoices.LockForUpdateAsync(ids, ct)).Values)
         {
-            var confirmed = invoice.ConfirmRefund(refund.RefundedOn, refund.Method, RefundNote, today);
+            var confirmed = refund.Waive
+                ? invoice.WaiveRefund(refund.RefundedOn, refund.Reason, today)
+                : invoice.ConfirmRefund(refund.RefundedOn, refund.Method!.Value, RefundNote, today);
             if (confirmed.IsFailure)
                 return confirmed;
         }

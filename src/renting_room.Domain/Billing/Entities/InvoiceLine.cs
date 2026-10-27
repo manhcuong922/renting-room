@@ -42,6 +42,9 @@ public sealed class InvoiceLine : TenantEntity
 
     public (InvoiceLineType, Guid?, DateOnly) Key => (Type, FeeTypeId, ServiceFrom);
 
+    /// <summary>Dòng kết toán của hóa đơn trả phòng (BL-BR-41): nợ chuyển / trừ cọc — không phải phần thu, không sửa tay.</summary>
+    public bool IsSettlement => Type is InvoiceLineType.PreviousDebt or InvoiceLineType.Deposit;
+
     internal static InvoiceLine FromCalculation(Guid invoiceId, CalculatedLine line)
     {
         var result = new InvoiceLine { Id = Guid.CreateVersion7(), InvoiceId = invoiceId, IsSystem = true };
@@ -83,6 +86,7 @@ public sealed class InvoiceLine : TenantEntity
         Amount = line.Amount;
         SortOrder = line.SortOrder;
         Price = line.Price;
+        SourceInvoiceId = line.SourceInvoiceId;
         IsManuallyEdited = false;
         SystemQuantity = SystemUnitPrice = SystemAmount = null;
         Note = null;

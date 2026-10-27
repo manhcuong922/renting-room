@@ -37,11 +37,19 @@ public static class BillingErrors
         "Dữ liệu nguồn (giá, chỉ số, người ở…) đã đổi sau khi tạo nháp — tính lại rồi chốt.");
     public static readonly Error FinalExists = Error.Conflict("FINAL_INVOICE_EXISTS", "Hợp đồng đã có hóa đơn trả phòng — mở hóa đơn đó để sửa.");
     public static readonly Error FinalRequired = Error.BusinessRule("FINAL_INVOICE_REQUIRED", "Lập và chốt hóa đơn trả phòng trước khi hoàn tất thanh lý.");
+    public static readonly Error FinalNotRequired = Error.BusinessRule("FINAL_INVOICE_NOT_REQUIRED",
+        "Người thuê trả phòng trước ngày tính tiền — không có kỳ nào cần lập hóa đơn trả phòng, hoàn tất thanh lý luôn.");
     public static readonly Error FinalFinalized = Error.BusinessRule("FINAL_INVOICE_FINALIZED",
         "Hóa đơn trả phòng đã chốt — hủy hóa đơn trả phòng trước khi hủy thanh lý.");
     public static readonly Error PriceMissing = Error.BusinessRule("FEE_PRICE_MISSING", "Khoản thu chưa có giá cho kỳ của hóa đơn.");
     public static readonly Error DraftExists = Error.Conflict("INVOICE_DRAFT_EXISTS", "Hợp đồng còn phiếu nháp — chốt hoặc xóa trước.");
     public static readonly Error PreviousNotBilled = Error.BusinessRule("PREVIOUS_PERIOD_NOT_BILLED", "Chưa lập phiếu kỳ trước — lập lần lượt từng kỳ.");
+    public static readonly Error SettlementLineLocked = Error.BusinessRule("SETTLEMENT_LINE_LOCKED",
+        "Dòng kết toán (nợ chuyển / trừ cọc) do hệ thống tính — không sửa / xóa tay. Mất cọc ⇒ bấm \"Không trả cọc\"; giữ lại một phần cọc ⇒ thêm phụ thu.");
+    public static readonly Error InvoiceCarriedOver = Error.BusinessRule("INVOICE_CARRIED_OVER",
+        "Nợ của hóa đơn này đã chuyển vào hóa đơn trả phòng — hủy hóa đơn trả phòng trước.");
+    public static readonly Error RefundWaiveReasonRequired = Error.Validation("REFUND_WAIVE_REASON_REQUIRED", "Nhập lý do không hoàn tiền cho người thuê.");
+    public static readonly Error RefundWaiveNotAllowed = Error.Forbidden("REFUND_WAIVE_NOT_ALLOWED", "Chỉ chủ trọ được quyết định không hoàn tiền cho người thuê.");
 
     public static Error PendingCharges(int count, decimal surcharge, decimal credit) =>
         Error.BusinessRule("PENDING_CHARGES",

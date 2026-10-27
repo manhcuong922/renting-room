@@ -125,6 +125,10 @@ public sealed class AdjustMeterReadingHandler(
                 request.NotReturned, ct);
             return after.IsFailure ? after.Error! : new Applied(reading, AdjustmentHandling.AfterEnd, after.Value, [], []);
         }
+        // BL-BR-41: nợ đã chuyển vào hóa đơn trả phòng theo số lúc chốt — tính lại hóa đơn này sẽ lệch bản kết toán (thay công tơ trong kỳ:
+        // số cuối công tơ cũ không là chỉ số đầu của hóa đơn trả phòng nên READING_NEXT_PERIOD_FINALIZED không chặn).
+        if (source.CarriedToInvoiceId is not null)
+            return BillingErrors.InvoiceCarriedOver;
         var oldValue = reading.Value;
         var line = source.LineOf(source.SegmentEndingAt(reading.Id)!)!;
         var corrected = meter.Correct(reading.Id, request.Value, request.Reason);
@@ -158,10 +162,13 @@ public sealed class AdjustMeterReadingHandler(
         return new Applied(corrected.Value!, handling.Value, charge, payments, warnings);
     }
 
-    private async Task<AdjustReadingResult> ToResultAsync(Invoice source, Applied applied, CancellationToken ct) =>
-        new(applied.Reading.ToDto(), applied.Handling, source.ToDetail(clock.GetUtcNow().ToBusinessDate()),
+    private async Task<AdjustReadingResult> ToResultAsync(Invoice source, Applied applied, CancellationToken ct)
+    {
+        var today = clock.GetUtcNow().ToBusinessDate();
+        return new(applied.Reading.ToDto(), applied.Handling, source.ToDetail(today, await invoices.LoadAsync(source, today, ct)),
             applied.Charge is null ? null : (await roomCharges.ToDtosAsync([applied.Charge], ct))[0],
             await PaymentMapping.ToDtosAsync(invoices, applied.Payments, ct), applied.Warnings);
+    }
 
     /// <summary>
     /// Đã xác nhận hoàn (hóa đơn âm) ⇒ phải bỏ xác nhận trước; chưa có tiền ⇒ tính lại trên hóa đơn (trừ khi chọn Đẩy sang — tính lại bị

@@ -20,7 +20,9 @@ public sealed class LiquidationRoundTwoTests(ApiFactory factory)
     private sealed record Setup(string Token, Guid PropertyId, Guid RoomId, Guid ContractId, Guid MeterId, DateOnly Start, DateOnly Today, Guid RenterId);
 
     /// <summary>HĐ từ ngày 1 của 2 tháng trước, công tơ điện nhận phòng ở 100, có internet theo phòng.</summary>
-    private async Task<Setup> ArrangeAsync(string chargeMode = "Postpaid", decimal deposit = 0, string prorationMode = "Daily")
+    /// <param name="billingDelayDays">&gt; 0: "Tính tiền từ ngày" muộn hơn ngày bắt đầu HĐ chừng đó ngày (HĐ nhập sổ cũ / miễn phí đầu).</param>
+    private async Task<Setup> ArrangeAsync(
+        string chargeMode = "Postpaid", decimal deposit = 0, string prorationMode = "Daily", int billingDelayDays = 0)
     {
         var token = (await _client.CreateActiveOwnerAsync()).Tokens.AccessToken;
         var today = TestData.Today(factory);
@@ -41,7 +43,8 @@ public sealed class LiquidationRoundTwoTests(ApiFactory factory)
             roomId,
             contract = new
             {
-                representativeRenterId = renter, startDate = start, monthlyRent = Rent, depositAmount = deposit,
+                representativeRenterId = renter, startDate = start, billingStartDate = billingDelayDays > 0 ? start.AddDays(billingDelayDays) : (DateOnly?)null,
+                monthlyRent = Rent, depositAmount = deposit,
                 occupants = new[] { new { renterId = renter } }, fees = new[] { new { feeTypeId = internet } }
             }
         }, token);
@@ -76,6 +79,8 @@ public sealed class LiquidationRoundTwoTests(ApiFactory factory)
     private async Task<JsonElement> InvoiceAsync(Setup s, Guid id) => await (await _client.GetAsync($"/api/v1/invoices/{id}", s.Token)).ReadAsync<JsonElement>();
 
     private static Guid Id(JsonElement invoice) => invoice.GetProperty("summary").GetProperty("id").GetGuid();
+    private static IEnumerable<JsonElement> Lines(JsonElement invoice, string type) =>
+        invoice.GetProperty("lines").EnumerateArray().Where(l => l.GetProperty("type").GetString() == type);
     private static decimal Total(JsonElement invoice) => invoice.GetProperty("summary").GetProperty("totalAmount").GetDecimal();
     private static decimal Amount(JsonElement invoice, string type) =>
         invoice.GetProperty("lines").EnumerateArray().Single(l => l.GetProperty("type").GetString() == type).GetProperty("amount").GetDecimal();
@@ -174,6 +179,28 @@ public sealed class LiquidationRoundTwoTests(ApiFactory factory)
     }
 
     [Fact]
+    public async Task LeavesBeforeBillingStart_NothingToBill_CompletesWithoutFinalInvoice_AndFinalInvoiceIsRefused()
+    {
+        var s = await ArrangeAsync(deposit: 3_000_000, billingDelayDays: 14);
+        var end = s.Start.AddDays(9);
+        (await StartAsync(s, end)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        var preview = await PreviewAsync(s);
+        preview.GetProperty("finalInvoiceRequired").GetBoolean().Should().BeFalse("người thuê đi trước ngày tính tiền ⇒ không có gì để lập hóa đơn");
+        preview.GetProperty("missingFinalReadingMeterIds").EnumerateArray().Should().BeEmpty();
+        preview.GetProperty("blockers").EnumerateArray().Should().BeEmpty();
+        var create = await _client.PostJsonAsync($"/api/v1/contracts/{s.ContractId}/final-invoice", new { finalReadings = Array.Empty<object>() }, s.Token);
+        create.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity);
+        (await create.ReadProblemCodeAsync()).Should().Be("FINAL_INVOICE_NOT_REQUIRED");
+
+        (await _client.PostJsonAsync($"/api/v1/contracts/{s.ContractId}/liquidation/complete", new { deposit = new { action = "Refund" } }, s.Token))
+            .StatusCode.Should().Be(HttpStatusCode.NoContent);
+        var contract = await (await _client.GetAsync($"/api/v1/contracts/{s.ContractId}", s.Token)).ReadAsync<JsonElement>();
+        contract.GetProperty("status").GetString().Should().Be("Ended");
+        contract.GetProperty("deposit").GetProperty("status").GetString().Should().Be("Refunded");
+    }
+
+    [Fact]
     public async Task PhantomPeriod_TreatedAsMovedOutAtLastBilledEnd_DraftDeleted_NoMoveOutInvoiceNeeded()
     {
         var s = await ArrangeAsync();
@@ -266,7 +293,7 @@ public sealed class LiquidationRoundTwoTests(ApiFactory factory)
     [InlineData("Daily", false, "Daily")]
     [InlineData("FullPeriod", false, "None")]
     [InlineData("FullPeriod", true, "FullPeriod")]
-    public async Task Resign_OldContractFinalPeriodSetSoBothContractsChargeOnePeriod(string propertyProration, bool atPeriodEnd, string expected)
+    public async Task Resign_Sign_SetsOldContractFinalPeriod_SoBothContractsChargeOnePeriod(string propertyProration, bool atPeriodEnd, string expected)
     {
         var s = await ArrangeAsync(prorationMode: propertyProration);
         await BillFirstMonthAsync(s, 150);
@@ -274,8 +301,34 @@ public sealed class LiquidationRoundTwoTests(ApiFactory factory)
         var resigned = await _client.PostJsonAsync($"/api/v1/contracts/{s.ContractId}/re-sign",
             new { handoverDate = handover, representativeRenterId = s.RenterId }, s.Token);
         resigned.StatusCode.Should().Be(HttpStatusCode.Created, await resigned.Content.ReadAsStringAsync());
+        var draft = await resigned.ReadIdAsync();
+        (await PreviewAsync(s)).GetProperty("status").GetString().Should().Be("Active", "chưa ký ⇒ HĐ cũ chưa thanh lý");
+
+        var signed = await _client.PostJsonAsync($"/api/v1/contracts/{draft}/activate",
+            new { handoverReadings = new[] { new { meterId = s.MeterId, value = (decimal?)null } } }, s.Token);
+        signed.StatusCode.Should().Be(HttpStatusCode.NoContent, await signed.Content.ReadAsStringAsync());
 
         (await PreviewAsync(s)).GetProperty("finalPeriodCharge").GetString().Should().Be(expected, "người thuê không rời đi, HĐ mới tính tiếp từ X+1");
+    }
+
+    [Fact]
+    public async Task Resign_Sign_RefusedWhileOldContractHasInvoiceCoveringPastHandover_NothingChanges()
+    {
+        var s = await ArrangeAsync();
+        await BillFirstMonthAsync(s, 150); // hóa đơn tháng 1 đã chốt, tính điện tới hết tháng
+        var handover = s.Start.AddDays(14);
+        var resigned = await _client.PostJsonAsync($"/api/v1/contracts/{s.ContractId}/re-sign",
+            new { handoverDate = handover, representativeRenterId = s.RenterId }, s.Token);
+        resigned.StatusCode.Should().Be(HttpStatusCode.Created, await resigned.Content.ReadAsStringAsync());
+        var draft = await resigned.ReadIdAsync();
+
+        var signed = await _client.PostJsonAsync($"/api/v1/contracts/{draft}/activate",
+            new { handoverReadings = new[] { new { meterId = s.MeterId, value = (decimal?)null } } }, s.Token);
+
+        (await signed.ReadProblemCodeAsync()).Should().Be("INVOICE_AFTER_END_DATE");
+        (await PreviewAsync(s)).GetProperty("status").GetString().Should().Be("Active", "ký lỗi ⇒ không lưu gì");
+        (await (await _client.GetAsync($"/api/v1/contracts/{draft}", s.Token)).ReadAsync<JsonElement>()).GetProperty("status").GetString()
+            .Should().Be("Draft");
     }
 
     [Fact]
@@ -366,6 +419,13 @@ public sealed class LiquidationRoundTwoTests(ApiFactory factory)
         var credit = await _client.PostJsonAsync($"/api/v1/rooms/{s.RoomId}/charges",
             new { kind = "Credit", description = "Giảm do sửa nhà", amount = Rent, incurredOn = end, reason = "Sửa nhà 10 ngày" }, s.Token);
         credit.StatusCode.Should().Be(HttpStatusCode.Created, await credit.Content.ReadAsStringAsync());
+        // Mất cọc: chọn "Không trả cọc" trước khi chốt hóa đơn trả phòng (kết toán — BL-BR-41), lý do bắt buộc.
+        var forfeit = $"/api/v1/contracts/{s.ContractId}/deposit/forfeit";
+        (await _client.PostJsonAsync(forfeit, new { date = s.Today, note = "" }, s.Token)).StatusCode
+            .Should().Be(HttpStatusCode.BadRequest, "không trả cọc phải có lý do");
+        (await _client.PostJsonAsync(forfeit, new { date = s.Today, note = "Trả phòng trước hạn, mất cọc theo HĐ" }, s.Token))
+            .IsSuccessStatusCode.Should().BeTrue();
+        Lines(await InvoiceAsync(s, Id(final)), "Deposit").Should().BeEmpty("không trả cọc ⇒ không trừ cọc trên hóa đơn trả phòng");
         Total(await FinalizeAsync(s, Id(final))).Should().BeNegative();
 
         var key = await _client.PostJsonAsync($"/api/v1/rooms/{s.RoomId}/charges",
@@ -385,11 +445,7 @@ public sealed class LiquidationRoundTwoTests(ApiFactory factory)
         var refund = new { refundedOn = s.Today, method = "Cash" };
         (await (await _client.PostJsonAsync(complete, new { refund }, s.Token)).ReadProblemCodeAsync()).Should().Be("PENDING_CHARGES");
         var pendingCharges = new { method = "Cash" };
-        (await _client.PostJsonAsync(complete, new { refund, pendingCharges, deposit = new { action = "Forfeit" } }, s.Token))
-            .StatusCode.Should().Be(HttpStatusCode.BadRequest, "không trả cọc phải có lý do");
-        (await _client.PostJsonAsync(complete,
-                new { refund, pendingCharges, deposit = new { action = "Forfeit", note = "Trả phòng trước hạn, mất cọc theo HĐ" } }, s.Token))
-            .StatusCode.Should().Be(HttpStatusCode.NoContent);
+        (await _client.PostJsonAsync(complete, new { refund, pendingCharges }, s.Token)).StatusCode.Should().Be(HttpStatusCode.NoContent);
 
         var contract = await (await _client.GetAsync($"/api/v1/contracts/{s.ContractId}", s.Token)).ReadAsync<JsonElement>();
         contract.GetProperty("status").GetString().Should().Be("Ended");
@@ -402,7 +458,54 @@ public sealed class LiquidationRoundTwoTests(ApiFactory factory)
     }
 
     [Fact]
-    public async Task MoveOutNotice_SkipsMonthlyInvoice_ShowsLabel_WithdrawRestores()
+    public async Task Complete_WaiveRefund_OwnerOnly_NeedsReason_RecordsNoRefundMethod()
+    {
+        var s = await ArrangeAsync();
+        var end = s.Start.AddDays(9);
+        (await StartAsync(s, end, "Daily")).StatusCode.Should().Be(HttpStatusCode.NoContent);
+        var final = await FinalInvoiceAsync(s, 130);
+        (await _client.PostJsonAsync($"/api/v1/rooms/{s.RoomId}/charges",
+            new { kind = "Credit", description = "Giảm do sửa nhà", amount = Rent, incurredOn = end, reason = "Sửa nhà 10 ngày" }, s.Token))
+            .StatusCode.Should().Be(HttpStatusCode.Created);
+        Total(await FinalizeAsync(s, Id(final))).Should().BeNegative();
+        var complete = $"/api/v1/contracts/{s.ContractId}/liquidation/complete";
+        var waive = new { refundedOn = s.Today, waive = true, reason = "Người thuê bỏ đi, không liên lạc được" };
+
+        var manager = await AddActiveManagerAsync(s.Token);
+        var denied = await _client.PostJsonAsync(complete, new { refund = waive, pendingCharges = new { method = "Cash" } }, manager);
+        denied.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        (await denied.ReadProblemCodeAsync()).Should().Be("REFUND_WAIVE_NOT_ALLOWED");
+
+        (await _client.PostJsonAsync(complete, new { refund = new { refundedOn = s.Today, waive = true }, pendingCharges = new { method = "Cash" } }, s.Token))
+            .StatusCode.Should().Be(HttpStatusCode.BadRequest, "không hoàn phải có lý do");
+        (await _client.PostJsonAsync(complete, new { refund = new { refundedOn = s.Today }, pendingCharges = new { method = "Cash" } }, s.Token))
+            .StatusCode.Should().Be(HttpStatusCode.BadRequest, "đã hoàn thì phải chọn cách hoàn");
+
+        var completed = await _client.PostJsonAsync(complete, new { refund = waive, pendingCharges = new { method = "Cash" } }, s.Token);
+        completed.StatusCode.Should().Be(HttpStatusCode.NoContent, await completed.Content.ReadAsStringAsync());
+        var invoice = await InvoiceAsync(s, Id(final));
+        invoice.GetProperty("summary").GetProperty("paymentStatus").GetString().Should().Be("RefundWaived");
+        invoice.GetProperty("refundedOn").GetString().Should().Be($"{s.Today:yyyy-MM-dd}");
+        invoice.GetProperty("refundMethod").ValueKind.Should().Be(JsonValueKind.Null);
+        invoice.GetProperty("refundNote").GetString().Should().Be("Người thuê bỏ đi, không liên lạc được");
+        (await (await _client.GetAsync($"/api/v1/contracts/{s.ContractId}", s.Token)).ReadAsync<JsonElement>()).GetProperty("status").GetString()
+            .Should().Be("Ended");
+    }
+
+    /// <summary>Phó quản lý cùng tổ chức (M01 §3.3): thêm → đăng nhập bằng mật khẩu tạm → đổi mật khẩu.</summary>
+    private async Task<string> AddActiveManagerAsync(string ownerToken)
+    {
+        var created = await _client.PostJsonAsync("/api/v1/org/members", new { fullName = "Phó Quản Lý", phone = TestApi.NewPhone() }, ownerToken);
+        created.StatusCode.Should().Be(HttpStatusCode.Created, await created.Content.ReadAsStringAsync());
+        var credentials = await created.ReadAsync<TemporaryCredentialsResponse>();
+        var login = await _client.LoginAsync(credentials.Username, credentials.TemporaryPassword);
+        var changed = await _client.PostJsonAsync("/api/v1/auth/change-password",
+            new { currentPassword = credentials.TemporaryPassword, newPassword = "PhoQuanLy2026" }, login.AccessToken);
+        return (await changed.ReadAsync<TokenResponse>()).AccessToken;
+    }
+
+    [Fact]
+    public async Task MoveOutNotice_IsOnlyALabel_MonthlyInvoiceStillCreated_WithdrawClearsLabel()
     {
         var s = await ArrangeAsync();
         (await SaveReadingAsync(s, s.Start, 150)).StatusCode.Should().Be(HttpStatusCode.OK);
@@ -411,17 +514,75 @@ public sealed class LiquidationRoundTwoTests(ApiFactory factory)
             .StatusCode.Should().Be(HttpStatusCode.OK);
 
         var generated = await GenerateAsync(s, s.Start);
-        generated.GetProperty("created").GetInt32().Should().Be(0);
-        generated.GetProperty("skipped").EnumerateArray().Single().GetProperty("reason").GetString().Should().Be("MOVE_OUT_NOTICED");
+        generated.GetProperty("created").GetInt32().Should().Be(1, "báo trả phòng chỉ là dấu đánh dấu — hóa đơn tháng vẫn lập");
+        generated.GetProperty("skipped").EnumerateArray().Should().BeEmpty();
         var rooms = await (await _client.GetAsync($"/api/v1/rooms?propertyId={s.PropertyId}", s.Token)).ReadAsync<JsonElement>();
         rooms.GetProperty("items")[0].GetProperty("currentContract").GetProperty("moveOutDate").GetString().Should().Be($"{planned:yyyy-MM-dd}");
         var sheet = await (await _client.GetAsync($"/api/v1/properties/{s.PropertyId}/meter-reading-sheet?billingMonth={s.Start:yyyy-MM}", s.Token))
             .ReadAsync<JsonElement>();
         sheet.GetProperty("rows")[0].GetProperty("moveOutDate").GetString().Should().Be($"{planned:yyyy-MM-dd}");
+        var overdue = await (await _client.GetAsync($"/api/v1/contracts/{s.ContractId}", s.Token)).ReadAsync<JsonElement>();
+        overdue.GetProperty("flags").EnumerateArray().Select(f => f.GetString()).Should().Contain("MoveOutOverdue", "qua ngày dự kiến trả mà chưa thanh lý");
+        overdue.GetProperty("warnings").EnumerateArray().Select(w => w.GetProperty("code").GetString()).Should().Contain("MOVE_OUT_OVERDUE");
+        rooms.GetProperty("items")[0].GetProperty("currentContract").GetProperty("flags").EnumerateArray().Select(f => f.GetString())
+            .Should().Contain("MoveOutOverdue", "nhãn hiện cả trên thẻ phòng");
 
         (await _client.DeleteAsync($"/api/v1/contracts/{s.ContractId}/notice", s.Token)).StatusCode.Should().Be(HttpStatusCode.NoContent);
-        (await GenerateAsync(s, s.Start)).GetProperty("created").GetInt32().Should().Be(1, "rút báo trả phòng ⇒ lập lại được");
+        (await (await _client.GetAsync($"/api/v1/contracts/{s.ContractId}", s.Token)).ReadAsync<JsonElement>()).GetProperty("flags")
+            .EnumerateArray().Select(f => f.GetString()).Should().NotContain("MoveOutOverdue");
+        rooms = await (await _client.GetAsync($"/api/v1/rooms?propertyId={s.PropertyId}", s.Token)).ReadAsync<JsonElement>();
+        rooms.GetProperty("items")[0].GetProperty("currentContract").GetProperty("moveOutDate").ValueKind.Should().Be(JsonValueKind.Null, "rút báo ⇒ hết nhãn");
         (await (await _client.DeleteAsync($"/api/v1/contracts/{s.ContractId}/notice", s.Token)).ReadProblemCodeAsync()).Should().Be("NOTICE_NOT_GIVEN");
+    }
+
+    [Fact]
+    public async Task NoticeGiven_ButTenantStaysLonger_UnbilledPeriodCanStillBeBilled_BeforeLiquidating()
+    {
+        var s = await ArrangeAsync();
+        var month = s.Start.AddMonths(1);
+        var end = month.AddDays(14);
+        (await _client.PostJsonAsync($"/api/v1/contracts/{s.ContractId}/notice",
+            new { noticeDate = s.Start, plannedMoveOutDate = s.Start.AddDays(14) }, s.Token)).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await SaveReadingAsync(s, s.Start, 150)).StatusCode.Should().Be(HttpStatusCode.OK);
+
+        (await PreviewAsync(s, end)).GetProperty("unbilledPeriods").EnumerateArray().Select(p => p.GetProperty("start").GetString())
+            .Should().Equal($"{s.Start:yyyy-MM-dd}");
+        var generated = await GenerateAsync(s, s.Start);
+        generated.GetProperty("created").GetInt32().Should().Be(1, "người thuê ở lâu hơn ngày đã báo ⇒ nút \"Tạo hóa đơn\" của kỳ chưa lập phải chạy được");
+        generated.GetProperty("skipped").EnumerateArray().Should().BeEmpty();
+        await FinalizeAsync(s, Id(await InvoiceForAsync(s, s.Start)));
+
+        (await StartAsync(s, end)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+        (await PreviewAsync(s)).GetProperty("unbilledPeriods").EnumerateArray().Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task CancelLiquidation_TenantStays_ClearsNoticeSoMonthlyInvoicesResume()
+    {
+        var s = await ArrangeAsync();
+        (await SaveReadingAsync(s, s.Start, 150)).StatusCode.Should().Be(HttpStatusCode.OK);
+        var planned = s.Start.AddDays(14);
+        (await _client.PostJsonAsync($"/api/v1/contracts/{s.ContractId}/notice", new { noticeDate = s.Start, plannedMoveOutDate = planned }, s.Token))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+        (await StartAsync(s, planned)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+        (await _client.PostJsonAsync($"/api/v1/contracts/{s.ContractId}/liquidation/cancel", null, s.Token)).StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var contract = await (await _client.GetAsync($"/api/v1/contracts/{s.ContractId}", s.Token)).ReadAsync<JsonElement>();
+        contract.GetProperty("plannedMoveOutDate").ValueKind.Should().Be(JsonValueKind.Null, "người thuê ở lại ⇒ bỏ luôn báo trả phòng");
+        (await GenerateAsync(s, s.Start)).GetProperty("created").GetInt32().Should().Be(1, "người thuê ở lại ⇒ hóa đơn tháng lập bình thường");
+    }
+
+    [Fact]
+    public async Task EndedContract_InvoiceCannotBeVoided()
+    {
+        var s = await ArrangeAsync();
+        (await StartAsync(s, s.Start.AddDays(9), "None")).StatusCode.Should().Be(HttpStatusCode.NoContent);
+        var final = await FinalizeAsync(s, Id(await FinalInvoiceAsync(s, 100)));
+        Total(final).Should().Be(0, "không thu kỳ cuối, không dùng điện");
+        (await _client.PostJsonAsync($"/api/v1/contracts/{s.ContractId}/liquidation/complete", null, s.Token)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        (await (await _client.PostJsonAsync($"/api/v1/invoices/{Id(final)}/void", new { reason = "Nhầm" }, s.Token)).ReadProblemCodeAsync())
+            .Should().Be("CONTRACT_NOT_BILLABLE", "HĐ đã kết thúc — hủy hóa đơn làm khoản trên đó treo");
     }
 
     /// <summary>HĐ ở 10 ngày đầu kỳ đầu, số cuối gõ 170 (đúng 120), hóa đơn trả phòng đã thu đủ, đã hoàn tất thanh lý.</summary>

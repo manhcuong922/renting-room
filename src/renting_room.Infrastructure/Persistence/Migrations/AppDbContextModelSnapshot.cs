@@ -34,6 +34,14 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                         .HasColumnType("date")
                         .HasColumnName("billing_month");
 
+                    b.Property<decimal>("CarriedOverAmount")
+                        .HasColumnType("numeric(18,0)")
+                        .HasColumnName("carried_over_amount");
+
+                    b.Property<Guid?>("CarriedToInvoiceId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("carried_to_invoice_id");
+
                     b.Property<Guid>("ContractId")
                         .HasColumnType("uuid")
                         .HasColumnName("contract_id");
@@ -123,6 +131,10 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                         .HasColumnType("numeric(18,0)")
                         .HasColumnName("refund_total");
 
+                    b.Property<bool>("RefundWaived")
+                        .HasColumnType("boolean")
+                        .HasColumnName("refund_waived");
+
                     b.Property<DateOnly?>("RefundedOn")
                         .HasColumnType("date")
                         .HasColumnName("refunded_on");
@@ -138,6 +150,10 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                     b.Property<decimal>("RoundingAmount")
                         .HasColumnType("numeric(18,0)")
                         .HasColumnName("rounding_amount");
+
+                    b.Property<decimal>("SettlementTotal")
+                        .HasColumnType("numeric(18,0)")
+                        .HasColumnName("settlement_total");
 
                     b.Property<string>("SnapshotContractNo")
                         .IsRequired()
@@ -242,17 +258,23 @@ namespace renting_room.Infrastructure.Persistence.Migrations
 
                     b.ToTable("invoices", null, t =>
                         {
+                            t.HasCheckConstraint("ck_invoices_carried_over", "carried_over_amount >= 0 AND written_off_amount + carried_over_amount <= paid_amount AND (carried_over_amount = 0) = (carried_to_invoice_id IS NULL)");
+
                             t.HasCheckConstraint("ck_invoices_number", "status = 'Draft' OR (invoice_no IS NOT NULL AND issue_date IS NOT NULL AND due_date IS NOT NULL)");
 
                             t.HasCheckConstraint("ck_invoices_paid", "paid_amount >= 0 AND paid_amount <= GREATEST(total_amount, 0)");
 
                             t.HasCheckConstraint("ck_invoices_period", "period_end >= period_start");
 
-                            t.HasCheckConstraint("ck_invoices_refund", "refund_total <= 0 AND total_amount = subtotal + discount_total + refund_total + rounding_amount");
+                            t.HasCheckConstraint("ck_invoices_refund", "refund_total <= 0 AND total_amount = subtotal + discount_total + refund_total + settlement_total + rounding_amount");
 
-                            t.HasCheckConstraint("ck_invoices_refunded", "refunded_on IS NULL OR (total_amount < 0 AND refund_method IS NOT NULL)");
+                            t.HasCheckConstraint("ck_invoices_refund_waived", "NOT refund_waived OR (refunded_on IS NOT NULL AND refund_method IS NULL)");
+
+                            t.HasCheckConstraint("ck_invoices_refunded", "refunded_on IS NULL OR (total_amount < 0 AND (refund_method IS NOT NULL OR refund_waived))");
 
                             t.HasCheckConstraint("ck_invoices_rounding", "rounding_amount > -1000 AND rounding_amount < 1000");
+
+                            t.HasCheckConstraint("ck_invoices_settlement", "settlement_total = 0 OR invoice_type = 'Final'");
 
                             t.HasCheckConstraint("ck_invoices_total", "subtotal + discount_total >= 0 OR status = 'Draft' OR invoice_type = 'Final'");
 
@@ -527,11 +549,11 @@ namespace renting_room.Infrastructure.Persistence.Migrations
 
                     b.ToTable("invoice_lines", null, t =>
                         {
-                            t.HasCheckConstraint("ck_invoice_lines_discount", "line_type NOT IN ('ManualDiscount','Refund') OR amount <= 0");
+                            t.HasCheckConstraint("ck_invoice_lines_discount", "line_type NOT IN ('ManualDiscount','Refund','Deposit') OR amount <= 0");
 
                             t.HasCheckConstraint("ck_invoice_lines_note", "line_type NOT IN ('Surcharge','ManualDiscount','Refund') OR note IS NOT NULL");
 
-                            t.HasCheckConstraint("ck_invoice_lines_sign", "line_type IN ('ManualDiscount','Refund') OR amount >= 0");
+                            t.HasCheckConstraint("ck_invoice_lines_sign", "line_type IN ('ManualDiscount','Refund','Deposit') OR amount >= 0");
                         });
                 });
 
@@ -1005,6 +1027,10 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                     b.Property<DateOnly?>("RepresentativeSince")
                         .HasColumnType("date")
                         .HasColumnName("representative_since");
+
+                    b.Property<bool>("ResignTransfersDeposit")
+                        .HasColumnType("boolean")
+                        .HasColumnName("resign_transfers_deposit");
 
                     b.Property<Guid>("RoomId")
                         .HasColumnType("uuid")

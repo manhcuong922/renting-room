@@ -48,15 +48,45 @@ public sealed class DepositTrackingTests(ApiFactory factory)
     }
 
     [Fact]
+    public async Task CompleteLiquidation_WithFinalInvoice_DeductsDeposit_NoReminder()
+    {
+        var token = (await _client.CreateActiveOwnerAsync()).Tokens.AccessToken;
+        var today = TestData.Today(factory);
+        var start = TestData.StartWithinOnePeriod(today, 10);
+        var (_, _, _, contractId) = await _client.CreateActiveContractAsync(token, start, anchorDay: start.Day);
+        await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/liquidation/start", new { actualEndDate = today, reason = "MutualAgreement" }, token);
+
+        await _client.SettleAndCompleteAsync(token, contractId);
+
+        var deposit = await DepositOfAsync(token, contractId);
+        deposit.GetProperty("status").GetString().Should().Be("Deducted", "hóa đơn trả phòng là bản kết toán — cọc đã trừ vào đó (BL-BR-41)");
+        deposit.GetProperty("notRefundedReminder").GetBoolean().Should().BeFalse();
+        (await (await RefundAsync(token, contractId, today, null, null)).ReadProblemCodeAsync()).Should().Be("DEPOSIT_DEDUCTED");
+    }
+
+    /// <summary>Không có hóa đơn trả phòng (đi trước "Tính tiền từ ngày") ⇒ cọc quyết ở màn hoàn tất; để sau ⇒ nhắc "Chưa hoàn cọc".</summary>
+    [Fact]
     public async Task CompleteLiquidation_NotBlockedByDeposit_ShowsReminderUntilRefunded_NoDepositContractRejected()
     {
         var owner = await _client.CreateActiveOwnerAsync();
         var token = owner.Tokens.AccessToken;
         var today = TestData.Today(factory);
-        var start = TestData.StartWithinOnePeriod(today, 10);
-        var (propertyId, _, _, contractId) = await _client.CreateActiveContractAsync(token, start, anchorDay: start.Day);
-        await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/liquidation/start", new { actualEndDate = today, reason = "MutualAgreement" }, token);
-        await _client.SettleAndCompleteAsync(token, contractId);
+        var propertyId = await _client.CreatePropertyAsync(token);
+        var renter = await _client.CreateRenterAsync(token);
+        var created = await _client.PostJsonAsync("/api/v1/contracts", new
+        {
+            roomId = await _client.CreateRoomAsync(token, propertyId),
+            contract = new
+            {
+                representativeRenterId = renter, startDate = today.AddDays(-10), billingStartDate = today.AddDays(-2),
+                monthlyRent = 3_000_000, depositAmount = 3_500_000, occupants = new[] { new { renterId = renter } }
+            }
+        }, token);
+        created.StatusCode.Should().Be(HttpStatusCode.Created, await created.Content.ReadAsStringAsync());
+        var contractId = await created.ReadIdAsync();
+        (await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/activate", null, token)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+        await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/liquidation/start", new { actualEndDate = today.AddDays(-5), reason = "MutualAgreement" }, token);
+        (await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/liquidation/complete", null, token)).StatusCode.Should().Be(HttpStatusCode.NoContent);
 
         (await DepositOfAsync(token, contractId)).GetProperty("notRefundedReminder").GetBoolean().Should().BeTrue("đã kết thúc mà chưa hoàn cọc");
         var list = await (await _client.GetAsync($"/api/v1/contracts?propertyId={propertyId}&depositNotRefunded=true", token)).ReadAsync<JsonElement>();

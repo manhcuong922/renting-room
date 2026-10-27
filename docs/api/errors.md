@@ -150,11 +150,13 @@ Mọi lỗi có dạng ProblemDetails (xem [conventions.md](conventions.md#lỗi
 | `HOLDOVER_ALREADY` | 409 | Đã ghi nhận ở tiếp — tải lại |
 | `RESIGN_REPRESENTATIVE_NOT_OCCUPANT` | 422 | Ký lại: chọn người đứng tên trong số người còn ở |
 | `RESIGN_NO_OCCUPANT_LEFT` | 422 | Ký lại: không còn ai ở — thanh lý |
+| `RESIGN_DRAFT_EXISTS` | 409 | Ký lại: HĐ đã có HĐ nháp ký lại — sửa / ký / hủy nháp đó trước |
+| `RESIGN_PREVIOUS_NOT_ACTIVE` | 409 | Ký HĐ nháp ký lại: HĐ cũ không còn hiệu lực (đã thanh lý / kết thúc) |
 | `LIQUIDATION_BEFORE_END_DATE` | 422 | Chưa tới ngày trả phòng |
 | `PLATE_ALREADY_REGISTERED` | 409 | Biển số đang gửi ở HĐ khác |
 | `VEHICLE_ALREADY_ENDED` | 409 | Tải lại |
 
-Cảnh báo mềm của HĐ (không phải lỗi, nằm trong `warnings` của response 2xx / chi tiết HĐ): `DEPOSIT_ABOVE_THREE_MONTHS`, `PLATE_FORMAT_UNUSUAL`, `VEHICLE_NOT_RESTORED` (hủy nháp ký lại / hủy thanh lý: biển số đã ở HĐ khác nên xe không mở lại);
+Cảnh báo mềm của HĐ (không phải lỗi, nằm trong `warnings` của response 2xx / chi tiết HĐ): `DEPOSIT_ABOVE_THREE_MONTHS`, `PLATE_FORMAT_UNUSUAL` (`VEHICLE_NOT_RESTORED` đã bỏ 27/10/2026 — nháp ký lại không còn đổi xe của HĐ cũ);
 giấy tờ / pháp lý (09/10/2026 — trước là lỗi chặn): `LESSOR_INFO_INCOMPLETE`, `REPRESENTATIVE_PHONE_MISSING`, `REPRESENTATIVE_UNDERAGE`,
 `RELATIONSHIP_REQUIRED` / `RELATIONSHIP_NOTE_REQUIRED` / `RELATIONSHIP_GENDER_MISMATCH` / `RELATIONSHIP_AGE_MISMATCH`,
 `SPOUSE_UNDER_MARRIAGE_AGE` / `MULTIPLE_SPOUSES`, `GUARDIAN_CONSENT_REQUIRED`, `SIGNED_DOCUMENT_MISSING`.
@@ -234,11 +236,17 @@ Cảnh báo mềm: `ROOM_WITHOUT_METER` (HĐ hiệu lực, phòng chưa có côn
 | `CONTRACT_READING_EXISTS` | 409 | HĐ đã có chỉ số nhận phòng / chỉ số cuối trên công tơ trong ngày — tải lại |
 | `PAYMENT_EXCEEDS_DEBT` | 422 | Số tiền lớn hơn số còn nợ |
 | `WRITE_OFF_NOT_ALLOWED` | 403 | Bỏ nợ (riêng / kèm thanh toán / khi hoàn tất thanh lý) — phó quản lý chưa được chủ trọ cấp quyền |
+| `REFUND_WAIVE_NOT_ALLOWED` | 403 | "Không hoàn" tiền cho người thuê khi hoàn tất thanh lý — chỉ chủ trọ |
+| `REFUND_WAIVE_REASON_REQUIRED` | 400 | "Không hoàn" thiếu lý do |
 | `NOTHING_TO_WRITE_OFF` | 422 | "Thanh toán + bỏ phần còn lại" mà số trả = số còn nợ — dùng "Đã thu" |
 | `NO_OUTSTANDING_INVOICE` | 422 | Không còn phiếu nào chưa thu đủ |
 | `PAYMENT_ALREADY_REVERSED` | 409 | Phiếu thu đã đảo — tải lại |
 | `FINAL_INVOICE_EXISTS` | 409 | Đã có hóa đơn trả phòng — mở phiếu đó |
 | `FINAL_INVOICE_REQUIRED` | 422 | Hoàn tất thanh lý: lập + chốt hóa đơn trả phòng trước |
+| `SETTLEMENT_LINE_LOCKED` | 422 | Sửa / xóa dòng kết toán (nợ chuyển / trừ cọc) của hóa đơn trả phòng — do hệ thống tính (BL-BR-41) |
+| `INVOICE_CARRIED_OVER` | 422 | Đảo phiếu thu / điều chỉnh chỉ số đã chốt (27/10/2026) của hóa đơn đã chuyển nợ vào hóa đơn trả phòng — hủy hóa đơn trả phòng trước |
+| `DEPOSIT_DEDUCTED` | 422 | Trả / không trả / bỏ đánh dấu cọc đã trừ vào hóa đơn trả phòng — hủy hóa đơn trả phòng trước |
+| `FINAL_INVOICE_NOT_REQUIRED` | 422 | Lập hóa đơn trả phòng khi người thuê đi trước "Tính tiền từ ngày" — không có kỳ nào để tính, hoàn tất thanh lý luôn |
 | `FINAL_INVOICE_FINALIZED` | 422 | Hủy thanh lý: hủy hóa đơn trả phòng đã chốt trước |
 | `INVOICE_DRAFT_EXISTS` | 409 | Còn phiếu nháp — chốt hoặc xóa |
 | `PREVIOUS_PERIOD_NOT_BILLED` | 422 | Lập phiếu các kỳ trước trước |
@@ -248,8 +256,7 @@ Cảnh báo mềm: `ROOM_WITHOUT_METER` (HĐ hiệu lực, phòng chưa có côn
 | `REFUND_PENDING` | 422 | Hoàn tất thanh lý: còn tiền phải trả lại người thuê — gửi lại kèm `refund` ("Đã trả") |
 | `PENDING_CHARGES` | 422 | Hoàn tất thanh lý: còn khoản chưa xử lý (`count`, `surcharge`, `credit`) — gửi lại kèm `pendingCharges` |
 | `NOTICE_NOT_GIVEN` | 422 | Rút báo trả phòng khi chưa báo |
-| `MOVE_OUT_NOTICED` | — | Lý do bỏ qua khi tạo hóa đơn tháng: đã báo trả phòng trong kỳ |
-| `CONTRACT_NOT_BILLABLE` | 422 | HĐ đã kết thúc — không ghi / đảo phiếu thu, không xác nhận / bỏ xác nhận hoàn tiền |
+| `CONTRACT_NOT_BILLABLE` | 422 | HĐ đã kết thúc — không ghi / đảo phiếu thu, không xác nhận / bỏ xác nhận hoàn tiền, không hủy hóa đơn |
 | `INVOICE_AFTER_END_DATE` | 422 | Bắt đầu thanh lý / ký lại: còn hóa đơn tháng kỳ sau ngày trả phòng, hoặc đã tính điện nước tới sau ngày đó — hủy / xóa trước |
 
 Cảnh báo trên phiếu (`issues`, `severity: "Warning"`): `EDITED_BASE_CHANGED` (ô sửa tay mà số hệ thống tính lại đã đổi).

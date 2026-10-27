@@ -8,11 +8,12 @@ namespace renting_room.Application.Billing;
 public sealed record ResetInvoiceLineCommand(Guid InvoiceId, Guid LineId) : IRequest<Result<InvoiceDetailDto>>;
 
 public sealed class ResetInvoiceLineHandler(
-    IUnitOfWork unitOfWork, IInvoiceRepository invoices, IRoomChargeRepository roomCharges, IRoomChargeQueries roomChargeQueries, TimeProvider clock)
+    IUnitOfWork unitOfWork, IInvoiceRepository invoices, IInvoiceQueries invoiceQueries, IRoomChargeRepository roomCharges, IRoomChargeQueries roomChargeQueries,
+    TimeProvider clock)
     : IRequestHandler<ResetInvoiceLineCommand, Result<InvoiceDetailDto>>
 {
     public async ValueTask<Result<InvoiceDetailDto>> Handle(ResetInvoiceLineCommand request, CancellationToken cancellationToken) =>
-        await InvoiceAccess.MutateAsync(unitOfWork, invoices, request.InvoiceId, clock.GetUtcNow().ToBusinessDate(), async invoice =>
+        await InvoiceAccess.MutateAsync(unitOfWork, invoices, invoiceQueries, request.InvoiceId, clock.GetUtcNow().ToBusinessDate(), async invoice =>
         {
             if (await EditInvoiceLineHandler.IsSystemChargeLineAsync(roomChargeQueries, invoice, request.LineId, cancellationToken))
                 return Result.Failure(RoomChargeErrors.System);

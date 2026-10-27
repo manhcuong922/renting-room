@@ -37,7 +37,9 @@ public sealed class CreateFinalInvoiceHandler(
             return BillingErrors.DraftExists;
 
         var schedule = (await properties.GetBillingAsync(contract.PropertyId, cancellationToken)).Schedule;
-        var period = contract.BillingPeriods(schedule, contract.ActualEndDate!.Value).Last();
+        var period = contract.BillingPeriods(schedule, contract.ActualEndDate!.Value).LastOrDefault();
+        if (period is null)
+            return BillingErrors.FinalNotRequired;
         var previousBilled = invoices.Any(i => i.PeriodStart == period.Start || i.PeriodEnd == period.Start.AddDays(-1));
         if (!previousBilled && period.Start != contract.BillingStartDate)
             return BillingErrors.PreviousNotBilled;

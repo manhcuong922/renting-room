@@ -137,12 +137,13 @@ public sealed partial class DemoDataSeeder(
 
     private async Task<Guid> ContractAsync(
         Guid roomId, Guid representative, DateOnly start, decimal rent, IReadOnlyList<Guid> meters,
-        IReadOnlyList<OccupantRequest>? others = null, IReadOnlyList<ContractFeeRequest>? fees = null, DateOnly? end = null, bool activate = true)
+        IReadOnlyList<OccupantRequest>? others = null, IReadOnlyList<ContractFeeRequest>? fees = null, DateOnly? end = null, bool activate = true,
+        DateOnly? billingStart = null)
     {
         var occupants = new List<OccupantRequest> { new(representative, start, null, null, null) };
         occupants.AddRange(others ?? []);
         var input = new ContractInput(representative, start, end, null, null, null, rent, rent, "Hoàn cọc khi trả phòng đúng hạn, trừ hư hỏng",
-            null, null, [PaymentMethod.Cash, PaymentMethod.BankTransfer], null, null, null, occupants, Fees: fees);
+            billingStart, null, [PaymentMethod.Cash, PaymentMethod.BankTransfer], null, null, null, occupants, Fees: fees);
         var created = await Send(new CreateContractCommand(roomId, null, input));
         if (activate)
             await Send(new ActivateContractCommand(created.Id, meters.Select(m => new MeterReadingInput(m, null)).ToList()));

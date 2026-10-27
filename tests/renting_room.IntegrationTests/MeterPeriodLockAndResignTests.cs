@@ -86,47 +86,8 @@ public sealed class MeterPeriodLockAndResignTests(ApiFactory factory)
     private Task<HttpResponseMessage> ResignAsync((string Token, Guid OldContract, Guid Roommate, DateOnly Today) t) =>
         _client.PostJsonAsync($"/api/v1/contracts/{t.OldContract}/re-sign", new { handoverDate = t.Today, representativeRenterId = t.Roommate }, t.Token);
 
-    [Fact]
-    public async Task Resign_RoommateWithPlatedVehicle_EndsOldRegistration_CopiesToNewDraft()
-    {
-        var t = await TenancyAsync();
-        var plate = $"29B1-{Random.Shared.Next(10_000, 99_999)}";
-        (await _client.PostJsonAsync($"/api/v1/contracts/{t.OldContract}/vehicles",
-            new { renterId = t.Roommate, vehicleType = "Motorbike", plateNumber = plate, registeredFrom = t.Today.AddDays(-30) }, t.Token))
-            .StatusCode.Should().Be(HttpStatusCode.Created);
-
-        var resigned = await ResignAsync(t);
-        resigned.StatusCode.Should().Be(HttpStatusCode.Created, await resigned.Content.ReadAsStringAsync());
-        var newId = await resigned.ReadIdAsync();
-
-        var oldVehicle = (await DetailAsync(t.OldContract, t.Token)).GetProperty("vehicles").EnumerateArray().Single();
-        oldVehicle.GetProperty("registeredTo").GetString().Should().Be($"{t.Today:yyyy-MM-dd}", "xe kết thúc ở HĐ cũ tại ngày bàn giao");
-        var newVehicle = (await DetailAsync(newId, t.Token)).GetProperty("vehicles").EnumerateArray().Single();
-        newVehicle.GetProperty("registeredTo").ValueKind.Should().Be(JsonValueKind.Null);
-        newVehicle.GetProperty("renterId").GetGuid().Should().Be(t.Roommate);
-    }
-
-    [Fact]
-    public async Task ResignNotCompleted_CancelDraftOrCancelLiquidation_DepositBackToHolding()
-    {
-        async Task<string?> DepositStatusAsync(Guid contractId, string token) =>
-            (await DetailAsync(contractId, token)).GetProperty("deposit").GetProperty("status").GetString();
-
-        // (1) Hủy HĐ nháp ký lại ⇒ cọc HĐ cũ về "Đang giữ".
-        var first = await TenancyAsync();
-        var draft = await (await ResignAsync(first)).ReadIdAsync();
-        (await DepositStatusAsync(first.OldContract, first.Token)).Should().Be("Transferred");
-        (await _client.PostJsonAsync($"/api/v1/contracts/{draft}/cancel", new { reason = "Người thuê đổi ý" }, first.Token)).IsSuccessStatusCode.Should().BeTrue();
-        (await DepositStatusAsync(first.OldContract, first.Token)).Should().Be("Holding");
-
-        // (2) Hủy thanh lý HĐ cũ ⇒ cọc về "Đang giữ".
-        var second = await TenancyAsync(first.Token);
-        (await ResignAsync(second)).StatusCode.Should().Be(HttpStatusCode.Created);
-        (await DepositStatusAsync(second.OldContract, second.Token)).Should().Be("Transferred");
-        (await _client.PostJsonAsync($"/api/v1/contracts/{second.OldContract}/liquidation/cancel", null, second.Token))
-            .StatusCode.Should().Be(HttpStatusCode.OK);
-        (await DepositStatusAsync(second.OldContract, second.Token)).Should().Be("Holding");
-    }
+    private async Task<string?> DepositStatusAsync(Guid contractId, string token) =>
+        (await DetailAsync(contractId, token)).GetProperty("deposit").GetProperty("status").GetString();
 
     private static string Plate() => $"29B1-{Random.Shared.Next(10_000, 99_999)}";
 
@@ -142,68 +103,83 @@ public sealed class MeterPeriodLockAndResignTests(ApiFactory factory)
         (await DetailAsync(contractId, token)).GetProperty("vehicles").EnumerateArray()
         .Single(v => v.GetProperty("plateNumber").GetString() == plate.Replace("-", ""));
 
-    private static IEnumerable<string?> WarningCodes(JsonElement body) =>
-        body.GetProperty("warnings").EnumerateArray().Select(w => w.GetProperty("code").GetString());
-
+    /// <summary>27/10/2026: nháp ký lại là bản soạn — HĐ cũ vẫn hiệu lực bình thường (hóa đơn, xe, cọc) cho tới khi ký.</summary>
     [Fact]
-    public async Task ResignNotCompleted_CancelDraft_ReopensVehiclesEndedByResign_LeavesEarlierEndedOnes()
-    {
-        var t = await TenancyAsync();
-        var (moving, gone) = (Plate(), Plate());
-        await RegisterVehicleAsync(t.OldContract, t.Roommate, moving, t.Today.AddDays(-30), t.Token);
-        var goneId = await RegisterVehicleAsync(t.OldContract, t.Roommate, gone, t.Today.AddDays(-30), t.Token);
-        (await _client.PostJsonAsync($"/api/v1/contracts/{t.OldContract}/vehicles/{goneId}/end", new { endDate = t.Today.AddDays(-5) }, t.Token))
-            .StatusCode.Should().Be(HttpStatusCode.NoContent);
-        var draft = await (await ResignAsync(t)).ReadIdAsync();
-
-        var cancelled = await _client.PostJsonAsync($"/api/v1/contracts/{draft}/cancel", new { reason = "Người thuê đổi ý" }, t.Token);
-
-        cancelled.StatusCode.Should().Be(HttpStatusCode.OK, await cancelled.Content.ReadAsStringAsync());
-        WarningCodes(await cancelled.ReadAsync<JsonElement>()).Should().BeEmpty();
-        (await VehicleAsync(t.OldContract, moving, t.Token)).GetProperty("registeredTo").ValueKind
-            .Should().Be(JsonValueKind.Null, "xe kết thúc lúc ký lại được mở lại trên HĐ cũ");
-        (await VehicleAsync(t.OldContract, gone, t.Token)).GetProperty("registeredTo").GetString()
-            .Should().Be($"{t.Today.AddDays(-5):yyyy-MM-dd}", "xe kết thúc trước lần ký lại không bị đụng");
-        (await VehicleAsync(draft, moving, t.Token)).GetProperty("registeredTo").ValueKind.Should().NotBe(JsonValueKind.Null);
-    }
-
-    [Fact]
-    public async Task ResignNotCompleted_CancelLiquidation_EndsSamePlateOnDraft_ReopensOldVehicle()
+    public async Task Resign_Draft_ChangesNothingOnOldContract_AndOnlyOneDraftPerContract()
     {
         var t = await TenancyAsync();
         var plate = Plate();
         await RegisterVehicleAsync(t.OldContract, t.Roommate, plate, t.Today.AddDays(-30), t.Token);
-        var draft = await (await ResignAsync(t)).ReadIdAsync();
 
-        var cancelled = await _client.PostJsonAsync($"/api/v1/contracts/{t.OldContract}/liquidation/cancel", null, t.Token);
+        var resigned = await ResignAsync(t);
+        resigned.StatusCode.Should().Be(HttpStatusCode.Created, await resigned.Content.ReadAsStringAsync());
+        var draftId = await resigned.ReadIdAsync();
 
-        cancelled.StatusCode.Should().Be(HttpStatusCode.OK, await cancelled.Content.ReadAsStringAsync());
-        WarningCodes(await cancelled.ReadAsync<JsonElement>()).Should().BeEmpty();
+        var old = await DetailAsync(t.OldContract, t.Token);
+        old.GetProperty("status").GetString().Should().Be("Active", "nháp ký lại chưa ký ⇒ HĐ cũ vẫn hiệu lực");
+        old.GetProperty("actualEndDate").ValueKind.Should().Be(JsonValueKind.Null);
+        old.GetProperty("deposit").GetProperty("status").GetString().Should().Be("Holding");
         (await VehicleAsync(t.OldContract, plate, t.Token)).GetProperty("registeredTo").ValueKind.Should().Be(JsonValueKind.Null);
-        (await VehicleAsync(draft, plate, t.Token)).GetProperty("registeredTo").ValueKind
-            .Should().NotBe(JsonValueKind.Null, "nháp ký lại nhả biển số trước khi HĐ cũ mở lại xe");
+        var draft = await DetailAsync(draftId, t.Token);
+        draft.GetProperty("status").GetString().Should().Be("Draft");
+        draft.GetProperty("previousContractId").GetGuid().Should().Be(t.OldContract);
+        draft.GetProperty("vehicles").EnumerateArray().Should().BeEmpty("xe chỉ chuyển sang HĐ mới khi ký");
+
+        var second = await ResignAsync(t);
+        second.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        (await second.ReadProblemCodeAsync()).Should().Be("RESIGN_DRAFT_EXISTS");
     }
 
     [Fact]
-    public async Task ResignNotCompleted_PlateRegisteredElsewhere_WarnsVehicleNotRestored()
+    public async Task Resign_CancelDraft_LeavesOldContractUntouched_AndAllowsANewDraft()
     {
         var t = await TenancyAsync();
         var plate = Plate();
         await RegisterVehicleAsync(t.OldContract, t.Roommate, plate, t.Today.AddDays(-30), t.Token);
         var draft = await (await ResignAsync(t)).ReadIdAsync();
-        var onDraft = (await VehicleAsync(draft, plate, t.Token)).GetProperty("id").GetGuid();
-        (await _client.PostJsonAsync($"/api/v1/contracts/{draft}/vehicles/{onDraft}/end", new { endDate = t.Today.AddDays(1) }, t.Token))
-            .StatusCode.Should().Be(HttpStatusCode.NoContent);
-        var other = await TenancyAsync(t.Token);
-        await RegisterVehicleAsync(other.OldContract, null, plate, t.Today, t.Token);
 
         var cancelled = await _client.PostJsonAsync($"/api/v1/contracts/{draft}/cancel", new { reason = "Người thuê đổi ý" }, t.Token);
 
         cancelled.StatusCode.Should().Be(HttpStatusCode.OK, await cancelled.Content.ReadAsStringAsync());
-        var body = await cancelled.ReadAsync<JsonElement>();
-        WarningCodes(body).Should().Equal("VEHICLE_NOT_RESTORED");
-        body.GetProperty("warnings")[0].GetProperty("message").GetString().Should().Contain(plate.Replace("-", ""));
-        (await VehicleAsync(t.OldContract, plate, t.Token)).GetProperty("registeredTo").GetString()
-            .Should().Be($"{t.Today:yyyy-MM-dd}", "biển số đang ở HĐ khác ⇒ xe giữ trạng thái kết thúc");
+        var old = await DetailAsync(t.OldContract, t.Token);
+        old.GetProperty("status").GetString().Should().Be("Active");
+        old.GetProperty("deposit").GetProperty("status").GetString().Should().Be("Holding");
+        (await VehicleAsync(t.OldContract, plate, t.Token)).GetProperty("registeredTo").ValueKind.Should().Be(JsonValueKind.Null);
+        (await ResignAsync(t)).StatusCode.Should().Be(HttpStatusCode.Created, "nháp cũ đã hủy ⇒ soạn lại được");
+    }
+
+    [Fact]
+    public async Task Resign_Sign_LiquidatesOldAtHandover_MovesVehiclesAndDeposit()
+    {
+        var t = await TenancyAsync();
+        var plate = Plate();
+        await RegisterVehicleAsync(t.OldContract, t.Roommate, plate, t.Today.AddDays(-30), t.Token);
+        var draft = await (await ResignAsync(t)).ReadIdAsync();
+
+        var signed = await _client.PostJsonAsync($"/api/v1/contracts/{draft}/activate", null, t.Token);
+
+        signed.StatusCode.Should().Be(HttpStatusCode.NoContent, await signed.Content.ReadAsStringAsync());
+        var old = await DetailAsync(t.OldContract, t.Token);
+        old.GetProperty("status").GetString().Should().Be("Liquidating");
+        old.GetProperty("actualEndDate").GetString().Should().Be($"{t.Today:yyyy-MM-dd}", "ngày bàn giao");
+        old.GetProperty("deposit").GetProperty("status").GetString().Should().Be("Transferred", "ký lại ⇒ cọc chuyển sang HĐ mới");
+        (await VehicleAsync(t.OldContract, plate, t.Token)).GetProperty("registeredTo").GetString().Should().Be($"{t.Today:yyyy-MM-dd}");
+        (await DetailAsync(draft, t.Token)).GetProperty("status").GetString().Should().Be("Active");
+        var moved = await VehicleAsync(draft, plate, t.Token);
+        moved.GetProperty("registeredTo").ValueKind.Should().Be(JsonValueKind.Null);
+        moved.GetProperty("renterId").GetGuid().Should().Be(t.Roommate);
+    }
+
+    [Fact]
+    public async Task Resign_WithoutDepositTransfer_OldDepositStaysHolding_AfterSign()
+    {
+        var t = await TenancyAsync();
+        var resigned = await _client.PostJsonAsync($"/api/v1/contracts/{t.OldContract}/re-sign",
+            new { handoverDate = t.Today, representativeRenterId = t.Roommate, transferDeposit = false }, t.Token);
+        var draft = await resigned.ReadIdAsync();
+
+        (await _client.PostJsonAsync($"/api/v1/contracts/{draft}/activate", null, t.Token)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        (await DepositStatusAsync(t.OldContract, t.Token)).Should().Be("Holding", "chủ trọ chọn không chuyển cọc sang HĐ mới");
     }
 }

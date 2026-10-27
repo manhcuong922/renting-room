@@ -71,10 +71,9 @@ public sealed class GenerateInvoicesHandler(
         var period = BillingMonths.PeriodIn(contract, month, schedule);
         if (period is null)
             return ("NO_PERIOD_IN_MONTH", false);
+        // Ngày báo trả phòng (PlannedMoveOutDate) chỉ là dấu đánh dấu: chỉ khi đã bắt đầu thanh lý (ngày trả phòng thật) kỳ đó mới thuộc hóa đơn trả phòng.
         if (contract.ActualEndDate is { } actualEnd && actualEnd <= period.End)
             return ("USE_FINAL_INVOICE", false);
-        if (contract.MoveOutDate is { } moveOut && moveOut <= period.End)
-            return ("MOVE_OUT_NOTICED", false);
 
         var invoices = await invoiceRepository.ListWithDetailsByContractAsync(contractId, ct);
         var existing = invoices.FirstOrDefault(i => i.PeriodStart == period.Start);

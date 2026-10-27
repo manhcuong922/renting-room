@@ -147,21 +147,19 @@ public sealed class MeterAndLiquidationExtrasTests(ApiFactory factory)
         preview.GetProperty("hasOtherDraftInvoices").GetBoolean().Should().BeFalse();
         preview.GetProperty("canComplete").GetBoolean().Should().BeFalse();
 
-        // Đã chốt: còn nợ ⇒ hoàn tất được nhưng phải chọn cách xử lý nợ.
+        // Đã chốt: kỳ cuối thu trọn 3,5tr, cọc 3,5tr trừ vào hóa đơn trả phòng (kết toán — BL-BR-41) ⇒ tổng 0: không nợ, không phải trả lại.
         (await _client.PostJsonAsync($"/api/v1/invoices/{invoiceId}/finalize", null, token)).StatusCode.Should().Be(HttpStatusCode.OK);
         preview = await PreviewAsync();
         preview.GetProperty("finalInvoiceId").GetGuid().Should().Be(invoiceId);
         preview.GetProperty("finalInvoiceStatus").GetString().Should().Be("Finalized");
         Blockers(preview).Should().BeEmpty();
         preview.GetProperty("canComplete").GetBoolean().Should().BeTrue();
-        preview.GetProperty("needsDebtDecision").GetBoolean().Should().BeTrue();
-        var unpaid = preview.GetProperty("unpaidInvoices").EnumerateArray().Single();
-        unpaid.GetProperty("invoiceId").GetGuid().Should().Be(invoiceId);
-        unpaid.GetProperty("outstanding").GetDecimal().Should().Be(preview.GetProperty("outstanding").GetDecimal());
+        preview.GetProperty("needsDebtDecision").GetBoolean().Should().BeFalse("cọc đã trừ đủ phần phải thu");
+        preview.GetProperty("needsRefundDecision").GetBoolean().Should().BeFalse();
+        preview.GetProperty("unpaidInvoices").EnumerateArray().Should().BeEmpty();
+        preview.GetProperty("deposit").GetProperty("status").GetString().Should().Be("Deducted");
 
-        (await (await _client.PostJsonAsync($"/api/v1/contracts/{s.ContractId}/liquidation/complete", new { settlement = (string?)null }, token))
-            .ReadProblemCodeAsync()).Should().Be("CONTRACT_HAS_DEBT");
-        (await _client.PostJsonAsync($"/api/v1/contracts/{s.ContractId}/liquidation/complete", new { settlement = "CollectAll" }, token))
+        (await _client.PostJsonAsync($"/api/v1/contracts/{s.ContractId}/liquidation/complete", new { settlement = (string?)null }, token))
             .StatusCode.Should().Be(HttpStatusCode.NoContent);
         preview = await PreviewAsync();
         preview.GetProperty("status").GetString().Should().Be("Ended");

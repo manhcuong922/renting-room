@@ -367,6 +367,101 @@ public sealed class InvoiceTests
             .Which.Amount.Should().Be(overpaid);
     }
 
+    /// <summary>BL-BR-41 (27/10/2026): hóa đơn trả phòng là bản kết toán — nợ hóa đơn trước + trừ cọc, không thuộc phần thu.</summary>
+    [Fact]
+    public void FinalInvoice_SettlementLines_CarryDebtsAndDeposit_OutsideChargesAndRounding_AndAreLocked()
+    {
+        var contract = Active(ChargeMode.Postpaid);
+        contract.StartLiquidation(Start.AddDays(14), TerminationReason.MutualAgreement, null, null, Start.AddDays(14)).IsSuccess.Should().BeTrue();
+        var meter = MeterWithHandover(contract, 108);
+        meter.Record(ReadingKind.Final, Start.AddDays(14), 130, contract.Id, null);
+        var period = Periods(contract, contract.ActualEndDate!.Value).Last();
+        var september = new SettlementDebt(Guid.NewGuid(), "PB2026-000009", new DateOnly(2026, 9, 1), Start.AddMonths(-1), Start.AddDays(-1), 1_000_000);
+
+        var calculation = InvoiceCalculator.Calculate(new InvoiceCalcInput(contract, period, ScheduleOf(contract), ProrationMode.Daily,
+            new Dictionary<Guid, FeeType> { [Electricity.Id] = Electricity, [WaterPerPerson.Id] = WaterPerPerson, [Parking.Id] = Parking },
+            [meter], new Dictionary<Guid, Guid>(),
+            new FinalSettlement(RentBilled: null, LastPeriodHasRegular: false, FinalPeriodCharge.Daily, Debts: [september], Deposit: 3_000_000),
+            RoundTotal: true));
+
+        var debt = calculation.Lines.Single(l => l.Type == InvoiceLineType.PreviousDebt);
+        debt.Amount.Should().Be(1_000_000);
+        debt.SourceInvoiceId.Should().Be(september.InvoiceId);
+        debt.Description.Should().Contain("PB2026-000009").And.Contain("09/2026");
+        calculation.Lines.Single(l => l.Type == InvoiceLineType.Deposit).Amount.Should().Be(-3_000_000);
+
+        var invoice = Invoice.CreateDraft(PropertyId, RoomId, contract.Id, period, "101", contract.ContractNo, "A", calculation, InvoiceType.Final);
+        var charges = calculation.Lines.Where(l => l.Type is not (InvoiceLineType.PreviousDebt or InvoiceLineType.Deposit)).Sum(l => l.Amount);
+        invoice.Subtotal.Should().Be(charges, "nợ chuyển và cọc không phải phần thu (doanh thu)");
+        invoice.SettlementTotal.Should().Be(1_000_000 - 3_000_000);
+        invoice.RoundingAmount.Should().Be(-(charges % 1000), "làm tròn chỉ tính trên phần thu");
+        invoice.TotalAmount.Should().Be(charges + invoice.RoundingAmount + 1_000_000 - 3_000_000);
+        invoice.InvoiceAmount.Should().Be(charges + invoice.RoundingAmount, "Tổng hóa đơn = tiền của chính kỳ cuối, không gồm kết toán");
+        invoice.Lines.Single(l => l.Type == InvoiceLineType.PreviousDebt).SourceInvoiceId.Should().Be(september.InvoiceId);
+
+        var locked = invoice.Lines.Single(l => l.Type == InvoiceLineType.Deposit);
+        invoice.EditLine(locked.Id, null, null, 0, "Không trừ").Error.Should().Be(BillingErrors.SettlementLineLocked);
+        invoice.ResetLine(locked.Id).Error.Should().Be(BillingErrors.SettlementLineLocked);
+        invoice.SystemPartMatches(calculation).Should().BeTrue();
+    }
+
+    [Fact]
+    public void CarryOver_ClosesTheDebt_WithoutCountingAsCollected_AndCanBeUndone()
+    {
+        var invoice = Draft();
+        invoice.Finalize("PB2026-000010", Start, 5, DateTimeOffset.UtcNow);
+        invoice.ApplyPayment(400_000);
+        var final = Guid.NewGuid();
+
+        invoice.CarryOverTo(final, 500_000).Error.Should().Be(BillingErrors.DraftStale, "phải đúng số còn nợ lúc chốt");
+        invoice.CarryOverTo(final, 600_000).IsSuccess.Should().BeTrue();
+
+        invoice.Outstanding.Should().Be(0);
+        invoice.CarriedOverAmount.Should().Be(600_000);
+        invoice.CarriedToInvoiceId.Should().Be(final);
+        invoice.CollectedAmount.Should().Be(400_000, "phần chuyển không phải tiền đã thu");
+        invoice.PaymentStatus(Start).Should().Be(InvoicePaymentStatus.CarriedOver);
+        invoice.Void("Sai", DateTimeOffset.UtcNow).Error.Should().Be(BillingErrors.HasPayments);
+        invoice.CarryOverTo(Guid.NewGuid(), 0).IsFailure.Should().BeTrue();
+
+        invoice.UndoCarryOver();
+        invoice.Outstanding.Should().Be(600_000);
+        invoice.CarriedOverAmount.Should().Be(0);
+        invoice.CarriedToInvoiceId.Should().BeNull();
+        invoice.PaymentStatus(Start).Should().Be(InvoicePaymentStatus.PartiallyPaid);
+        invoice.InvoiceAmount.Should().Be(invoice.TotalAmount, "hóa đơn thường: Tổng hóa đơn = Tổng thu");
+    }
+
+    /// <summary>BL-BR-41 (bổ sung 27/10/2026): trạng thái hóa đơn đã chuyển nợ đi theo hóa đơn trả phòng — xong ⇒ Hoàn thành, bỏ nợ ⇒ Đã bỏ nợ.</summary>
+    [Theory]
+    [InlineData(null, InvoicePaymentStatus.CarriedOver)]
+    [InlineData(InvoicePaymentStatus.Unpaid, InvoicePaymentStatus.CarriedOver)]
+    [InlineData(InvoicePaymentStatus.PartiallyPaid, InvoicePaymentStatus.CarriedOver)]
+    [InlineData(InvoicePaymentStatus.Overdue, InvoicePaymentStatus.CarriedOver)]
+    [InlineData(InvoicePaymentStatus.RefundPending, InvoicePaymentStatus.CarriedOver)]
+    [InlineData(InvoicePaymentStatus.Paid, InvoicePaymentStatus.CarriedSettled)]
+    [InlineData(InvoicePaymentStatus.Refunded, InvoicePaymentStatus.CarriedSettled)]
+    [InlineData(InvoicePaymentStatus.RefundWaived, InvoicePaymentStatus.CarriedSettled)]
+    [InlineData(InvoicePaymentStatus.WrittenOff, InvoicePaymentStatus.CarriedWrittenOff)]
+    public void CarriedInvoice_StatusFollowsTheMoveOutInvoice(InvoicePaymentStatus? moveOut, InvoicePaymentStatus expected)
+    {
+        var invoice = Draft();
+        invoice.Finalize("PB2026-000010", Start, 5, DateTimeOffset.UtcNow);
+        invoice.ApplyPayment(400_000);
+        invoice.CarryOverTo(Guid.NewGuid(), 600_000).IsSuccess.Should().BeTrue();
+
+        invoice.PaymentStatus(Start, moveOut).Should().Be(expected);
+    }
+
+    [Fact]
+    public void MoveOutInvoiceStatus_DoesNotAffectInvoicesThatCarriedNothing()
+    {
+        var invoice = Draft();
+        invoice.Finalize("PB2026-000010", Start, 5, DateTimeOffset.UtcNow);
+
+        invoice.PaymentStatus(Start, InvoicePaymentStatus.Paid).Should().Be(InvoicePaymentStatus.Unpaid);
+    }
+
     private static Invoice Draft(decimal rent = 1_000_000, bool round = false) =>
         Invoice.CreateDraft(PropertyId, RoomId, Guid.NewGuid(), new BillingPeriod(Start, Start.AddMonths(1).AddDays(-1), new DateOnly(Start.Year, Start.Month, 1)), "101", "HD2026-0001", "A",
             new InvoiceCalculation([new CalculatedLine(InvoiceLineType.Rent, null, "Tiền phòng", "tháng", Start, Start.AddMonths(1).AddDays(-1),
@@ -483,6 +578,40 @@ public sealed class InvoiceTests
 
         invoice.CancelRefund().IsSuccess.Should().BeTrue();
         invoice.Void("Sai", DateTimeOffset.UtcNow).IsSuccess.Should().BeTrue();
+    }
+
+    [Fact]
+    public void WaiveRefund_NeedsReason_RecordsNoMethod_AndCanBeUndone()
+    {
+        var invoice = Draft();
+        invoice.AddManualLine(InvoiceLineType.Refund, "Hoàn trả điện thu thừa", null, null, 1_200_000, "Điều chỉnh chỉ số", null, Guid.NewGuid());
+        var today = Start.AddMonths(1);
+        invoice.Finalize("PB2026-000003", today, 5, DateTimeOffset.UtcNow);
+
+        invoice.WaiveRefund(today, "  ", today).Error.Should().Be(BillingErrors.RefundWaiveReasonRequired);
+        invoice.WaiveRefund(today.AddDays(1), "Người thuê bỏ đi", today).Error.Should().Be(BillingErrors.InvalidRefundDate);
+        invoice.PaymentStatus(today).Should().Be(InvoicePaymentStatus.RefundPending);
+
+        invoice.WaiveRefund(today, " Người thuê bỏ đi, không liên lạc được ", today).IsSuccess.Should().BeTrue();
+        invoice.PaymentStatus(today).Should().Be(InvoicePaymentStatus.RefundWaived);
+        invoice.RefundWaived.Should().BeTrue();
+        invoice.RefundMethod.Should().BeNull("không chi tiền");
+        invoice.RefundNote.Should().Be("Người thuê bỏ đi, không liên lạc được");
+        invoice.RefundDue.Should().Be(0);
+        invoice.WaiveRefund(today, "Lần 2", today).Error.Should().Be(BillingErrors.RefundConfirmed);
+
+        invoice.CancelRefund().IsSuccess.Should().BeTrue();
+        invoice.PaymentStatus(today).Should().Be(InvoicePaymentStatus.RefundPending);
+        invoice.RefundWaived.Should().BeFalse();
+    }
+
+    [Fact]
+    public void WaiveRefund_RejectedWhenNothingToRefund()
+    {
+        var invoice = Draft();
+        invoice.Finalize("PB2026-000004", Start, 5, DateTimeOffset.UtcNow);
+
+        invoice.WaiveRefund(Start, "Không có gì để hoàn", Start).Error.Should().Be(BillingErrors.NothingToRefund);
     }
 
     [Fact]

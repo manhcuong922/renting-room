@@ -20,8 +20,8 @@ internal sealed class InvoiceLineConfiguration : IEntityTypeConfiguration<Invoic
     {
         builder.ToTable("invoice_lines", t =>
         {
-            t.HasCheckConstraint("ck_invoice_lines_sign", "line_type IN ('ManualDiscount','Refund') OR amount >= 0");
-            t.HasCheckConstraint("ck_invoice_lines_discount", "line_type NOT IN ('ManualDiscount','Refund') OR amount <= 0");
+            t.HasCheckConstraint("ck_invoice_lines_sign", "line_type IN ('ManualDiscount','Refund','Deposit') OR amount >= 0");
+            t.HasCheckConstraint("ck_invoice_lines_discount", "line_type NOT IN ('ManualDiscount','Refund','Deposit') OR amount <= 0");
             t.HasCheckConstraint("ck_invoice_lines_note", "line_type NOT IN ('Surcharge','ManualDiscount','Refund') OR note IS NOT NULL");
         });
         builder.HasKey(l => l.Id);

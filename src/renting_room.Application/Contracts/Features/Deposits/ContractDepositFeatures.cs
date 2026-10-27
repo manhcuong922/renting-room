@@ -2,6 +2,7 @@ using FluentValidation;
 using Mediator;
 using renting_room.Application.Common.Validation;
 using renting_room.Domain.Common;
+using renting_room.Domain.Contracts;
 
 namespace renting_room.Application.Contracts;
 
@@ -17,11 +18,11 @@ public sealed class RefundDepositCommandValidator : AbstractValidator<RefundDepo
     }
 }
 
-public sealed class RefundDepositHandler(ContractMutation mutation, TimeProvider clock) : IRequestHandler<RefundDepositCommand, Result>
+public sealed class RefundDepositHandler(ContractMutation mutation, FinalDraftRefresher finalDraft, TimeProvider clock) : IRequestHandler<RefundDepositCommand, Result>
 {
     public ValueTask<Result> Handle(RefundDepositCommand request, CancellationToken cancellationToken) =>
-        new(mutation.RunAsync(request.ContractId, contract => Task.FromResult(
-            contract.RefundDeposit(request.RefundedOn, request.Amount, request.Note, clock.GetUtcNow().ToBusinessDate())), cancellationToken));
+        new(DepositChange.RunAsync(mutation, finalDraft, request.ContractId,
+            contract => contract.RefundDeposit(request.RefundedOn, request.Amount, request.Note, clock.GetUtcNow().ToBusinessDate()), cancellationToken));
 }
 
 public sealed record ForfeitDepositCommand(Guid ContractId, DateOnly Date, string Note) : IRequest<Result>;
@@ -31,17 +32,31 @@ public sealed class ForfeitDepositCommandValidator : AbstractValidator<ForfeitDe
     public ForfeitDepositCommandValidator() => RuleFor(x => x.Note).RequiredText(500, "Lý do không trả cọc");
 }
 
-public sealed class ForfeitDepositHandler(ContractMutation mutation, TimeProvider clock) : IRequestHandler<ForfeitDepositCommand, Result>
+public sealed class ForfeitDepositHandler(ContractMutation mutation, FinalDraftRefresher finalDraft, TimeProvider clock) : IRequestHandler<ForfeitDepositCommand, Result>
 {
     public ValueTask<Result> Handle(ForfeitDepositCommand request, CancellationToken cancellationToken) =>
-        new(mutation.RunAsync(request.ContractId, contract => Task.FromResult(
-            contract.ForfeitDeposit(request.Date, request.Note, clock.GetUtcNow().ToBusinessDate())), cancellationToken));
+        new(DepositChange.RunAsync(mutation, finalDraft, request.ContractId,
+            contract => contract.ForfeitDeposit(request.Date, request.Note, clock.GetUtcNow().ToBusinessDate()), cancellationToken));
 }
 
 public sealed record CancelDepositRefundCommand(Guid ContractId) : IRequest<Result>;
 
-public sealed class CancelDepositRefundHandler(ContractMutation mutation) : IRequestHandler<CancelDepositRefundCommand, Result>
+public sealed class CancelDepositRefundHandler(ContractMutation mutation, FinalDraftRefresher finalDraft) : IRequestHandler<CancelDepositRefundCommand, Result>
 {
     public ValueTask<Result> Handle(CancelDepositRefundCommand request, CancellationToken cancellationToken) =>
-        new(mutation.RunAsync(request.ContractId, contract => Task.FromResult(contract.CancelDepositRefund()), cancellationToken));
+        new(DepositChange.RunAsync(mutation, finalDraft, request.ContractId, contract => contract.CancelDepositRefund(), cancellationToken));
+}
+
+/// <summary>Đổi trạng thái cọc rồi tính lại nháp hóa đơn trả phòng (dòng "Trừ tiền cọc" — M07 BL-BR-41).</summary>
+internal static class DepositChange
+{
+    public static Task<Result> RunAsync(
+        ContractMutation mutation, FinalDraftRefresher finalDraft, Guid contractId, Func<Contract, Result> change, CancellationToken ct) =>
+        mutation.RunAsync(contractId, async contract =>
+        {
+            var changed = change(contract);
+            if (changed.IsSuccess)
+                await finalDraft.RefreshAsync(contract, ct);
+            return changed;
+        }, ct);
 }

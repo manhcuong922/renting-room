@@ -23,7 +23,7 @@ public sealed record ActivateContractCommand(
 public sealed class ActivateContractHandler(
     IUnitOfWork unitOfWork, IContractRepository contracts, IContractQueries contractQueries, IRoomQueries rooms, IPropertyQueries properties,
     IRenterQueries renters, IOrganizationQueries organizations, IFeeQueries fees, IMeterQueries meters, OccupantChecks occupantChecks,
-    ContractMeterReadings meterReadings, PreviousFinalCorrection previousFinals, TimeProvider clock)
+    ContractMeterReadings meterReadings, PreviousFinalCorrection previousFinals, ResignLiquidation resignLiquidation, TimeProvider clock)
     : IRequestHandler<ActivateContractCommand, Result>
 {
     public async ValueTask<Result> Handle(ActivateContractCommand request, CancellationToken cancellationToken)
@@ -37,6 +37,15 @@ public sealed class ActivateContractHandler(
         await unitOfWork.LockForUpdateAsync<Contract>(request.Id, cancellationToken);
 
         var contract = (await contracts.GetForUpdateAsync(request.Id, cancellationToken))!;
+        if (contract is { Status: ContractStatus.Draft, PreviousContractId: { } previousId })
+        {
+            // Ký lại (CT-UC-21): nháp không đổi HĐ cũ — chỉ lúc ký mới thanh lý HĐ cũ tại ngày bàn giao, chuyển xe và cọc.
+            await unitOfWork.LockForUpdateAsync<Contract>(previousId, cancellationToken);
+            var resigned = await resignLiquidation.StartAsync(contract, cancellationToken);
+            if (resigned.IsFailure)
+                return resigned;
+        }
+
         var room = (await rooms.FindAsync(contract.RoomId, cancellationToken))!;
         var property = (await properties.GetAsync(contract.PropertyId, cancellationToken))!;
         var representative = (await renters.ListAsync([contract.RepresentativeRenterId], cancellationToken))[contract.RepresentativeRenterId];

@@ -12,7 +12,8 @@ public sealed record CalculatedLine(
     decimal? ProrationFactor,
     decimal Amount,
     int SortOrder,
-    LinePrice? Price = null)
+    LinePrice? Price = null,
+    Guid? SourceInvoiceId = null)
 {
     public (InvoiceLineType, Guid?, DateOnly) Key => (Type, FeeTypeId, ServiceFrom);
 }

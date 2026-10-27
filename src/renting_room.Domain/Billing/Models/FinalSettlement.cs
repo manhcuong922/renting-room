@@ -10,6 +10,8 @@ namespace renting_room.Domain.Billing;
 /// <param name="RentInvoiceId">Hóa đơn tháng đã lập tiền phòng kỳ cuối (khu thu trước) — nguồn của dòng Hoàn trả gợi ý.</param>
 /// <param name="RentCollected">Người thuê đã trả thật cho hóa đơn đó (đã thu − bỏ nợ) — gợi ý hoàn không vượt (BL-BR-27).</param>
 /// <param name="RentRefunded">Các dòng hoàn trả đã trỏ tới hóa đơn đó.</param>
+/// <param name="Debts">Kết toán (BL-BR-41): các hóa đơn đã chốt khác của HĐ còn nợ.</param>
+/// <param name="Deposit">Kết toán (BL-BR-41): cọc đang giữ sẽ trừ (0 = không cọc / không trả cọc / đã chuyển).</param>
 public sealed record FinalSettlement(
     decimal? RentBilled, bool LastPeriodHasRegular, FinalPeriodCharge Charge = FinalPeriodCharge.FullPeriod, Guid? RentInvoiceId = null,
-    decimal RentCollected = 0, decimal RentRefunded = 0);
+    decimal RentCollected = 0, decimal RentRefunded = 0, IReadOnlyList<SettlementDebt>? Debts = null, decimal Deposit = 0);

@@ -31,7 +31,9 @@ public sealed record InvoiceSummaryDto(
     decimal CollectedAmount = 0,
     decimal WrittenOffAmount = 0,
     bool IsAdjusted = false,
-    bool NeedsResend = false);
+    bool NeedsResend = false,
+    decimal InvoiceAmount = 0,
+    string? CarriedToInvoiceNo = null);
 
 public sealed record InvoiceSegmentDto(
     Guid MeterId, Guid StartReadingId, Guid EndReadingId, decimal StartValue, decimal EndValue, decimal Consumption,
@@ -85,7 +87,10 @@ public sealed record InvoiceDetailDto(
     decimal? TotalDue = null,
     IReadOnlyList<PreviousContractDebtDto>? PreviousContractDebts = null,
     decimal PreviousContractDue = 0,
-    FinalPeriodSummaryDto? FinalPeriod = null);
+    FinalPeriodSummaryDto? FinalPeriod = null,
+    decimal SettlementTotal = 0,
+    decimal CarriedOverAmount = 0,
+    Guid? CarriedToInvoiceId = null);
 
 /// <summary>M07 BL-UC-11: dòng tóm tắt kỳ cuối của hóa đơn trả phòng — "Ở đến 15/02 · Kỳ 01/02–28/02 · Tính: trọn kỳ".</summary>
 /// <param name="RentBilledInvoiceNo">Tiền phòng kỳ cuối đã thu ở hóa đơn tháng này (khu thu trước); null = thu ở hóa đơn trả phòng.</param>
@@ -94,14 +99,15 @@ public sealed record FinalPeriodSummaryDto(
 
 internal static class InvoiceMapping
 {
-    public static InvoiceSummaryDto ToSummary(this Invoice i, DateOnly today) => new(
-        i.Id, i.InvoiceNo, i.Type, i.Status, i.PaymentStatus(today), i.PropertyId, i.RoomId, i.SnapshotRoomCode, i.ContractId,
+    /// <param name="carriedTo">Hóa đơn trả phòng đã nhận nợ của hóa đơn này (BL-BR-41) — null ⇒ trạng thái "Chờ thu ở hóa đơn trả phòng".</param>
+    public static InvoiceSummaryDto ToSummary(this Invoice i, DateOnly today, CarriedTarget? carriedTo = null) => new(
+        i.Id, i.InvoiceNo, i.Type, i.Status, i.PaymentStatus(today, carriedTo?.PaymentStatus), i.PropertyId, i.RoomId, i.SnapshotRoomCode, i.ContractId,
         i.SnapshotContractNo, i.SnapshotRepresentativeName, $"{i.BillingMonth:yyyy-MM}", i.PeriodStart, i.PeriodEnd,
         i.TotalAmount, i.PaidAmount, i.Outstanding, i.RefundDue, i.DueDate, i.Issues.Count(x => x.Severity == InvoiceIssue.Error), i.Version.ToString(),
-        i.IsStale, i.RoundingAmount, i.CollectedAmount, i.WrittenOffAmount, i.IsAdjusted, i.NeedsResend);
+        i.IsStale, i.RoundingAmount, i.CollectedAmount, i.WrittenOffAmount, i.IsAdjusted, i.NeedsResend, i.InvoiceAmount, carriedTo?.InvoiceNo);
 
-    public static InvoiceDetailDto ToDetail(this Invoice i, DateOnly today) => new(
-        i.ToSummary(today), i.Subtotal, i.DiscountTotal, i.RefundTotal, i.RefundedOn, i.RefundMethod, i.RefundNote, i.IssueDate,
+    public static InvoiceDetailDto ToDetail(this Invoice i, DateOnly today, CarriedTarget? carriedTo = null) => new(
+        i.ToSummary(today, carriedTo), i.Subtotal, i.DiscountTotal, i.RefundTotal, i.RefundedOn, i.RefundMethod, i.RefundNote, i.IssueDate,
         i.Lines.OrderBy(l => l.SortOrder).ThenBy(l => l.ServiceFrom).Select(l => new InvoiceLineDto(
             l.Id, l.Type, l.IsSystem, l.FeeTypeId, l.Description, l.Unit, l.ServiceFrom, l.ServiceTo, l.Quantity, l.UnitPrice,
             l.ProrationFactor, l.Amount, l.IsManuallyEdited, l.SystemQuantity, l.SystemUnitPrice, l.SystemAmount, l.Note,
@@ -110,5 +116,6 @@ internal static class InvoiceMapping
                     .Select(s => new InvoiceSegmentDto(s.MeterId, s.StartReadingId, s.EndReadingId, s.StartValue, s.EndValue, s.Consumption,
                         s.RoomId, s.RoomCode, s.MeterSerial, s.StartDate, s.EndDate)).ToList()
                 : [], l.SourceInvoiceId, l.RoomChargeId, l.IsSettled, l.Price)).ToList(),
-        i.Issues, i.Note, i.FinalizedAt, i.VoidedAt, i.VoidReason);
+        i.Issues, i.Note, i.FinalizedAt, i.VoidedAt, i.VoidReason,
+        SettlementTotal: i.SettlementTotal, CarriedOverAmount: i.CarriedOverAmount, CarriedToInvoiceId: i.CarriedToInvoiceId);
 }

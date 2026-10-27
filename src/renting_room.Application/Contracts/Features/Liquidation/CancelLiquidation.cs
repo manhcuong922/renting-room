@@ -12,8 +12,7 @@ namespace renting_room.Application.Contracts;
 public sealed record CancelLiquidationCommand(Guid ContractId) : IRequest<Result<IReadOnlyList<Warning>>>;
 
 public sealed class CancelLiquidationHandler(
-    ContractMutation mutation, IContractRepository contracts, IInvoiceRepository invoices, ContractMeterReadings meterReadings,
-    OccupantChecks occupantChecks, ResignVehicleRestorer vehicles, TimeProvider clock)
+    ContractMutation mutation, IInvoiceRepository invoices, ContractMeterReadings meterReadings, OccupantChecks occupantChecks, TimeProvider clock)
     : IRequestHandler<CancelLiquidationCommand, Result<IReadOnlyList<Warning>>>
 {
     public ValueTask<Result<IReadOnlyList<Warning>>> Handle(CancelLiquidationCommand request, CancellationToken cancellationToken) =>
@@ -26,7 +25,6 @@ public sealed class CancelLiquidationHandler(
             var cancelled = contract.CancelLiquidation();
             if (cancelled.IsFailure)
                 return cancelled.Error!;
-            contract.RevertDepositTransfer();
             if (final is not null)
                 invoices.Remove(final);
             await meterReadings.VoidFinalAsync(contract, clock.GetUtcNow(), cancellationToken);
@@ -35,10 +33,8 @@ public sealed class CancelLiquidationHandler(
             if (occupants is not null)
                 return occupants;
 
-            var plates = contract.VehiclesEndedByResign().Select(v => v.PlateNumber).OfType<string>().ToList();
-            if (plates.Count > 0 && await contracts.FindResignDraftAsync(contract.Id, cancellationToken) is { } draft)
-                draft.ReleasePlates(plates);
-            return Result.Success(await vehicles.RestoreAsync(contract, null, cancellationToken));
+            // Ký lại đã ký: HĐ mới nối tiếp đã hiệu lực nên EXCLUDE (ROOM_PERIOD_OVERLAP) chặn hủy ở bước lưu; chưa ký thì HĐ cũ chưa từng thanh lý.
+            return Result.Success<IReadOnlyList<Warning>>([]);
         }, cancellationToken));
 
     private async Task<Error?> CheckOccupantsAsync(Contract contract, CancellationToken ct)

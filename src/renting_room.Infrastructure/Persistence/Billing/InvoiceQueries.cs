@@ -28,11 +28,14 @@ internal sealed class InvoiceQueries(AppDbContext db) : IInvoiceQueries
     public async Task<InvoiceTotalsDto> GetTotalsAsync(ListInvoicesQuery filter, DateOnly today, CancellationToken cancellationToken)
     {
         var query = Filter(filter);
-        var finalized = await query.Where(i => i.Status == InvoiceStatus.Finalized && i.TotalAmount > 0)
+        // BL-BR-41: phải thu theo phần thu của từng hóa đơn (bỏ phần kết toán của hóa đơn trả phòng), đã xử lý bỏ phần nợ đã chuyển đi
+        // ⇒ nợ chuyển vào hóa đơn trả phòng không đếm 2 lần; cọc đã trừ không tính là đã thu.
+        var finalized = await query.Where(i => i.Status == InvoiceStatus.Finalized && i.TotalAmount - i.SettlementTotal > 0)
             .GroupBy(_ => 1)
             .Select(g => new
             {
-                Count = g.Count(), Total = g.Sum(i => i.TotalAmount), Paid = g.Sum(i => i.PaidAmount), WrittenOff = g.Sum(i => i.WrittenOffAmount),
+                Count = g.Count(), Total = g.Sum(i => i.TotalAmount - i.SettlementTotal), Paid = g.Sum(i => i.PaidAmount - i.CarriedOverAmount),
+                WrittenOff = g.Sum(i => i.WrittenOffAmount),
                 Outstanding = g.Sum(i => i.PaidAmount < i.TotalAmount ? i.TotalAmount - i.PaidAmount : 0),
                 Overdue = g.Sum(i => i.PaidAmount < i.TotalAmount && i.DueDate < today ? i.TotalAmount - i.PaidAmount : 0)
             })
@@ -98,6 +101,11 @@ internal sealed class InvoiceQueries(AppDbContext db) : IInvoiceQueries
         await db.Invoices.AsNoTracking().Where(i => invoiceIds.Contains(i.Id))
             .Select(i => new InvoiceRef(i.Id, i.InvoiceNo, i.Status, i.BillingMonth)).ToDictionaryAsync(i => i.Id, cancellationToken);
 
+    public async Task<IReadOnlyDictionary<Guid, CarriedTarget>> GetCarriedTargetsAsync(
+        IReadOnlyCollection<Guid> invoiceIds, DateOnly today, CancellationToken cancellationToken) =>
+        (await db.Invoices.AsNoTracking().Where(i => invoiceIds.Contains(i.Id)).ToListAsync(cancellationToken))
+            .ToDictionary(i => i.Id, i => new CarriedTarget(i.InvoiceNo, i.PaymentStatus(today)));
+
     public async Task<IReadOnlyList<InvoiceBalanceRow>> ListForBalanceAsync(Guid contractId, CancellationToken cancellationToken) =>
         await db.Invoices.AsNoTracking().Where(i => i.ContractId == contractId && i.Status != InvoiceStatus.Void)
             .OrderBy(i => i.PeriodStart)
@@ -122,6 +130,13 @@ internal sealed class InvoiceQueries(AppDbContext db) : IInvoiceQueries
     public async Task<IReadOnlyList<InvoicePeriodRow>> ListPeriodsAsync(Guid contractId, CancellationToken cancellationToken) =>
         await db.Invoices.AsNoTracking().Where(i => i.ContractId == contractId && i.Status != InvoiceStatus.Void)
             .Select(i => new InvoicePeriodRow(i.Type, i.Status, i.PeriodStart, i.PeriodEnd)).ToListAsync(cancellationToken);
+
+    public async Task<IReadOnlyList<SettlementDebt>> ListSettlementDebtsAsync(Guid contractId, Guid? excludeInvoiceId, CancellationToken cancellationToken) =>
+        await db.Invoices.AsNoTracking()
+            .Where(i => i.ContractId == contractId && i.Id != excludeInvoiceId && i.Status == InvoiceStatus.Finalized && i.PaidAmount < i.TotalAmount)
+            .OrderBy(i => i.PeriodStart)
+            .Select(i => new SettlementDebt(i.Id, i.InvoiceNo, i.BillingMonth, i.PeriodStart, i.PeriodEnd, i.TotalAmount - i.PaidAmount))
+            .ToListAsync(cancellationToken);
 
     public async Task<IReadOnlyList<PreviousDebtDto>> ListPreviousDebtsAsync(
         Guid contractId, Guid excludeInvoiceId, DateOnly periodStart, CancellationToken cancellationToken)

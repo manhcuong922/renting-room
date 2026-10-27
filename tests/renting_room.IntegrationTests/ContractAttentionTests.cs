@@ -54,9 +54,7 @@ public sealed class ContractAttentionTests(ApiFactory factory)
         resigned.StatusCode.Should().Be(HttpStatusCode.Created, await resigned.Content.ReadAsStringAsync());
         var newId = await resigned.ReadIdAsync();
 
-        var old = await ContractAsync(token, oldId);
-        old.GetProperty("status").GetString().Should().Be("Liquidating");
-        old.GetProperty("actualEndDate").GetString().Should().Be(today.ToString("yyyy-MM-dd"));
+        (await ContractAsync(token, oldId)).GetProperty("status").GetString().Should().Be("Active", "nháp ký lại không đổi HĐ cũ");
         var draft = await ContractAsync(token, newId);
         draft.GetProperty("status").GetString().Should().Be("Draft");
         draft.GetProperty("startDate").GetString().Should().Be(today.AddDays(1).ToString("yyyy-MM-dd"));
@@ -67,6 +65,9 @@ public sealed class ContractAttentionTests(ApiFactory factory)
 
         (await _client.PostJsonAsync($"/api/v1/contracts/{newId}/activate", null, token)).StatusCode
             .Should().Be(HttpStatusCode.NoContent, "HĐ mới nối tiếp ngay sau ngày bàn giao, người ở không bị tính ở 2 nơi");
+        var old = await ContractAsync(token, oldId);
+        old.GetProperty("status").GetString().Should().Be("Liquidating", "ký xong thì HĐ cũ thanh lý tại ngày bàn giao");
+        old.GetProperty("actualEndDate").GetString().Should().Be(today.ToString("yyyy-MM-dd"));
     }
 
     [Fact]

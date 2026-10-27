@@ -30,10 +30,10 @@ public sealed class GetInvoiceAdjustmentsHandler(IInvoiceQueries invoices)
 public sealed record MarkInvoiceResentCommand(Guid InvoiceId) : IRequest<Result<InvoiceDetailDto>>;
 
 /// <summary>"Đã gửi lại" — chủ trọ đã gửi hóa đơn vừa điều chỉnh cho người thuê (trước khi có M11).</summary>
-public sealed class MarkInvoiceResentHandler(IUnitOfWork unitOfWork, IInvoiceRepository invoices, TimeProvider clock)
+public sealed class MarkInvoiceResentHandler(IUnitOfWork unitOfWork, IInvoiceRepository invoices, IInvoiceQueries invoiceQueries, TimeProvider clock)
     : IRequestHandler<MarkInvoiceResentCommand, Result<InvoiceDetailDto>>
 {
     public async ValueTask<Result<InvoiceDetailDto>> Handle(MarkInvoiceResentCommand request, CancellationToken cancellationToken) =>
-        await InvoiceAccess.MutateAsync(unitOfWork, invoices, request.InvoiceId, clock.GetUtcNow().ToBusinessDate(),
+        await InvoiceAccess.MutateAsync(unitOfWork, invoices, invoiceQueries, request.InvoiceId, clock.GetUtcNow().ToBusinessDate(),
             invoice => invoice.MarkResent(), cancellationToken);
 }

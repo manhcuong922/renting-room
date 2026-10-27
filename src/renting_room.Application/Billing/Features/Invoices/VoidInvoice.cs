@@ -2,9 +2,11 @@ using FluentValidation;
 using Mediator;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Common.Validation;
+using renting_room.Application.Contracts;
 using renting_room.Domain.Billing;
 using renting_room.Domain.Common;
 using renting_room.Domain.Contracts;
+using renting_room.Domain.Payments;
 
 namespace renting_room.Application.Billing;
 
@@ -17,7 +19,8 @@ public sealed class VoidInvoiceCommandValidator : AbstractValidator<VoidInvoiceC
 
 public sealed class VoidInvoiceHandler(
     IUnitOfWork unitOfWork, IInvoiceRepository invoices, IInvoiceQueries invoiceQueries, RoomChargeBilling roomCharges, IRoomChargeRepository charges,
-    ReadingAdjustmentCharges adjustments, TimeProvider clock)
+    ReadingAdjustmentCharges adjustments, IContractQueries contracts, IContractRepository contractRepository, FinalInvoiceSettlement settlement,
+    TimeProvider clock)
     : IRequestHandler<VoidInvoiceCommand, Result<InvoiceDetailDto>>
 {
     public async ValueTask<Result<InvoiceDetailDto>> Handle(VoidInvoiceCommand request, CancellationToken cancellationToken)
@@ -28,6 +31,9 @@ public sealed class VoidInvoiceHandler(
 
         await using var transaction = await unitOfWork.BeginTransactionAsync(cancellationToken);
         await unitOfWork.LockForUpdateAsync<Contract>(contractId.Value, cancellationToken);
+        // HĐ đã kết thúc: hủy hóa đơn làm khoản trên đó quay về chờ mà không còn nơi xử lý (BL-BR-15).
+        if (await contracts.GetStatusAsync(contractId.Value, cancellationToken) == ContractStatus.Ended)
+            return PaymentErrors.ContractNotBillable;
         await unitOfWork.LockForUpdateAsync<Invoice>(request.Id, cancellationToken);
         var invoice = (await invoices.GetForUpdateAsync(request.Id, cancellationToken))!;
         if (invoice.Status == InvoiceStatus.Finalized && await invoiceQueries.HasLaterInvoiceAsync(invoice, cancellationToken))
@@ -37,6 +43,9 @@ public sealed class VoidInvoiceHandler(
         var voided = invoice.Void(request.Reason, now);
         if (voided.IsFailure)
             return voided.Error!;
+        // BL-BR-41: hủy bản kết toán ⇒ nợ quay lại hóa đơn nguồn, cọc về đang giữ.
+        if (invoice.Type == InvoiceType.Final)
+            await settlement.RevertAsync((await contractRepository.GetForUpdateAsync(contractId.Value, cancellationToken))!, invoice, cancellationToken);
         await roomCharges.DetachAllAsync(invoice.Id, cancellationToken);
         var cancelled = await CancelAdjustmentsAsync(invoice.Id, cancellationToken);
         if (cancelled.IsFailure)
