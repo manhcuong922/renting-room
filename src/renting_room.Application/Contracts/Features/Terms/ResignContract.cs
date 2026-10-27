@@ -1,8 +1,5 @@
-using renting_room.Domain.Properties;
-using renting_room.Application.Properties;
 using FluentValidation;
 using Mediator;
-using renting_room.Application.Billing;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Common.Models;
 using renting_room.Domain.Common;
@@ -25,10 +22,13 @@ public sealed class ResignContractCommandValidator : AbstractValidator<ResignCon
     }
 }
 
+/// <summary>
+/// M05 CT-UC-21 (27/10/2026): chỉ soạn HĐ nháp nối tiếp — KHÔNG đổi HĐ cũ (vẫn hiệu lực, hóa đơn / xe / cọc nguyên vẹn), hủy nháp không có gì
+/// phải hoàn nguyên. Thanh lý HĐ cũ, chuyển xe và cọc chỉ xảy ra khi ký (<see cref="ResignLiquidation"/>, gọi từ lệnh kích hoạt).
+/// </summary>
 public sealed class ResignContractHandler(
-    ContractMutation mutation, IUnitOfWork unitOfWork, IContractRepository contracts, IContractQueries contractQueries, IInvoiceQueries invoices,
-    OccupantChecks occupantChecks, ICurrentUser currentUser, IContractNumberGenerator numberGenerator, LiquidationDrafts drafts,
-    IPropertyQueries properties, TimeProvider clock)
+    ContractMutation mutation, IContractRepository contracts, IContractQueries contractQueries, OccupantChecks occupantChecks,
+    ICurrentUser currentUser, IContractNumberGenerator numberGenerator, TimeProvider clock)
     : IRequestHandler<ResignContractCommand, Result<CreatedWithWarnings>>
 {
     public ValueTask<Result<CreatedWithWarnings>> Handle(ResignContractCommand request, CancellationToken cancellationToken) =>
@@ -37,39 +37,14 @@ public sealed class ResignContractHandler(
             var data = old.ResignDraft(request.HandoverDate, request.RepresentativeRenterId, request.EndDate);
             if (data.IsFailure)
                 return data.Error!;
+            if (await contracts.FindResignDraftAsync(old.Id, cancellationToken) is not null)
+                return ContractErrors.ResignDraftExists;
             if (!await occupantChecks.HasIdNumberAsync(request.RepresentativeRenterId, cancellationToken))
                 return ContractErrors.RepresentativeIdRequired;
 
-            await drafts.DeleteAfterAsync(old.Id, request.HandoverDate, cancellationToken);
-            if (await invoices.HasInvoiceAfterAsync(old.Id, request.HandoverDate, cancellationToken))
-                return ContractErrors.InvoiceAfterEndDate;
             var contractNo = await ContractNumbers.NextAsync(contractQueries, numberGenerator, currentUser, clock, cancellationToken);
-            // Người thuê không rời đi: HĐ mới tính tiếp từ X+1 theo "Tính kỳ lẻ" của khu ⇒ kỳ cuối HĐ cũ bù cho đúng 1 kỳ (CT-BR-11);
-            // X là ngày cuối kỳ ⇒ HĐ mới bắt đầu kỳ sau, không chồng ngày ⇒ thu trọn kỳ.
-            var billing = await properties.GetBillingAsync(old.PropertyId, cancellationToken);
-            var finalCharge = billing.Schedule.StandardPeriodContaining(request.HandoverDate).End == request.HandoverDate ? FinalPeriodCharge.FullPeriod
-                : billing.ProrationMode == ProrationMode.Daily ? FinalPeriodCharge.Daily
-                : FinalPeriodCharge.None;
-            var liquidation = old.StartLiquidation(request.HandoverDate, TerminationReason.MutualAgreement, null,
-                $"Ký lại cho người còn ở — hợp đồng mới {contractNo}", clock.GetUtcNow().ToBusinessDate(), finalCharge);
-            if (liquidation.IsFailure)
-                return liquidation.Error!;
-
-            var next = Contract.CreateDraft(old.PropertyId, old.RoomId, contractNo, data.Value!, previousContractId: old.Id);
-            var renterIds = data.Value!.Occupants.Select(o => o.RenterId).ToList();
-            var vehicles = old.ResignVehicles(renterIds, request.HandoverDate, next.StartDate, next.Id);
-            // Lưu việc kết thúc xe ở HĐ cũ trước khi đăng ký lại ở HĐ mới — unique "biển số đang đăng ký" kiểm từng câu lệnh.
-            await unitOfWork.SaveChangesAsync(cancellationToken);
-            foreach (var vehicle in vehicles)
-            {
-                var registered = next.RegisterVehicle(vehicle);
-                if (registered.IsFailure)
-                    return registered.Error!;
-            }
-
+            var next = Contract.CreateDraft(old.PropertyId, old.RoomId, contractNo, data.Value!, old.Id, request.TransferDeposit);
             contracts.Add(next);
-            if (request.TransferDeposit)
-                old.MarkDepositTransferred(contractNo);
             return new CreatedWithWarnings(next.Id, ContractWarnings.For(next));
         }, cancellationToken));
 }

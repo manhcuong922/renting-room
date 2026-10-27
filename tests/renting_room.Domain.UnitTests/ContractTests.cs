@@ -199,38 +199,36 @@ public sealed class ContractTests
     }
 
     [Fact]
-    public void ResignNotCompleted_ReopensOnlyVehiclesEndedByThatResign_SkipsTakenPlates()
+    public void CreateDraft_ResignTransfersDeposit_OnlyForDraftLinkedToPreviousContract()
+    {
+        var data = Draft(OccupantA);
+
+        var linked = Contract.CreateDraft(Guid.NewGuid(), Guid.NewGuid(), "HD-2", data, Guid.NewGuid(), resignTransfersDeposit: true);
+        var plain = Contract.CreateDraft(Guid.NewGuid(), Guid.NewGuid(), "HD-3", data, resignTransfersDeposit: true);
+
+        linked.ResignTransfersDeposit.Should().BeTrue();
+        plain.ResignTransfersDeposit.Should().BeFalse("không có HĐ cũ thì không có gì để chuyển");
+    }
+
+    [Fact]
+    public void ResignVehicles_EndsOnlyActiveVehiclesOfStayingOccupants_AtHandover_AndReturnsThemForTheNewContract()
     {
         var contract = NewActiveWith(Representative, OccupantA);
         var handover = Start.AddMonths(2);
         contract.RegisterVehicle(new VehicleInput(OccupantA, VehicleType.Motorbike, "29B112345", null, Start, null));
-        contract.RegisterVehicle(new VehicleInput(OccupantA, VehicleType.Motorbike, "29B154321", null, Start, null));
+        contract.RegisterVehicle(new VehicleInput(Representative, VehicleType.Motorbike, "29B154321", null, Start, null));
         var earlier = contract.RegisterVehicle(new VehicleInput(OccupantA, VehicleType.Bicycle, null, null, Start, null)).Value!;
         contract.EndVehicle(earlier.Id, Start.AddMonths(1)).IsSuccess.Should().BeTrue();
-        var draftId = Guid.NewGuid();
+        var newContractId = Guid.NewGuid();
 
-        contract.ResignVehicles([OccupantA], handover, handover.AddDays(1), draftId).Should().HaveCount(2);
-        contract.VehiclesEndedByResign(Guid.NewGuid()).Should().BeEmpty();
-        var notRestored = contract.ReopenResignedVehicles(draftId, new HashSet<string> { "29B154321" });
+        var moving = contract.ResignVehicles([OccupantA], handover, handover.AddDays(1), newContractId);
 
-        notRestored.Should().ContainSingle(v => v.PlateNumber == "29B154321");
-        contract.Vehicles.Single(v => v.PlateNumber == "29B112345").IsActive.Should().BeTrue();
-        contract.Vehicles.Single(v => v.PlateNumber == "29B154321").IsActive.Should().BeFalse();
-        contract.Vehicles.Single(v => v.Id == earlier.Id).RegisteredTo.Should().Be(Start.AddMonths(1), "xe kết thúc trước lần ký lại không bị đụng");
-        contract.VehiclesEndedByResign().Should().BeEmpty("xe đã xét bỏ dấu ký lại");
-    }
-
-    [Fact]
-    public void ResignDraft_ReleasePlates_EndsOnlyThosePlates()
-    {
-        var draft = NewDraft();
-        draft.RegisterVehicle(new VehicleInput(null, VehicleType.Motorbike, "29B112345", null, Start, null));
-        draft.RegisterVehicle(new VehicleInput(null, VehicleType.Motorbike, "30A12345", null, Start, null));
-
-        draft.ReleasePlates(["29B112345"]);
-
-        draft.Vehicles.Single(v => v.PlateNumber == "29B112345").RegisteredTo.Should().Be(Start);
-        draft.Vehicles.Single(v => v.PlateNumber == "30A12345").IsActive.Should().BeTrue();
+        moving.Should().ContainSingle(v => v.PlateNumber == "29B112345" && v.RegisteredFrom == handover.AddDays(1));
+        var moved = contract.Vehicles.Single(v => v.PlateNumber == "29B112345");
+        moved.RegisteredTo.Should().Be(handover);
+        moved.ResignedToContractId.Should().Be(newContractId);
+        contract.Vehicles.Single(v => v.PlateNumber == "29B154321").IsActive.Should().BeTrue("người rời đi giữ xe ở HĐ cũ");
+        contract.Vehicles.Single(v => v.Id == earlier.Id).RegisteredTo.Should().Be(Start.AddMonths(1), "xe đã kết thúc từ trước không bị đụng");
     }
 
     [Fact]
@@ -527,6 +525,31 @@ public sealed class ContractTests
         contract.MarkDepositTransferred("HD2026-0002");
         contract.DepositStatus.Should().Be(DepositStatus.Transferred);
         contract.DepositNote.Should().Contain("HD2026-0002");
+    }
+
+    /// <summary>BL-BR-41 (27/10/2026): chốt hóa đơn trả phòng có dòng trừ cọc ⇒ cọc "Đã trừ vào hóa đơn trả phòng"; hủy hóa đơn ⇒ về đang giữ.</summary>
+    [Fact]
+    public void DeductDeposit_OnFinalInvoice_LocksOtherDepositActions_UntilUndone()
+    {
+        var contract = NewActive();
+        var today = Start.AddDays(5);
+
+        contract.DeductDepositOnFinal(today, "PB2026-000020").IsSuccess.Should().BeTrue();
+
+        contract.DepositStatus.Should().Be(DepositStatus.Deducted);
+        contract.DepositRefundedOn.Should().Be(today);
+        contract.DepositRefundedAmount.Should().Be(contract.DepositAmount);
+        contract.DepositNote.Should().Contain("PB2026-000020");
+        contract.RefundDeposit(today, null, null, today).Error.Should().Be(ContractErrors.DepositDeducted);
+        contract.ForfeitDeposit(today, "Mất cọc", today).Error.Should().Be(ContractErrors.DepositDeducted);
+        contract.CancelDepositRefund().Error.Should().Be(ContractErrors.DepositDeducted);
+        contract.DeductDepositOnFinal(today, "PB2026-000021").Error.Should().Be(ContractErrors.DepositDeducted);
+
+        contract.UndoDepositDeduction();
+        contract.DepositStatus.Should().Be(DepositStatus.Holding);
+        contract.DepositRefundedOn.Should().BeNull();
+        contract.DepositRefundedAmount.Should().BeNull();
+        contract.DepositNote.Should().BeNull();
     }
 
     [Fact]

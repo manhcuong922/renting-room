@@ -114,18 +114,30 @@ public sealed class DemoDataSeederTests(ApiFactory factory)
         Outstanding("206").Should().BeGreaterThan(0, "nợ đi theo HĐ sang phòng mới (PR-BR-16)");
         Outstanding("203").Should().Be(0, "phòng cũ hết nhãn Còn nợ");
         var refunded201 = Deposit(await DetailAsync("201", "Ended"));
-        refunded201.GetProperty("status").GetString().Should().Be("Refunded");
+        refunded201.GetProperty("status").GetString().Should().Be("Deducted", "cọc trừ vào hóa đơn trả phòng (BL-BR-41)");
         refunded201.GetProperty("refundedAmount").GetDecimal().Should().Be(2_500_000);
         var forfeited = Deposit(await DetailAsync("204", "Cancelled"));
         forfeited.GetProperty("refundedAmount").GetDecimal().Should().Be(0, "khách đổi ý ⇒ giữ lại cọc giữ chỗ, có lý do");
         forfeited.GetProperty("note").GetString().Should().NotBeNullOrEmpty();
-        Deposit(await DetailAsync("106", "Ended")).GetProperty("notRefundedReminder").GetBoolean().Should().BeTrue("chưa hoàn cọc");
+        Deposit(await DetailAsync("106", "Ended")).GetProperty("status").GetString().Should().Be("Deducted");
+        (await InvoicesOfAsync("106", "Ended")).Select(i => i.GetProperty("paymentStatus").GetString())
+            .Should().Contain("CarriedWrittenOff", "kết toán: nợ tháng −2 chuyển vào hóa đơn trả phòng, kết thúc bằng bỏ nợ (BL-BR-41)");
+        // BL-BR-41 (27/10/2026): hóa đơn đã chuyển nợ đi theo hóa đơn trả phòng; hóa đơn trả phòng có Tổng hóa đơn và Tổng thu.
+        var invoices227 = await InvoicesOfAsync("227", "Liquidating");
+        var final227 = invoices227.Single(i => i.GetProperty("type").GetString() == "Final");
+        var month227 = invoices227.Single(i => i.GetProperty("type").GetString() == "Regular");
+        month227.GetProperty("paymentStatus").GetString().Should().Be("CarriedOver", "hóa đơn trả phòng chưa thu ⇒ chờ thu ở đó");
+        month227.GetProperty("carriedToInvoiceNo").GetString().Should().Be(final227.GetProperty("invoiceNo").GetString());
+        final227.GetProperty("invoiceAmount").GetDecimal().Should().NotBe(final227.GetProperty("totalAmount").GetDecimal(), "có nợ chuyển vào + trừ cọc");
+        (await InvoicesOfAsync("228", "Ended")).Single(i => i.GetProperty("type").GetString() == "Regular")
+            .GetProperty("paymentStatus").GetString().Should().Be("CarriedSettled");
+        Deposit(await DetailAsync("224", "Ended")).GetProperty("notRefundedReminder").GetBoolean().Should().BeTrue("không có hóa đơn trả phòng, cọc để sau");
         var notRefunded = await (await _client.GetAsync("/api/v1/contracts?depositNotRefunded=true&pageSize=100", token)).ReadAsync<JsonElement>();
-        notRefunded.GetProperty("items").EnumerateArray().Select(c => c.GetProperty("roomCode").GetString()).Should().Contain("106");
+        notRefunded.GetProperty("items").EnumerateArray().Select(c => c.GetProperty("roomCode").GetString()).Should().Contain("224");
         Deposit(await DetailAsync("B06", "Liquidating")).GetProperty("status").GetString().Should().Be("Transferred", "ký lại ⇒ cọc chuyển sang HĐ mới");
-        var b09 = await DetailAsync("B09", "Liquidating");
-        Deposit(b09).GetProperty("status").GetString().Should().Be("Holding", "ký lại không thành ⇒ cọc về đang giữ");
-        b09.GetProperty("vehicles")[0].GetProperty("registeredTo").ValueKind.Should().Be(JsonValueKind.Null, "ký lại không thành ⇒ xe mở lại (CT-UC-21)");
+        var b09 = await DetailAsync("B09", "Active");
+        Deposit(b09).GetProperty("status").GetString().Should().Be("Holding", "nháp ký lại bị hủy ⇒ HĐ cũ không đổi, cọc vẫn đang giữ");
+        b09.GetProperty("vehicles")[0].GetProperty("registeredTo").ValueKind.Should().Be(JsonValueKind.Null, "nháp ký lại bị hủy ⇒ xe vẫn đăng ký ở HĐ cũ (CT-UC-21)");
 
         // M06 MT-BR-19 (20/10/2026): 212 chưa thu ⇒ tính lại trên hóa đơn; 213 Xử lý ngay ⇒ phiếu hoàn; 214 bỏ nợ giảm trước; 215 hóa đơn trả phòng âm.
         async Task<List<JsonElement>> InvoicesOfAsync(string room, string status) =>
@@ -154,6 +166,16 @@ public sealed class DemoDataSeederTests(ApiFactory factory)
         khuA.GetProperty("items").EnumerateArray().Single(r => r.GetProperty("code").GetString() == "217")
             .GetProperty("currentContract").GetProperty("moveOutDate").ValueKind.Should().Be(JsonValueKind.String, "nhãn Trả phòng dd/MM");
         Deposit(await DetailAsync("218", "Ended")).GetProperty("status").GetString().Should().Be("Forfeited");
+        (await DetailAsync("223", "Active")).GetProperty("flags").EnumerateArray().Select(f => f.GetString())
+            .Should().Contain("MoveOutOverdue", "báo trả phòng tháng trước, chưa thanh lý");
+        // 27/10/2026: 224 trả phòng trước ngày tính tiền (không hóa đơn nào); 225 hóa đơn trả phòng âm + "Không hoàn"; 226 báo trả phòng chỉ là nhãn.
+        (await InvoicesOfAsync("224", "Ended")).Should().BeEmpty("trả phòng trước ngày tính tiền ⇒ không có hóa đơn nào");
+        (await InvoicesOfAsync("225", "Ended")).Single(i => i.GetProperty("type").GetString() == "Final")
+            .GetProperty("paymentStatus").GetString().Should().Be("RefundWaived", "chủ trọ chọn Không hoàn");
+        (await InvoicesOfAsync("226", "Active")).Count(i => i.GetProperty("type").GetString() == "Regular")
+            .Should().Be(2, "báo trả phòng chỉ là nhãn — hóa đơn tháng trước vẫn lập");
+        (await DetailAsync("226", "Active")).GetProperty("flags").EnumerateArray().Select(f => f.GetString())
+            .Should().Contain("MoveOutOverdue");
         var final10 = (await InvoicesOfAsync("B10", "Liquidating")).Single(i => i.GetProperty("type").GetString() == "Final");
         var overpaid10 = (await (await _client.GetAsync($"/api/v1/invoices/{final10.GetProperty("id").GetGuid()}", token)).ReadAsync<JsonElement>())
             .GetProperty("issues").EnumerateArray().Single(i => i.GetProperty("code").GetString() == "RENT_OVERPAID");

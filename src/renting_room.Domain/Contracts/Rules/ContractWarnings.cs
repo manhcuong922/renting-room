@@ -22,9 +22,6 @@ public static partial class ContractWarnings
     public static Warning UnusualPlate(string plate) => new("PLATE_FORMAT_UNUSUAL",
         $"Biển số \"{plate}\" không giống định dạng biển số Việt Nam — kiểm tra lại (biển cũ / nước ngoài thì bỏ qua).");
 
-    public static Warning VehicleNotRestored(string plate) => new("VEHICLE_NOT_RESTORED",
-        $"Xe biển số \"{plate}\" đang đăng ký ở hợp đồng khác — không mở lại được trên hợp đồng này, kiểm tra và đăng ký lại bằng tay nếu cần.");
-
     public const int LessorNoticeDays = 30;
 
     public const int IndefiniteNoticeDays = 90;
@@ -57,6 +54,9 @@ public static partial class ContractWarnings
             "Hợp đồng còn hiệu lực nhưng không còn ai ở — thanh lý để trả phòng?"),
         ContractFlag.MissingSignedDocument => new Warning("SIGNED_DOCUMENT_MISSING",
             "Chưa có bản hợp đồng đã ký (giấy / ảnh / PDF) — đánh dấu khi đã có. Không ảnh hưởng thu tiền."),
+        ContractFlag.MoveOutOverdue => new Warning("MOVE_OUT_OVERDUE",
+            $"Quá ngày trả phòng {contract.PlannedMoveOutDate:dd/MM/yyyy} mà chưa thanh lý — kỳ cuối chưa tính theo ngày ở. " +
+            "Bấm Thanh lý; người thuê ở tiếp thì rút báo trả phòng."),
         _ => new Warning("CONTRACT_EXPIRED_DECISION_NEEDED",
             $"Hợp đồng đã hết hạn ngày {contract.EndDate:dd/MM/yyyy} mà người thuê vẫn ở — đang tính như hợp đồng không thời hạn; nên ký phụ lục gia hạn (hoặc ghi nhận ở tiếp / thu lại phòng).")
     };

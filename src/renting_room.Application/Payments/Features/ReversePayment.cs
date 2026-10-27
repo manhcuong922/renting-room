@@ -4,6 +4,7 @@ using renting_room.Application.Billing;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Contracts;
 using renting_room.Application.Common.Validation;
+using renting_room.Domain.Billing;
 using renting_room.Domain.Common;
 using renting_room.Domain.Contracts;
 using renting_room.Domain.Payments;
@@ -49,12 +50,15 @@ internal static class PaymentReversal
         IPaymentRepository payments, IInvoiceRepository invoiceRepository, Guid paymentId, string reason, DateTimeOffset now, CancellationToken ct)
     {
         var payment = (await payments.GetWithAllocationsForUpdateAsync(paymentId, ct))!;
+        var ids = payment.Allocations.Where(a => a.CancelledAt is null).Select(a => a.InvoiceId).Distinct().ToList();
+        var invoices = await invoiceRepository.LockForUpdateAsync(ids, ct);
+        // BL-BR-41: nợ còn lại đã chuyển vào hóa đơn trả phòng theo số thu lúc đó — đảo thu bây giờ sẽ lệch bản kết toán.
+        if (invoices.Values.Any(i => i.CarriedToInvoiceId is not null))
+            return BillingErrors.InvoiceCarriedOver;
         var reversed = payment.Reverse(reason, now);
         if (reversed.IsFailure)
             return reversed.Error!;
 
-        var ids = reversed.Value!.Select(a => a.InvoiceId).ToList();
-        var invoices = await invoiceRepository.LockForUpdateAsync(ids, ct);
         // Phiếu hoàn tiền đã giảm "đã thu" của hóa đơn ⇒ đảo nó là tăng lại, không được vượt tổng.
         var sign = payment.Kind == PaymentKind.Refund ? 1 : -1;
         if (sign > 0 && reversed.Value!.Any(a => invoices[a.InvoiceId].PaidAmount + a.Amount > invoices[a.InvoiceId].TotalAmount))

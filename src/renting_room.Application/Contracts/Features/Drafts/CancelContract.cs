@@ -12,20 +12,16 @@ public sealed class CancelContractCommandValidator : AbstractValidator<CancelCon
     public CancelContractCommandValidator() => RuleFor(x => x.Reason).RequiredText(500, "Lý do hủy");
 }
 
-public sealed class CancelContractHandler(ContractMutation mutation, IContractRepository contracts, ResignVehicleRestorer vehicles, TimeProvider clock)
+/// <summary>
+/// Hủy HĐ nháp. Nháp ký lại (CT-UC-21) không đổi HĐ cũ nên không có gì phải hoàn nguyên (xe, cọc, ngày trả phòng của HĐ cũ giữ nguyên).
+/// </summary>
+public sealed class CancelContractHandler(ContractMutation mutation, TimeProvider clock)
     : IRequestHandler<CancelContractCommand, Result<IReadOnlyList<Warning>>>
 {
     public ValueTask<Result<IReadOnlyList<Warning>>> Handle(CancelContractCommand request, CancellationToken cancellationToken) =>
-        new(mutation.RunAsync<IReadOnlyList<Warning>>(request.Id, async contract =>
+        new(mutation.RunAsync<IReadOnlyList<Warning>>(request.Id, contract =>
         {
             var cancelled = contract.Cancel(request.Reason, clock.GetUtcNow());
-            if (cancelled.IsFailure)
-                return cancelled.Error!;
-            if (contract.PreviousContractId is not { } previousId
-                || await contracts.GetForUpdateAsync(previousId, cancellationToken) is not { } previous)
-                return Result.Success<IReadOnlyList<Warning>>([]);
-
-            previous.RevertDepositTransfer(contract.ContractNo);
-            return Result.Success(await vehicles.RestoreAsync(previous, contract.Id, cancellationToken));
+            return Task.FromResult(cancelled.IsFailure ? cancelled.Error! : Result.Success<IReadOnlyList<Warning>>([]));
         }, cancellationToken));
 }

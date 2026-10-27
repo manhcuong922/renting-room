@@ -133,7 +133,8 @@ public sealed record ContractDetailDto(
     DateOnly? RoomSince = null,
     IReadOnlyList<RoomMoveDto>? RoomMoves = null,
     DateOnly? RepresentativeSince = null,
-    IReadOnlyList<RepresentativeHistoryDto>? RepresentativeHistory = null);
+    IReadOnlyList<RepresentativeHistoryDto>? RepresentativeHistory = null,
+    bool ResignTransfersDeposit = false);
 
 public sealed record RepresentativeHistoryDto(Guid RenterId, string FullName, DateOnly FromDate, DateOnly ToDate);
 

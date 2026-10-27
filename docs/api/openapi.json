@@ -1642,7 +1642,7 @@
         "tags": [
           "Contracts"
         ],
-        "summary": "Ký lại cho người còn ở: thanh lý HĐ cũ tại ngày bàn giao, tạo HĐ nháp mới từ ngày hôm sau (CT-UC-21)",
+        "summary": "Ký lại cho người còn ở: soạn HĐ nháp mới từ ngày hôm sau ngày bàn giao — HĐ cũ chưa đổi, ký (kích hoạt) mới thanh lý HĐ cũ (CT-UC-21)",
         "parameters": [
           {
             "name": "id",
@@ -7902,7 +7902,9 @@
           "Service",
           "Surcharge",
           "ManualDiscount",
-          "Refund"
+          "Refund",
+          "PreviousDebt",
+          "Deposit"
         ],
         "type": "string"
       },
@@ -7990,6 +7992,13 @@
           },
           "method": {
             "$ref": "#/components/schemas/PaymentMethod"
+          },
+          "waive": {
+            "type": "boolean"
+          },
+          "reason": {
+            "type": "string",
+            "nullable": true
           }
         },
         "additionalProperties": false

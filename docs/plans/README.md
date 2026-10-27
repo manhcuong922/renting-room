@@ -66,6 +66,7 @@ Căn cứ pháp lý & quy tắc LEG-xx: [00-legal-basis.md](00-legal-basis.md).
 | M09 | File Storage (ảnh, tài liệu đính kèm) | [09-file-storage.md](09-file-storage.md) | P1 | M01 |
 | M10 | Reporting & Export (Excel, dashboard, nhắc việc) | [10-reporting-export.md](10-reporting-export.md) | P1–P2 | Tất cả |
 | M11 | Notification (gửi phiếu & nhắc nợ qua Zalo Bot / email) | [11-notification.md](11-notification.md) | P2 | M02, M03, M05, M07, M08 |
+| — | Vấn đề còn mở từ lượt rà gần nhất (xử lý xong thì xóa) | [98-open-issues.md](98-open-issues.md) | — | — |
 | — | Self-review: lỗi tìm thấy & cách xử lý | [99-self-review.md](99-self-review.md) | — | — |
 
 ```mermaid

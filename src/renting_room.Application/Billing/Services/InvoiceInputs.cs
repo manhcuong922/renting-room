@@ -44,6 +44,12 @@ public sealed class InvoiceInputLoader(IPropertyQueries properties, IFeeQueries 
             final = rentLines.Count == 0
                 ? new FinalSettlement(null, source.HasRegularInFinalPeriod, charge)
                 : await WithRentSourceAsync(rentLines, source.HasRegularInFinalPeriod, charge, ct);
+            // BL-BR-41: hóa đơn trả phòng là bản kết toán — nợ các hóa đơn đã chốt khác + trừ cọc đang giữ.
+            final = final with
+            {
+                Debts = await invoices.ListSettlementDebtsAsync(contract.Id, excludeInvoiceId, ct),
+                Deposit = contract is { HasDeposit: true, DepositStatus: DepositStatus.Holding } ? contract.DepositAmount : 0
+            };
         }
         var recent = source.RecentUsage
             .GroupBy(x => x.FeeTypeId)

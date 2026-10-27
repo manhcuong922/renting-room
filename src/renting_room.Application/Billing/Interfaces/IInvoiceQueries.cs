@@ -31,6 +31,8 @@ public interface IInvoiceQueries
 
     Task<IReadOnlyDictionary<Guid, InvoiceRef>> GetRefsAsync(IReadOnlyCollection<Guid> invoiceIds, CancellationToken cancellationToken);
 
+    Task<IReadOnlyDictionary<Guid, CarriedTarget>> GetCarriedTargetsAsync(IReadOnlyCollection<Guid> invoiceIds, DateOnly today, CancellationToken cancellationToken);
+
     Task<IReadOnlyList<InvoiceBalanceRow>> ListForBalanceAsync(Guid contractId, CancellationToken cancellationToken);
 
     /// <summary>Hóa đơn đã chốt tổng âm chưa xác nhận đã hoàn (Chờ hoàn) của HĐ.</summary>
@@ -40,6 +42,9 @@ public interface IInvoiceQueries
     Task<IReadOnlyList<InvoiceFromEndRow>> ListRegularEndingAfterAsync(Guid contractId, DateOnly date, CancellationToken cancellationToken);
 
     Task<IReadOnlyList<InvoicePeriodRow>> ListPeriodsAsync(Guid contractId, CancellationToken cancellationToken);
+
+    /// <summary>BL-BR-41: hóa đơn đã chốt của HĐ còn nợ (trừ <paramref name="excludeInvoiceId"/>) — gom vào hóa đơn trả phòng.</summary>
+    Task<IReadOnlyList<SettlementDebt>> ListSettlementDebtsAsync(Guid contractId, Guid? excludeInvoiceId, CancellationToken cancellationToken);
 
     Task<IReadOnlyList<PreviousDebtDto>> ListPreviousDebtsAsync(
         Guid contractId, Guid excludeInvoiceId, DateOnly periodStart, CancellationToken cancellationToken);
@@ -106,6 +111,9 @@ public sealed record InvoiceFromEndRow(
 public sealed record InvoicePeriodRow(InvoiceType Type, InvoiceStatus Status, DateOnly PeriodStart, DateOnly PeriodEnd);
 
 public sealed record InvoiceRef(Guid Id, string? InvoiceNo, InvoiceStatus Status, DateOnly BillingMonth);
+
+/// <summary>Hóa đơn trả phòng đã nhận nợ của một hóa đơn (BL-BR-41) — số và trạng thái thanh toán của nó.</summary>
+public sealed record CarriedTarget(string? InvoiceNo, InvoicePaymentStatus? PaymentStatus);
 
 public sealed record InvoiceTarget(Guid Id, Guid ContractId, Guid RoomId, string RoomCode, InvoiceStatus Status);
 

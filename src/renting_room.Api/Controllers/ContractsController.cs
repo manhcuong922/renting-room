@@ -173,7 +173,7 @@ public sealed class ContractsController(ISender sender) : ControllerBase
 
     [HttpPost("contracts/{id:guid}/re-sign")]
     [Idempotent]
-    [EndpointSummary("Ký lại cho người còn ở: thanh lý HĐ cũ tại ngày bàn giao, tạo HĐ nháp mới từ ngày hôm sau (CT-UC-21)")]
+    [EndpointSummary("Ký lại cho người còn ở: soạn HĐ nháp mới từ ngày hôm sau ngày bàn giao — HĐ cũ chưa đổi, ký (kích hoạt) mới thanh lý HĐ cũ (CT-UC-21)")]
     public async Task<IResult> Resign(Guid id, ResignContractRequest b, CancellationToken ct) =>
         (await sender.Send(new ResignContractCommand(id, b.HandoverDate, b.RepresentativeRenterId, b.EndDate, b.TransferDeposit ?? true), ct)).ToCreated(Route);
 

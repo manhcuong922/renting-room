@@ -14,6 +14,8 @@ public static class ContractErrors
     public static readonly Error NoDeposit = Error.BusinessRule("NO_DEPOSIT", "Hợp đồng không có cọc.");
     public static readonly Error DepositAlreadyRefunded = Error.BusinessRule("DEPOSIT_ALREADY_REFUNDED",
         "Cọc đã hoàn trả / đã chuyển sang HĐ mới — bỏ đánh dấu trước nếu nhập nhầm.");
+    public static readonly Error DepositDeducted = Error.BusinessRule("DEPOSIT_DEDUCTED",
+        "Cọc đã trừ vào hóa đơn trả phòng — hủy hóa đơn trả phòng trước nếu cần đổi.");
     public static readonly Error DepositNotRefunded = Error.BusinessRule("DEPOSIT_NOT_REFUNDED", "Cọc chưa đánh dấu hoàn trả.");
     public static readonly Error InvalidRefundAmount = Error.Validation("INVALID_REFUND_AMOUNT",
         "Số tiền hoàn trả từ 0 đến số tiền cọc; trả ít hơn cọc thì ghi rõ lý do.");
@@ -115,6 +117,10 @@ public static class ContractErrors
         "Sau ngày bàn giao không còn ai ở — thanh lý hợp đồng thay vì ký lại.");
     public static readonly Error ResignRepresentativeNotOccupant = Error.BusinessRule("RESIGN_REPRESENTATIVE_NOT_OCCUPANT",
         "Người đứng tên hợp đồng mới phải là một người còn ở trong phòng.");
+    public static readonly Error ResignDraftExists = Error.Conflict("RESIGN_DRAFT_EXISTS",
+        "Hợp đồng này đã có hợp đồng nháp ký lại — mở nháp đó để sửa / ký, hoặc hủy nháp trước khi soạn lại.");
+    public static readonly Error ResignPreviousNotActive = Error.Conflict("RESIGN_PREVIOUS_NOT_ACTIVE",
+        "Hợp đồng cũ không còn hiệu lực (đã thanh lý hoặc kết thúc) — không ký lại được, hãy tạo hợp đồng mới.");
     public static readonly Error AbandonedNoteRequired = Error.BusinessRule("ABANDONED_NOTE_REQUIRED",
         "Người thuê bỏ đi không báo: ghi rõ ngày phát hiện, tài sản để lại, người chứng kiến.");
 

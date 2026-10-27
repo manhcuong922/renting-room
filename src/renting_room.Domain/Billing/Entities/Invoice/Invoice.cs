@@ -27,6 +27,9 @@ public sealed partial class Invoice : TenantEntity
 
     public decimal RefundTotal { get; private set; }
 
+    /// <summary>Kết toán của hóa đơn trả phòng (BL-BR-41): nợ hóa đơn trước chuyển vào − cọc trừ. Không thuộc phần thu.</summary>
+    public decimal SettlementTotal { get; private set; }
+
     public decimal RoundingAmount { get; private set; }
 
     /// <summary>Khu bật làm tròn lúc tính phiếu gần nhất — giữ để sửa tay / thêm dòng sau đó vẫn làm tròn.</summary>
@@ -38,12 +41,22 @@ public sealed partial class Invoice : TenantEntity
 
     public bool NeedsResend { get; private set; }
 
-    /// <summary>Subtotal + DiscountTotal + RefundTotal + RoundingAmount; âm ⇒ chủ trọ phải trả lại người thuê.</summary>
+    /// <summary>
+    /// Tổng thu: Subtotal + DiscountTotal + RefundTotal + SettlementTotal + RoundingAmount; âm ⇒ chủ trọ phải trả lại người thuê.
+    /// </summary>
     public decimal TotalAmount { get; private set; }
+
+    /// <summary>Tổng hóa đơn (BL-BR-41): tiền của chính kỳ này, không gồm kết toán; hóa đơn thường = <see cref="TotalAmount"/>.</summary>
+    public decimal InvoiceAmount => TotalAmount - SettlementTotal;
 
     public decimal PaidAmount { get; private set; }
 
     public decimal WrittenOffAmount { get; private set; }
+
+    /// <summary>Phần nợ đã chuyển vào hóa đơn trả phòng (BL-BR-41) — tính trong <see cref="PaidAmount"/> nhưng không phải thực thu.</summary>
+    public decimal CarriedOverAmount { get; private set; }
+
+    public Guid? CarriedToInvoiceId { get; private set; }
     public List<InvoiceIssue> Issues { get; private set; } = [];
     public string SnapshotRoomCode { get; private set; } = null!;
     public string SnapshotContractNo { get; private set; } = null!;
@@ -57,12 +70,15 @@ public sealed partial class Invoice : TenantEntity
     public PaymentMethod? RefundMethod { get; private set; }
     public string? RefundNote { get; private set; }
 
+    /// <summary>Chủ trọ đã quyết định không hoàn phần người thuê được nhận lại — có ngày quyết định (<see cref="RefundedOn"/>) nhưng không có cách hoàn.</summary>
+    public bool RefundWaived { get; private set; }
+
     public IReadOnlyList<InvoiceLine> Lines => _lines;
     public IReadOnlyList<InvoiceMeterSegment> Segments => _segments;
 
     public decimal Outstanding => Status == InvoiceStatus.Finalized ? Math.Max(TotalAmount - PaidAmount, 0) : 0;
 
-    public decimal CollectedAmount => PaidAmount - WrittenOffAmount;
+    public decimal CollectedAmount => PaidAmount - WrittenOffAmount - CarriedOverAmount;
 
     public decimal RefundDue => Status == InvoiceStatus.Finalized && TotalAmount < 0 && RefundedOn is null ? -TotalAmount : 0;
 
@@ -103,12 +119,14 @@ public sealed partial class Invoice : TenantEntity
 
     private void Recompute()
     {
-        Subtotal = _lines.Where(l => l.Amount > 0 && !l.IsSettled).Sum(l => l.Amount);
-        DiscountTotal = _lines.Where(l => l.Amount < 0 && l.Type != InvoiceLineType.Refund && !l.IsSettled).Sum(l => l.Amount);
-        RefundTotal = _lines.Where(l => l.Type == InvoiceLineType.Refund).Sum(l => l.Amount);
+        var charges = _lines.Where(l => !l.IsSettlement).ToList();
+        Subtotal = charges.Where(l => l.Amount > 0 && !l.IsSettled).Sum(l => l.Amount);
+        DiscountTotal = charges.Where(l => l.Amount < 0 && l.Type != InvoiceLineType.Refund && !l.IsSettled).Sum(l => l.Amount);
+        RefundTotal = charges.Where(l => l.Type == InvoiceLineType.Refund).Sum(l => l.Amount);
+        SettlementTotal = _lines.Where(l => l.IsSettlement).Sum(l => l.Amount);
         var total = Subtotal + DiscountTotal + RefundTotal;
         RoundingAmount = RoundTotal ? -(total % RoundingUnit) : 0;
-        TotalAmount = total + RoundingAmount;
+        TotalAmount = total + RoundingAmount + SettlementTotal;
     }
 
     public const decimal RoundingUnit = 1000;

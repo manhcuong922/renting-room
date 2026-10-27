@@ -153,20 +153,20 @@ Vượt giới hạn → **429 `TOO_MANY_REQUESTS`** + header `Retry-After` (gi�
 | `FeeGroup` | `Metered` Điện nước (theo công tơ) · `Service` Dịch vụ |
 | `ChargeBasis` | `PerRoom` Theo phòng · `PerOccupant` Theo đầu người · `PerUnit` Theo số gói |
 | `InvoiceStatus` | `Draft` Nháp · `Finalized` Đã chốt · `Void` Đã hủy |
-| `InvoiceLineType` | `Rent` Tiền phòng · `Metered` Điện nước · `Service` Dịch vụ · `Surcharge` Phụ thu · `ManualDiscount` Giảm trừ · `Refund` Hoàn trả (hóa đơn trả phòng) |
-| `InvoicePaymentStatus` | `Unpaid` Chưa thu · `PartiallyPaid` Thu một phần · `Paid` Đã thu đủ · `Overdue` Quá hạn · `WrittenOff` Đã bỏ nợ · `RefundPending` Chờ hoàn tiền cho người thuê · `Refunded` Đã hoàn |
+| `InvoiceLineType` | `Rent` Tiền phòng · `Metered` Điện nước · `Service` Dịch vụ · `Surcharge` Phụ thu · `ManualDiscount` Giảm trừ · `Refund` Hoàn trả (hóa đơn trả phòng) · `PreviousDebt` Nợ chuyển từ hóa đơn trước · `Deposit` Trừ tiền cọc (2 dòng kết toán của hóa đơn trả phòng — 27/10/2026) |
+| `InvoicePaymentStatus` | `Unpaid` Chưa thu · `PartiallyPaid` Thu một phần · `Paid` Đã thu đủ · `Overdue` Quá hạn · `WrittenOff` Đã bỏ nợ · `RefundPending` Chờ hoàn tiền cho người thuê · `Refunded` Đã hoàn · `RefundWaived` Không hoàn (chủ trọ quyết định, có lý do) · `CarriedOver` Chờ thu ở hóa đơn trả phòng · `CarriedSettled` Hoàn thành (qua hóa đơn trả phòng) · `CarriedWrittenOff` Đã bỏ nợ (qua hóa đơn trả phòng) (27/10/2026 — đi theo hóa đơn trả phòng) |
 | `InvoiceType` | `Regular` Phiếu tháng · `Final` Hóa đơn trả phòng |
 | `PaymentKind` | `Receipt` Tiền thu · `WriteOff` Bỏ nợ |
 | `PaymentStatus` | `Recorded` Đã ghi · `Reversed` Đã đảo |
 | `RoomChargeKind` | `Surcharge` Phụ thu · `Credit` Bù (trừ cho người thuê) |
 | `RoomChargeStatus` | `Pending` Chờ lên phiếu · `OnDraft` Trên phiếu nháp · `Billed` Đã vào phiếu đã chốt · `Cancelled` Đã hủy |
-| `DepositStatus` | `Holding` Đang giữ · `Refunded` Đã hoàn trả · `Transferred` Đã chuyển sang HĐ ký lại |
+| `DepositStatus` | `Holding` Đang giữ · `Refunded` Đã hoàn trả · `Transferred` Đã chuyển sang HĐ ký lại · `Forfeited` Không trả cọc · `Deducted` Đã trừ vào hóa đơn trả phòng (27/10/2026) |
 | `OccupantRole` | `Resident` Người ở · `CoTenant` Đồng thuê |
 | `TenancyRole` | `Representative` Đứng tên · `CoTenant` Đồng thuê · `Resident` Người ở (lịch sử thuê của phòng) |
 | `ConsentMethod` | `PaperSigned` Ký giấy · `ContractClause` Điều khoản hợp đồng · `Verbal` Xác nhận miệng |
 | `DebtSettlement` | `CollectAll` Đã thu toàn bộ · `WriteOff` Bỏ nợ |
 | `ReadingKind` | `Initial` Lắp công tơ · `Handover` Nhận phòng · `Periodic` Cuối kỳ · `Adhoc` Kiểm tra · `Final` Cuối hợp đồng · `Removal` Tháo công tơ |
-| `ContractFlag` | `RepresentativeMovedOut` Người ký đã rời đi · `NoOccupantLeft` Không còn người ở · `ExpiredAwaitingDecision` Hết hạn — chờ quyết định (chỉ ở hợp đồng, không ở phòng) · `MissingSignedDocument` Thiếu tài liệu. (`Holdover` đã bỏ 13/10/2026) |
+| `ContractFlag` | `RepresentativeMovedOut` Người ký đã rời đi · `NoOccupantLeft` Không còn người ở · `ExpiredAwaitingDecision` Hết hạn — chờ quyết định (chỉ ở hợp đồng, không ở phòng) · `MissingSignedDocument` Thiếu tài liệu · `MoveOutOverdue` Quá ngày trả phòng (nhãn đỏ, 20/10/2026). (`Holdover` đã bỏ 13/10/2026) |
 
 ## Dữ liệu cá nhân
 

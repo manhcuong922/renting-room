@@ -14,11 +14,11 @@ public sealed class UpdateInvoiceNoteCommandValidator : AbstractValidator<Update
     public UpdateInvoiceNoteCommandValidator() => RuleFor(x => x.Note).OptionalText(1000);
 }
 
-public sealed class UpdateInvoiceNoteHandler(IUnitOfWork unitOfWork, IInvoiceRepository invoices, TimeProvider clock)
+public sealed class UpdateInvoiceNoteHandler(IUnitOfWork unitOfWork, IInvoiceRepository invoices, IInvoiceQueries invoiceQueries, TimeProvider clock)
     : IRequestHandler<UpdateInvoiceNoteCommand, Result<InvoiceDetailDto>>
 {
     public async ValueTask<Result<InvoiceDetailDto>> Handle(UpdateInvoiceNoteCommand request, CancellationToken cancellationToken) =>
-        await InvoiceAccess.MutateAsync(unitOfWork, invoices, request.InvoiceId, clock.GetUtcNow().ToBusinessDate(), invoice =>
+        await InvoiceAccess.MutateAsync(unitOfWork, invoices, invoiceQueries, request.InvoiceId, clock.GetUtcNow().ToBusinessDate(), invoice =>
         {
             if (invoice.Status != InvoiceStatus.Draft)
                 return Result.Failure(BillingErrors.NotDraft);

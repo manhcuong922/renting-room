@@ -205,12 +205,13 @@ public sealed class BillingTests(ApiFactory factory)
         var s = await ArrangeAsync("Prepaid");
         var secondMonth = s.Start.AddMonths(1);
 
-        // Phiếu tháng 1 (không điện — trả trước), tháng 2 (tiền phòng tháng 2 + điện tháng 1), đều đã chốt.
+        // Phiếu tháng 1 (không điện — trả trước), tháng 2 (tiền phòng tháng 2 + điện tháng 1), đều đã chốt, chưa thu.
         await GenerateAsync(s, s.Start);
-        await FinalizeAsync(s, Id(await InvoiceForAsync(s, s.Start)));
+        var first = await FinalizeAsync(s, Id(await InvoiceForAsync(s, s.Start)));
         (await SaveReadingAsync(s, s.Start, 150)).StatusCode.Should().Be(HttpStatusCode.OK);
         await GenerateAsync(s, secondMonth);
-        await FinalizeAsync(s, Id(await InvoiceForAsync(s, secondMonth)));
+        var second = await FinalizeAsync(s, Id(await InvoiceForAsync(s, secondMonth)));
+        var debts = Total(first) + Total(second);
 
         // Ở nửa tháng 2 rồi đi: tiền phòng tháng 2 đã thu trọn (không hoàn — để sau), điện nửa tháng 2 chưa ai thu.
         var moveOut = secondMonth.AddDays(14);
@@ -220,15 +221,18 @@ public sealed class BillingTests(ApiFactory factory)
             new { finalReadings = new[] { new { meterId = s.MeterId, value = (decimal?)170 } } }, s.Token);
         created.StatusCode.Should().Be(HttpStatusCode.Created, await created.Content.ReadAsStringAsync());
         var final = await created.ReadAsync<JsonElement>();
-        final.GetProperty("lines").EnumerateArray().Select(l => (l.GetProperty("type").GetString(), l.GetProperty("quantity").GetDecimal()))
+        final.GetProperty("lines").EnumerateArray().Where(l => l.GetProperty("type").GetString() != "PreviousDebt")
+            .Select(l => (l.GetProperty("type").GetString(), l.GetProperty("quantity").GetDecimal()))
             .Should().Equal(("Metered", 20m)); // 150 → 170; tiền phòng, nước đã thu ở phiếu tháng 2
+        final.GetProperty("lines").EnumerateArray().Where(l => l.GetProperty("type").GetString() == "PreviousDebt")
+            .Sum(l => l.GetProperty("amount").GetDecimal()).Should().Be(debts, "kết toán: nợ 2 phiếu tháng chuyển vào hóa đơn trả phòng (BL-BR-41)");
         (await (await _client.PostJsonAsync($"/api/v1/contracts/{s.ContractId}/final-invoice", new { finalReadings = (object?)null }, s.Token))
             .ReadProblemCodeAsync()).Should().Be("FINAL_INVOICE_EXISTS");
 
         // Phụ thu phạt báo trễ trên phiếu quyết toán rồi chốt.
         await _client.PostJsonAsync($"/api/v1/invoices/{Id(final)}/manual-lines",
             new { type = "Surcharge", description = "Phạt báo trả phòng muộn", amount = 500_000, note = "Theo điều khoản HĐ" }, s.Token);
-        Total(await FinalizeAsync(s, Id(final))).Should().Be(20 * 3500 + 500_000);
+        Total(await FinalizeAsync(s, Id(final))).Should().Be(20 * 3500 + 500_000 + debts);
 
         // Còn nợ ⇒ cảnh báo; người thuê trốn ⇒ bỏ nợ (không tính doanh thu).
         var warn = await _client.PostJsonAsync($"/api/v1/contracts/{s.ContractId}/liquidation/complete", new { settlement = (string?)null }, s.Token);
@@ -239,7 +243,8 @@ public sealed class BillingTests(ApiFactory factory)
         var contract = await (await _client.GetAsync($"/api/v1/contracts/{s.ContractId}", s.Token)).ReadAsync<JsonElement>();
         contract.GetProperty("status").GetString().Should().Be("Ended");
         var page = await (await _client.GetAsync($"/api/v1/invoices?contractId={s.ContractId}", s.Token)).ReadAsync<JsonElement>();
-        page.GetProperty("items").EnumerateArray().Select(i => i.GetProperty("paymentStatus").GetString()).Should().Contain("WrittenOff");
+        page.GetProperty("items").EnumerateArray().Select(i => i.GetProperty("paymentStatus").GetString())
+            .Should().BeEquivalentTo(["CarriedWrittenOff", "CarriedWrittenOff", "WrittenOff"], "nợ 2 phiếu tháng đã chuyển, bỏ nợ trên hóa đơn trả phòng (BL-BR-41)");
         var payments = await (await _client.GetAsync($"/api/v1/payments?contractId={s.ContractId}", s.Token)).ReadAsync<List<JsonElement>>();
         payments.Should().Contain(p => p.GetProperty("kind").GetString() == "WriteOff");
         (await (await _client.PostJsonAsync($"/api/v1/contracts/{s.ContractId}/payments",
@@ -253,7 +258,10 @@ public sealed class BillingTests(ApiFactory factory)
         var s = await ArrangeAsync("Prepaid");
         var secondMonth = s.Start.AddMonths(1);
         await GenerateAsync(s, s.Start);
-        await FinalizeAsync(s, Id(await InvoiceForAsync(s, s.Start)));
+        var first = await FinalizeAsync(s, Id(await InvoiceForAsync(s, s.Start)));
+        (await _client.PostJsonAsync($"/api/v1/contracts/{s.ContractId}/payments",
+            new { amount = Total(first), method = "Cash", paidAt = TestData.Today(factory), invoiceId = Id(first) }, s.Token))
+            .StatusCode.Should().Be(HttpStatusCode.Created);
         (await SaveReadingAsync(s, s.Start, 150)).StatusCode.Should().Be(HttpStatusCode.OK);
         await GenerateAsync(s, secondMonth);
         await FinalizeAsync(s, Id(await InvoiceForAsync(s, secondMonth)));
@@ -280,6 +288,11 @@ public sealed class BillingTests(ApiFactory factory)
             invoiceId = Id(second)
         }, s.Token)).StatusCode.Should().Be(HttpStatusCode.Created);
 
+        // Vừa thu tháng 2 ⇒ dòng nợ chuyển trên nháp đã cũ ⇒ chốt bị chặn tới khi tính lại (BL-BR-41).
+        (await (await _client.PostJsonAsync($"/api/v1/invoices/{Id(final)}/finalize", null, s.Token)).ReadProblemCodeAsync()).Should().Be("DRAFT_STALE");
+        (await _client.PostJsonAsync("/api/v1/invoices/recalculate", new { invoiceIds = new[] { Id(final) } }, s.Token))
+            .IsSuccessStatusCode.Should().BeTrue();
+
         // Hoàn trả lớn hơn phần thu ⇒ tổng âm = chủ trọ phải trả lại.
         var refund = await RefundAsync(Id(second), 1_000_000);
         refund.StatusCode.Should().Be(HttpStatusCode.OK, await refund.Content.ReadAsStringAsync());
@@ -299,10 +312,8 @@ public sealed class BillingTests(ApiFactory factory)
         confirmed.StatusCode.Should().Be(HttpStatusCode.OK, await confirmed.Content.ReadAsStringAsync());
         (await confirmed.ReadAsync<JsonElement>()).GetProperty("summary").GetProperty("paymentStatus").GetString().Should().Be("Refunded");
 
-        // Phiếu tháng 1 chưa thu ⇒ còn nợ; phiếu hoàn trả không bù trừ nợ ⇒ chọn "Đã thu toàn bộ".
-        (await (await _client.PostJsonAsync($"/api/v1/contracts/{s.ContractId}/liquidation/complete", new { settlement = (string?)null }, s.Token))
-            .ReadProblemCodeAsync()).Should().Be("CONTRACT_HAS_DEBT");
-        (await _client.PostJsonAsync($"/api/v1/contracts/{s.ContractId}/liquidation/complete", new { settlement = "CollectAll" }, s.Token))
+        // Các phiếu tháng đã thu đủ, đã hoàn ⇒ hoàn tất ngay.
+        (await _client.PostJsonAsync($"/api/v1/contracts/{s.ContractId}/liquidation/complete", new { settlement = (string?)null }, s.Token))
             .StatusCode.Should().Be(HttpStatusCode.NoContent);
     }
 

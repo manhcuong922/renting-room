@@ -8,6 +8,8 @@ public sealed partial class Contract
     {
         if (!HasDeposit)
             return Result.Failure(ContractErrors.NoDeposit);
+        if (DepositStatus == DepositStatus.Deducted)
+            return Result.Failure(ContractErrors.DepositDeducted);
         if (DepositStatus != DepositStatus.Holding)
             return Result.Failure(ContractErrors.DepositAlreadyRefunded);
         if (refundedOn > today)
@@ -29,6 +31,8 @@ public sealed partial class Contract
     {
         if (!HasDeposit)
             return Result.Failure(ContractErrors.NoDeposit);
+        if (DepositStatus == DepositStatus.Deducted)
+            return Result.Failure(ContractErrors.DepositDeducted);
         if (DepositStatus != DepositStatus.Holding)
             return Result.Failure(ContractErrors.DepositAlreadyRefunded);
         if (date > today)
@@ -47,11 +51,41 @@ public sealed partial class Contract
     {
         if (DepositStatus == DepositStatus.Holding)
             return Result.Failure(ContractErrors.DepositNotRefunded);
+        if (DepositStatus == DepositStatus.Deducted)
+            return Result.Failure(ContractErrors.DepositDeducted);
         DepositStatus = DepositStatus.Holding;
         DepositRefundedOn = null;
         DepositRefundedAmount = null;
         DepositNote = null;
         return Result.Success();
+    }
+
+    /// <summary>M07 BL-BR-41: chốt hóa đơn trả phòng có dòng "Trừ tiền cọc" ⇒ cọc đã trừ hết vào hóa đơn đó (ngày = ngày chốt).</summary>
+    public Result DeductDepositOnFinal(DateOnly date, string finalInvoiceNo)
+    {
+        if (!HasDeposit)
+            return Result.Failure(ContractErrors.NoDeposit);
+        if (DepositStatus == DepositStatus.Deducted)
+            return Result.Failure(ContractErrors.DepositDeducted);
+        if (DepositStatus != DepositStatus.Holding)
+            return Result.Failure(ContractErrors.DepositAlreadyRefunded);
+
+        DepositStatus = DepositStatus.Deducted;
+        DepositRefundedOn = date;
+        DepositRefundedAmount = DepositAmount;
+        DepositNote = $"Trừ vào hóa đơn trả phòng {finalInvoiceNo}";
+        return Result.Success();
+    }
+
+    /// <summary>Hủy hóa đơn trả phòng đã trừ cọc ⇒ cọc về đang giữ.</summary>
+    public void UndoDepositDeduction()
+    {
+        if (DepositStatus != DepositStatus.Deducted)
+            return;
+        DepositStatus = DepositStatus.Holding;
+        DepositRefundedOn = null;
+        DepositRefundedAmount = null;
+        DepositNote = null;
     }
 
     public void MarkDepositTransferred(string newContractNo)
@@ -60,14 +94,6 @@ public sealed partial class Contract
             return;
         DepositStatus = DepositStatus.Transferred;
         DepositNote = TransferredNote(newContractNo);
-    }
-
-    public void RevertDepositTransfer(string? newContractNo = null)
-    {
-        if (DepositStatus != DepositStatus.Transferred || (newContractNo is not null && DepositNote != TransferredNote(newContractNo)))
-            return;
-        DepositStatus = DepositStatus.Holding;
-        DepositNote = null;
     }
 
     private static string TransferredNote(string newContractNo) => $"Chuyển sang hợp đồng {newContractNo}";

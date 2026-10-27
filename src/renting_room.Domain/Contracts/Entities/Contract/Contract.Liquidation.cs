@@ -56,6 +56,9 @@ public sealed partial class Contract
         TerminationNote = null;
         LiquidationStartedOn = null;
         FinalPeriodCharge = null;
+        // Người thuê ở lại ⇒ bỏ luôn báo trả phòng, không thì nhãn "Trả phòng dd/MM" và cờ quá hạn còn treo (CT-UC-09).
+        NoticeGivenDate = null;
+        PlannedMoveOutDate = null;
         Status = ContractStatus.Active;
         return Result.Success();
     }

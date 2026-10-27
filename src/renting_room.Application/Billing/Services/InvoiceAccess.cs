@@ -8,11 +8,13 @@ internal static class InvoiceAccess
 {
     /// <summary>Khóa phiếu → nạp → thao tác (domain tự kiểm trạng thái) → lưu, trong 1 transaction; trả chi tiết sau khi sửa.</summary>
     public static Task<Result<InvoiceDetailDto>> MutateAsync(
-        IUnitOfWork unitOfWork, IInvoiceRepository invoices, Guid invoiceId, DateOnly today, Func<Invoice, Result> action, CancellationToken ct) =>
-        MutateAsync(unitOfWork, invoices, invoiceId, today, invoice => Task.FromResult(action(invoice)), ct);
+        IUnitOfWork unitOfWork, IInvoiceRepository invoices, IInvoiceQueries queries, Guid invoiceId, DateOnly today, Func<Invoice, Result> action,
+        CancellationToken ct) =>
+        MutateAsync(unitOfWork, invoices, queries, invoiceId, today, invoice => Task.FromResult(action(invoice)), ct);
 
     public static async Task<Result<InvoiceDetailDto>> MutateAsync(
-        IUnitOfWork unitOfWork, IInvoiceRepository invoices, Guid invoiceId, DateOnly today, Func<Invoice, Task<Result>> action, CancellationToken ct)
+        IUnitOfWork unitOfWork, IInvoiceRepository invoices, IInvoiceQueries queries, Guid invoiceId, DateOnly today, Func<Invoice, Task<Result>> action,
+        CancellationToken ct)
     {
         await using var transaction = await unitOfWork.BeginTransactionAsync(ct);
         await unitOfWork.LockForUpdateAsync<Invoice>(invoiceId, ct);
@@ -25,6 +27,6 @@ internal static class InvoiceAccess
             return result.Error!;
         await unitOfWork.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
-        return invoice.ToDetail(today);
+        return invoice.ToDetail(today, await queries.LoadAsync(invoice, today, ct));
     }
 }

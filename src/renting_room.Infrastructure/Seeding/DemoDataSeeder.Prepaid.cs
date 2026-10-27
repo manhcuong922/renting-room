@@ -85,8 +85,7 @@ public sealed partial class DemoDataSeeder
         await History(b02, c02, -3, -1);
         var refunded = await MoveOutEarly(b02, c02, Period(-1).AddDays(10));
         await Send(new ConfirmInvoiceRefundCommand(refunded.Summary.Id, _today, PaymentMethod.Cash, "Trả tiền mặt khi bàn giao phòng"));
-        await Send(new CompleteLiquidationCommand(c02));
-        await Send(new RefundDepositCommand(c02, _today, null, null)); // "Đã hoàn trả cọc" đủ
+        await Send(new CompleteLiquidationCommand(c02)); // cọc đã trừ vào hóa đơn trả phòng (BL-BR-41), phần dư đã trả lại ở trên
         await Send(new AnonymizeRenterCommand(tenant02, "Người thuê yêu cầu xóa dữ liệu cá nhân sau khi trả phòng"));
 
         // B10 — trả phòng sớm kỳ này, chọn "Tính theo ngày ở", nhưng hóa đơn tháng (đã lập tiền phòng trọn kỳ) chưa thu đồng nào ⇒ không gợi ý
@@ -147,17 +146,18 @@ public sealed partial class DemoDataSeeder
         await Send(new TransferRoomCommand(c07, b08.Id, [FinalReading(b07.Electricity, 30), FinalReading(b07.Water!.Value, 2)], null,
             PrepaidRent + 300000, "Chuyển sang phòng có ban công", TransferRentFrom.CurrentPeriod));
 
-        // B06 — Người đứng tên chuyển đi, người ở cùng ký lại HĐ mới từ mai ⇒ cọc chuyển sang HĐ nháp mới (PM-BR-27).
+        // B06 — Người đứng tên chuyển đi, người ở cùng ký lại HĐ mới từ mai: soạn nháp rồi ký ⇒ HĐ cũ thanh lý hôm nay, cọc chuyển sang HĐ mới (PM-BR-27).
         var b06 = await Room("B06");
         var leaving = await RenterAsync("Kiều Văn Sơn", new DateOnly(1992, 4, 4), Gender.Male, Phone(27));
         var staying = await RenterAsync("Kiều Thị Vân", new DateOnly(1994, 9, 9), Gender.Female, Phone(28));
         var c06 = await ContractAsync(b06.Id, leaving, Period(0), PrepaidRent, b06.Meters,
             [new(staying, Period(0), null, null, null, OccupantRelationship.Wife)], fees: standard);
         await History(b06, c06, 0, 0);
-        await Send(new ResignContractCommand(c06, _today, staying, null));
+        var resignedB06 = await Send(new ResignContractCommand(c06, _today, staying, null));
+        await Send(new ActivateContractCommand(resignedB06.Id, b06.Meters.Select(m => new MeterReadingInput(m, null)).ToList()));
 
-        // B09 — ký lại không thành (CT-UC-21): người ở cùng có xe 29K1-246.80, ký lại rồi đổi ý ⇒ hủy HĐ nháp mới: xe mở lại trên HĐ cũ
-        // (đang thanh lý tới hôm nay), cọc về "Đang giữ" (PM-BR-34).
+        // B09 — ký lại không thành (CT-UC-21): người ở cùng có xe 29K1-246.80, soạn nháp ký lại rồi đổi ý ⇒ hủy HĐ nháp mới: HĐ cũ không bị đụng
+        // (vẫn hiệu lực, xe vẫn đăng ký, cọc "Đang giữ" — PM-BR-34).
         var b09 = await Room("B09");
         var holder = await RenterAsync("Lạc Văn Hùng", new DateOnly(1990, 6, 6), Gender.Male, Phone(41));
         var roommate = await RenterAsync("Lạc Thị Hoa", new DateOnly(1995, 3, 3), Gender.Female, Phone(42));

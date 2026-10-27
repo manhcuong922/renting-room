@@ -62,7 +62,8 @@ Quyền: chủ trọ và phó quản lý.
       "propertyId": "…", "roomId": "…", "roomCode": "102", "contractId": "…", "contractNo": "HD2026-0002", "representativeName": "Đỗ Thị Hoa",
       "billingMonth": "2026-09", "periodStart": "2026-09-01", "periodEnd": "2026-09-30",
       "totalAmount": 3567000, "paidAmount": 1000000, "outstanding": 2567000, "refundDue": 0, "dueDate": "2026-10-18",
-      "errorCount": 0, "version": "6162", "isStale": false, "roundingAmount": -500, "collectedAmount": 1000000, "writtenOffAmount": 0 }
+      "errorCount": 0, "version": "6162", "isStale": false, "roundingAmount": -500, "collectedAmount": 1000000, "writtenOffAmount": 0,
+      "isAdjusted": false, "needsResend": false, "invoiceAmount": 3567000, "carriedToInvoiceNo": null }
   ],
   "page": 1, "pageSize": 20, "totalCount": 2, "totalPages": 1
 }
@@ -77,6 +78,8 @@ Quyền: chủ trọ và phó quản lý.
 | `errorCount` | Số vấn đề chặn chốt (> 0 ⇒ nhãn đỏ "Cần sửa", không chốt được) |
 | `isStale` | Nháp "Cần tính lại" |
 | `roundingAmount` | Phần làm tròn tổng phiếu (âm = làm tròn xuống) |
+| `invoiceAmount` / `totalAmount` | (27/10/2026 — BL-BR-41) **Tổng hóa đơn** = tiền của chính kỳ đó (doanh thu) / **Tổng thu** = số người thuê phải trả (âm: nhận lại) sau khi cộng nợ chuyển vào và trừ cọc. Hóa đơn thường hai số bằng nhau; hóa đơn trả phòng hiện cả hai |
+| `carriedToInvoiceNo` | Số hóa đơn trả phòng đã nhận nợ của hóa đơn này (`paymentStatus` `Carried…`) — hiện "Chờ thu ở hóa đơn trả phòng PB…"; `null` nếu không chuyển |
 
 `GET /rooms/{id}/invoices`: phiếu của phòng, mới nhất trước — dùng cho tab "Phiếu" trong chi tiết phòng.
 
@@ -105,7 +108,6 @@ Quyền: chủ trọ và phó quản lý.
 | `LATER_PERIOD_BILLED` | Đã có phiếu kỳ sau |
 | `NO_PERIOD_IN_MONTH` | HĐ không có kỳ thuộc tháng thu này |
 | `USE_FINAL_INVOICE` | Kỳ chứa ngày trả phòng — lập **hóa đơn trả phòng** thay phiếu thường |
-| `MOVE_OUT_NOTICED` | (20/10/2026) HĐ đã **báo trả phòng** với ngày dự kiến trả ≤ cuối kỳ — bắt đầu thanh lý và lập hóa đơn trả phòng (tính theo số ngày ở); người thuê ở tiếp ⇒ rút báo trả phòng rồi tạo lại ([contracts.md](contracts.md#báo-trả-phòng)) |
 | `MISSING_READING` | (17/10/2026) Thiếu chỉ số cuối kỳ của công tơ đang hoạt động ⇒ **không tạo nháp**. UI: link sang lưới ghi chỉ số tháng đó, nhập xong bấm tạo lại (phòng khác vẫn được tạo) |
 | `PREVIOUS_PERIOD_INCOMPLETE` | (17/10/2026) Kỳ trước còn nháp mang lỗi `MISSING_READING` (chỉ số bị hủy sau khi lập) — nhập lại chỉ số, tính lại nháp kỳ trước rồi mới tạo kỳ này |
 
@@ -277,7 +279,7 @@ thanh toán của HĐ). Sau khi chốt: chỉ số cuối kỳ bị khóa và th
 
 ## Hủy / xóa
 
-- `POST /invoices/{id}/void` `{ "reason": "Nhập sai chỉ số" }` → 200. Chỉ phiếu **đã chốt, chưa thu tiền** (422 `INVOICE_HAS_PAYMENTS` — đảo phiếu
+- `POST /invoices/{id}/void` `{ "reason": "Nhập sai chỉ số" }` → 200. HĐ **đã kết thúc** → 422 `CONTRACT_NOT_BILLABLE` (20/10/2026). Chỉ phiếu **đã chốt, chưa thu tiền** (422 `INVOICE_HAS_PAYMENTS` — đảo phiếu
   thu trước; đã xác nhận hoàn tiền → 422 `REFUND_CONFIRMED` — bỏ xác nhận trước) và là **phiếu mới nhất** của HĐ (422 `NOT_LATEST_INVOICE` — hủy / xóa phiếu kỳ sau trước). **Hóa đơn trả phòng chưa hủy luôn là mới nhất** (17/10/2026):
   phiếu tháng cuối không hủy / xóa được khi còn hóa đơn trả phòng — xóa / hủy hóa đơn trả phòng trước. Hủy xong lập lại được, chỉ số được mở khóa.
 - `DELETE /invoices/{id}` → 204: xóa **nháp** (cũng chỉ phiếu mới nhất).
@@ -290,7 +292,8 @@ thanh toán của HĐ). Sau khi chốt: chỉ số cuối kỳ bị khóa và th
 > 2.000.000, `writtenOffAmount` 1.000.000, `WrittenOff`.
 
 `Unpaid` chưa thu (kể cả đã bỏ nợ một phần mà chưa thu đồng nào) · `PartiallyPaid` **có thực thu** một phần · `Paid` đủ bằng tiền (phiếu 0đ coi như đã thu) · `Overdue` quá hạn chưa thu đủ · `WrittenOff` đóng có phần bỏ nợ (không tính doanh thu) ·
-`RefundPending` tổng âm, **chờ chủ trọ trả lại** người thuê · `Refunded` đã trả lại.
+`RefundPending` tổng âm, **chờ chủ trọ trả lại** người thuê · `Refunded` đã trả lại · `RefundWaived` chủ trọ quyết định **không hoàn** (`refundMethod = null`, `refundNote` = lý do — chỉ qua màn hoàn tất thanh lý, [contracts.md](contracts.md#hoàn-tất--post-contractsidliquidationcomplete)).
+Hóa đơn đã chuyển nợ vào hóa đơn trả phòng (BL-BR-41) — **đi theo hóa đơn trả phòng** (27/10/2026): `CarriedOver` "Chờ thu ở hóa đơn trả phòng {`carriedToInvoiceNo`}" (hóa đơn trả phòng chưa xong) · `CarriedSettled` "Hoàn thành (qua hóa đơn trả phòng)" (hóa đơn trả phòng `Paid` / `Refunded` / `RefundWaived`) · `CarriedWrittenOff` "Đã bỏ nợ (qua hóa đơn trả phòng)" (hóa đơn trả phòng `WrittenOff`). Cả ba: `outstanding` 0, `collectedAmount` không gồm phần chuyển.
 `outstanding` = số còn nợ (≥ 0 — phiếu âm không bù trừ nợ phiếu khác); `refundDue` = số còn phải trả lại người thuê. Gửi phiếu qua Zalo kèm mã QR: P2.
 
 ## Điều chỉnh chỉ số — lịch sử và gửi lại
@@ -350,3 +353,22 @@ hơn phần thu ⇒ hóa đơn **âm** ⇒ chốt được ⇒ `RefundPending` (
 - **Điện nước** tới **chỉ số cuối** (trả trước: gồm cả kỳ trước nếu chưa thu).
 
 Hóa đơn trả phòng đã chốt là điều kiện hoàn tất thanh lý (khi còn phần chưa thu — `finalInvoiceRequired`); còn nợ thì chọn "Đã thu toàn bộ" / "Bỏ nợ"; còn phiếu Chờ hoàn thì xác nhận đã hoàn trước ([contracts.md](contracts.md#hoàn-tất--post-contractsidliquidationcomplete)).
+
+### Kết toán — nợ cũ và cọc (27/10/2026 — BL-BR-41)
+
+Hóa đơn trả phòng là **bản kết toán**: ngoài phần thu của kỳ cuối, nháp tự có các dòng **kết toán** (hệ thống tính, `isSystem = true`):
+
+| `type` | Nội dung | `amount` |
+|---|---|---|
+| `PreviousDebt` | "Nợ chuyển từ hóa đơn PB2026-000009 (tháng 09/2026)" — mỗi hóa đơn **đã chốt** khác của HĐ còn nợ; `sourceInvoiceId` = hóa đơn đó | + số còn nợ |
+| `Deposit` | "Trừ tiền cọc" — HĐ có cọc đang giữ | − số cọc |
+
+- `subtotal` / `discountTotal` (phần thu — doanh thu) **không** gồm dòng kết toán; `settlementTotal` = Σ dòng kết toán; `totalAmount = subtotal + discountTotal + refundTotal + settlementTotal + roundingAmount`; làm tròn chỉ tính trên phần thu.
+- Dòng kết toán **không sửa / xóa tay** → 422 `SETTLEMENT_LINE_LOCKED`. Mất cọc ⇒ `POST /contracts/{id}/deposit/forfeit` **trước khi chốt** (nháp tự tính lại, bỏ dòng cọc; bỏ đánh dấu ⇒ dòng trở lại); giữ lại một phần cọc ⇒ thêm **phụ thu**.
+- `previousDebts` của hóa đơn trả phòng luôn rỗng (nợ cũ đã là dòng); `totalDue` = phần còn phải trả của chính hóa đơn.
+- Nợ cũ / cọc đổi sau khi lập nháp (VD người thuê trả tiền tháng trước) ⇒ chốt → 409 `DRAFT_STALE` ⇒ tính lại.
+- **Chốt** ⇒ mỗi hóa đơn nguồn: `outstanding` 0, `carriedOverAmount` = số chuyển (nằm trong `paidAmount`, **không** tính vào `collectedAmount`), `carriedToInvoiceId` / `summary.carriedToInvoiceNo`; `paymentStatus` đi theo hóa đơn trả phòng — `CarriedOver` (chờ thu ở đó) → `CarriedSettled` (hoàn thành) / `CarriedWrittenOff` (đã bỏ nợ), xem [Trạng thái thu tiền](#trạng-thái-thu-tiền-paymentstatus-chỉ-phiếu-đã-chốt); cọc HĐ ⇒ `Deducted`. Hóa đơn nguồn đã chuyển: không hủy được, không ghi thu thêm, đảo phiếu thu của nó hoặc điều chỉnh chỉ số đã chốt của nó (HĐ chưa kết thúc) → 422 `INVOICE_CARRIED_OVER`.
+- **Hai con số**: `summary.invoiceAmount` (**Tổng hóa đơn** — tiền kỳ cuối) và `summary.totalAmount` (**Tổng thu** — sau kết toán). VD nợ tháng 9 1.000.000, kỳ cuối 1.250.000, cọc 3.000.000 ⇒ `invoiceAmount` 1.250.000, `settlementTotal` −2.000.000, `totalAmount` −750.000 (`RefundPending` 750.000).
+- **Hủy** hóa đơn trả phòng (chưa thu, chưa xác nhận hoàn) ⇒ hoàn nguyên: hóa đơn nguồn lại còn nợ, cọc về `Holding`.
+- Tổng âm ⇒ `RefundPending` (phần cọc dư phải trả lại — "Đã trả" / "Không hoàn" khi hoàn tất); tổng dương ⇒ còn nợ ⇒ thu / bỏ nợ.
+- `GET /invoices/totals`: `totalAmount` cộng **phần thu** từng hóa đơn (`totalAmount − settlementTotal`), `paidAmount` bỏ phần nợ đã chuyển ⇒ nợ chuyển không đếm 2 lần; cọc đã trừ không tính là đã thu.

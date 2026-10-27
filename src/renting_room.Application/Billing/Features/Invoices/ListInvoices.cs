@@ -29,6 +29,8 @@ public sealed class ListInvoicesHandler(IInvoiceQueries invoices, TimeProvider c
     {
         var page = await invoices.ListAsync(request, cancellationToken);
         var today = clock.GetUtcNow().ToBusinessDate();
-        return new PagedResult<InvoiceSummaryDto>(page.Items.Select(i => i.ToSummary(today)).ToList(), page.Page, page.PageSize, page.TotalCount);
+        var carriedTo = await invoices.LoadAsync(page.Items, today, cancellationToken);
+        return new PagedResult<InvoiceSummaryDto>(
+            page.Items.Select(i => i.ToSummary(today, carriedTo.For(i))).ToList(), page.Page, page.PageSize, page.TotalCount);
     }
 }

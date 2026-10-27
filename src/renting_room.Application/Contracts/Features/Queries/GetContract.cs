@@ -98,6 +98,7 @@ public sealed class GetContractHandler(
                 .Select(m => new RoomMoveDto(m.RoomId, movedCodes.GetValueOrDefault(m.RoomId, ""), m.FromDate, m.ToDate)).ToList(),
             contract.RepresentativeSince ?? contract.StartDate,
             contract.RepresentativeHistory.OrderBy(h => h.FromDate)
-                .Select(h => new RepresentativeHistoryDto(h.RenterId, names.GetValueOrDefault(h.RenterId, string.Empty), h.FromDate, h.ToDate)).ToList());
+                .Select(h => new RepresentativeHistoryDto(h.RenterId, names.GetValueOrDefault(h.RenterId, string.Empty), h.FromDate, h.ToDate)).ToList(),
+            contract.ResignTransfersDeposit);
     }
 }

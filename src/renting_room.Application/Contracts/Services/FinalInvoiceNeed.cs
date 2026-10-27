@@ -6,7 +6,8 @@ namespace renting_room.Application.Contracts;
 
 /// <summary>
 /// M05 CT-UC-08: còn phần chưa thu của kỳ cuối ⇒ cần hóa đơn trả phòng. Không cần khi ngày trả phòng là ngày cuối kỳ, kỳ đó đã có hóa đơn
-/// tháng và khu thu sau — tiền phòng, dịch vụ, điện của kỳ đều đã tính (số chốt kỳ là số cuối của HĐ).
+/// tháng và khu thu sau — tiền phòng, dịch vụ, điện của kỳ đều đã tính (số chốt kỳ là số cuối của HĐ). Cũng không cần khi người thuê đi
+/// trước "Tính tiền từ ngày": không có kỳ nào để tính (không có tiền phòng, cũng chưa đo điện nước).
 /// </summary>
 public static class FinalInvoiceNeed
 {
@@ -14,7 +15,7 @@ public static class FinalInvoiceNeed
     {
         var periods = schedule.ContractPeriods(billingStart, actualEnd, actualEnd);
         if (periods.Count == 0)
-            return true;
+            return false;
         var last = periods[^1];
         return !(schedule.StandardPeriodContaining(last.Start).End == actualEnd
             && schedule.ChargeModeOn(last.Start) == ChargeMode.Postpaid

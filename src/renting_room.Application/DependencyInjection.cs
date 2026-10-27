@@ -26,6 +26,8 @@ public static class DependencyInjection
         services.AddScoped<Billing.RoomChargeBilling>();
         services.AddScoped<Billing.InvoiceInputLoader>();
         services.AddScoped<Billing.InvoiceFinalizer>();
+        services.AddScoped<Billing.FinalInvoiceSettlement>();
+        services.AddScoped<Contracts.FinalDraftRefresher>();
         services.AddScoped<Billing.DraftRecalculator>();
         services.AddScoped<Billing.MeterDraftRefresher>();
         services.AddScoped<Billing.ReadingAdjustmentCharges>();
@@ -36,7 +38,7 @@ public static class DependencyInjection
         services.AddScoped<Contracts.ContractMutation>();
         services.AddScoped<Contracts.LiquidationDrafts>();
         services.AddScoped<Contracts.OccupantChecks>();
-        services.AddScoped<Contracts.ResignVehicleRestorer>();
+        services.AddScoped<Contracts.ResignLiquidation>();
         services.AddScoped<Contracts.ContractPaperWarnings>();
         services.AddScoped<Contracts.ContractDraftBuilder>();
 

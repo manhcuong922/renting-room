@@ -51,14 +51,6 @@ public sealed class ContractVehicle : TenantEntity
         ResignedToContractId = newContractId;
     }
 
-    internal void Reopen()
-    {
-        RegisteredTo = null;
-        ResignedToContractId = null;
-    }
-
-    internal void ForgetResign() => ResignedToContractId = null;
-
     internal bool EraseIdentity()
     {
         if (IsActive || (PlateNumber is null && BrandColor is null))

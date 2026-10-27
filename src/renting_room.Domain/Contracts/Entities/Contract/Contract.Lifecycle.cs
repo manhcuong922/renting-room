@@ -4,7 +4,8 @@ namespace renting_room.Domain.Contracts;
 
 public sealed partial class Contract
 {
-    public static Contract CreateDraft(Guid propertyId, Guid roomId, string contractNo, ContractDraftData data, Guid? previousContractId = null)
+    public static Contract CreateDraft(
+        Guid propertyId, Guid roomId, string contractNo, ContractDraftData data, Guid? previousContractId = null, bool resignTransfersDeposit = false)
     {
         if (propertyId == Guid.Empty || roomId == Guid.Empty)
             throw new ArgumentException("Property and room are required.");
@@ -18,7 +19,8 @@ public sealed partial class Contract
             RoomId = roomId,
             ContractNo = TextNormalizer.NormalizeCode(contractNo),
             Status = ContractStatus.Draft,
-            PreviousContractId = previousContractId
+            PreviousContractId = previousContractId,
+            ResignTransfersDeposit = previousContractId is not null && resignTransfersDeposit
         };
         contract.ApplyDraft(data);
         return contract;

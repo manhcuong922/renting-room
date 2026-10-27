@@ -50,6 +50,9 @@ public sealed partial class Contract : TenantEntity
     public string? Note { get; private set; }
     public Guid? PreviousContractId { get; private set; }
 
+    /// <summary>Nháp ký lại (CT-UC-21): chủ trọ chọn chuyển cọc của HĐ cũ sang HĐ này — chỉ áp khi ký (kích hoạt), nháp không đổi HĐ cũ.</summary>
+    public bool ResignTransfersDeposit { get; private set; }
+
     public Guid? TemplateId { get; private set; }
     public ContractType ContractType { get; private set; }
     public string? Title { get; private set; }
@@ -122,6 +125,8 @@ public sealed partial class Contract : TenantEntity
 
         if (EndDate is { } end && end < today)
             flags.Add(ContractFlag.ExpiredAwaitingDecision);
+        if (PlannedMoveOutDate < today)
+            flags.Add(ContractFlag.MoveOutOverdue);
         if (!HasSignedDocument)
             flags.Add(ContractFlag.MissingSignedDocument);
         return flags;

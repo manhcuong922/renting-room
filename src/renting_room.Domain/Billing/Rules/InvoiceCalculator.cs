@@ -26,7 +26,27 @@ public static class InvoiceCalculator
             AddServices(input, lines, issues);
         WarnTwoRentPeriods(input, issues);
         AddMetered(input, lines, segments, issues);
+        if (input.Final is { } settlement)
+            AddSettlement(period, settlement, lines);
         return new InvoiceCalculation(lines.OrderBy(l => l.SortOrder).ToList(), segments, issues, input.RoundTotal);
+    }
+
+    private const int SettlementSortOrder = 900;
+
+    /// <summary>
+    /// BL-BR-41: hóa đơn trả phòng là bản kết toán — nợ các hóa đơn đã chốt khác chuyển vào (mỗi hóa đơn một dòng, khóa theo ngày đầu kỳ của nó)
+    /// rồi trừ cọc đang giữ. Không thuộc phần thu (doanh thu), không làm tròn.
+    /// </summary>
+    private static void AddSettlement(BillingPeriod period, FinalSettlement settlement, List<CalculatedLine> lines)
+    {
+        var order = SettlementSortOrder;
+        foreach (var debt in (settlement.Debts ?? []).OrderBy(d => d.PeriodStart))
+            lines.Add(new CalculatedLine(InvoiceLineType.PreviousDebt, null,
+                $"Nợ chuyển từ hóa đơn {debt.InvoiceNo} (tháng {debt.BillingMonth:MM/yyyy})", null, debt.PeriodStart, debt.PeriodEnd,
+                1, debt.Amount, null, debt.Amount, order++, SourceInvoiceId: debt.InvoiceId));
+        if (settlement.Deposit > 0)
+            lines.Add(new CalculatedLine(InvoiceLineType.Deposit, null, "Trừ tiền cọc", null, period.Start, period.End,
+                1, settlement.Deposit, null, -settlement.Deposit, order));
     }
 
     /// <summary>M05 CT-BR-11: số tiền phòng + dịch vụ kỳ cuối theo từng cách tính — màn thanh lý so sánh 3 cách.</summary>
