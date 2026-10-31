@@ -476,23 +476,24 @@ thuê trước) hoặc **nhập số khác** ≥ số đó (VD sửa chữa phò
 | Lỗi công tơ | Khi nào |
 |-------------|---------|
 | 422 `HANDOVER_READING_REQUIRED` | Thiếu công tơ nào (`meterIds` trong body lỗi) |
-| 422 `READING_NOT_MONOTONIC` | Số nhập nhỏ hơn số mới nhất (`previousValue`, `meterId`) |
-| 422 `HANDOVER_BELOW_PREVIOUS_FINAL` | (20/10/2026) Số nhập nhỏ hơn **số cuối của HĐ trước đã kết thúc** (`meterId`, `previousValue`, `previousContractNo`) — xem dưới |
-| 422 `PREVIOUS_CONTRACT_NOT_ENDED` | Như trên nhưng HĐ trước còn đang thanh lý — sửa số cuối trên HĐ đó trước |
+| 422 `READING_NOT_MONOTONIC` | (28/10/2026 — M-10) Số nhập nhỏ hơn số lắp công tơ, hoặc nhỏ hơn số liền trước **trong cùng HĐ** (`previousValue`, `meterId`); không so với chỉ số của HĐ khác |
+| 422 `HANDOVER_BELOW_PREVIOUS_FINAL` | (28/10/2026 — M-10, thay bản 20/10) Cảnh báo: số nhập nhỏ hơn **chỉ số gần nhất của HĐ trước** (đang thanh lý hoặc đã kết thúc; `meterId`, `previousValue`, `previousContractNo`) — chủ trọ chấp nhận thì gửi lại với `acceptBelowPrevious`; xem dưới |
 | 422 `PREVIOUS_FINAL_READING_REQUIRED` | (28/10/2026 — H-02) HĐ trước của phòng đang thanh lý **chưa có chỉ số cuối** (`previousContractNo`, `meterIds`) — "Dùng số mới nhất" lúc này là số chốt kỳ cũ ⇒ nhập chỉ số cuối HĐ đó trước. Không áp ký lại (số cuối HĐ cũ tự ghi bằng số nhận phòng HĐ mới) |
 | 422 `METER_NOT_IN_ROOM` | `meterId` không phải công tơ đang hoạt động của phòng |
 
-**Người mới nhập số nhỏ hơn số cuối người cũ** (20/10/2026 — CT-BR-02): nhận `HANDOVER_BELOW_PREVIOUS_FINAL` ⇒ UI hỏi nguyên nhân:
+**Người mới nhập số nhỏ hơn số của người cũ** (28/10/2026 — M-10, CT-BR-02; thay bản 20/10 "sửa số cuối người cũ"): mỗi HĐ có dải số riêng trên công tơ, nên số nhận phòng nhỏ hơn số của HĐ trước chỉ là **cảnh báo** `HANDOVER_BELOW_PREVIOUS_FINAL` ⇒ UI hỏi nguyên nhân:
 
 | Chủ trọ chọn | UI làm |
 |---|---|
-| **Số cuối người cũ gõ nhầm** | Gửi lại cùng số, thêm `"correctPreviousFinal": true` trên công tơ đó ⇒ số cuối HĐ cũ sửa về số này, hóa đơn trả phòng cũ **giữ nguyên**, HĐ cũ có khoản **"Chênh lệch sau thanh lý"** chờ xử lý ([meters.md](meters.md#sau-thanh-lý-hđ-đã-kết-thúc-20102026)) — kích hoạt bình thường |
+| **Chấp nhận (số người cũ gõ nhầm)** | Gửi lại cùng số, thêm `"acceptBelowPrevious": true` trên công tơ đó ⇒ kích hoạt bình thường; HĐ cũ **giữ nguyên** (số cuối, hóa đơn; không sinh khoản chênh) — thừa thiếu của người cũ chủ trọ tự xử lý. HĐ cũ đang thanh lý còn sửa số cuối được bằng điều chỉnh chỉ số ([meters.md](meters.md)), không ảnh hưởng người mới |
 | **Công tơ đã thay** | Chuyển sang "Thay công tơ" ([meters.md](meters.md)) rồi kích hoạt lại |
 | **Nhập nhầm** | Sửa số |
 
 ```json
-{ "handoverReadings": [ { "meterId": "…điện", "value": 1420, "correctPreviousFinal": true } ] }
+{ "handoverReadings": [ { "meterId": "…điện", "value": 200, "acceptBelowPrevious": true } ] }
 ```
+
+Cờ `acceptBelowPrevious` có ở mọi nơi nhận `MeterReadingInput` cho chỉ số nhận phòng: kích hoạt, chuyển phòng (`newRoomReadings`), ký lại. Vẫn **không** nhỏ hơn số lúc lắp công tơ (`READING_NOT_MONOTONIC`).
 
 Số nhập **lớn hơn** số cuối người cũ (số cuối gõ thấp) ⇒ cho qua như cũ, phần chênh hiện ở sản lượng phòng trống.
 

@@ -16,7 +16,7 @@ public sealed class UsagePeriodStartReadingTests
     {
         var meter = Meter.Install(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), null, new DateOnly(2026, 9, 1), 1000, null);
         meter.Record(ReadingKind.Final, new DateOnly(2026, 10, 31), 1200, OldContract, null).IsSuccess.Should().BeTrue();
-        // Người cũ còn ghi số chốt kỳ sáng 01/11 (1.250); người mới nhận phòng cùng ngày ở 1.200 (xếp trước số chốt vì Handover < Periodic).
+        // Người cũ còn ghi số chốt kỳ sáng 01/11 (1.250); người mới nhận phòng cùng ngày ở 1.200 (HĐ vào sau xếp sau, không so với số của người cũ).
         meter.Record(ReadingKind.Handover, Nov1, 1200, NewContract, null).IsSuccess.Should().BeTrue();
         meter.Record(ReadingKind.Periodic, Nov1, 1250, OldContract, null, new DateOnly(2026, 10, 1)).IsSuccess.Should().BeTrue();
         return meter;
@@ -38,6 +38,7 @@ public sealed class UsagePeriodStartReadingTests
     {
         var meter = MeterWithSameDayReadings();
 
-        FirstPeriod.StartReading(meter, null, Guid.NewGuid())!.Value.Should().Be(1250);
+        // M-10: cùng ngày HĐ vào sau xếp sau ⇒ số mới nhất là số nhận phòng của người mới, không phải số chốt kỳ 1.250 của người cũ.
+        FirstPeriod.StartReading(meter, null, Guid.NewGuid())!.Value.Should().Be(1200);
     }
 }

@@ -339,7 +339,7 @@ public sealed class LiquidationRoundTwoTests(ApiFactory factory)
     }
 
     [Fact]
-    public async Task EndedAtPeriodEndWithoutMoveOutInvoice_ChargeCannotBeUnsettled_NewTenantLowerHandoverCorrectsLastBilledReading()
+    public async Task EndedAtPeriodEndWithoutMoveOutInvoice_ChargeCannotBeUnsettled_NewTenantLowerHandover_AsksThenAccepts_LastBilledReadingKept()
     {
         var s = await ArrangeAsync();
         var end = s.Start.AddMonths(1).AddDays(-1);
@@ -362,30 +362,32 @@ public sealed class LiquidationRoundTwoTests(ApiFactory factory)
             .Should().Be("ROOM_CHARGE_NO_OPEN_INVOICE", "HĐ đã kết thúc — bỏ đánh dấu thì khoản treo, không còn nơi xử lý");
 
         var next = await _client.CreateContractAsync(s.Token, s.RoomId, await _client.CreateRenterAsync(s.Token), end.AddDays(1));
-        object Handover(bool correct) => new { handoverReadings = new[] { new { meterId = s.MeterId, value = (decimal?)120, correctPreviousFinal = correct } } };
+        object Handover(bool correct) => new { handoverReadings = new[] { new { meterId = s.MeterId, value = (decimal?)120, acceptBelowPrevious = correct } } };
         (await (await _client.PostJsonAsync($"/api/v1/contracts/{next}/activate", Handover(false), s.Token)).ReadProblemCodeAsync())
             .Should().Be("HANDOVER_BELOW_PREVIOUS_FINAL", "số cuối của HĐ cũ là số chốt kỳ (không có số Final)");
         var activated = await _client.PostJsonAsync($"/api/v1/contracts/{next}/activate", Handover(true), s.Token);
         activated.StatusCode.Should().Be(HttpStatusCode.NoContent, await activated.Content.ReadAsStringAsync());
-        (await ReadingsAsync(s)).Should().Contain(r => r.GetProperty("kind").GetString() == "Periodic" && r.GetProperty("value").GetDecimal() == 120);
-        var charges = await (await _client.GetAsync($"/api/v1/rooms/{s.RoomId}/charges", s.Token)).ReadAsync<List<JsonElement>>();
-        charges.Single(c => c.GetProperty("contractId").GetGuid() == s.ContractId && c.GetProperty("isSystem").GetBoolean())
-            .GetProperty("amount").GetDecimal().Should().Be(50 * Price, "chênh 170 → 120 trên hóa đơn tháng cuối, chờ xử lý");
+        (await ReadingsAsync(s)).Should().Contain(r => r.GetProperty("kind").GetString() == "Periodic" && r.GetProperty("value").GetDecimal() == 170,
+            "M-10: người cũ giữ nguyên số chốt kỳ");
+        (await ReadingsAsync(s)).Should().Contain(r => r.GetProperty("kind").GetString() == "Handover" && r.GetProperty("value").GetDecimal() == 120);
+        (await (await _client.GetAsync($"/api/v1/rooms/{s.RoomId}/charges", s.Token)).ReadAsync<List<JsonElement>>())
+            .Should().NotContain(c => c.GetProperty("contractId").GetGuid() == s.ContractId && c.GetProperty("isSystem").GetBoolean(),
+                "không sinh khoản chênh lệch sau thanh lý");
     }
 
     [Fact]
-    public async Task NewTenantHandoverBelowFinal_WhilePreviousStillLiquidating_AsksThenRefusesToCorrect()
+    public async Task NewTenantHandoverBelowFinal_WhilePreviousStillLiquidating_AsksThenAccepts()
     {
         var s = await ArrangeAsync();
         (await StartAsync(s, s.Start.AddDays(9))).StatusCode.Should().Be(HttpStatusCode.NoContent);
         await FinalizeAsync(s, Id(await FinalInvoiceAsync(s, 170)));
         var next = await _client.CreateContractAsync(s.Token, s.RoomId, await _client.CreateRenterAsync(s.Token), s.Start.AddDays(10));
-        object Handover(bool correct) => new { handoverReadings = new[] { new { meterId = s.MeterId, value = (decimal?)120, correctPreviousFinal = correct } } };
+        object Handover(bool correct) => new { handoverReadings = new[] { new { meterId = s.MeterId, value = (decimal?)120, acceptBelowPrevious = correct } } };
 
         (await (await _client.PostJsonAsync($"/api/v1/contracts/{next}/activate", Handover(false), s.Token)).ReadProblemCodeAsync())
             .Should().Be("HANDOVER_BELOW_PREVIOUS_FINAL");
-        (await (await _client.PostJsonAsync($"/api/v1/contracts/{next}/activate", Handover(true), s.Token)).ReadProblemCodeAsync())
-            .Should().Be("PREVIOUS_CONTRACT_NOT_ENDED", "HĐ cũ còn thanh lý ⇒ sửa số cuối trên HĐ cũ trước");
+        (await _client.PostJsonAsync($"/api/v1/contracts/{next}/activate", Handover(true), s.Token)).StatusCode.Should().Be(HttpStatusCode.NoContent,
+            "M-10: người cũ còn thanh lý vẫn giữ nguyên số cuối, người mới chấp nhận số nhỏ hơn");
     }
 
     [Fact]
@@ -647,12 +649,12 @@ public sealed class LiquidationRoundTwoTests(ApiFactory factory)
     }
 
     [Fact]
-    public async Task NewTenantHandoverBelowPreviousFinal_Asks_ThenCorrectsOldFinalWithPendingDifference()
+    public async Task NewTenantHandoverBelowPreviousFinal_Asks_ThenAccepts_OldFinalAndInvoiceKept()
     {
         var (s, _, readingId) = await EndedWithHighFinalAsync();
         var renter = await _client.CreateRenterAsync(s.Token);
         var next = await _client.CreateContractAsync(s.Token, s.RoomId, renter, s.Start.AddDays(10));
-        object Handover(bool correct) => new { handoverReadings = new[] { new { meterId = s.MeterId, value = (decimal?)120, correctPreviousFinal = correct } } };
+        object Handover(bool correct) => new { handoverReadings = new[] { new { meterId = s.MeterId, value = (decimal?)120, acceptBelowPrevious = correct } } };
 
         var asked = await _client.PostJsonAsync($"/api/v1/contracts/{next}/activate", Handover(false), s.Token);
         (await asked.ReadProblemCodeAsync()).Should().Be("HANDOVER_BELOW_PREVIOUS_FINAL");
@@ -660,11 +662,10 @@ public sealed class LiquidationRoundTwoTests(ApiFactory factory)
         activated.StatusCode.Should().Be(HttpStatusCode.NoContent, await activated.Content.ReadAsStringAsync());
 
         var readings = await ReadingsAsync(s);
-        readings.Single(r => r.GetProperty("id").GetGuid() == readingId).GetProperty("value").GetDecimal().Should().Be(120);
+        readings.Single(r => r.GetProperty("id").GetGuid() == readingId).GetProperty("value").GetDecimal().Should().Be(170, "M-10: số cuối người cũ giữ nguyên");
         readings.Should().Contain(r => r.GetProperty("kind").GetString() == "Handover" && r.GetProperty("value").GetDecimal() == 120);
-        var charges = await (await _client.GetAsync($"/api/v1/rooms/{s.RoomId}/charges", s.Token)).ReadAsync<List<JsonElement>>();
-        var difference = charges.Single(c => c.GetProperty("contractId").GetGuid() == s.ContractId && c.GetProperty("isSystem").GetBoolean());
-        difference.GetProperty("amount").GetDecimal().Should().Be(50 * Price);
-        difference.GetProperty("status").GetString().Should().Be("Pending", "chờ chủ trọ chọn đã trả lại / không trả lại");
+        (await (await _client.GetAsync($"/api/v1/rooms/{s.RoomId}/charges", s.Token)).ReadAsync<List<JsonElement>>())
+            .Should().NotContain(c => c.GetProperty("contractId").GetGuid() == s.ContractId && c.GetProperty("isSystem").GetBoolean(),
+                "không sinh khoản chênh lệch sau thanh lý");
     }
 }

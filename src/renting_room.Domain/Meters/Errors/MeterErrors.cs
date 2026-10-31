@@ -54,8 +54,6 @@ public static class MeterErrors
         "Sau điều chỉnh, khoản giảm lớn hơn phần thu của hóa đơn — chọn \"Đẩy sang hóa đơn sau\".");
     public static readonly Error AdjustmentAfterEndIncrease = Error.BusinessRule("ADJUSTMENT_AFTER_END_INCREASE",
         "Hợp đồng đã kết thúc — chỉ điều chỉnh giảm số cuối (gõ cao); số cuối gõ thấp thì phần chênh là điện nước dùng khi phòng trống.");
-    public static readonly Error PreviousContractNotEnded = Error.BusinessRule("PREVIOUS_CONTRACT_NOT_ENDED",
-        "Hợp đồng trước chưa kết thúc — sửa số cuối trên hợp đồng đó trước.");
 
     public static Error PreviousFinalReadingRequired(string previousContractNo, IReadOnlyCollection<Guid> meterIds) =>
         Error.BusinessRule("PREVIOUS_FINAL_READING_REQUIRED",
@@ -64,7 +62,7 @@ public static class MeterErrors
 
     public static Error HandoverBelowPreviousFinal(Guid meterId, decimal previousValue, string previousContractNo) =>
         Error.BusinessRule("HANDOVER_BELOW_PREVIOUS_FINAL",
-                $"Chỉ số nhận phòng nhỏ hơn số cuối {previousValue:0.##} của hợp đồng {previousContractNo} — số cuối người cũ gõ nhầm, công tơ đã thay hay nhập nhầm?")
+                $"Chỉ số nhận phòng nhỏ hơn số cuối {previousValue:0.##} của hợp đồng {previousContractNo} — công tơ đã thay, nhập nhầm, hay số người cũ gõ nhầm (chấp nhận để nhận phòng, hợp đồng cũ giữ nguyên)?")
             .WithDetail("meterId", meterId).WithDetail("previousValue", previousValue).WithDetail("previousContractNo", previousContractNo);
     public static readonly Error ReadingUnchanged = Error.Validation("READING_UNCHANGED", "Chỉ số mới trùng chỉ số hiện tại.");
     public static readonly Error AdjustmentTooLarge = Error.BusinessRule("READING_ADJUSTMENT_TOO_LARGE",

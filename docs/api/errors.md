@@ -178,7 +178,7 @@ giấy tờ / pháp lý (09/10/2026 — trước là lỗi chặn): `LESSOR_INFO
 | `METER_REMOVED` | 422 | Công tơ đã tháo |
 | `METER_PERIOD_LOCKED` | 422 | Ngày thay / tháo công tơ thuộc kỳ đã chốt phiếu (`lockedUntil`) — chọn ngày sau đó |
 | `INVALID_READING_DATE` | 422 | Ngày ngoài thời gian công tơ hoạt động / trước chỉ số đã ghi |
-| `READING_NOT_MONOTONIC` | 422 | Chỉ số phải ≥ `previousValue` và ≤ `nextValue` (trong body) |
+| `READING_NOT_MONOTONIC` | 422 | Chỉ số phải ≥ `previousValue` và ≤ `nextValue` (trong body) — so trong cùng HĐ và với số lắp công tơ, không so với chỉ số của HĐ khác (28/10/2026 — M-10) |
 | `HANDOVER_READING_REQUIRED` | 422 | Kích hoạt: nhập chỉ số nhận phòng cho các công tơ trong `meterIds` |
 | `FINAL_READING_REQUIRED` | 422 | Bắt đầu thanh lý (ngày trả phòng ≤ hôm nay) / hoàn tất thanh lý / lập hóa đơn trả phòng / chuyển phòng: nhập chỉ số cuối cho các công tơ trong `meterIds` (28/10/2026: bắt buộc ngay khi bấm thanh lý) |
 | `METER_NOT_IN_ROOM` | 422 | Công tơ không thuộc phòng / không hoạt động tại ngày đó — tải lại danh sách |
@@ -228,8 +228,7 @@ Cảnh báo mềm: `ROOM_WITHOUT_METER` (HĐ hiệu lực, phòng chưa có côn
 | `ADJUSTMENT_NO_NEXT_INVOICE` | 422 | Điều chỉnh: hóa đơn trả phòng đã chốt, không còn hóa đơn sau — chọn `Immediate` |
 | `ADJUSTMENT_NEGATIVE_TOTAL` | 422 | Điều chỉnh: tính lại làm hóa đơn tháng âm — gợi ý "Đẩy sang hóa đơn sau" (`handling: NextInvoice`) |
 | `ADJUSTMENT_AFTER_END_INCREASE` | 422 | Điều chỉnh sau thanh lý: chỉ giảm được số cuối |
-| `HANDOVER_BELOW_PREVIOUS_FINAL` | 422 | Kích hoạt: số nhận phòng nhỏ hơn số cuối HĐ trước — hỏi "Số người cũ gõ nhầm / Công tơ đã thay / Nhập nhầm" (`meterId`, `previousValue`, `previousContractNo`) |
-| `PREVIOUS_CONTRACT_NOT_ENDED` | 422 | Kích hoạt: HĐ trước còn đang thanh lý — sửa số cuối trên HĐ đó trước |
+| `HANDOVER_BELOW_PREVIOUS_FINAL` | 422 | Kích hoạt / chuyển phòng / ký lại: số nhận phòng nhỏ hơn chỉ số gần nhất của HĐ trước — cảnh báo, chấp nhận thì gửi lại `acceptBelowPrevious` (`meterId`, `previousValue`, `previousContractNo`); HĐ cũ không bị đụng tới (28/10/2026 — M-10) |
 | `PREVIOUS_FINAL_READING_REQUIRED` | 422 | Kích hoạt / chuyển phòng vào: HĐ trước của phòng đang thanh lý chưa có chỉ số cuối (`previousContractNo`, `meterIds`) — nhập số cuối HĐ đó trước |
 | `READING_NOT_VOIDABLE` | 422 | Hủy chỉ số: chỉ hủy được chỉ số cuối kỳ / kiểm tra |
 | `SEARCH_TOO_SHORT` | 400 | Tìm lịch sử thuê theo tên: nhập ít nhất 2 ký tự |

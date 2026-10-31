@@ -19,7 +19,7 @@
 > lý do; `RENT_OVERPAID` có `amount` / `ref` (nút "Thêm hoàn trả"); chi tiết hóa đơn trả phòng có `finalPeriod`;
 > cọc "Không trả cọc" (`Forfeited`); báo trả phòng chỉ là nhãn `moveOutDate` (27/10/2026: không còn bỏ qua hóa đơn tháng `MOVE_OUT_NOTICED`), rút báo trả phòng; khoản tạo được sau
 > khi chốt hóa đơn trả phòng; điều chỉnh số cuối sau thanh lý (`handling: AfterEnd`, `POST /room-charges/{id}/waive`), người mới nhập số nhỏ hơn
-> (`HANDOVER_BELOW_PREVIOUS_FINAL`, `correctPreviousFinal`); điều chỉnh làm hóa đơn tháng âm ⇒ `ADJUSTMENT_NEGATIVE_TOTAL` ([meters.md](meters.md)); cờ HĐ `MoveOutOverdue` (quá ngày trả phòng chưa thanh lý), hủy thanh lý xóa ngày báo trả phòng.
+> (`HANDOVER_BELOW_PREVIOUS_FINAL` cảnh báo, chấp nhận bằng `acceptBelowPrevious`, người cũ giữ nguyên — M-10 28/10/2026); điều chỉnh làm hóa đơn tháng âm ⇒ `ADJUSTMENT_NEGATIVE_TOTAL` ([meters.md](meters.md)); cờ HĐ `MoveOutOverdue` (quá ngày trả phòng chưa thanh lý), hủy thanh lý xóa ngày báo trả phòng.
 > [`openapi.json`](openapi.json): danh sách endpoint và kiểu **request** đầy đủ; **hầu hết endpoint chưa khai kiểu response** —
 > cấu trúc dữ liệu trả về lấy từ ví dụ JSON trong các file `.md` này, không sinh kiểu response từ `openapi.json`.
 
