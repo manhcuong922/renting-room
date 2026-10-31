@@ -321,7 +321,8 @@ docker exec renting_room_db pg_restore -U postgres -d renting_room_restore /tmp/
 
 ## 12. Khi lên production
 
-Không chạy DB bằng Docker trên máy cá nhân. Checklist:
+Triển khai thử trên laptop rồi chuyển sang VPS (Docker, backup/restore, deploy, chuyển máy): xem [plan M12](../plans/12-deployment-ops.md).
+DB chạy Docker trên laptop **chỉ** để chạy thử, phải theo đủ M12 (không publish port, backup mã hóa, diễn tập restore). Checklist khi có người dùng thật:
 
 - [ ] Dùng **dịch vụ PostgreSQL quản lý sẵn** (managed), đặt máy chủ tại Việt Nam (Luật Bảo vệ dữ liệu cá nhân 2025).
 - [ ] Bật **backup tự động + Point-in-Time Recovery**; thử restore định kỳ (backup chưa thử restore = chưa có backup).
