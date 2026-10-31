@@ -83,7 +83,7 @@ public sealed class BillingSafeguardTests(ApiFactory factory)
             new { readings = new[] { new { meterId, contractId, closingPeriodStart = previous, readingDate = month, value = 180m } } }, token))
             .StatusCode.Should().Be(HttpStatusCode.OK);
 
-        (await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/liquidation/start", new { actualEndDate = today, reason = "MutualAgreement" }, token))
+        (await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/liquidation/start", new { actualEndDate = today, reason = "MutualAgreement", finalReadings = new[] { new { meterId, value = (decimal?)220 } } }, token))
             .StatusCode.Should().Be(HttpStatusCode.NoContent);
         var created = await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/final-invoice",
             new { finalReadings = new[] { new { meterId, value = (decimal?)220 } } }, token);

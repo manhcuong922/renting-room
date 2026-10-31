@@ -261,7 +261,7 @@ public sealed class MeterReadingAdjustmentTests(ApiFactory factory)
         var (invoiceId, readingId) = await FinalizedPreviousAsync(s, 1388);
         await PayAsync(s, invoiceId, Total(await InvoiceAsync(s, invoiceId)));
         (await _client.PostJsonAsync($"/api/v1/contracts/{s.ContractId}/liquidation/start",
-            new { actualEndDate = s.Today, reason = "MutualAgreement" }, s.Token)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+            new { actualEndDate = s.Today, reason = "MutualAgreement", finalReadings = new[] { new { meterId = s.MeterId, value = 1400m } } }, s.Token)).StatusCode.Should().Be(HttpStatusCode.NoContent);
         var moveOut = await _client.PostJsonAsync($"/api/v1/contracts/{s.ContractId}/final-invoice",
             new { finalReadings = new[] { new { meterId = s.MeterId, value = 1400m } } }, s.Token);
         moveOut.StatusCode.Should().Be(HttpStatusCode.Created, await moveOut.Content.ReadAsStringAsync());
@@ -359,7 +359,7 @@ public sealed class MeterReadingAdjustmentTests(ApiFactory factory)
         var (invoiceId, _) = await FinalizedPreviousAsync(s, 1388);
         await PayAsync(s, invoiceId, Total(await InvoiceAsync(s, invoiceId)));
         (await _client.PostJsonAsync($"/api/v1/contracts/{s.ContractId}/liquidation/start",
-            new { actualEndDate = s.Month, reason = "MutualAgreement", finalPeriodCharge = "Daily" }, s.Token)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+            new { actualEndDate = s.Month, reason = "MutualAgreement", finalPeriodCharge = "Daily", finalReadings = new[] { new { meterId = s.MeterId, value = 1400m } } }, s.Token)).StatusCode.Should().Be(HttpStatusCode.NoContent);
         var moveOut = await _client.PostJsonAsync($"/api/v1/contracts/{s.ContractId}/final-invoice",
             new { finalReadings = new[] { new { meterId = s.MeterId, value = 1400m } } }, s.Token);
         var moveOutId = Id(await moveOut.ReadAsync<JsonElement>());

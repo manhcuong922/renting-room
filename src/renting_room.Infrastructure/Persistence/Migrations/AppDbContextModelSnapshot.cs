@@ -24,6 +24,87 @@ namespace renting_room.Infrastructure.Persistence.Migrations
             NpgsqlModelBuilderExtensions.HasPostgresExtension(modelBuilder, "btree_gist");
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("renting_room.Domain.Billing.ContractBillingGap", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateOnly>("ClosingPeriodStart")
+                        .HasColumnType("date")
+                        .HasColumnName("closing_period_start");
+
+                    b.Property<Guid>("ContractId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("contract_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<DateOnly>("FromDate")
+                        .HasColumnType("date")
+                        .HasColumnName("from_date");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("note");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("organization_id");
+
+                    b.Property<int>("PeriodCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("period_count");
+
+                    b.Property<Guid?>("ResumedInvoiceId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("resumed_invoice_id");
+
+                    b.Property<DateOnly>("ToDate")
+                        .HasColumnType("date")
+                        .HasColumnName("to_date");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_contract_billing_gaps");
+
+                    b.HasIndex("ResumedInvoiceId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_contract_billing_gaps_invoice")
+                        .HasFilter("resumed_invoice_id IS NOT NULL");
+
+                    b.HasIndex("OrganizationId", "ResumedInvoiceId")
+                        .HasDatabaseName("ix_contract_billing_gaps_organization_id_resumed_invoice_id");
+
+                    b.HasIndex("OrganizationId", "ContractId", "FromDate")
+                        .HasDatabaseName("ix_contract_billing_gaps_contract");
+
+                    b.ToTable("contract_billing_gaps", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_contract_billing_gaps_range", "from_date <= to_date AND period_count BETWEEN 1 AND 12");
+                        });
+                });
+
             modelBuilder.Entity("renting_room.Domain.Billing.Invoice", b =>
                 {
                     b.Property<Guid>("Id")
@@ -3662,6 +3743,24 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                         .HasName("pk_document_number_sequences");
 
                     b.ToTable("document_number_sequences", (string)null);
+                });
+
+            modelBuilder.Entity("renting_room.Domain.Billing.ContractBillingGap", b =>
+                {
+                    b.HasOne("renting_room.Domain.Contracts.Contract", null)
+                        .WithMany()
+                        .HasForeignKey("OrganizationId", "ContractId")
+                        .HasPrincipalKey("OrganizationId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_contract_billing_gaps_contracts_organization_id_contract_id");
+
+                    b.HasOne("renting_room.Domain.Billing.Invoice", null)
+                        .WithMany()
+                        .HasForeignKey("OrganizationId", "ResumedInvoiceId")
+                        .HasPrincipalKey("OrganizationId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_contract_billing_gaps_invoices_organization_id_resumed_invo");
                 });
 
             modelBuilder.Entity("renting_room.Domain.Billing.Invoice", b =>

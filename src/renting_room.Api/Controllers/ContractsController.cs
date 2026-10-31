@@ -97,8 +97,13 @@ public sealed class ContractsController(ISender sender) : ControllerBase
         Guid id, [FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] ActivateContractRequest? body, CancellationToken ct) =>
         (await sender.Send(new ActivateContractCommand(id, body?.HandoverReadings), ct)).ToHttp();
 
+    [HttpGet("contracts/{id:guid}/billing-gaps")]
+    [EndpointSummary("Các khoảng ngắt tính tiền của hợp đồng (kỳ đã thu ngoài hệ thống — M07 BL-BR-42)")]
+    public async Task<IResult> GetBillingGaps(Guid id, CancellationToken ct) =>
+        (await sender.Send(new GetBillingGapsQuery(id), ct)).ToHttp();
+
     [HttpGet("contracts/{id:guid}/billing-periods")]
-    [EndpointSummary("Lịch kỳ thu của hợp đồng")]
+    [EndpointSummary("Lịch kỳ thu của hợp đồng (kỳ nằm trong khoảng ngắt tính tiền có skipped = true)")]
     public async Task<IResult> GetBillingPeriods(Guid id, DateOnly? until, CancellationToken ct) =>
         (await sender.Send(new GetBillingPeriodsQuery(id, until), ct)).ToHttp();
 
@@ -167,7 +172,7 @@ public sealed class ContractsController(ISender sender) : ControllerBase
     public async Task<IResult> TransferRoom(Guid id, TransferRoomRequest b, CancellationToken ct)
     {
         var result = await sender.Send(new TransferRoomCommand(id, b.ToRoomId, b.OldRoomReadings, b.NewRoomReadings, b.MonthlyRent, b.Note, b.RentFrom,
-            b.RemoveFeeTypeIds), ct);
+            b.RemoveFeeTypeIds, b.SkipUnbilledPeriods ?? false), ct);
         return result.ToWarnings();
     }
 
@@ -196,7 +201,7 @@ public sealed class ContractsController(ISender sender) : ControllerBase
     [HttpPost("contracts/{id:guid}/liquidation/start")]
     [EndpointSummary("Bắt đầu thanh lý (bên cho thuê đơn phương ⇒ phải nêu căn cứ Điều 172)")]
     public async Task<IResult> StartLiquidation(Guid id, StartLiquidationRequest b, CancellationToken ct) =>
-        (await sender.Send(new StartLiquidationCommand(id, b.ActualEndDate, b.Reason, b.Ground, b.Note, b.FinalPeriodCharge), ct)).ToHttp();
+        (await sender.Send(new StartLiquidationCommand(id, b.ActualEndDate, b.Reason, b.Ground, b.Note, b.FinalPeriodCharge, b.FinalReadings), ct)).ToHttp();
 
     [HttpPut("contracts/{id:guid}/liquidation/final-period-charge")]
     [EndpointSummary("Kỳ cuối: FullPeriod / null = thu trọn kỳ (mặc định), Daily = theo ngày ở, None = không thu — nháp hóa đơn trả phòng tự tính lại (CT-BR-11)")]
@@ -214,7 +219,7 @@ public sealed class ContractsController(ISender sender) : ControllerBase
     public async Task<IResult> CompleteLiquidation(
         Guid id, [FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] CompleteLiquidationRequest? body, CancellationToken ct) =>
         (await sender.Send(new CompleteLiquidationCommand(id, body?.Settlement, body?.Method, body?.PaidAt, body?.Reason, body?.Refund,
-            body?.PendingCharges, body?.Deposit), ct)).ToHttp();
+            body?.PendingCharges, body?.Deposit, body?.ExternalSettlement, body?.FinalReadings), ct)).ToHttp();
 
     [HttpPost("contracts/{id:guid}/final-invoice")]
     [Idempotent(required: false)]
@@ -222,7 +227,7 @@ public sealed class ContractsController(ISender sender) : ControllerBase
     public async Task<IResult> CreateFinalInvoice(
         Guid id, [FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] FinalInvoiceRequest? body, CancellationToken ct)
     {
-        var result = await sender.Send(new CreateFinalInvoiceCommand(id, body?.FinalReadings), ct);
+        var result = await sender.Send(new CreateFinalInvoiceCommand(id, body?.FinalReadings, body?.SkipUnbilledPeriods ?? false), ct);
         return result.IsSuccess ? Results.Created($"/api/v1/invoices/{result.Value!.Summary.Id}", result.Value) : result.ToHttp();
     }
 

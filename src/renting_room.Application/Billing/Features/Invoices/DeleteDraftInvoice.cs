@@ -8,7 +8,7 @@ namespace renting_room.Application.Billing;
 public sealed record DeleteDraftInvoiceCommand(Guid Id) : IRequest<Result>;
 
 public sealed class DeleteDraftInvoiceHandler(
-    IUnitOfWork unitOfWork, IInvoiceRepository invoices, IInvoiceQueries invoiceQueries, RoomChargeBilling roomCharges)
+    IUnitOfWork unitOfWork, IInvoiceRepository invoices, IInvoiceQueries invoiceQueries, RoomChargeBilling roomCharges, IBillingGapRepository gaps)
     : IRequestHandler<DeleteDraftInvoiceCommand, Result>
 {
     public async ValueTask<Result> Handle(DeleteDraftInvoiceCommand request, CancellationToken cancellationToken)
@@ -24,6 +24,9 @@ public sealed class DeleteDraftInvoiceHandler(
             return Result.Failure(BillingErrors.NotLatest);
 
         await roomCharges.DetachAllAsync(invoice.Id, cancellationToken);
+        // BL-BR-45: khoảng ngắt gắn với phiếu đầu tiên sau nó ⇒ xóa nháp đó thì khoảng mất theo.
+        if (await gaps.FindResumedByAsync(invoice.Id, cancellationToken) is { } gap)
+            gaps.Remove(gap);
         invoices.Remove(invoice);
         await unitOfWork.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);

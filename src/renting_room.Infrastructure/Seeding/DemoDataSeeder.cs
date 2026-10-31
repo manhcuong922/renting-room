@@ -163,6 +163,15 @@ public sealed partial class DemoDataSeeder(
         return new MeterReadingInput(meter, _meterValues[meter]);
     }
 
+    /// <summary>Chỉ số cuối khi thanh lý không phát sinh hóa đơn trả phòng: công tơ chưa chạy thêm kể từ chỉ số gần nhất tới ngày trả phòng (H-02).</summary>
+    private async Task<IReadOnlyList<MeterReadingInput>> ReadingsAtAsync(DemoRoom room, DateOnly date)
+    {
+        var inputs = new List<MeterReadingInput>();
+        foreach (var meterId in new Guid?[] { room.Electricity, room.Water }.OfType<Guid>())
+            inputs.Add(new MeterReadingInput(meterId, (await Send(new ListMeterReadingsQuery(meterId))).First(r => r.ReadingDate <= date).Value));
+        return inputs;
+    }
+
     private Task SaveReadings(Guid propertyId, params PeriodicReadingInput[] readings) =>
         Send(new SaveMeterReadingsCommand(propertyId, readings));
 

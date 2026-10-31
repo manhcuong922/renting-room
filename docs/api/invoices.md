@@ -91,25 +91,28 @@ Quyền: chủ trọ và phó quản lý.
 `POST /invoices/generate` (nên gửi `Idempotency-Key`)
 
 ```json
-{ "propertyId": "…", "billingMonth": "2026-11", "roomIds": null, "floor": null, "contractId": null, "recalculateExistingDrafts": false }
+{ "propertyId": "…", "billingMonth": "2026-11", "roomIds": null, "floor": null, "contractId": null, "recalculateExistingDrafts": false,
+  "skipUnbilledPeriods": false }
 ```
 
 → **200**
 
 ```json
-{ "created": 18, "recalculated": 0, "withIssues": 3,
-  "skipped": [ { "contractId": "…", "contractNo": "HD2026-0007", "roomCode": "105", "reason": "PREVIOUS_PERIOD_NOT_BILLED" } ] }
+{ "created": 18, "recalculated": 0, "withIssues": 3, "gapsCreated": 0,
+  "skipped": [ { "contractId": "…", "contractNo": "HD2026-0007", "roomCode": "105", "reason": "PREVIOUS_PERIOD_NOT_BILLED",
+                 "unbilledPeriods": [ { "start": "2026-08-01", "end": "2026-08-31" }, { "start": "2026-09-01", "end": "2026-09-30" } ] } ] }
 ```
 
 | `reason` bỏ qua | Ý nghĩa / UI |
 |-----------------|--------------|
 | `EXISTS` | Kỳ này đã có phiếu (gửi `recalculateExistingDrafts: true` để tính lại nháp) |
-| `PREVIOUS_PERIOD_NOT_BILLED` | Chưa lập phiếu kỳ trước — lập **lần lượt từ kỳ đầu** (kỳ chứa "Tính tiền từ ngày"); UI gợi ý tạo tháng còn thiếu. HĐ nhập từ sổ cũ đặt `billingStartDate` thay vì bỏ qua kỳ đầu |
+| `PREVIOUS_PERIOD_NOT_BILLED` | Chưa lập phiếu kỳ trước — lập **lần lượt từ kỳ đầu** (kỳ chứa "Tính tiền từ ngày"). Kèm `unbilledPeriods[{ start, end }]` (27/10/2026): UI hỏi **"Bỏ qua N kỳ chưa lập (đã thu ngoài hệ thống)?"** — đồng ý ⇒ gửi lại `skipUnbilledPeriods: true` ([xem dưới](#bỏ-qua-các-kỳ-chưa-lập--thu-tay-ngoài-hệ-thống-27102026)). HĐ nhập từ sổ cũ đặt `billingStartDate` thay vì bỏ qua kỳ đầu |
 | `LATER_PERIOD_BILLED` | Đã có phiếu kỳ sau |
 | `NO_PERIOD_IN_MONTH` | HĐ không có kỳ thuộc tháng thu này |
 | `USE_FINAL_INVOICE` | Kỳ chứa ngày trả phòng — lập **hóa đơn trả phòng** thay phiếu thường |
 | `MISSING_READING` | (17/10/2026) Thiếu chỉ số cuối kỳ của công tơ đang hoạt động ⇒ **không tạo nháp**. UI: link sang lưới ghi chỉ số tháng đó, nhập xong bấm tạo lại (phòng khác vẫn được tạo) |
 | `PREVIOUS_PERIOD_INCOMPLETE` | (17/10/2026) Kỳ trước còn nháp mang lỗi `MISSING_READING` (chỉ số bị hủy sau khi lập) — nhập lại chỉ số, tính lại nháp kỳ trước rồi mới tạo kỳ này |
+| `GAP_NOT_SUPPORTED_PREPAID` / `GAP_PREVIOUS_NOT_FINALIZED` / `GAP_TOO_LONG` / `GAP_SPANS_SCHEDULE_CHANGE` | (27/10/2026) Gửi `skipUnbilledPeriods: true` nhưng không đủ điều kiện ghi khoảng ngắt: khu thu trước · phiếu liền trước các kỳ bỏ qua còn nháp (chốt hoặc xóa nháp trước) · quá 12 kỳ · các kỳ có đổi ngày chốt của khu |
 
 Nháp chỉ được tạo khi đủ chỉ số; xóa nháp không mất chỉ số đã ghi — tạo lại dùng tiếp. Tính lại từng phiếu / hàng loạt như cũ.
 
@@ -121,12 +124,24 @@ Nháp chỉ được tạo khi đủ chỉ số; xóa nháp không mất chỉ s
 
 `contractId` (12/10/2026): chỉ lập cho **1 hợp đồng** của khu (VD phòng vừa bổ sung chỉ số) — các HĐ khác không bị đụng tới, không nằm trong `skipped`.
 
+### Bỏ qua các kỳ chưa lập — thu tay ngoài hệ thống (27/10/2026)
+
+Chủ trọ ngừng dùng hệ thống vài kỳ (thu tay) rồi dùng lại: phiếu lập đến tháng 6, tháng 7–9 thu tay, tháng 10 dùng lại. Không cần lập phiếu cho tháng 7–9.
+
+1. Nhập **chỉ số chốt kỳ cuối khoảng** (tháng 9) ở lưới ghi chỉ số (`PUT /properties/{id}/meter-readings`, `closingPeriodStart` = đầu tháng 9) cùng chỉ số tháng 10.
+2. `POST /invoices/generate` (hoặc `generate-bulk`) tháng 10 → HĐ nào thiếu kỳ có `skipped[].reason = PREVIOUS_PERIOD_NOT_BILLED` kèm `unbilledPeriods`.
+3. Hỏi chủ trọ, đồng ý ⇒ gửi lại với **`skipUnbilledPeriods: true`**: mỗi HĐ ghi **1 khoảng ngắt** phủ các kỳ chưa lập rồi lập phiếu tháng 10 bình thường; `gapsCreated` = số HĐ đã ghi khoảng ngắt.
+
+Chỉ số đầu của phiếu tháng 10 là chỉ số chốt tháng 9 — **không nối ngược** về phiếu tháng 6; thiếu ⇒ `MISSING_READING`, không ghi khoảng ngắt. Điện nước tháng 7–9 không tính cho ai.
+Chạy lại không tạo trùng (`EXISTS`). Xóa nháp / hủy phiếu tháng 10 ⇒ khoảng ngắt mất theo. Xem khoảng ngắt: `GET /contracts/{id}/billing-gaps`
+([contracts.md](contracts.md#kỳ-thu)). Chỉ khu **thu sau**, tối đa 12 kỳ một lần.
+
 ### Tạo cho nhiều khu một lệnh (12/10/2026)
 
 `POST /invoices/generate-bulk` (nên gửi `Idempotency-Key`)
 
 ```json
-{ "billingMonth": "2026-11", "propertyIds": null, "recalculateExistingDrafts": false }
+{ "billingMonth": "2026-11", "propertyIds": null, "recalculateExistingDrafts": false, "skipUnbilledPeriods": false }
 ```
 
 `propertyIds` bỏ trống / `null` = **mọi khu đang dùng** của tổ chức. → **200** mảng, mỗi khu 1 phần tử, khu này lỗi không làm hỏng khu khác:

@@ -176,6 +176,35 @@ public sealed class DemoDataSeederTests(ApiFactory factory)
             .Should().Be(2, "báo trả phòng chỉ là nhãn — hóa đơn tháng trước vẫn lập");
         (await DetailAsync("226", "Active")).GetProperty("flags").EnumerateArray().Select(f => f.GetString())
             .Should().Contain("MoveOutOverdue");
+        // Thu tay ngoài hệ thống (BL-UC-18, 27/10/2026): 229 dùng lại sau khoảng ngắt 3 kỳ; 230 thanh lý "đã xử lý ngoài hệ thống".
+        var contract229 = (await DetailAsync("229", "Active")).GetProperty("id").GetGuid();
+        var gaps229 = await (await _client.GetAsync($"/api/v1/contracts/{contract229}/billing-gaps", token)).ReadAsync<JsonElement>();
+        gaps229.GetArrayLength().Should().Be(1);
+        gaps229[0].GetProperty("periodCount").GetInt32().Should().Be(3);
+        gaps229[0].GetProperty("resumedInvoiceId").ValueKind.Should().Be(JsonValueKind.String);
+        (await InvoicesOfAsync("229", "Active")).Count(i => i.GetProperty("type").GetString() == "Regular").Should().Be(2, "tháng M−5 và tháng M−1; 3 kỳ giữa không có phiếu");
+        var contract230 = (await DetailAsync("230", "Ended")).GetProperty("id").GetGuid();
+        (await InvoicesOfAsync("230", "Ended")).Should().OnlyContain(i => i.GetProperty("type").GetString() == "Regular", "đã xử lý ngoài ⇒ không có hóa đơn trả phòng");
+        var gaps230 = await (await _client.GetAsync($"/api/v1/contracts/{contract230}/billing-gaps", token)).ReadAsync<JsonElement>();
+        gaps230[0].GetProperty("resumedInvoiceId").ValueKind.Should().Be(JsonValueKind.Null, "khoảng ngắt đóng bởi thanh lý");
+
+        // H-02 (28/10/2026): 231 — số cuối ghi lúc bấm thanh lý; người mới "Dùng số mới nhất" nhận phòng đúng số cuối người cũ.
+        var ended231 = await DetailAsync("231", "Ended");
+        var next231 = await DetailAsync("231", "Active");
+        var meters231 = await (await _client.GetAsync($"/api/v1/rooms/{next231.GetProperty("roomId").GetGuid()}/meters", token)).ReadAsync<List<JsonElement>>();
+        foreach (var meter in meters231)
+        {
+            var readings = (await (await _client.GetAsync($"/api/v1/meters/{meter.GetProperty("id").GetGuid()}/readings", token))
+                .ReadAsync<List<JsonElement>>()).ToList();
+            var final = readings.Single(r => r.GetProperty("kind").GetString() == "Final" && r.GetProperty("contractId").GetGuid() == ended231.GetProperty("id").GetGuid());
+            readings.Single(r => r.GetProperty("kind").GetString() == "Handover" && r.GetProperty("contractId").GetGuid() == next231.GetProperty("id").GetGuid())
+                .GetProperty("value").GetDecimal().Should().Be(final.GetProperty("value").GetDecimal(), "\"Dùng số mới nhất\" = số cuối người cũ");
+        }
+        // M-09 (28/10/2026): 232 chuyển sang 233 bỏ qua 2 kỳ thu tay.
+        var moved232 = await DetailAsync("233", "Active");
+        var gaps232 = await (await _client.GetAsync($"/api/v1/contracts/{moved232.GetProperty("id").GetGuid()}/billing-gaps", token)).ReadAsync<JsonElement>();
+        gaps232.GetArrayLength().Should().Be(1);
+        gaps232[0].GetProperty("periodCount").GetInt32().Should().Be(2);
         var final10 = (await InvoicesOfAsync("B10", "Liquidating")).Single(i => i.GetProperty("type").GetString() == "Final");
         var overpaid10 = (await (await _client.GetAsync($"/api/v1/invoices/{final10.GetProperty("id").GetGuid()}", token)).ReadAsync<JsonElement>())
             .GetProperty("issues").EnumerateArray().Single(i => i.GetProperty("code").GetString() == "RENT_OVERPAID");

@@ -82,6 +82,7 @@ public static class DependencyInjection
         services.AddScoped<IFeeQueries, FeeQueries>();
         services.AddScoped<IInvoiceRepository, InvoiceRepository>();
         services.AddScoped<IInvoiceQueries, InvoiceQueries>();
+        services.AddScoped<IBillingGapRepository, BillingGapRepository>();
         services.AddScoped<IMeterRepository, MeterRepository>();
         services.AddScoped<IMeterQueries, MeterQueries>();
         services.AddScoped<IOrganizationRepository, OrganizationRepository>();

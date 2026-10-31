@@ -113,13 +113,14 @@ public sealed class MeterTests(ApiFactory factory)
         all.Should().HaveCount(2);
         all.Single(m => m.GetProperty("id").GetGuid() == oldMeter).GetProperty("replacedByMeterId").GetGuid().Should().Be(newMeter);
 
-        await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/liquidation/start", new { actualEndDate = today, reason = "MutualAgreement" }, token);
-        // Chỉ số cuối nhập khi lập phiếu quyết toán (MT-UC-05).
-        (await (await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/liquidation/complete", null, token)).ReadProblemCodeAsync())
-            .Should().Be("FINAL_READING_REQUIRED");
-        (await (await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/final-invoice", new { finalReadings = (object?)null }, token))
+        // Chỉ số cuối nhập ngay khi bắt đầu thanh lý (MT-UC-05, H-02).
+        (await (await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/liquidation/start", new { actualEndDate = today, reason = "MutualAgreement" }, token))
             .ReadProblemCodeAsync()).Should().Be("FINAL_READING_REQUIRED");
-        await _client.SettleAndCompleteAsync(token, contractId, new[] { new { meterId = newMeter, value = (decimal?)45 } });
+        (await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/liquidation/start", new
+        {
+            actualEndDate = today, reason = "MutualAgreement", finalReadings = new[] { new { meterId = newMeter, value = (decimal?)45 } }
+        }, token)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+        await _client.SettleAndCompleteAsync(token, contractId);
 
         (await ReadingsAsync(token, newMeter)).First().GetProperty("kind").GetString().Should().Be("Final");
     }

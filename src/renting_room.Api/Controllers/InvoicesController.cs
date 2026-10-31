@@ -22,13 +22,13 @@ public sealed class InvoicesController(ISender sender) : ControllerBase
     [EndpointSummary("Tạo phiếu nháp theo khu + tháng thu (lọc phòng / tầng / 1 hợp đồng)")]
     public async Task<IResult> Generate(GenerateInvoicesRequest b, CancellationToken ct) =>
         (await sender.Send(new GenerateInvoicesCommand(b.PropertyId, b.BillingMonth, b.RoomIds, b.Floor, b.RecalculateExistingDrafts ?? false,
-            b.ContractId), ct)).ToHttp();
+            b.ContractId, b.SkipUnbilledPeriods ?? false), ct)).ToHttp();
 
     [HttpPost("invoices/generate-bulk")]
     [Idempotent(required: false)]
     [EndpointSummary("Tạo phiếu nháp tháng thu cho nhiều khu một lệnh (bỏ trống propertyIds = mọi khu đang dùng) — kết quả từng khu")]
     public async Task<IResult> GenerateBulk(GenerateInvoicesBulkRequest b, CancellationToken ct) =>
-        Results.Ok(await sender.Send(new GenerateInvoicesBulkCommand(b.PropertyIds, b.BillingMonth, b.RecalculateExistingDrafts ?? false), ct));
+        Results.Ok(await sender.Send(new GenerateInvoicesBulkCommand(b.PropertyIds, b.BillingMonth, b.RecalculateExistingDrafts ?? false, b.SkipUnbilledPeriods ?? false), ct));
 
     [HttpGet("invoices/totals")]
     [EndpointSummary("Số tổng hợp theo cùng bộ lọc với danh sách phiếu: phải thu, đã thu, còn nợ, quá hạn; số phiếu nháp và tổng tạm tính")]

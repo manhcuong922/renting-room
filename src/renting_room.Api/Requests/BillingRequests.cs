@@ -5,9 +5,11 @@ using renting_room.Domain.Contracts;
 namespace renting_room.Requests;
 
 public sealed record GenerateInvoicesRequest(
-    Guid PropertyId, string BillingMonth, IReadOnlyList<Guid>? RoomIds, string? Floor, bool? RecalculateExistingDrafts, Guid? ContractId = null);
+    Guid PropertyId, string BillingMonth, IReadOnlyList<Guid>? RoomIds, string? Floor, bool? RecalculateExistingDrafts, Guid? ContractId = null,
+    bool? SkipUnbilledPeriods = null);
 
-public sealed record GenerateInvoicesBulkRequest(IReadOnlyList<Guid>? PropertyIds, string BillingMonth, bool? RecalculateExistingDrafts);
+public sealed record GenerateInvoicesBulkRequest(
+    IReadOnlyList<Guid>? PropertyIds, string BillingMonth, bool? RecalculateExistingDrafts, bool? SkipUnbilledPeriods = null);
 
 public sealed record RecalculateInvoicesRequest(
     IReadOnlyList<Guid>? InvoiceIds, Guid? PropertyId, string? BillingMonth, IReadOnlyList<Guid>? RoomIds, string? Floor, bool? KeepManualEdits,

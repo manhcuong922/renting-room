@@ -72,6 +72,10 @@ public sealed class ActivateContractHandler(
         var activated = contract.Activate(context);
         if (activated.IsFailure)
             return activated;
+        var previousFinalMissing = await meterReadings.FindPreviousFinalMissingAsync(
+            contract.RoomId, contract.BillingStartDate, contract.PreviousContractId, cancellationToken);
+        if (previousFinalMissing is not null)
+            return Result.Failure(previousFinalMissing);
         var previous = await previousFinals.ApplyAsync(contract, contract.BillingStartDate, request.HandoverReadings, cancellationToken);
         if (previous.IsFailure)
             return previous;
@@ -79,6 +83,13 @@ public sealed class ActivateContractHandler(
             contract, ReadingKind.Handover, contract.BillingStartDate, request.HandoverReadings, cancellationToken);
         if (handover.IsFailure)
             return handover;
+        if (contract.PreviousContractId is { } resignedId)
+        {
+            var old = (await contracts.GetForUpdateAsync(resignedId, cancellationToken))!;
+            var closing = await meterReadings.RecordFinalFromHandoverAsync(old, contract, cancellationToken);
+            if (closing.IsFailure)
+                return closing;
+        }
         await unitOfWork.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return Result.Success();

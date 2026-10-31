@@ -216,7 +216,7 @@ public sealed class BillingTests(ApiFactory factory)
         // Ở nửa tháng 2 rồi đi: tiền phòng tháng 2 đã thu trọn (không hoàn — để sau), điện nửa tháng 2 chưa ai thu.
         var moveOut = secondMonth.AddDays(14);
         (await _client.PostJsonAsync($"/api/v1/contracts/{s.ContractId}/liquidation/start",
-            new { actualEndDate = moveOut, reason = "LesseeUnilateral" }, s.Token)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+            new { actualEndDate = moveOut, reason = "LesseeUnilateral", finalReadings = new[] { new { meterId = s.MeterId, value = (decimal?)170 } } }, s.Token)).StatusCode.Should().Be(HttpStatusCode.NoContent);
         var created = await _client.PostJsonAsync($"/api/v1/contracts/{s.ContractId}/final-invoice",
             new { finalReadings = new[] { new { meterId = s.MeterId, value = (decimal?)170 } } }, s.Token);
         created.StatusCode.Should().Be(HttpStatusCode.Created, await created.Content.ReadAsStringAsync());
@@ -269,7 +269,7 @@ public sealed class BillingTests(ApiFactory factory)
         // Đã đóng trọn tiền phòng tháng 2 nhưng ở 15 ngày ⇒ phiếu quyết toán nhắc phần thu thừa, không tự hoàn.
         var moveOut = secondMonth.AddDays(14);
         (await _client.PostJsonAsync($"/api/v1/contracts/{s.ContractId}/liquidation/start",
-            new { actualEndDate = moveOut, reason = "MutualAgreement", finalPeriodCharge = "Daily" }, s.Token)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+            new { actualEndDate = moveOut, reason = "MutualAgreement", finalPeriodCharge = "Daily", finalReadings = new[] { new { meterId = s.MeterId, value = (decimal?)170 } } }, s.Token)).StatusCode.Should().Be(HttpStatusCode.NoContent);
         var final = await (await _client.PostJsonAsync($"/api/v1/contracts/{s.ContractId}/final-invoice",
             new { finalReadings = new[] { new { meterId = s.MeterId, value = (decimal?)170 } } }, s.Token)).ReadAsync<JsonElement>();
         final.GetProperty("issues").EnumerateArray().Select(i => i.GetProperty("code").GetString()).Should().Contain("RENT_OVERPAID");

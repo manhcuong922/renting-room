@@ -7,7 +7,8 @@ namespace renting_room.Application.Billing;
 
 public sealed record PropertyGenerateResult(Guid PropertyId, string PropertyCode, GenerateInvoicesResult? Result, string? ErrorCode);
 
-public sealed record GenerateInvoicesBulkCommand(IReadOnlyList<Guid>? PropertyIds, string BillingMonth, bool RecalculateExistingDrafts)
+public sealed record GenerateInvoicesBulkCommand(
+    IReadOnlyList<Guid>? PropertyIds, string BillingMonth, bool RecalculateExistingDrafts, bool SkipUnbilledPeriods = false)
     : IRequest<IReadOnlyList<PropertyGenerateResult>>;
 
 public sealed class GenerateInvoicesBulkCommandValidator : AbstractValidator<GenerateInvoicesBulkCommand>
@@ -32,7 +33,8 @@ public sealed class GenerateInvoicesBulkHandler(IPropertyQueries properties, ISe
         foreach (var property in codes)
         {
             var result = await sender.Send(
-                new GenerateInvoicesCommand(property.Id, request.BillingMonth, null, null, request.RecalculateExistingDrafts), cancellationToken);
+                new GenerateInvoicesCommand(property.Id, request.BillingMonth, null, null, request.RecalculateExistingDrafts, null, request.SkipUnbilledPeriods),
+                cancellationToken);
             results.Add(new PropertyGenerateResult(property.Id, property.Code, result.Value, result.Error?.Code));
         }
         return results;

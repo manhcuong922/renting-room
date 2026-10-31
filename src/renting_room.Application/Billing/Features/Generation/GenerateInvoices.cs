@@ -13,7 +13,8 @@ using renting_room.Domain.Properties;
 namespace renting_room.Application.Billing;
 
 public sealed record GenerateInvoicesCommand(
-    Guid PropertyId, string BillingMonth, IReadOnlyList<Guid>? RoomIds, string? Floor, bool RecalculateExistingDrafts, Guid? ContractId = null)
+    Guid PropertyId, string BillingMonth, IReadOnlyList<Guid>? RoomIds, string? Floor, bool RecalculateExistingDrafts, Guid? ContractId = null,
+    bool SkipUnbilledPeriods = false)
     : IRequest<Result<GenerateInvoicesResult>>;
 
 public sealed class GenerateInvoicesCommandValidator : AbstractValidator<GenerateInvoicesCommand>
@@ -27,7 +28,8 @@ public sealed class GenerateInvoicesCommandValidator : AbstractValidator<Generat
 
 public sealed class GenerateInvoicesHandler(
     IUnitOfWork unitOfWork, IContractRepository contracts, IContractQueries contractQueries, IInvoiceRepository invoiceRepository,
-    IPropertyQueries properties, IRoomQueries rooms, IRenterQueries renters, InvoiceInputLoader inputs, RoomChargeBilling roomCharges)
+    IPropertyQueries properties, IRoomQueries rooms, IRenterQueries renters, InvoiceInputLoader inputs, RoomChargeBilling roomCharges,
+    BillingGapPlanner gapPlanner, IBillingGapRepository gapRepository)
     : IRequestHandler<GenerateInvoicesCommand, Result<GenerateInvoicesResult>>
 {
     private const string MissingReadingCode = "MISSING_READING";
@@ -44,25 +46,32 @@ public sealed class GenerateInvoicesHandler(
 
         var candidates = await contractQueries.ListBillingCandidatesAsync(roomIdList, month, monthEnd, request.ContractId, cancellationToken);
 
-        int created = 0, recalculated = 0, withIssues = 0;
+        int created = 0, recalculated = 0, withIssues = 0, gapsCreated = 0;
         var skipped = new List<SkippedContract>();
         foreach (var candidate in candidates)
         {
-            var outcome = await GenerateOneAsync(candidate.Id, roomCodes[candidate.RoomId], month, request.RecalculateExistingDrafts, cancellationToken);
+            var outcome = await GenerateOneAsync(
+                candidate.Id, roomCodes[candidate.RoomId], month, request.RecalculateExistingDrafts, request.SkipUnbilledPeriods, cancellationToken);
             switch (outcome.Result)
             {
                 case "CREATED": created++; break;
                 case "RECALCULATED": recalculated++; break;
-                default: skipped.Add(new SkippedContract(candidate.Id, candidate.ContractNo, roomCodes[candidate.RoomId], outcome.Result)); break;
+                default:
+                    skipped.Add(new SkippedContract(candidate.Id, candidate.ContractNo, roomCodes[candidate.RoomId], outcome.Result, outcome.Unbilled));
+                    break;
             }
+            if (outcome.GapCreated)
+                gapsCreated++;
             if (outcome.HasIssues)
                 withIssues++;
         }
-        return new GenerateInvoicesResult(created, recalculated, withIssues, skipped);
+        return new GenerateInvoicesResult(created, recalculated, withIssues, skipped, gapsCreated);
     }
 
-    private async Task<(string Result, bool HasIssues)> GenerateOneAsync(
-        Guid contractId, string roomCode, DateOnly month, bool recalculateDrafts, CancellationToken ct)
+    private sealed record Outcome(string Result, bool HasIssues = false, bool GapCreated = false, IReadOnlyList<UnbilledPeriodDto>? Unbilled = null);
+
+    private async Task<Outcome> GenerateOneAsync(
+        Guid contractId, string roomCode, DateOnly month, bool recalculateDrafts, bool skipUnbilledPeriods, CancellationToken ct)
     {
         await using var transaction = await unitOfWork.BeginTransactionAsync(ct);
         await unitOfWork.LockForUpdateAsync<Contract>(contractId, ct);
@@ -70,26 +79,35 @@ public sealed class GenerateInvoicesHandler(
         var schedule = (await properties.GetBillingAsync(contract.PropertyId, ct)).Schedule;
         var period = BillingMonths.PeriodIn(contract, month, schedule);
         if (period is null)
-            return ("NO_PERIOD_IN_MONTH", false);
+            return new Outcome("NO_PERIOD_IN_MONTH");
         // Ngày báo trả phòng (PlannedMoveOutDate) chỉ là dấu đánh dấu: chỉ khi đã bắt đầu thanh lý (ngày trả phòng thật) kỳ đó mới thuộc hóa đơn trả phòng.
         if (contract.ActualEndDate is { } actualEnd && actualEnd <= period.End)
-            return ("USE_FINAL_INVOICE", false);
+            return new Outcome("USE_FINAL_INVOICE");
 
         var invoices = await invoiceRepository.ListWithDetailsByContractAsync(contractId, ct);
         var existing = invoices.FirstOrDefault(i => i.PeriodStart == period.Start);
         if (existing is not null && (existing.Status != InvoiceStatus.Draft || !recalculateDrafts))
-            return ("EXISTS", false);
+            return new Outcome("EXISTS");
         if (existing is null && invoices.Any(i => i.PeriodStart > period.Start))
-            return ("LATER_PERIOD_BILLED", false);
-        if (existing is null && period.Start != contract.BillingStartDate && invoices.All(i => i.PeriodEnd != period.Start.AddDays(-1)))
-            return ("PREVIOUS_PERIOD_NOT_BILLED", false);
+            return new Outcome("LATER_PERIOD_BILLED");
+        var plan = GapPlan.Continuous;
+        if (existing is null)
+        {
+            plan = await gapPlanner.PlanAsync(contract, schedule, period, invoices.Select(i => (i.PeriodStart, i.PeriodEnd, i.Status)).ToList(),
+                skipUnbilledPeriods, ct);
+            if (plan.Error is { } gapError)
+                return new Outcome(gapError.Code);
+            if (plan.NeedsSkip)
+                return new Outcome("PREVIOUS_PERIOD_NOT_BILLED", Unbilled: plan.UnbilledDtos);
+        }
         if (existing is null && invoices.Any(i => i.Status == InvoiceStatus.Draft && i.PeriodStart < period.Start
                 && i.Issues.Any(x => x.Code == MissingReadingCode)))
-            return ("PREVIOUS_PERIOD_INCOMPLETE", false);
+            return new Outcome("PREVIOUS_PERIOD_INCOMPLETE");
 
-        var calculation = InvoiceCalculator.Calculate(await inputs.LoadAsync(contract, period, existing?.Id, ct));
+        var calculation = InvoiceCalculator.Calculate(
+            await inputs.LoadAsync(contract, period, existing?.Id, ct, gapClosingPeriodStart: plan.ClosingPeriodStart));
         if (existing is null && calculation.Issues.Any(x => x.Code == MissingReadingCode))
-            return (MissingReadingCode, false);
+            return new Outcome(MissingReadingCode);
         Invoice invoice;
         if (existing is not null)
         {
@@ -103,10 +121,12 @@ public sealed class GenerateInvoicesHandler(
                 roomCode, contract.ContractNo, representative, calculation);
             invoiceRepository.Add(invoice);
         }
+        if (plan.Skip)
+            gapRepository.Add(ContractBillingGap.Create(contract.Id, plan.Unbilled, invoice.Id, null));
         await roomCharges.AttachPendingAsync(invoice, ct);
 
         await unitOfWork.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
-        return (existing is null ? "CREATED" : "RECALCULATED", invoice.HasBlockingIssues);
+        return new Outcome(existing is null ? "CREATED" : "RECALCULATED", invoice.HasBlockingIssues, plan.Skip);
     }
 }

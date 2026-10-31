@@ -8,14 +8,14 @@
 > Trong mỗi nhóm, issue xếp từ mức cao xuống thấp. **Quyết định đã chốt** ghi ngay dưới tên nhóm.
 
 ## Thứ tự làm đề xuất
-1. N3 → N4 → N2 (kẹt quy trình / sai tiền; N2 cần chốt cách xử lý H-02). N1 (thanh lý / ký lại / kết toán) đã xong 27/10/2026
+1. N3 → N4 → N2 (kẹt quy trình / sai tiền). N1 (thanh lý / ký lại / kết toán) đã xong 27/10/2026; N2 còn M-10 + Đ2 (H-02, M-09, L-10 xong 28/10/2026)
 2. N5 (DoS, sửa nhỏ) — có thể làm xen bất kỳ lúc nào
 3. N6 (phân quyền; cần chốt thiết kế M-12, M-14)
 4. N7, N8, N9, rồi nhóm lẻ
 
 | Nhóm | Nội dung | Issue |
 |---|---|---|
-| N2 | Chỉ số công tơ giữa các HĐ | H-02, M-09, M-10, L-10 |
+| N2 | Chỉ số công tơ giữa các HĐ | M-10, Đ2 |
 | N3 | Nháp liên tiếp và tính lại | H-03, M-21, L-02, L-03 |
 | N4 | Phiếu thu và hoàn tiền | H-04, M-01, L-21 |
 | N5 | Import Excel | H-05, L-07 |
@@ -28,13 +28,9 @@
 ---
 
 ## N2 — Chỉ số công tơ giữa các HĐ
-**Chờ chốt:** H-02 — A (chặn kích hoạt, đòi nhập chỉ số cuối HĐ cũ trước; bỏ qua nếu HĐ cũ không cần chỉ số cuối theo `FinalInvoiceNeed`) hay B (bắt nhập số nhận phòng cụ thể, không cho "Dùng số mới nhất").
+- **M-10** [Công tơ] (còn lại sau 28/10/2026 — phần điểm đầu kỳ của người mới đã sửa; cùng họ Đ2, làm chung) Cùng ngày người cũ trả phòng cuối kỳ và người mới vào: người cũ gõ số chốt kỳ cao, hóa đơn đầu người mới đã chốt thì không điều chỉnh được số của người cũ (`MeterReadingAdjustment.cs:111` `READING_NEXT_PERIOD_FINALIZED` tính cả hóa đơn khác HĐ). Sửa: kiểm "kỳ sau đã chốt" chỉ trong cùng HĐ; phần chênh người cũ trả thừa/thiếu xử lý như Đ2.
 
-- **H-02** [Sai tiền + kẹt — luồng chính thu sau] Kích hoạt HĐ mới khi HĐ cũ cùng phòng đang thanh lý chưa có chỉ số cuối: "Dùng số mới nhất" (`ContractMeterReadings.cs:47`, `ActivateContract.cs:66-70`) lấy số chốt tháng trước ⇒ số cuối thật của HĐ cũ > số nhận phòng ⇒ `READING_NOT_MONOTONIC`. Chủ trọ phải nhập số cuối = số cũ (người mới trả điện người cũ) hoặc HĐ cũ kẹt (hủy thanh lý cũng 409 `ROOM_PERIOD_OVERLAP`). Áp cả ký lại, chuyển phòng vào.
-  VD: 01/10 = 1.000; A đi 15/10; B vào 16/10 nhận 1.000; số thật của A 1.080 ⇒ bị chặn. Sửa: HĐ trước của phòng chưa có `Final` ⇒ 422 "nhập chỉ số cuối HĐ cũ trước" hoặc bắt nhập số thật.
-- **M-09** [Công tơ] Chuyển lại trong ngày hủy chỉ số `Final` phòng cũ dù nó đã là điểm cuối của hóa đơn đã chốt: `ContractRoomTransfer.cs:332-347` chỉ kiểm khóa công tơ phòng mới; `:275` + `InvoiceQueries.cs:163-165` chỉ chặn hóa đơn `PeriodEnd >= D` ⇒ hóa đơn chốt trỏ chỉ số đã hủy, tháng sau `MISSING_READING`. Sửa: kiểm `GetLockedReadingIdsAsync` cả công tơ phòng cũ.
-- **M-10** [Công tơ] Cùng ngày: người cũ trả phòng cuối kỳ, số chốt kỳ đọc ngày 01/11, người mới vào 01/11 — `ReadingKind` `Handover < Periodic` ⇒ số nhận phòng phải ≤ số chốt người cũ; đoạn đo đầu người mới bắt đầu từ số chốt của người cũ (`UsagePeriod.cs:45` `LatestOnOrBefore`); hóa đơn đầu người mới chốt rồi thì không điều chỉnh được số gõ cao của người cũ (`MeterReadingAdjustment.cs:111` `READING_NEXT_PERIOD_FINALIZED` khác HĐ). Sửa: HĐ 1 lần ở dùng `FindHandover(contractId)` làm điểm đầu; kiểm kỳ sau đã chốt chỉ trong cùng HĐ.
-- **L-10** Lưu lưới chỉ số khi đã có chỉ số định kỳ bỏ qua `readingDate` mới, trả 200 (`MeterReadingSheet.cs:216-222`); lưu lưới cho phép HĐ `Ended` (`:211`, plan §8 chỉ Active / Liquidating — chỉ số lạc thành "số mới nhất" cho người sau, xem H-02).
+- **Đ2** [Công tơ, sinh ra khi bàn H-02 28/10/2026] Số nhận phòng của người sau đã bị hóa đơn đầu **đã chốt** khóa thì không sửa (`READING_LOCKED`) cũng không điều chỉnh được (`READING_NOT_ADJUSTABLE` — MT-BR-19 chỉ nhận chỉ số cuối đoạn đo). VD B nhận phòng 16/10 gõ 1.050 (thật 1.080), hóa đơn tháng 10 chốt + thu 150 kWh = 570.000đ (thật 120 kWh): thu thừa 114.000đ, không có đường sửa; số cuối người cũ 1.080 cũng không ghi được vì lớn hơn 1.050. Sửa: mở MT-BR-19 cho chỉ số nhận phòng (tính lại hóa đơn đầu của HĐ, Xử lý ngay / Đẩy sang hóa đơn sau); luồng đối xứng CT-BR-02 khi số cuối người cũ > số nhận phòng người mới ("số nhận phòng người mới ghi sai?"). Làm cùng phần điều chỉnh của M-10. Sau H-02 (số cuối ghi ngay lúc thanh lý) chỉ còn xảy ra khi gõ sai cả hai bên.
 
 ## N3 — Nháp liên tiếp và tính lại
 - **H-03** ✔ [Sai tiền + kẹt] Tính lại nháp kỳ k+1 khi nháp kỳ k đang `MISSING_READING` (vd hủy chỉ số cuối kỳ k): `DraftRecalculator.cs:15-23` không kiểm `PREVIOUS_PERIOD_INCOMPLETE` (chỉ `GenerateInvoices.cs:87` kiểm khi tạo mới) ⇒ k+1 nối chỉ số từ kỳ k−1, nuốt sản lượng 2 kỳ (giá bậc thu dư), chốt được. Nhập lại chỉ số k ⇒ 2 nháp cùng điểm đầu ⇒ 409 `ux_invoice_meter_segments_start`, không ghi được chỉ số.

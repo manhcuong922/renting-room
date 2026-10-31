@@ -191,13 +191,18 @@ public static class InvoiceCalculator
             foreach (var (stay, meter) in group.OrderBy(x => x.Stay.From).ThenBy(x => x.Meter.InstalledDate))
             {
                 var ownStay = allStays.Count > 1 ? stay : null;
-                var start = usage.StartReading(meter, chain.TryGetValue(meter.Id, out var last) ? last : null, contractId, ownStay);
+                // BL-BR-44: kỳ ngay sau khoảng ngắt — chỉ số đầu là Periodic chốt kỳ cuối khoảng, không nối ngược về phiếu trước khoảng.
+                var start = input.GapClosingPeriodStart is { } gapClosing && stay == current
+                    ? meter.FindPeriodic(contractId, gapClosing)
+                    : usage.StartReading(meter, chain.TryGetValue(meter.Id, out var last) ? last : null, contractId, ownStay);
                 var end = usage.EndReading(meter, contractId, ownStay, stay == current ? null : stay);
                 var name = meter.SerialNo is null ? type.Name : $"{type.Name} ({meter.SerialNo})";
                 if (start is null || end is null)
                 {
                     issues.Add(new InvoiceIssue("MISSING_READING", InvoiceIssue.Error,
-                        $"Thiếu chỉ số {(start is null ? "đầu" : usage.EndsWithFinal ? "cuối hợp đồng" : "cuối kỳ")} của công tơ {name}.", meter.Id));
+                        start is null && input.GapClosingPeriodStart is { } closingStart
+                            ? $"Thiếu chỉ số chốt kỳ {closingStart:MM/yyyy} (kỳ cuối đã thu ngoài hệ thống) của công tơ {name} — nhập ở lưới chỉ số tháng đó."
+                            : $"Thiếu chỉ số {(start is null ? "đầu" : usage.EndsWithFinal ? "cuối hợp đồng" : "cuối kỳ")} của công tơ {name}.", meter.Id));
                     complete = false;
                     continue;
                 }

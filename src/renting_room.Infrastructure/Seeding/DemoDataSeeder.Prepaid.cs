@@ -62,8 +62,8 @@ public sealed partial class DemoDataSeeder
         async Task<InvoiceDetailDto> MoveOutEarly(DemoRoom room, Guid contract, DateOnly leftOn)
         {
             await Send(new StartLiquidationCommand(contract, leftOn, TerminationReason.MutualAgreement, null, "Trả phòng sớm theo thỏa thuận",
-                FinalPeriodCharge.Daily));
-            var final = await Send(new CreateFinalInvoiceCommand(contract, [FinalReading(room.Electricity, 30), FinalReading(room.Water!.Value, 2)]));
+                FinalPeriodCharge.Daily, [FinalReading(room.Electricity, 30), FinalReading(room.Water!.Value, 2)]));
+            var final = await Send(new CreateFinalInvoiceCommand(contract, null));
             var suggestion = final.Issues.Single(i => i.Code == "RENT_OVERPAID");
             await Send(new AddInvoiceManualLineCommand(final.Summary.Id, InvoiceLineType.Refund, "Hoàn tiền phòng những ngày chưa ở",
                 null, null, suggestion.Amount!.Value, "Trả phòng sớm — đã thu trọn kỳ", null, suggestion.Ref));
@@ -97,8 +97,9 @@ public sealed partial class DemoDataSeeder
         await Close(b10, c10, Period(-1), 90);
         await FinalizeAsync(await DraftAsync(propertyId, b10.Id, c10, Period(0)), Period(0));
         await Send(new StartLiquidationCommand(c10, Period(0).AddDays(Math.Min(9, _today.DayNumber - Period(0).DayNumber)),
-            TerminationReason.MutualAgreement, null, "Trả phòng sớm theo thỏa thuận", FinalPeriodCharge.Daily));
-        await Send(new CreateFinalInvoiceCommand(c10, [FinalReading(b10.Electricity, 20), FinalReading(b10.Water!.Value, 1)]));
+            TerminationReason.MutualAgreement, null, "Trả phòng sớm theo thỏa thuận", FinalPeriodCharge.Daily,
+            [FinalReading(b10.Electricity, 20), FinalReading(b10.Water!.Value, 1)]));
+        await Send(new CreateFinalInvoiceCommand(c10, null));
 
         // B03 — Thay công tơ điện giữa kỳ trước ⇒ phiếu nháp kỳ này có 2 đoạn đo (công tơ cũ + mới).
         var b03 = await Room("B03");

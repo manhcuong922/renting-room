@@ -23,18 +23,26 @@ public static class BillingMonths
         contract.BillingPeriods(schedule, month.AddMonths(2)).FirstOrDefault(p => p.Month == month);
 }
 
-public sealed class InvoiceInputLoader(IPropertyQueries properties, IFeeQueries fees, IMeterQueries meters, IInvoiceQueries invoices)
+public sealed class InvoiceInputLoader(
+    IPropertyQueries properties, IFeeQueries fees, IMeterQueries meters, IInvoiceQueries invoices, IBillingGapRepository gaps)
 {
     /// <param name="type"><c>Final</c> ⇒ kèm bối cảnh trả phòng (tiền phòng kỳ cuối đã thu chưa, kỳ cuối đã có phiếu thường chưa) và
     /// nối chuỗi chỉ số cả với phiếu thường của chính kỳ cuối.</param>
+    /// <param name="gapClosingPeriodStart">Đầu kỳ cuối của khoảng ngắt sắp ghi (BL-BR-44); null ⇒ tra khoảng ngắt đã có ngay trước kỳ này.</param>
     public async Task<InvoiceCalcInput> LoadAsync(
-        Contract contract, BillingPeriod period, Guid? excludeInvoiceId, CancellationToken ct, InvoiceType type = InvoiceType.Regular)
+        Contract contract, BillingPeriod period, Guid? excludeInvoiceId, CancellationToken ct, InvoiceType type = InvoiceType.Regular,
+        DateOnly? gapClosingPeriodStart = null)
     {
         var isFinal = type == InvoiceType.Final;
         var billing = await properties.GetBillingAsync(contract.PropertyId, ct);
         var types = await ContractFeeRules.LoadTypesAsync(fees, meters, contract, ct);
         var source = await invoices.LoadSourceDataAsync(contract, period.Start, excludeInvoiceId, isFinal, ct);
-        var lastEnd = source.PreviousSegments.GroupBy(s => s.MeterId).ToDictionary(g => g.Key, g => g.MaxBy(s => s.PeriodStart).EndReadingId);
+        // BL-BR-44: sau khoảng ngắt chuỗi chỉ số không nối ngược — chỉ số đầu là Periodic chốt kỳ cuối khoảng.
+        var closing = gapClosingPeriodStart
+            ?? (await gaps.ListByContractAsync(contract.Id, ct)).FirstOrDefault(g => g.ToDate == period.Start.AddDays(-1))?.ClosingPeriodStart;
+        var lastEnd = closing is not null
+            ? new Dictionary<Guid, Guid>()
+            : source.PreviousSegments.GroupBy(s => s.MeterId).ToDictionary(g => g.Key, g => g.MaxBy(s => s.PeriodStart).EndReadingId);
 
         FinalSettlement? final = null;
         if (isFinal)
@@ -55,7 +63,7 @@ public sealed class InvoiceInputLoader(IPropertyQueries properties, IFeeQueries 
             .GroupBy(x => x.FeeTypeId)
             .ToDictionary(g => g.Key, g => (IReadOnlyList<decimal>)g.OrderByDescending(x => x.PeriodStart).Select(x => x.Quantity).ToList());
         return new InvoiceCalcInput(contract, period, billing.Schedule, billing.ProrationMode, types, source.Meters.ToList(), lastEnd, final, recent,
-            billing.RoundInvoiceTotal, source.ClosedReadingIds, source.RoomCodes);
+            billing.RoundInvoiceTotal, source.ClosedReadingIds, source.RoomCodes, closing);
     }
 
     /// <summary>Khu thu trước: tiền phòng kỳ cuối đã lập ở hóa đơn tháng ⇒ kèm số người thuê đã trả thật + đã hoàn để gợi ý hoàn đúng.</summary>

@@ -34,9 +34,10 @@ public sealed record ActivateContractRequest(IReadOnlyList<MeterReadingInput>? H
 
 public sealed record CompleteLiquidationRequest(
     DebtSettlement? Settlement, PaymentMethod? Method, DateOnly? PaidAt, string? Reason, LiquidationRefund? Refund = null,
-    LiquidationPendingCharges? PendingCharges = null, LiquidationDeposit? Deposit = null);
+    LiquidationPendingCharges? PendingCharges = null, LiquidationDeposit? Deposit = null, LiquidationExternalSettlement? ExternalSettlement = null,
+    IReadOnlyList<MeterReadingInput>? FinalReadings = null);
 
-public sealed record FinalInvoiceRequest(IReadOnlyList<MeterReadingInput>? FinalReadings);
+public sealed record FinalInvoiceRequest(IReadOnlyList<MeterReadingInput>? FinalReadings, bool? SkipUnbilledPeriods = null);
 
 public sealed record ChangeRentRequest(DateOnly? EffectiveFrom, decimal MonthlyRent, string? AddendumNo, string? Note);
 
@@ -50,14 +51,16 @@ public sealed record ForfeitDepositRequest(DateOnly Date, string Note);
 
 public sealed record TransferRoomRequest(
     Guid ToRoomId, IReadOnlyList<MeterReadingInput>? OldRoomReadings, IReadOnlyList<MeterReadingInput>? NewRoomReadings,
-    decimal? MonthlyRent, string? Note, TransferRentFrom? RentFrom = null, IReadOnlyList<Guid>? RemoveFeeTypeIds = null);
+    decimal? MonthlyRent, string? Note, TransferRentFrom? RentFrom = null, IReadOnlyList<Guid>? RemoveFeeTypeIds = null,
+    bool? SkipUnbilledPeriods = null);
 
 public sealed record ResignContractRequest(DateOnly HandoverDate, Guid RepresentativeRenterId, DateOnly? EndDate, bool? TransferDeposit);
 
 public sealed record GiveNoticeRequest(DateOnly NoticeDate, DateOnly PlannedMoveOutDate);
 
 public sealed record StartLiquidationRequest(
-    DateOnly ActualEndDate, TerminationReason Reason, TerminationGround? Ground, string? Note, FinalPeriodCharge? FinalPeriodCharge = null);
+    DateOnly ActualEndDate, TerminationReason Reason, TerminationGround? Ground, string? Note, FinalPeriodCharge? FinalPeriodCharge = null,
+    IReadOnlyList<MeterReadingInput>? FinalReadings = null);
 
 public sealed record FinalPeriodChargeRequest(FinalPeriodCharge? FinalPeriodCharge);
 

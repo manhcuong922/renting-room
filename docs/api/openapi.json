@@ -1172,12 +1172,36 @@
         }
       }
     },
+    "/api/v1/contracts/{id}/billing-gaps": {
+      "get": {
+        "tags": [
+          "Contracts"
+        ],
+        "summary": "Các khoảng ngắt tính tiền của hợp đồng (kỳ đã thu ngoài hệ thống — M07 BL-BR-42)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/api/v1/contracts/{id}/billing-periods": {
       "get": {
         "tags": [
           "Contracts"
         ],
-        "summary": "Lịch kỳ thu của hợp đồng",
+        "summary": "Lịch kỳ thu của hợp đồng (kỳ nằm trong khoảng ngắt tính tiền có skipped = true)",
         "parameters": [
           {
             "name": "id",
@@ -6997,6 +7021,16 @@
           },
           "deposit": {
             "$ref": "#/components/schemas/LiquidationDeposit"
+          },
+          "externalSettlement": {
+            "$ref": "#/components/schemas/LiquidationExternalSettlement"
+          },
+          "finalReadings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MeterReadingInput"
+            },
+            "nullable": true
           }
         },
         "additionalProperties": false
@@ -7715,6 +7749,10 @@
               "$ref": "#/components/schemas/MeterReadingInput"
             },
             "nullable": true
+          },
+          "skipUnbilledPeriods": {
+            "type": "boolean",
+            "nullable": true
           }
         },
         "additionalProperties": false
@@ -7790,6 +7828,10 @@
           "recalculateExistingDrafts": {
             "type": "boolean",
             "nullable": true
+          },
+          "skipUnbilledPeriods": {
+            "type": "boolean",
+            "nullable": true
           }
         },
         "additionalProperties": false
@@ -7824,6 +7866,10 @@
           "contractId": {
             "type": "string",
             "format": "uuid",
+            "nullable": true
+          },
+          "skipUnbilledPeriods": {
+            "type": "boolean",
             "nullable": true
           }
         },
@@ -7967,6 +8013,16 @@
             "format": "date",
             "nullable": true
           },
+          "note": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "LiquidationExternalSettlement": {
+        "type": "object",
+        "properties": {
           "note": {
             "type": "string",
             "nullable": true
@@ -9075,6 +9131,13 @@
           },
           "finalPeriodCharge": {
             "$ref": "#/components/schemas/FinalPeriodCharge"
+          },
+          "finalReadings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MeterReadingInput"
+            },
+            "nullable": true
           }
         },
         "additionalProperties": false
@@ -9226,6 +9289,10 @@
               "type": "string",
               "format": "uuid"
             },
+            "nullable": true
+          },
+          "skipUnbilledPeriods": {
+            "type": "boolean",
             "nullable": true
           }
         },

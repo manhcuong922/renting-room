@@ -31,6 +31,18 @@ public static class BillingErrors
     public static readonly Error ConcurrencyConflict = Error.Conflict("CONCURRENCY_CONFLICT", "Phiếu vừa được người khác sửa — tải lại.");
     public static readonly Error SaveFailed = Error.Conflict("INVOICE_SAVE_FAILED", "Không lưu được phiếu — tải lại rồi thử lại.");
     public static readonly Error HasPayments = Error.BusinessRule("INVOICE_HAS_PAYMENTS", "Phiếu đã thu tiền — đảo phiếu thu trước khi hủy.");
+    public static readonly Error GapNotSupportedPrepaid = Error.BusinessRule("GAP_NOT_SUPPORTED_PREPAID",
+        "Bỏ qua các kỳ chưa lập chỉ dùng được cho khu thu sau.");
+    public static readonly Error GapPreviousNotFinalized = Error.BusinessRule("GAP_PREVIOUS_NOT_FINALIZED",
+        "Phiếu liền trước các kỳ bỏ qua còn là nháp — chốt hoặc xóa nháp trước.");
+    public static readonly Error GapTooLong = Error.BusinessRule("GAP_TOO_LONG",
+        $"Chỉ bỏ qua được tối đa {ContractBillingGap.MaxPeriods} kỳ một lần — kiểm tra lại tháng cần lập.");
+    public static readonly Error GapSpansScheduleChange = Error.BusinessRule("GAP_SPANS_SCHEDULE_CHANGE",
+        "Các kỳ bỏ qua có đổi ngày chốt của khu — không bỏ qua được.");
+    public static readonly Error ExternalSettlementNotAllowed = Error.BusinessRule("EXTERNAL_SETTLEMENT_NOT_ALLOWED",
+        "Kỳ cuối đã có phiếu — lập hóa đơn trả phòng thay vì \"đã xử lý ngoài hệ thống\".");
+    public static readonly Error ExternalNoteRequired = Error.BusinessRule("EXTERNAL_NOTE_REQUIRED",
+        "Nhập ghi chú đã xử lý ngoài hệ thống (thu bằng cách nào, đến ngày nào).");
     public static readonly Error NotLatest = Error.BusinessRule("NOT_LATEST_INVOICE",
         "Chỉ hủy / xóa được phiếu mới nhất của hợp đồng — hủy các phiếu kỳ sau trước.");
     public static readonly Error DraftStale = Error.Conflict("DRAFT_STALE",
@@ -44,6 +56,8 @@ public static class BillingErrors
     public static readonly Error PriceMissing = Error.BusinessRule("FEE_PRICE_MISSING", "Khoản thu chưa có giá cho kỳ của hóa đơn.");
     public static readonly Error DraftExists = Error.Conflict("INVOICE_DRAFT_EXISTS", "Hợp đồng còn phiếu nháp — chốt hoặc xóa trước.");
     public static readonly Error PreviousNotBilled = Error.BusinessRule("PREVIOUS_PERIOD_NOT_BILLED", "Chưa lập phiếu kỳ trước — lập lần lượt từng kỳ.");
+
+    public static Error PreviousNotBilledPeriods(object unbilledPeriods) => PreviousNotBilled.WithDetail("unbilledPeriods", unbilledPeriods);
     public static readonly Error SettlementLineLocked = Error.BusinessRule("SETTLEMENT_LINE_LOCKED",
         "Dòng kết toán (nợ chuyển / trừ cọc) do hệ thống tính — không sửa / xóa tay. Mất cọc ⇒ bấm \"Không trả cọc\"; giữ lại một phần cọc ⇒ thêm phụ thu.");
     public static readonly Error InvoiceCarriedOver = Error.BusinessRule("INVOICE_CARRIED_OVER",

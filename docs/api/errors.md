@@ -180,7 +180,7 @@ giấy tờ / pháp lý (09/10/2026 — trước là lỗi chặn): `LESSOR_INFO
 | `INVALID_READING_DATE` | 422 | Ngày ngoài thời gian công tơ hoạt động / trước chỉ số đã ghi |
 | `READING_NOT_MONOTONIC` | 422 | Chỉ số phải ≥ `previousValue` và ≤ `nextValue` (trong body) |
 | `HANDOVER_READING_REQUIRED` | 422 | Kích hoạt: nhập chỉ số nhận phòng cho các công tơ trong `meterIds` |
-| `FINAL_READING_REQUIRED` | 422 | Hoàn tất thanh lý: nhập chỉ số cuối cho các công tơ trong `meterIds` |
+| `FINAL_READING_REQUIRED` | 422 | Bắt đầu thanh lý (ngày trả phòng ≤ hôm nay) / hoàn tất thanh lý / lập hóa đơn trả phòng / chuyển phòng: nhập chỉ số cuối cho các công tơ trong `meterIds` (28/10/2026: bắt buộc ngay khi bấm thanh lý) |
 | `METER_NOT_IN_ROOM` | 422 | Công tơ không thuộc phòng / không hoạt động tại ngày đó — tải lại danh sách |
 
 Cảnh báo mềm: `ROOM_WITHOUT_METER` (HĐ hiệu lực, phòng chưa có công tơ điện), `ROOM_HAS_OPEN_CONTRACT` (tháo công tơ khi phòng đang thuê).
@@ -230,6 +230,7 @@ Cảnh báo mềm: `ROOM_WITHOUT_METER` (HĐ hiệu lực, phòng chưa có côn
 | `ADJUSTMENT_AFTER_END_INCREASE` | 422 | Điều chỉnh sau thanh lý: chỉ giảm được số cuối |
 | `HANDOVER_BELOW_PREVIOUS_FINAL` | 422 | Kích hoạt: số nhận phòng nhỏ hơn số cuối HĐ trước — hỏi "Số người cũ gõ nhầm / Công tơ đã thay / Nhập nhầm" (`meterId`, `previousValue`, `previousContractNo`) |
 | `PREVIOUS_CONTRACT_NOT_ENDED` | 422 | Kích hoạt: HĐ trước còn đang thanh lý — sửa số cuối trên HĐ đó trước |
+| `PREVIOUS_FINAL_READING_REQUIRED` | 422 | Kích hoạt / chuyển phòng vào: HĐ trước của phòng đang thanh lý chưa có chỉ số cuối (`previousContractNo`, `meterIds`) — nhập số cuối HĐ đó trước |
 | `READING_NOT_VOIDABLE` | 422 | Hủy chỉ số: chỉ hủy được chỉ số cuối kỳ / kiểm tra |
 | `SEARCH_TOO_SHORT` | 400 | Tìm lịch sử thuê theo tên: nhập ít nhất 2 ký tự |
 | `USERNAME_REQUIRED` | 400 | Tài khoản phải còn SĐT hoặc email để đăng nhập |
@@ -249,7 +250,13 @@ Cảnh báo mềm: `ROOM_WITHOUT_METER` (HĐ hiệu lực, phòng chưa có côn
 | `FINAL_INVOICE_NOT_REQUIRED` | 422 | Lập hóa đơn trả phòng khi người thuê đi trước "Tính tiền từ ngày" — không có kỳ nào để tính, hoàn tất thanh lý luôn |
 | `FINAL_INVOICE_FINALIZED` | 422 | Hủy thanh lý: hủy hóa đơn trả phòng đã chốt trước |
 | `INVOICE_DRAFT_EXISTS` | 409 | Còn phiếu nháp — chốt hoặc xóa |
-| `PREVIOUS_PERIOD_NOT_BILLED` | 422 | Lập phiếu các kỳ trước trước |
+| `PREVIOUS_PERIOD_NOT_BILLED` | 422 | Lập phiếu các kỳ trước trước (cả khi **chuyển phòng** khu thu sau — 28/10/2026, M-09) (kèm `unbilledPeriods`; thu tay ngoài hệ thống thì gửi lại `skipUnbilledPeriods: true`) |
+| `GAP_NOT_SUPPORTED_PREPAID` | 422 | Bỏ qua các kỳ chưa lập chỉ dùng cho khu thu sau (27/10/2026) |
+| `GAP_PREVIOUS_NOT_FINALIZED` | 422 | Phiếu liền trước các kỳ bỏ qua còn nháp — chốt hoặc xóa nháp trước |
+| `GAP_TOO_LONG` | 422 | Bỏ qua quá 12 kỳ một lần |
+| `GAP_SPANS_SCHEDULE_CHANGE` | 422 | Các kỳ bỏ qua có đổi ngày chốt của khu |
+| `EXTERNAL_SETTLEMENT_NOT_ALLOWED` | 422 | Thanh lý "đã xử lý ngoài hệ thống" nhưng kỳ cuối đã có phiếu — lập hóa đơn trả phòng |
+| `EXTERNAL_NOTE_REQUIRED` | 422 | Thanh lý "đã xử lý ngoài hệ thống" thiếu ghi chú |
 | `MISSING_READING` / `PREVIOUS_PERIOD_INCOMPLETE` | — | Lý do bỏ qua khi tạo phiếu (`skipped[].reason`, 17/10/2026): thiếu chỉ số ⇒ không tạo nháp; kỳ trước còn nháp thiếu chỉ số |
 | `RENTER_IDENTITY_MISMATCH` | — | Lỗi dòng nhập Excel: số giấy tờ trùng hồ sơ có sẵn nhưng khác họ tên / ngày sinh |
 | `CONTRACT_HAS_DEBT` | 422 | Hoàn tất thanh lý: còn nợ `outstanding` — chọn "Đã thu toàn bộ" / "Bỏ nợ" |

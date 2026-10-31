@@ -1,4 +1,5 @@
 using FluentValidation;
+using renting_room.Application.Contracts;
 using renting_room.Domain.Common;
 using renting_room.Domain.Contracts;
 using renting_room.Domain.Meters;
@@ -9,7 +10,7 @@ namespace renting_room.Application.Meters;
 /// <param name="CorrectPreviousFinal">Chỉ số nhận phòng nhỏ hơn số cuối của HĐ trước: "số cuối người cũ gõ nhầm" ⇒ điều chỉnh số đó (M05 CT-BR-02).</param>
 public sealed record MeterReadingInput(Guid MeterId, decimal? Value, bool CorrectPreviousFinal = false);
 
-public sealed class ContractMeterReadings(IMeterRepository meters, IMeterQueries meterQueries)
+public sealed class ContractMeterReadings(IMeterRepository meters, IMeterQueries meterQueries, IContractQueries contractQueries)
 {
     public async Task<Result> RecordAsync(
         Contract contract, ReadingKind kind, DateOnly date, IReadOnlyList<MeterReadingInput>? inputs, CancellationToken ct)
@@ -57,6 +58,44 @@ public sealed class ContractMeterReadings(IMeterRepository meters, IMeterQueries
         var ids = await meterQueries.ListActiveIdsInRoomAsync(contract.RoomId, date, ct);
         var active = await meterQueries.ListAsync(ids, ct);
         return active.Where(m => m.FindFinal(contract.Id, contract.RoomSince) is null).Select(m => m.Id).ToList();
+    }
+
+    /// <summary>
+    /// H-02 (M05 CT-BR-11): chỉ số cuối bắt buộc khi thanh lý — trừ ngày trả phòng trước "Tính tiền từ ngày" (chưa có chỉ số nhận phòng để đối chiếu).
+    /// Ngày trả phòng tương lai: nhập sau, trước hoàn tất.
+    /// </summary>
+    public static bool FinalRequiredAt(Contract contract, DateOnly endDate) => endDate >= contract.BillingStartDate;
+
+    /// <summary>
+    /// Người mới nhận phòng khi HĐ trước của phòng đang thanh lý mà chưa có chỉ số cuối ⇒ "Dùng số mới nhất" sẽ là số chốt kỳ cũ (H-02, M05 CT-BR-02).
+    /// <paramref name="exceptContractId"/>: HĐ cũ của lần ký lại (số cuối tự ghi theo số nhận phòng — CT-UC-21).
+    /// </summary>
+    public async Task<Error?> FindPreviousFinalMissingAsync(Guid roomId, DateOnly date, Guid? exceptContractId, CancellationToken ct)
+    {
+        var previous = (await contractQueries.ListLivedInRoomAsync(roomId, ct))
+            .Where(c => c.Status == ContractStatus.Liquidating && c.RoomId == roomId && c.Id != exceptContractId
+                && c.ActualEndDate is { } end && end < date && FinalRequiredAt(c, end))
+            .OrderByDescending(c => c.ActualEndDate).FirstOrDefault();
+        if (previous is null)
+            return null;
+        var missing = await MissingFinalAsync(previous, previous.ActualEndDate!.Value, ct);
+        return missing.Count == 0 ? null : MeterErrors.PreviousFinalReadingRequired(previous.ContractNo, missing);
+    }
+
+    /// <summary>Ký lại (CT-UC-21): số cuối HĐ cũ tại ngày bàn giao = số nhận phòng HĐ mới — cùng người, liền nhau. Gọi sau khi đã ghi chỉ số nhận phòng.</summary>
+    public async Task<Result> RecordFinalFromHandoverAsync(Contract old, Contract next, CancellationToken ct)
+    {
+        var date = old.ActualEndDate!.Value;
+        if (!FinalRequiredAt(old, date))
+            return Result.Success();
+        var ids = await meterQueries.ListActiveIdsInRoomAsync(next.RoomId, date, ct);
+        // Công tơ thay đúng ngày bàn giao không có chỉ số nhận phòng của HĐ mới ⇒ giữ chỉ số gần nhất tới ngày đó (không dùng thêm).
+        var inputs = (await meters.LockAndLoadAsync(ids, ct))
+            .Select(m => (m.Id, Value: m.FindHandover(next.Id)?.Value ?? m.LatestOnOrBefore(date)?.Value))
+            .Where(x => x.Value is not null)
+            .Select(x => new MeterReadingInput(x.Id, x.Value))
+            .ToList();
+        return await RecordAsync(old, ReadingKind.Final, date, inputs, ct);
     }
 
     /// <summary>Hủy thanh lý ⇒ hủy chỉ số cuối đã ghi của HĐ (chưa bị khóa vì hóa đơn trả phòng chưa chốt).</summary>
