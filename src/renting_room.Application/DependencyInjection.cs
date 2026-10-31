@@ -25,6 +25,7 @@ public static class DependencyInjection
         services.AddScoped<IDomainEventHandler, Billing.DraftStalenessHandler>();
         services.AddScoped<Billing.RoomChargeBilling>();
         services.AddScoped<Billing.InvoiceInputLoader>();
+        services.AddScoped<Billing.BillingGapPlanner>();
         services.AddScoped<Billing.InvoiceFinalizer>();
         services.AddScoped<Billing.FinalInvoiceSettlement>();
         services.AddScoped<Contracts.FinalDraftRefresher>();

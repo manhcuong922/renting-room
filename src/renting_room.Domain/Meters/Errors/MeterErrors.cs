@@ -57,6 +57,11 @@ public static class MeterErrors
     public static readonly Error PreviousContractNotEnded = Error.BusinessRule("PREVIOUS_CONTRACT_NOT_ENDED",
         "Hợp đồng trước chưa kết thúc — sửa số cuối trên hợp đồng đó trước.");
 
+    public static Error PreviousFinalReadingRequired(string previousContractNo, IReadOnlyCollection<Guid> meterIds) =>
+        Error.BusinessRule("PREVIOUS_FINAL_READING_REQUIRED",
+                $"Hợp đồng {previousContractNo} đang thanh lý nhưng chưa có chỉ số cuối — nhập chỉ số cuối của hợp đồng đó trước khi nhận phòng.")
+            .WithDetail("previousContractNo", previousContractNo).WithDetail("meterIds", meterIds);
+
     public static Error HandoverBelowPreviousFinal(Guid meterId, decimal previousValue, string previousContractNo) =>
         Error.BusinessRule("HANDOVER_BELOW_PREVIOUS_FINAL",
                 $"Chỉ số nhận phòng nhỏ hơn số cuối {previousValue:0.##} của hợp đồng {previousContractNo} — số cuối người cũ gõ nhầm, công tơ đã thay hay nhập nhầm?")

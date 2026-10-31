@@ -54,6 +54,26 @@ public sealed class MeterTests
     }
 
     [Fact]
+    public void Correct_WithNewDate_MovesTheReading_AndChecksOrderAtTheNewPosition()
+    {
+        // L-10: sửa chỉ số cuối kỳ kèm ngày ghi mới — đơn điệu xét theo vị trí ngày mới.
+        var meter = NewMeter();
+        meter.Record(ReadingKind.Handover, Day, 100, Contract, null);
+        meter.Record(ReadingKind.Adhoc, Day.AddDays(20), 140, null, null);
+        var periodic = meter.Record(ReadingKind.Periodic, Day.AddDays(30), 150, Contract, null, Day).Value!;
+
+        meter.Correct(periodic.Id, 150, null, Day.AddDays(10)).Error!.Code.Should().Be("READING_NOT_MONOTONIC", "ngày 11/10 đứng trước số kiểm tra 140");
+        meter.Correct(periodic.Id, 150, null, Day.AddDays(-1)).Error.Should().Be(MeterErrors.InvalidReadingDate);
+        periodic.ReadingDate.Should().Be(Day.AddDays(30));
+
+        meter.Correct(periodic.Id, 145, null, Day.AddDays(25)).IsSuccess.Should().BeTrue();
+        periodic.ReadingDate.Should().Be(Day.AddDays(25));
+        periodic.Value.Should().Be(145);
+        meter.Correct(periodic.Id, 145, null, Day.AddDays(28)).IsSuccess.Should().BeTrue("chỉ đổi ngày");
+        periodic.ReadingDate.Should().Be(Day.AddDays(28));
+    }
+
+    [Fact]
     public void Record_OutsideActivePeriod_IsRejected()
     {
         var meter = NewMeter();

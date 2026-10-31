@@ -37,6 +37,7 @@ public class AppDbContext(
     public DbSet<Meter> Meters => Set<Meter>();
     public DbSet<Invoice> Invoices => Set<Invoice>();
     public DbSet<RoomCharge> RoomCharges => Set<RoomCharge>();
+    public DbSet<ContractBillingGap> ContractBillingGaps => Set<ContractBillingGap>();
     public DbSet<InvoiceAdjustment> InvoiceAdjustments => Set<InvoiceAdjustment>();
     public DbSet<RenterConsent> RenterConsents => Set<RenterConsent>();
     public DbSet<Payment> Payments => Set<Payment>();

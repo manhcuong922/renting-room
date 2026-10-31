@@ -129,18 +129,22 @@ public sealed class Meter : TenantEntity
         return next;
     }
 
-    public Result<MeterReading> Correct(Guid readingId, decimal value, string? note)
+    /// <param name="date">Ngày ghi mới (lưới chỉ số gửi lại dòng đã có số); null = giữ ngày.</param>
+    public Result<MeterReading> Correct(Guid readingId, decimal value, string? note, DateOnly? date = null)
     {
         var reading = _readings.FirstOrDefault(r => r.Id == readingId && r.VoidedAt is null);
         if (reading is null)
             return Result.Failure<MeterReading>(MeterErrors.ReadingNotFound);
         GuardValue(value);
+        var readingDate = date ?? reading.ReadingDate;
+        if (readingDate != reading.ReadingDate && (readingDate < InstalledDate || (RemovedDate is { } removed && readingDate >= removed)))
+            return Result.Failure<MeterReading>(MeterErrors.InvalidReadingDate);
 
-        var monotonic = CheckMonotonic(reading.ReadingDate, reading.Kind, SequenceKey(reading), value, exclude: reading);
+        var monotonic = CheckMonotonic(readingDate, reading.Kind, SequenceKey(reading), value, exclude: reading);
         if (monotonic.IsFailure)
             return Result.Failure<MeterReading>(monotonic.Error!);
 
-        if (reading.Correct(value, note))
+        if (reading.Correct(value, note, readingDate))
             Raise(new MeterReadingChanged(Id));
         return reading;
     }

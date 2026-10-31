@@ -208,7 +208,7 @@ public sealed class SaveMeterReadingsHandler(
     {
         if (meter is null || contract is null || meter.PropertyId != contract.PropertyId || meter.RoomId != contract.RoomId)
             return MeterErrors.UnknownMeter;
-        if (contract.Status is not (ContractStatus.Active or ContractStatus.Liquidating or ContractStatus.Ended))
+        if (contract.Status is not (ContractStatus.Active or ContractStatus.Liquidating))
             return ContractErrors.NotActive;
         if (!contract.IsPeriodStart(schedule!, row.ClosingPeriodStart))
             return Error.Validation("NOT_PERIOD_START", "Kỳ không hợp lệ với hợp đồng — tải lại lưới.");
@@ -218,7 +218,7 @@ public sealed class SaveMeterReadingsHandler(
         {
             if (locked.Contains(existing.Id))
                 return MeterErrors.ReadingLocked;
-            var corrected = meter.Correct(existing.Id, row.Value, null);
+            var corrected = meter.Correct(existing.Id, row.Value, null, row.ReadingDate);
             return corrected.IsFailure ? corrected.Error : null;
         }
         var recorded = meter.Record(ReadingKind.Periodic, row.ReadingDate, row.Value, contract.Id, null, row.ClosingPeriodStart);

@@ -67,9 +67,11 @@ public sealed class GetLiquidationPreviewHandler(
         var finalRequired = FinalInvoiceNeed.IsRequired(billing.Schedule, contract.BillingStartDate, endDate, periodRows);
         var options = last is null ? [] : await OptionsAsync(contract, last, cancellationToken);
 
-        var blockers = Blockers(contract, today, finalRequired ? missing : [], invoices, finalRequired ? final : null, finalRequired);
+        // Chỉ số cuối bắt buộc trong mọi trường hợp (CT-BR-12, H-02), không phụ thuộc có cần hóa đơn trả phòng.
+        var missingFinal = ContractMeterReadings.FinalRequiredAt(contract, endDate) ? missing : [];
+        var blockers = Blockers(contract, today, missingFinal, invoices, finalRequired ? final : null, finalRequired);
         return new LiquidationPreviewDto(
-            contract.Status, contract.ActualEndDate, unpaid, outstanding, refundDue, finalRequired ? missing : [], final?.Id, final?.Status, otherDrafts,
+            contract.Status, contract.ActualEndDate, unpaid, outstanding, refundDue, missingFinal, final?.Id, final?.Status, otherDrafts,
             pending.Count,
             new ContractDepositDto(contract.DepositAmount, contract.HasDeposit ? contract.DepositStatus : null, contract.DepositRefundedOn,
                 contract.DepositRefundedAmount, contract.DepositNote,

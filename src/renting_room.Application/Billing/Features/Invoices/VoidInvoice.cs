@@ -20,7 +20,7 @@ public sealed class VoidInvoiceCommandValidator : AbstractValidator<VoidInvoiceC
 public sealed class VoidInvoiceHandler(
     IUnitOfWork unitOfWork, IInvoiceRepository invoices, IInvoiceQueries invoiceQueries, RoomChargeBilling roomCharges, IRoomChargeRepository charges,
     ReadingAdjustmentCharges adjustments, IContractQueries contracts, IContractRepository contractRepository, FinalInvoiceSettlement settlement,
-    TimeProvider clock)
+    IBillingGapRepository gaps, TimeProvider clock)
     : IRequestHandler<VoidInvoiceCommand, Result<InvoiceDetailDto>>
 {
     public async ValueTask<Result<InvoiceDetailDto>> Handle(VoidInvoiceCommand request, CancellationToken cancellationToken)
@@ -47,6 +47,8 @@ public sealed class VoidInvoiceHandler(
         if (invoice.Type == InvoiceType.Final)
             await settlement.RevertAsync((await contractRepository.GetForUpdateAsync(contractId.Value, cancellationToken))!, invoice, cancellationToken);
         await roomCharges.DetachAllAsync(invoice.Id, cancellationToken);
+        if (await gaps.FindResumedByAsync(invoice.Id, cancellationToken) is { } gap)
+            gaps.Remove(gap); // BL-BR-45
         var cancelled = await CancelAdjustmentsAsync(invoice.Id, cancellationToken);
         if (cancelled.IsFailure)
             return cancelled.Error!;

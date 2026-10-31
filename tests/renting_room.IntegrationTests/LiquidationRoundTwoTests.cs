@@ -100,9 +100,16 @@ public sealed class LiquidationRoundTwoTests(ApiFactory factory)
         await FinalizeAsync(s, Id(await InvoiceForAsync(s, s.Start)));
     }
 
-    private Task<HttpResponseMessage> StartAsync(Setup s, DateOnly actualEndDate, string? finalPeriodCharge = null) =>
-        _client.PostJsonAsync($"/api/v1/contracts/{s.ContractId}/liquidation/start",
-            new { actualEndDate, reason = "MutualAgreement", finalPeriodCharge }, s.Token);
+    /// <summary>Chỉ số cuối bắt buộc khi bắt đầu thanh lý (H-02): công tơ chưa chạy thêm kể từ chỉ số gần nhất tới ngày trả phòng.</summary>
+    private async Task<HttpResponseMessage> StartAsync(Setup s, DateOnly actualEndDate, string? finalPeriodCharge = null)
+    {
+        var readings = await (await _client.GetAsync($"/api/v1/meters/{s.MeterId}/readings", s.Token)).ReadAsync<List<JsonElement>>();
+        var latest = readings.First(r => DateOnly.Parse(r.GetProperty("readingDate").GetString()!) <= actualEndDate).GetProperty("value").GetDecimal();
+        return await _client.PostJsonAsync($"/api/v1/contracts/{s.ContractId}/liquidation/start", new
+        {
+            actualEndDate, reason = "MutualAgreement", finalPeriodCharge, finalReadings = new[] { new { meterId = s.MeterId, value = (decimal?)latest } }
+        }, s.Token);
+    }
 
     private Task<HttpResponseMessage> ChargeAsync(Setup s, string? finalPeriodCharge) =>
         _client.PutJsonAsync($"/api/v1/contracts/{s.ContractId}/liquidation/final-period-charge", new { finalPeriodCharge }, s.Token);

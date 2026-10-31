@@ -30,6 +30,9 @@ public static class RoomTransferWarnings
     public static Warning MeterOnlyInNewRoom(string feeName) => new("METER_ONLY_IN_NEW_ROOM",
         $"Phòng mới có công tơ \"{feeName}\" mà phòng cũ không có — nếu hợp đồng đang có dịch vụ tính theo đầu người cho khoản này thì bỏ để không tính 2 lần.");
 
+    public static readonly Warning PreviousPeriodNotBilled = new("PREVIOUS_PERIOD_NOT_BILLED",
+        "Có kỳ đã qua chưa lập hóa đơn — nên lập trước khi chuyển phòng để điện nước phòng cũ tính đúng kỳ.");
+
     public static readonly Warning CancelledCheckRent = new("ROOM_TRANSFER_CANCELLED_CHECK_RENT",
         "Đã chuyển lại về phòng cũ — có giá thuê / dịch vụ đổi lúc chuyển chưa tự trả lại được, kiểm tra và sửa nếu cần.");
 }
@@ -68,7 +71,7 @@ public enum TransferRentFrom
 public sealed record TransferRoomCommand(
     Guid ContractId, Guid ToRoomId, IReadOnlyList<MeterReadingInput>? OldRoomReadings,
     IReadOnlyList<MeterReadingInput>? NewRoomReadings, decimal? MonthlyRent, string? Note, TransferRentFrom? RentFrom = null,
-    IReadOnlyList<Guid>? RemoveFeeTypeIds = null) : IRequest<Result<IReadOnlyList<Warning>>>;
+    IReadOnlyList<Guid>? RemoveFeeTypeIds = null, bool SkipUnbilledPeriods = false) : IRequest<Result<IReadOnlyList<Warning>>>;
 
 public sealed class TransferRoomCommandValidator : AbstractValidator<TransferRoomCommand>
 {
@@ -92,10 +95,11 @@ public sealed class TransferRoomHandler(
     IUnitOfWork unitOfWork, IContractRepository contracts, IContractQueries contractQueries, IRoomQueries rooms, IPropertyQueries properties,
     IFeeQueries fees, IMeterRepository meterRepository, IMeterQueries meterQueries, IInvoiceRepository invoices, IInvoiceQueries invoiceQueries,
     IRoomChargeRepository roomChargeRepository, RoomChargeBilling roomCharges, ContractMeterReadings meterReadings, ISender sender,
-    IInvoiceLockReader invoiceLocks, TimeProvider clock)
+    IInvoiceLockReader invoiceLocks, BillingGapPlanner gapPlanner, IBillingGapRepository gapRepository, TimeProvider clock)
     : IRequestHandler<TransferRoomCommand, Result<IReadOnlyList<Warning>>>
 {
     private const string UndoReason = "Chuyển lại về phòng cũ trong ngày";
+    private const string SkippedPeriodsNote = "Bỏ qua khi chuyển phòng";
 
     public async ValueTask<Result<IReadOnlyList<Warning>>> Handle(TransferRoomCommand request, CancellationToken cancellationToken)
     {
@@ -131,6 +135,9 @@ public sealed class TransferRoomHandler(
             return check.Error!;
         if (await BilledAfterAsync(contract, today, ct))
             return ContractErrors.TransferAlreadyBilled;
+        var unbilled = await PlanUnbilledPeriodsAsync(contract, request.SkipUnbilledPeriods, today, ct);
+        if (unbilled.Error is not null)
+            return unbilled.Error;
 
         var closing = await meterReadings.RecordAsync(contract, ReadingKind.Final, today, request.OldRoomReadings, ct);
         if (closing.IsFailure)
@@ -146,6 +153,10 @@ public sealed class TransferRoomHandler(
         await unitOfWork.SaveChangesAsync(ct);
 
         var warnings = new List<Warning> { RoomTransferWarnings.ResidenceRoomChanged };
+        if (unbilled.Plan.Skip)
+            gapRepository.Add(ContractBillingGap.Create(contract.Id, unbilled.Plan.Unbilled, null, SkippedPeriodsNote));
+        else if (unbilled.Prepaid && unbilled.Plan.Unbilled.Count > 0)
+            warnings.Add(RoomTransferWarnings.PreviousPeriodNotBilled);
         warnings.AddRange(await MeterWarningsAsync(fromRoomId, request.ToRoomId, today, ct));
         var rentChange = new TransferRentChange();
         var rented = await ApplyRentAsync(contract, request, today, warnings, rentChange, ct);
@@ -254,6 +265,26 @@ public sealed class TransferRoomHandler(
             : Result.Success();
     }
 
+    /// <summary>
+    /// M-09 (CT-BR-14): kỳ đã kết thúc trước ngày chuyển mà chưa có hóa đơn ⇒ số cuối lúc chuyển có thể bị hóa đơn kỳ đó mượn làm số cuối kỳ.
+    /// Khu thu sau: chặn (tạo hóa đơn hoặc bỏ qua kỳ rỗng — khoảng ngắt, M07 BL-BR-42); khu thu trước: chỉ cảnh báo.
+    /// </summary>
+    private async Task<(GapPlan Plan, bool Prepaid, Error? Error)> PlanUnbilledPeriodsAsync(
+        Contract contract, bool skipUnbilledPeriods, DateOnly today, CancellationToken ct)
+    {
+        var schedule = (await properties.GetBillingAsync(contract.PropertyId, ct)).Schedule;
+        if (contract.BillingPeriods(schedule, today).LastOrDefault() is not { } period)
+            return (GapPlan.Continuous, false, null);
+        var prepaid = schedule.ChargeModeOn(period.Start) == ChargeMode.Prepaid;
+        var rows = (await invoiceQueries.ListPeriodsAsync(contract.Id, ct)).Select(i => (i.PeriodStart, i.PeriodEnd, i.Status)).ToList();
+        var plan = await gapPlanner.PlanAsync(contract, schedule, period, rows, skipUnbilledPeriods && !prepaid, ct);
+        if (prepaid)
+            return (plan, true, null);
+        if (plan.Error is not null)
+            return (plan, false, plan.Error);
+        return (plan, false, plan.NeedsSkip ? BillingErrors.PreviousNotBilledPeriods(plan.UnbilledDtos) : null);
+    }
+
     /// <summary>Phòng có HĐ khác chiếm từ ngày <paramref name="date"/> (hiệu lực / giữ chỗ / lịch sử chuyển phòng).</summary>
     private Task<bool> RoomTakenAsync(Guid contractId, Guid roomId, DateOnly date, CancellationToken ct) =>
         contractQueries.IsRoomTakenAsync(contractId, roomId, date, ct);
@@ -283,6 +314,9 @@ public sealed class TransferRoomHandler(
         var readings = await VoidReadingsAsync(contract.Id, oldRoomId, newRoomId, date, now, ct);
         if (readings.IsFailure)
             return readings.Error!;
+        // Chuyển nhầm xóa như chưa từng chuyển ⇒ kỳ đã bỏ qua lúc chuyển phải lập hóa đơn lại được.
+        foreach (var gap in (await gapRepository.ListByContractAsync(contract.Id, ct)).Where(g => g.ResumedInvoiceId is null && g.Note == SkippedPeriodsNote))
+            gapRepository.Remove(gap);
         var reverted = undo is not null && Revert(contract, undo);
         var restored = contract.CancelLastTransfer();
         if (restored.IsFailure)
@@ -332,8 +366,7 @@ public sealed class TransferRoomHandler(
     private async Task<Result> VoidReadingsAsync(Guid contractId, Guid oldRoomId, Guid newRoomId, DateOnly date, DateTimeOffset now, CancellationToken ct)
     {
         var meterRooms = await meterQueries.ListRoomMetersAsync([oldRoomId, newRoomId], ct);
-        var newMeterIds = meterRooms.Where(m => m.RoomId == newRoomId).Select(m => m.Id).ToList();
-        var locked = await invoiceQueries.GetLockedReadingIdsAsync(newMeterIds, ct);
+        var locked = await invoiceQueries.GetLockedReadingIdsAsync(meterRooms.Select(m => m.Id).ToList(), ct);
         foreach (var meter in await meterRepository.LockAndLoadAsync(meterRooms.Select(m => m.Id), ct))
         {
             var isNewRoom = meter.RoomId == newRoomId;

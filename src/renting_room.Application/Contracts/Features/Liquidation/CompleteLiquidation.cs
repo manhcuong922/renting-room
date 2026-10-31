@@ -39,6 +39,9 @@ public enum DepositAction
 
 public sealed record LiquidationDeposit(DepositAction Action, decimal? Amount, DateOnly? Date, string? Note);
 
+/// <summary>Kỳ trả phòng đã xử lý ngoài hệ thống (M07 BL-BR-46): không lập hóa đơn trả phòng, ghi khoảng ngắt tính tiền.</summary>
+public sealed record LiquidationExternalSettlement(string? Note);
+
 /// <param name="Settlement">Bắt buộc khi còn nợ; null mà còn nợ ⇒ 422 CONTRACT_HAS_DEBT (cảnh báo kèm số nợ).</param>
 /// <param name="Method">Phương thức khi "Đã thu toàn bộ" — mặc định tiền mặt.</param>
 /// <param name="Reason">Lý do bỏ nợ (bắt buộc khi WriteOff) / ghi chú phiếu thu.</param>
@@ -46,7 +49,8 @@ public sealed record LiquidationDeposit(DepositAction Action, decimal? Amount, D
 /// <param name="PendingCharges">Bắt buộc khi còn khoản chưa xử lý (PENDING_CHARGES).</param>
 public sealed record CompleteLiquidationCommand(
     Guid ContractId, DebtSettlement? Settlement = null, PaymentMethod? Method = null, DateOnly? PaidAt = null, string? Reason = null,
-    LiquidationRefund? Refund = null, LiquidationPendingCharges? PendingCharges = null, LiquidationDeposit? Deposit = null)
+    LiquidationRefund? Refund = null, LiquidationPendingCharges? PendingCharges = null, LiquidationDeposit? Deposit = null,
+    LiquidationExternalSettlement? ExternalSettlement = null, IReadOnlyList<MeterReadingInput>? FinalReadings = null)
     : IRequest<Result>;
 
 public sealed class CompleteLiquidationCommandValidator : AbstractValidator<CompleteLiquidationCommand>
@@ -70,6 +74,7 @@ public sealed class CompleteLiquidationCommandValidator : AbstractValidator<Comp
         RuleFor(x => x.Deposit!.Action).IsInEnum().When(x => x.Deposit is not null);
         RuleFor(x => x.Deposit!.Amount).OptionalMoney().When(x => x.Deposit is not null);
         RuleFor(x => x.Deposit!.Note).OptionalText(500).When(x => x.Deposit is not null);
+        RuleFor(x => x.ExternalSettlement!.Note).OptionalText(500).When(x => x.ExternalSettlement is not null);
     }
 }
 
@@ -77,7 +82,7 @@ public sealed class CompleteLiquidationCommandValidator : AbstractValidator<Comp
 public sealed class CompleteLiquidationHandler(
     ContractMutation mutation, ContractMeterReadings meterReadings, IInvoiceQueries invoiceQueries, IInvoiceRepository invoices,
     IRoomChargeRepository roomCharges, IPropertyQueries properties, IUserQueries users, PaymentPosting posting, ICurrentUser currentUser,
-    TimeProvider clock)
+    LiquidationDrafts drafts, BillingGapPlanner gapPlanner, IBillingGapRepository gapRepository, TimeProvider clock)
     : IRequestHandler<CompleteLiquidationCommand, Result>
 {
     private const string RefundNote = "Xác nhận khi hoàn tất thanh lý";
@@ -86,7 +91,9 @@ public sealed class CompleteLiquidationHandler(
         new(mutation.RunAsync(request.ContractId, async contract =>
         {
             var now = clock.GetUtcNow();
-            var ready = await CheckReadyAsync(contract, now.ToBusinessDate(), cancellationToken);
+            var ready = request.ExternalSettlement is { } external
+                ? await SettleExternallyAsync(contract, external, request.FinalReadings, now.ToBusinessDate(), cancellationToken)
+                : await CheckReadyAsync(contract, request.FinalReadings, now.ToBusinessDate(), cancellationToken);
             if (ready.IsFailure)
                 return ready;
             var steps = await ConfirmRefundsAsync(contract, request.Refund, now.ToBusinessDate(), cancellationToken);
@@ -99,7 +106,13 @@ public sealed class CompleteLiquidationHandler(
             return steps.IsFailure ? steps : contract.CompleteLiquidation(now);
         }, cancellationToken));
 
-    private async Task<Result> CheckReadyAsync(Contract contract, DateOnly today, CancellationToken ct)
+    /// <summary>Chỉ số cuối bắt buộc trong mọi trường hợp (H-02) — ngày trả phòng tương lai thì nhập ở đây / hóa đơn trả phòng.</summary>
+    private async Task<Result> EnsureFinalReadingsAsync(Contract contract, IReadOnlyList<MeterReadingInput>? readings, CancellationToken ct) =>
+        ContractMeterReadings.FinalRequiredAt(contract, contract.ActualEndDate!.Value)
+            ? await meterReadings.RecordAsync(contract, ReadingKind.Final, contract.ActualEndDate!.Value, readings, ct)
+            : Result.Success();
+
+    private async Task<Result> CheckReadyAsync(Contract contract, IReadOnlyList<MeterReadingInput>? readings, DateOnly today, CancellationToken ct)
     {
         if (contract.Status != ContractStatus.Liquidating)
             return Result.Failure(ContractErrors.NotLiquidating);
@@ -107,15 +120,53 @@ public sealed class CompleteLiquidationHandler(
             return Result.Failure(ContractErrors.LiquidationBeforeEndDate);
         if (await invoiceQueries.HasDraftAsync(contract.Id, ct))
             return Result.Failure(BillingErrors.DraftExists);
-        // Không còn phần chưa thu (CT-UC-08) ⇒ không cần hóa đơn trả phòng / chỉ số cuối — số chốt kỳ là số cuối của HĐ.
+        var finals = await EnsureFinalReadingsAsync(contract, readings, ct);
+        if (finals.IsFailure)
+            return finals;
+        // Không còn phần chưa thu (CT-UC-08) ⇒ không cần hóa đơn trả phòng — số chốt kỳ là số cuối của kỳ cuối.
         var schedule = (await properties.GetBillingAsync(contract.PropertyId, ct)).Schedule;
         if (!FinalInvoiceNeed.IsRequired(schedule, contract.BillingStartDate, contract.ActualEndDate!.Value,
                 await invoiceQueries.ListPeriodsAsync(contract.Id, ct)))
             return Result.Success();
-        var missing = await meterReadings.MissingFinalAsync(contract, contract.ActualEndDate!.Value, ct);
-        if (missing.Count > 0)
-            return Result.Failure(MeterErrors.FinalReadingRequired(missing));
         return await invoiceQueries.HasFinalizedFinalAsync(contract.Id, ct) ? Result.Success() : Result.Failure(BillingErrors.FinalRequired);
+    }
+
+    /// <summary>
+    /// M07 BL-BR-46: "đã xử lý ngoài hệ thống" — xóa nháp sót, ghi khoảng ngắt phủ mọi kỳ chưa có phiếu đến hết kỳ cuối, không cần hóa đơn trả phòng
+    /// (chỉ số cuối vẫn bắt buộc như mọi lần thanh lý). Nợ, cọc, khoản chờ vẫn xử lý ở các bước sau.
+    /// </summary>
+    private async Task<Result> SettleExternallyAsync(
+        Contract contract, LiquidationExternalSettlement external, IReadOnlyList<MeterReadingInput>? readings, DateOnly today, CancellationToken ct)
+    {
+        if (contract.Status != ContractStatus.Liquidating)
+            return Result.Failure(ContractErrors.NotLiquidating);
+        if (today < contract.ActualEndDate)
+            return Result.Failure(ContractErrors.LiquidationBeforeEndDate);
+        if (string.IsNullOrWhiteSpace(external.Note))
+            return Result.Failure(BillingErrors.ExternalNoteRequired);
+        var finals = await EnsureFinalReadingsAsync(contract, readings, ct);
+        if (finals.IsFailure)
+            return finals;
+
+        var endDate = contract.ActualEndDate!.Value;
+        var schedule = (await properties.GetBillingAsync(contract.PropertyId, ct)).Schedule;
+        var last = contract.BillingPeriods(schedule, endDate).LastOrDefault();
+        var beforeDrafts = await invoiceQueries.ListPeriodsAsync(contract.Id, ct);
+        if (last is null || beforeDrafts.Any(i => i.Status != InvoiceStatus.Draft && i.PeriodStart <= last.End && i.PeriodEnd >= last.Start))
+            return Result.Failure(BillingErrors.ExternalSettlementNotAllowed);
+
+        await drafts.DeleteAllAsync(contract.Id, ct);
+        var invoiceRows = (await invoiceQueries.ListPeriodsAsync(contract.Id, ct)).Select(i => (i.PeriodStart, i.PeriodEnd, i.Status)).ToList();
+        // Kỳ giả ngay sau ngày trả phòng: mọi kỳ của HĐ (kể cả kỳ cuối) đều "đứng trước" nó.
+        var after = new BillingPeriod(endDate.AddDays(1), endDate.AddDays(1), new DateOnly(endDate.Year, endDate.Month, 1));
+        var plan = await gapPlanner.PlanAsync(contract, schedule, after, invoiceRows, true, ct);
+        if (plan.Error is { } error)
+            return Result.Failure(error);
+        if (!plan.Skip || plan.Unbilled[^1].End != last.End)
+            return Result.Failure(BillingErrors.ExternalSettlementNotAllowed);
+
+        gapRepository.Add(ContractBillingGap.Create(contract.Id, plan.Unbilled, null, external.Note));
+        return Result.Success();
     }
 
     private async Task<Result> ConfirmRefundsAsync(Contract contract, LiquidationRefund? refund, DateOnly today, CancellationToken ct)

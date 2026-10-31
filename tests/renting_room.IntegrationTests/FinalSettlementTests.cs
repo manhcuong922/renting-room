@@ -79,7 +79,7 @@ public sealed class FinalSettlementTests(ApiFactory factory)
     private async Task<JsonElement> MoveOutDraftAsync(Setup s)
     {
         (await _client.PostJsonAsync($"/api/v1/contracts/{s.ContractId}/liquidation/start",
-            new { actualEndDate = s.Start.AddMonths(1).AddDays(9), reason = "MutualAgreement", finalPeriodCharge = "Daily" }, s.Token))
+            new { actualEndDate = s.Start.AddMonths(1).AddDays(9), reason = "MutualAgreement", finalPeriodCharge = "Daily", finalReadings = new[] { new { meterId = s.MeterId, value = (decimal?)170 } } }, s.Token))
             .StatusCode.Should().Be(HttpStatusCode.NoContent);
         var created = await _client.PostJsonAsync($"/api/v1/contracts/{s.ContractId}/final-invoice",
             new { finalReadings = new[] { new { meterId = s.MeterId, value = (decimal?)170 } } }, s.Token);

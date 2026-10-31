@@ -17,4 +17,5 @@ public sealed record InvoiceCalcInput(
     IReadOnlyDictionary<Guid, IReadOnlyList<decimal>>? RecentUsage = null,
     bool RoundTotal = false,
     IReadOnlySet<Guid>? ClosedReadingIds = null,
-    IReadOnlyDictionary<Guid, string>? RoomCodes = null);
+    IReadOnlyDictionary<Guid, string>? RoomCodes = null,
+    DateOnly? GapClosingPeriodStart = null);

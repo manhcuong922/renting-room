@@ -259,8 +259,8 @@ cho phiếu tháng đó. Hợp đồng **trả sau** (`Postpaid`): kỳ của th
 ```
 
 → **200** `{ "saved": 1, "warnings": [] }`. **Cả lô hoặc không gì**: có dòng lỗi ⇒ 422 `READINGS_INVALID`, body có `rowErrors: [{ index, code, message }]`
-(`READING_NOT_MONOTONIC`, `READING_LOCKED`, `METER_NOT_IN_ROOM`, `NOT_PERIOD_START`…) — tô đỏ dòng theo `index`, chưa lưu dòng nào.
-Gửi lại dòng đã có số ⇒ sửa số đó (nếu chưa khóa). Hóa đơn nháp đang dùng các công tơ này **tự tính lại** trong cùng lệnh (20/10/2026).
+(`READING_NOT_MONOTONIC`, `READING_LOCKED`, `METER_NOT_IN_ROOM`, `NOT_PERIOD_START`, `INVALID_READING_DATE`, `CONTRACT_NOT_ACTIVE` — HĐ đã hoàn tất thanh lý…) — tô đỏ dòng theo `index`, chưa lưu dòng nào.
+Gửi lại dòng đã có số ⇒ sửa **cả số và ngày ghi** của chỉ số đó (nếu chưa khóa — 28/10/2026). Hóa đơn nháp đang dùng các công tơ này **tự tính lại** trong cùng lệnh (20/10/2026).
 
 **Cảnh báo ngày ghi (12/10/2026, không chặn lưu):** `readingDate` nằm ngoài khoảng **7 ngày trước → 15 ngày sau ngày cuối kỳ** (`usageEnd`) ⇒
 kết quả lưu có `warnings: [ { "index": 0, "code": "READING_DATE_FAR_FROM_PERIOD_END", "message": "Ngày ghi 06/11/2026 lệch xa ngày cuối kỳ 30/11/2026 — …" } ]`.

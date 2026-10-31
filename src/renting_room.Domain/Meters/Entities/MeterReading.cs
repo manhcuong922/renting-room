@@ -37,13 +37,14 @@ public sealed class MeterReading : TenantEntity
         VoidReason = reason;
     }
 
-    internal bool Correct(decimal value, string? note)
+    internal bool Correct(decimal value, string? note, DateOnly readingDate)
     {
         var text = TextNormalizer.TrimToNull(note) ?? Note;
-        if (Value == value && Note == text)
+        if (Value == value && Note == text && ReadingDate == readingDate)
             return false;
         Value = value;
         Note = text;
+        ReadingDate = readingDate;
         return true;
     }
 }

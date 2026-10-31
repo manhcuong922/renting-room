@@ -12,12 +12,13 @@ using renting_room.Domain.Meters;
 
 namespace renting_room.Application.Billing;
 
-public sealed record CreateFinalInvoiceCommand(Guid ContractId, IReadOnlyList<MeterReadingInput>? FinalReadings) : IRequest<Result<InvoiceDetailDto>>;
+public sealed record CreateFinalInvoiceCommand(Guid ContractId, IReadOnlyList<MeterReadingInput>? FinalReadings, bool SkipUnbilledPeriods = false)
+    : IRequest<Result<InvoiceDetailDto>>;
 
 public sealed class CreateFinalInvoiceHandler(
     IUnitOfWork unitOfWork, IContractRepository contracts, IInvoiceRepository invoiceRepository, IInvoiceQueries invoiceQueries,
     IPropertyQueries properties, IRoomQueries rooms, IRenterQueries renters, InvoiceInputLoader inputs, ContractMeterReadings meterReadings,
-    RoomChargeBilling roomCharges, TimeProvider clock)
+    RoomChargeBilling roomCharges, BillingGapPlanner gapPlanner, IBillingGapRepository gapRepository, TimeProvider clock)
     : IRequestHandler<CreateFinalInvoiceCommand, Result<InvoiceDetailDto>>
 {
     public async ValueTask<Result<InvoiceDetailDto>> Handle(CreateFinalInvoiceCommand request, CancellationToken cancellationToken)
@@ -40,9 +41,12 @@ public sealed class CreateFinalInvoiceHandler(
         var period = contract.BillingPeriods(schedule, contract.ActualEndDate!.Value).LastOrDefault();
         if (period is null)
             return BillingErrors.FinalNotRequired;
-        var previousBilled = invoices.Any(i => i.PeriodStart == period.Start || i.PeriodEnd == period.Start.AddDays(-1));
-        if (!previousBilled && period.Start != contract.BillingStartDate)
-            return BillingErrors.PreviousNotBilled;
+        var plan = await gapPlanner.PlanAsync(contract, schedule, period, invoices.Select(i => (i.PeriodStart, i.PeriodEnd, i.Status)).ToList(),
+            request.SkipUnbilledPeriods, cancellationToken);
+        if (plan.Error is not null)
+            return plan.Error;
+        if (plan.NeedsSkip)
+            return BillingErrors.PreviousNotBilledPeriods(plan.UnbilledDtos);
 
         var readings = await meterReadings.RecordAsync(
             contract, ReadingKind.Final, contract.ActualEndDate.Value, request.FinalReadings, cancellationToken);
@@ -51,12 +55,14 @@ public sealed class CreateFinalInvoiceHandler(
         await unitOfWork.SaveChangesAsync(cancellationToken); // chỉ số cuối phải có trong DB trước khi nạp dữ liệu tính phiếu
 
         var calculation = InvoiceCalculator.Calculate(
-            await inputs.LoadAsync(contract, period, null, cancellationToken, InvoiceType.Final));
+            await inputs.LoadAsync(contract, period, null, cancellationToken, InvoiceType.Final, plan.ClosingPeriodStart));
         var room = (await rooms.GetCodeAsync(contract.RoomId, cancellationToken))!;
         var representative = (await renters.GetNamesAsync([contract.RepresentativeRenterId], cancellationToken))[contract.RepresentativeRenterId];
         var invoice = Invoice.CreateDraft(contract.PropertyId, contract.RoomId, contract.Id, period, room, contract.ContractNo,
             representative, calculation, InvoiceType.Final);
         invoiceRepository.Add(invoice);
+        if (plan.Skip)
+            gapRepository.Add(ContractBillingGap.Create(contract.Id, plan.Unbilled, invoice.Id, null));
         await roomCharges.AttachPendingAsync(invoice, cancellationToken);
 
         await unitOfWork.SaveChangesAsync(cancellationToken);

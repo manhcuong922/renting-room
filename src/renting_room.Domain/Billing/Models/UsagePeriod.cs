@@ -42,7 +42,10 @@ public sealed record UsagePeriod(DateOnly Start, DateOnly End, DateOnly ClosingP
         var movedIn = stay is not null && stay.From > Start;
         if (meter.InstalledDate > (movedIn ? stay!.From : Start))
             return meter.Ordered.FirstOrDefault(r => r.Kind == ReadingKind.Initial);
-        return movedIn ? meter.FindHandover(contractId, stay!.From, stay.To) : meter.LatestOnOrBefore(Start);
+        if (movedIn)
+            return meter.FindHandover(contractId, stay!.From, stay.To);
+        // Chỉ số nhận phòng của chính HĐ trước (M06 §3.3 bước 2(b)): chỉ số người trước ghi cùng ngày xếp sau Handover nên LatestOnOrBefore lấy nhầm.
+        return meter.FindHandover(contractId, to: Start) ?? meter.LatestOnOrBefore(Start);
     }
 
     public MeterReading? EndReading(Meter meter, Guid contractId, RoomStay? stay = null, RoomStay? left = null)
