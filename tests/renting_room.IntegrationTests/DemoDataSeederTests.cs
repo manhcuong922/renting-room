@@ -155,7 +155,7 @@ public sealed class DemoDataSeederTests(ApiFactory factory)
             .GetProperty("paymentStatus").GetString().Should().Be("RefundPending", "khoản giảm lớn hơn hóa đơn trả phòng");
 
         // Lượt 2 (20/10/2026): 215 màn hoàn tất có tiền cần trả lại + khoản chưa xử lý; 216 tính lại sẽ âm ⇒ Đẩy sang; 217 báo trả phòng;
-        // 218 hoàn tất một lần + không trả cọc; 219 chênh lệch sau thanh lý đã trả lại; 220 người mới nhập số nhỏ hơn ⇒ chênh lệch chờ xử lý.
+        // 218 hoàn tất một lần + không trả cọc; 219 chênh lệch sau thanh lý đã trả lại; 220 người mới nhập số nhỏ hơn ⇒ chấp nhận, HĐ cũ giữ nguyên (không có chênh lệch, M-10 28/10/2026).
         var preview215 = await (await _client.GetAsync(
             $"/api/v1/contracts/{(await DetailAsync("215", "Liquidating")).GetProperty("id").GetGuid()}/liquidation/preview", token)).ReadAsync<JsonElement>();
         preview215.GetProperty("needsRefundDecision").GetBoolean().Should().BeTrue();
@@ -225,12 +225,12 @@ public sealed class DemoDataSeederTests(ApiFactory factory)
         var charges = await (await _client.GetAsync("/api/v1/room-charges", token)).ReadAsync<JsonElement>();
         charges.EnumerateArray().Select(c => c.GetProperty("status").GetString()).Should().Contain(["Pending", "OnDraft", "Billed"]);
         charges.EnumerateArray().Where(c => c.GetProperty("status").GetString() == "Pending").Select(c => c.GetProperty("roomCode").GetString())
-            .Should().BeEquivalentTo(["101", "101", "102", "B08", "215", "216", "218", "219", "220"],
+            .Should().BeEquivalentTo(["101", "101", "102", "B08", "215", "216", "218", "219"],
                 "chuyển phòng không còn tạo khoản chốt điện nước — sản lượng phòng cũ cộng vào dòng của kỳ (CT-BR-47); B08 có khoản chênh lệch tiền phòng (CT-BR-48); 101 có thêm khoản bù điều chỉnh chỉ số (MT-UC-09); " +
-                "215 / 218 khoản sau khi chốt hóa đơn trả phòng, 216 khoản bù điều chỉnh, 219 / 220 chênh lệch sau thanh lý");
+                "215 / 218 khoản sau khi chốt hóa đơn trả phòng, 216 khoản bù điều chỉnh, 219 chênh lệch sau thanh lý");
         var afterEnd = charges.EnumerateArray().Where(c => c.GetProperty("description").GetString()!.StartsWith("Chênh lệch sau thanh lý")).ToList();
         afterEnd.Single(c => c.GetProperty("roomCode").GetString() == "219").GetProperty("isSettled").GetBoolean().Should().BeTrue("đã trả lại");
-        afterEnd.Single(c => c.GetProperty("roomCode").GetString() == "220").GetProperty("isSettled").GetBoolean().Should().BeFalse("chờ xử lý");
+        afterEnd.Should().NotContain(c => c.GetProperty("roomCode").GetString() == "220", "người mới chấp nhận số nhỏ hơn — người cũ không bị đụng tới (M-10)");
         charges.EnumerateArray().Should().Contain(c => c.GetProperty("roomCode").GetString() == "101" && c.GetProperty("kind").GetString() == "Credit"
             && c.GetProperty("description").GetString()!.StartsWith("Điều chỉnh chỉ số"), "điều chỉnh chỉ số đã chốt tạo khoản bù (MT-UC-09)");
         charges.EnumerateArray().Single(c => c.GetProperty("roomCode").GetString() == "B08").GetProperty("amount").GetDecimal().Should().Be(300_000);

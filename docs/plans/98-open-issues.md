@@ -8,14 +8,13 @@
 > Trong mỗi nhóm, issue xếp từ mức cao xuống thấp. **Quyết định đã chốt** ghi ngay dưới tên nhóm.
 
 ## Thứ tự làm đề xuất
-1. N3 → N4 → N2 (kẹt quy trình / sai tiền). N1 (thanh lý / ký lại / kết toán) đã xong 27/10/2026; N2 còn M-10 + Đ2 (H-02, M-09, L-10 xong 28/10/2026)
+1. N3 → N4 (kẹt quy trình / sai tiền). N1 (thanh lý / ký lại / kết toán) đã xong 27/10/2026; N2 (chỉ số công tơ giữa các HĐ: H-02, M-09, M-10, L-10, Đ2) đã xong 28/10/2026
 2. N5 (DoS, sửa nhỏ) — có thể làm xen bất kỳ lúc nào
 3. N6 (phân quyền; cần chốt thiết kế M-12, M-14)
 4. N7, N8, N9, rồi nhóm lẻ
 
 | Nhóm | Nội dung | Issue |
 |---|---|---|
-| N2 | Chỉ số công tơ giữa các HĐ | M-10, Đ2 |
 | N3 | Nháp liên tiếp và tính lại | H-03, M-21, L-02, L-03 |
 | N4 | Phiếu thu và hoàn tiền | H-04, M-01, L-21 |
 | N5 | Import Excel | H-05, L-07 |
@@ -26,11 +25,6 @@
 | Lẻ | Người ở, phòng, công tơ, Zalo, docs | M-11, L-09, L-11, L-19, L-20 |
 
 ---
-
-## N2 — Chỉ số công tơ giữa các HĐ
-- **M-10** [Công tơ] (còn lại sau 28/10/2026 — phần điểm đầu kỳ của người mới đã sửa; cùng họ Đ2, làm chung) Cùng ngày người cũ trả phòng cuối kỳ và người mới vào: người cũ gõ số chốt kỳ cao, hóa đơn đầu người mới đã chốt thì không điều chỉnh được số của người cũ (`MeterReadingAdjustment.cs:111` `READING_NEXT_PERIOD_FINALIZED` tính cả hóa đơn khác HĐ). Sửa: kiểm "kỳ sau đã chốt" chỉ trong cùng HĐ; phần chênh người cũ trả thừa/thiếu xử lý như Đ2.
-
-- **Đ2** [Công tơ, sinh ra khi bàn H-02 28/10/2026] Số nhận phòng của người sau đã bị hóa đơn đầu **đã chốt** khóa thì không sửa (`READING_LOCKED`) cũng không điều chỉnh được (`READING_NOT_ADJUSTABLE` — MT-BR-19 chỉ nhận chỉ số cuối đoạn đo). VD B nhận phòng 16/10 gõ 1.050 (thật 1.080), hóa đơn tháng 10 chốt + thu 150 kWh = 570.000đ (thật 120 kWh): thu thừa 114.000đ, không có đường sửa; số cuối người cũ 1.080 cũng không ghi được vì lớn hơn 1.050. Sửa: mở MT-BR-19 cho chỉ số nhận phòng (tính lại hóa đơn đầu của HĐ, Xử lý ngay / Đẩy sang hóa đơn sau); luồng đối xứng CT-BR-02 khi số cuối người cũ > số nhận phòng người mới ("số nhận phòng người mới ghi sai?"). Làm cùng phần điều chỉnh của M-10. Sau H-02 (số cuối ghi ngay lúc thanh lý) chỉ còn xảy ra khi gõ sai cả hai bên.
 
 ## N3 — Nháp liên tiếp và tính lại
 - **H-03** ✔ [Sai tiền + kẹt] Tính lại nháp kỳ k+1 khi nháp kỳ k đang `MISSING_READING` (vd hủy chỉ số cuối kỳ k): `DraftRecalculator.cs:15-23` không kiểm `PREVIOUS_PERIOD_INCOMPLETE` (chỉ `GenerateInvoices.cs:87` kiểm khi tạo mới) ⇒ k+1 nối chỉ số từ kỳ k−1, nuốt sản lượng 2 kỳ (giá bậc thu dư), chốt được. Nhập lại chỉ số k ⇒ 2 nháp cùng điểm đầu ⇒ 409 `ux_invoice_meter_segments_start`, không ghi được chỉ số.
@@ -68,9 +62,9 @@
 ## N7 — Tính tiền, điều chỉnh, validator
 - **M-02** [Thu thừa] Ký lại ở khu tính theo ngày: HĐ cũ thu dịch vụ theo ngày kỳ cuối + HĐ mới thu trọn dịch vụ kỳ đầu (`InvoiceCalculator.ServiceFactor`) ⇒ 1 tháng internet thu ~1,5 lần (05 CT-BR-11 vs 07 BL-BR-04). Sửa: ký lại ⇒ dịch vụ kỳ cuối HĐ cũ = không thu.
 - **M-04** [Sai tiền] Sửa tay chỉ số lượng dòng điện nước giá bậc: `Invoice.Lines.cs:213` = số lượng × giá bình quân của sản lượng cũ, không chia bậc lại (80→120 kWh: 238.500 thay vì 265.000). Sửa: dòng có `Price.Tiers` mà không gửi `amount` ⇒ `Price.Amount(q)`.
-- **M-05** [Thu lại phần đã bỏ] Điều chỉnh chỉ số lần sau sau khi đã "Không trả lại": khoản cũ bị hủy nên không thấy (`RoomChargeRepository.cs:27-30`), chênh vẫn tính từ số lúc chốt (`AfterEndAdjustment.cs:38-42`, `PreviousFinalCorrection.cs:56`) ⇒ gộp lại phần chủ trọ đã quyết bỏ (50 kWh + 5 ⇒ 55). Sửa: trừ phần các khoản đã "Không trả lại", hoặc chặn điều chỉnh tiếp.
+- **M-05** [Thu lại phần đã bỏ] Điều chỉnh chỉ số lần sau sau khi đã "Không trả lại": khoản cũ bị hủy nên không thấy (`RoomChargeRepository.cs:27-30`), chênh vẫn tính từ số lúc chốt (`AfterEndAdjustment.cs:38-42`; từ 28/10/2026 chỉ còn đường điều chỉnh thủ công số cuối HĐ đã kết thúc — người mới nhập số nhỏ hơn không còn sửa số cuối cũ) ⇒ gộp lại phần chủ trọ đã quyết bỏ (50 kWh + 5 ⇒ 55). Sửa: trừ phần các khoản đã "Không trả lại", hoặc chặn điều chỉnh tiếp.
 - **M-08** [Khóa giá] FE-BR-07 khóa theo max ngày dòng đã chốt trên **toàn tổ chức** (`FeePriceLockReader`) ⇒ nháp thiếu giá ở kỳ cũ không bao giờ thêm được giá ⇒ không chốt ⇒ không hoàn tất thanh lý, khu không đổi được cài đặt kỳ thu. Sửa: chỉ chặn khi bản giá mới làm đổi giá áp của một dòng đã chốt. (Độ chắc: trung bình)
-- **M-19** Chỉ số gửi kèm kích hoạt / chuyển phòng / hóa đơn trả phòng không có validator (`ContractRequests.cs:33,39,52`): giá trị âm / quá lớn ⇒ `Meter.GuardValue` throw; trùng `meterId` ⇒ `ContractMeterReadings.cs:18` `ToDictionary` throw ⇒ 500; 3 số lẻ bị làm tròn sau khi kiểm đơn điệu. Sửa: validator `MeterReadingInput` dùng chung cho 3 lệnh.
+- **M-19** Chỉ số gửi kèm kích hoạt / chuyển phòng / hóa đơn trả phòng không có validator (`ContractRequests.cs:33,39,52`): giá trị âm / quá lớn ⇒ `Meter.GuardValue` throw; trùng `meterId` ⇒ `ContractMeterReadings.cs:19` `ToDictionary` throw ⇒ 500; 3 số lẻ bị làm tròn sau khi kiểm đơn điệu. Sửa: validator `MeterReadingInput` dùng chung cho 3 lệnh.
 
 ## N8 — Concurrency và toàn vẹn
 Cách sửa chung: khóa theo thứ tự HĐ → phiếu → công tơ → người thuê; map 40P01 → 409.

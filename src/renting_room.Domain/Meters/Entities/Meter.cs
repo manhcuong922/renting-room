@@ -49,8 +49,19 @@ public sealed class Meter : TenantEntity
         return meter;
     }
 
-    public IEnumerable<MeterReading> Ordered =>
-        _readings.Where(r => r.VoidedAt is null).OrderBy(r => r.ReadingDate).ThenBy(r => r.Kind).ThenBy(SequenceKey);
+    /// <summary>
+    /// Thứ tự cùng ngày (M-10, MT-BR-03): HĐ vào trước xếp trước HĐ vào sau (theo lần ghi đầu tiên của HĐ trên công tơ), trong một HĐ theo loại rồi
+    /// <c>sequence</c>; chỉ số lắp luôn đầu, chỉ số tháo luôn cuối.
+    /// </summary>
+    public IEnumerable<MeterReading> Ordered
+    {
+        get
+        {
+            var live = _readings.Where(r => r.VoidedAt is null).ToList();
+            var groups = GroupSequences(live);
+            return live.OrderBy(r => r.ReadingDate).ThenBy(r => GroupOf(r, groups)).ThenBy(r => r.Kind).ThenBy(SequenceKey);
+        }
+    }
 
     public MeterReading? LatestOnOrBefore(DateOnly date) => Ordered.LastOrDefault(r => r.ReadingDate <= date);
 
@@ -88,7 +99,7 @@ public sealed class Meter : TenantEntity
         if (date < InstalledDate || (RemovedDate is { } removed && date >= removed))
             return Result.Failure<MeterReading>(MeterErrors.InvalidReadingDate);
 
-        var monotonic = CheckMonotonic(date, kind, long.MaxValue, value, exclude: null);
+        var monotonic = CheckMonotonic(date, kind, long.MaxValue, value, exclude: null, contractId);
         if (monotonic.IsFailure)
             return Result.Failure<MeterReading>(monotonic.Error!);
 
@@ -106,7 +117,7 @@ public sealed class Meter : TenantEntity
         if (date < InstalledDate || Ordered.Any(r => r.ReadingDate > date))
             return Result.Failure(MeterErrors.InvalidReadingDate);
 
-        var monotonic = CheckMonotonic(date, ReadingKind.Removal, long.MaxValue, finalValue, exclude: null);
+        var monotonic = CheckMonotonic(date, ReadingKind.Removal, long.MaxValue, finalValue, exclude: null, contractId: null);
         if (monotonic.IsFailure)
             return monotonic;
 
@@ -140,7 +151,7 @@ public sealed class Meter : TenantEntity
         if (readingDate != reading.ReadingDate && (readingDate < InstalledDate || (RemovedDate is { } removed && readingDate >= removed)))
             return Result.Failure<MeterReading>(MeterErrors.InvalidReadingDate);
 
-        var monotonic = CheckMonotonic(readingDate, reading.Kind, SequenceKey(reading), value, exclude: reading);
+        var monotonic = CheckMonotonic(readingDate, reading.Kind, SequenceKey(reading), value, exclude: reading, reading.ContractId);
         if (monotonic.IsFailure)
             return Result.Failure<MeterReading>(monotonic.Error!);
 
@@ -171,27 +182,50 @@ public sealed class Meter : TenantEntity
         Raise(new MeterReadingChanged(Id));
     }
 
-    private Result CheckMonotonic(DateOnly date, ReadingKind kind, long sequence, decimal value, MeterReading? exclude)
+    /// <summary>
+    /// Đơn điệu theo HĐ (M-10): chỉ so với chỉ số cùng HĐ, chỉ số không thuộc HĐ nào (lắp, kiểm tra), và chỉ số tháo khi đây là HĐ cuối cùng của công tơ. Chỉ số tháo
+    /// (<paramref name="contractId"/> null) so với toàn bộ chỉ số liền trước.
+    /// </summary>
+    private Result CheckMonotonic(DateOnly date, ReadingKind kind, long sequence, decimal value, MeterReading? exclude, Guid? contractId)
     {
-        var key = (date, kind, sequence);
         var others = Ordered.Where(r => r != exclude).ToList();
-        var previous = others.LastOrDefault(r => Compare(Key(r), key) < 0);
-        var next = others.FirstOrDefault(r => Compare(Key(r), key) > 0);
+        var groups = GroupSequences(others);
+        var key = (date, contractId is { } c && groups.TryGetValue(c, out var own) ? own : long.MaxValue, kind, sequence);
+        var lastContractAfter = others.LastOrDefault(r => r.ContractId is not null && Compare(Key(r, groups), key) > 0);
+        var lane = contractId is null
+            ? others
+            : others.Where(r => r.ContractId == contractId
+                || (r.ContractId is null && (r.Kind != ReadingKind.Removal || lastContractAfter is null || lastContractAfter.ContractId == contractId))).ToList();
+        var previous = lane.LastOrDefault(r => Compare(Key(r, groups), key) < 0);
+        var next = lane.FirstOrDefault(r => Compare(Key(r, groups), key) > 0);
         return (previous is not null && value < previous.Value) || (next is not null && value > next.Value)
             ? Result.Failure(MeterErrors.NotMonotonic(previous?.Value, next?.Value))
             : Result.Success();
     }
 
-    // Chỉ số chưa lưu có Sequence = 0 ⇒ coi như mới nhất trong cùng ngày + loại.
-    private static long SequenceKey(MeterReading r) => r.Sequence == 0 ? long.MaxValue : r.Sequence;
+    // Chỉ số chưa lưu có Sequence = 0 ⇒ coi như mới hơn mọi chỉ số đã lưu, theo thứ tự thêm vào; chỉ số đang kiểm (chưa thêm) mới nhất.
+    private long SequenceKey(MeterReading r) => r.Sequence != 0 ? r.Sequence : long.MaxValue / 2 + _readings.IndexOf(r);
 
-    private static (DateOnly, ReadingKind, long) Key(MeterReading r) => (r.ReadingDate, r.Kind, SequenceKey(r));
+    /// <summary>Thứ tự vào công tơ của từng HĐ = <c>sequence</c> nhỏ nhất trong các chỉ số của HĐ đó.</summary>
+    private Dictionary<Guid, long> GroupSequences(IEnumerable<MeterReading> readings) =>
+        readings.Where(r => r.ContractId is not null).GroupBy(r => r.ContractId!.Value).ToDictionary(g => g.Key, g => g.Min(SequenceKey));
 
-    private static int Compare((DateOnly Date, ReadingKind Kind, long Seq) a, (DateOnly Date, ReadingKind Kind, long Seq) b)
+    private static long GroupOf(MeterReading r, Dictionary<Guid, long> groups) =>
+        r.Kind == ReadingKind.Initial ? long.MinValue
+        : r.ContractId is { } c ? groups[c]
+        : long.MaxValue;
+
+    private (DateOnly, long, ReadingKind, long) Key(MeterReading r, Dictionary<Guid, long> groups) =>
+        (r.ReadingDate, GroupOf(r, groups), r.Kind, SequenceKey(r));
+
+    private static int Compare((DateOnly Date, long Group, ReadingKind Kind, long Seq) a, (DateOnly Date, long Group, ReadingKind Kind, long Seq) b)
     {
         var byDate = a.Date.CompareTo(b.Date);
         if (byDate != 0)
             return byDate;
+        var byGroup = a.Group.CompareTo(b.Group);
+        if (byGroup != 0)
+            return byGroup;
         var byKind = a.Kind.CompareTo(b.Kind);
         return byKind != 0 ? byKind : a.Seq.CompareTo(b.Seq);
     }

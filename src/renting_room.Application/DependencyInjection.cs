@@ -34,7 +34,6 @@ public static class DependencyInjection
         services.AddScoped<Billing.ReadingAdjustmentCharges>();
         services.AddScoped<Payments.WriteOffReduction>();
         services.AddScoped<Meters.AfterEndAdjustment>();
-        services.AddScoped<Meters.PreviousFinalCorrection>();
         services.AddScoped<Meters.ContractMeterReadings>();
         services.AddScoped<Contracts.ContractMutation>();
         services.AddScoped<Contracts.LiquidationDrafts>();

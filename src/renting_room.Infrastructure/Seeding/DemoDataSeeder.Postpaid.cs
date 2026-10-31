@@ -359,13 +359,13 @@ public sealed partial class DemoDataSeeder
         var final219 = (await Send(new ListMeterReadingsQuery(r219.Electricity))).First(r => r.Kind == ReadingKind.Final);
         await Send(new AdjustMeterReadingCommand(final219.Id, final219.Value - 30, "Số cuối lúc trả phòng gõ dư 30 kWh",
             Settlement: new AdjustmentSettlement(_today, PaymentMethod.BankTransfer)));
-        // 220 — người mới vào ngày 2, nhập đúng số trên công tơ (nhỏ hơn số cuối người cũ), chọn "Số cuối người cũ gõ nhầm" (CT-BR-02)
-        // ⇒ số cuối HĐ cũ sửa về, HĐ cũ có "Chênh lệch sau thanh lý" 105.000đ chờ xử lý (đã trả lại / không trả lại).
+        // 220 — người mới vào ngày 2, nhập đúng số trên công tơ (nhỏ hơn số cuối người cũ), chọn chấp nhận (CT-BR-02, M-10 28/10/2026)
+        // ⇒ mỗi HĐ có dải số riêng: số cuối và hóa đơn người cũ giữ nguyên, không sinh khoản chênh lệch.
         var (r220, _) = await EndedWithHighFinal("220", "Âu Văn Sơn", 51);
         var c220 = await ContractAsync(r220.Id, await RenterAsync("Lạc Văn Toàn", new DateOnly(1999, 7, 7), Gender.Male, Phone(52)),
             Month(0).AddDays(1), 3000000, r220.Meters, fees: standard, activate: false);
         await Send(new ActivateContractCommand(c220,
-            [new MeterReadingInput(r220.Electricity, _meterValues[r220.Electricity], CorrectPreviousFinal: true), new MeterReadingInput(r220.Water!.Value, null)]));
+            [new MeterReadingInput(r220.Electricity, _meterValues[r220.Electricity], AcceptBelowPrevious: true), new MeterReadingInput(r220.Water!.Value, null)]));
 
         // 221 — kỳ ảo (CT-UC-08): tháng -2 đã chốt + thu, tháng trước chỉ có nháp nhưng người thuê thực ra đã đi ⇒ "Coi như trả phòng từ"
         // ngày cuối tháng -2: nháp tháng trước bị xóa, không cần hóa đơn trả phòng / chỉ số cuối, hoàn tất ngay.

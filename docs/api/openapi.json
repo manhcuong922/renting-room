@@ -8155,7 +8155,7 @@
             "format": "double",
             "nullable": true
           },
-          "correctPreviousFinal": {
+          "acceptBelowPrevious": {
             "type": "boolean"
           }
         },

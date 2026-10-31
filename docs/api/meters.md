@@ -124,7 +124,7 @@ body có `lockedUntil`, UI gợi ý chọn từ `lockedUntil + 1`; thay hàng lo
 `PUT /meter-readings/{id}` — `{ "value": 108, "note": "Đọc lại" }` → **200** chỉ số sau khi sửa. Đã dùng cho hóa đơn đã chốt → 422 `READING_LOCKED`.
 **Từ 20/10/2026**: hóa đơn **nháp** đang dùng công tơ này **tự tính lại ngay** trong cùng lệnh (giữ ô sửa tay) — áp cho sửa, hủy chỉ số và lưu lưới;
 UI tải lại nháp, không còn cờ "Cần tính lại" vì chỉ số (thay / tháo / lắp công tơ vẫn chỉ gắn cờ).
-Giá trị phải **≥ chỉ số trước và ≤ chỉ số sau** (422 `READING_NOT_MONOTONIC`, body có `previousValue`, `nextValue` để hiện gợi ý).
+Giá trị phải **≥ chỉ số trước và ≤ chỉ số sau trong cùng HĐ** (422 `READING_NOT_MONOTONIC`, body có `previousValue`, `nextValue` để hiện gợi ý). 28/10/2026 — M-10: mỗi HĐ có dải số riêng, không so với chỉ số của HĐ khác (chỉ số nhận phòng của HĐ mới là điểm bắt đầu mới; nhỏ hơn số người cũ chỉ cảnh báo `HANDOVER_BELOW_PREVIOUS_FINAL`); vẫn ≥ số lúc lắp công tơ. Cùng ngày: HĐ vào trước xếp trước.
 VD: chỉ số nhận phòng tự lấy 100 (số cuối người cũ), thực tế thợ sửa chữa đã dùng 8 kWh → sửa thành 108.
 
 ### Điều chỉnh chỉ số đã chốt (MT-UC-09 — viết lại 20/10/2026)
