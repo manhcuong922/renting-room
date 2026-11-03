@@ -8,14 +8,13 @@
 > Trong mỗi nhóm, issue xếp từ mức cao xuống thấp. **Quyết định đã chốt** ghi ngay dưới tên nhóm.
 
 ## Thứ tự làm đề xuất
-1. N3 → N4 (kẹt quy trình / sai tiền). N1 (thanh lý / ký lại / kết toán) đã xong 27/10/2026; N2 (chỉ số công tơ giữa các HĐ: H-02, M-09, M-10, L-10, Đ2) đã xong 28/10/2026
+1. N4 (kẹt quy trình / sai tiền). Đã xong: N1 (thanh lý / ký lại / kết toán) 27/10/2026; N2 (chỉ số công tơ giữa các HĐ: H-02, M-09, M-10, L-10, Đ2) 28/10/2026; N3 (nháp liên tiếp và tính lại: H-03 31/10/2026, M-21, L-02, L-03 02/11/2026)
 2. N5 (DoS, sửa nhỏ) — có thể làm xen bất kỳ lúc nào
 3. N6 (phân quyền; cần chốt thiết kế M-12, M-14)
 4. N7, N8, N9, rồi nhóm lẻ
 
 | Nhóm | Nội dung | Issue |
 |---|---|---|
-| N3 | Nháp liên tiếp và tính lại | H-03, M-21, L-02, L-03 |
 | N4 | Phiếu thu và hoàn tiền | H-04, M-01, L-21 |
 | N5 | Import Excel | H-05, L-07 |
 | N6 | Phân quyền tiền và dữ liệu nhạy cảm | H-06, M-12, M-13, M-14, M-15, L-13, L-14, L-16, L-17 |
@@ -25,13 +24,6 @@
 | Lẻ | Người ở, phòng, công tơ, Zalo, docs | M-11, L-09, L-11, L-19, L-20 |
 
 ---
-
-## N3 — Nháp liên tiếp và tính lại
-- **H-03** ✔ [Sai tiền + kẹt] Tính lại nháp kỳ k+1 khi nháp kỳ k đang `MISSING_READING` (vd hủy chỉ số cuối kỳ k): `DraftRecalculator.cs:15-23` không kiểm `PREVIOUS_PERIOD_INCOMPLETE` (chỉ `GenerateInvoices.cs:87` kiểm khi tạo mới) ⇒ k+1 nối chỉ số từ kỳ k−1, nuốt sản lượng 2 kỳ (giá bậc thu dư), chốt được. Nhập lại chỉ số k ⇒ 2 nháp cùng điểm đầu ⇒ 409 `ux_invoice_meter_segments_start`, không ghi được chỉ số.
-  Sửa: tách hàm kiểm dùng chung; tính lại / chốt nháp có kỳ trước còn nháp `MISSING_READING` ⇒ gắn lỗi chặn `PREVIOUS_PERIOD_INCOMPLETE`, giữ số cũ, không tính.
-- **M-21** Xóa nháp không khóa HĐ (`DeleteDraftInvoice.cs`) trong khi tạo phiếu khóa HĐ ⇒ xóa nháp tháng 10 song song tạo tháng 11 ⇒ tháng 11 tồn tại, tháng 10 mất, tạo lại báo `LATER_PERIOD_BILLED`. Sửa: khóa HĐ trước phiếu như Void / Finalize.
-- **L-02** `Finalize` không xóa `IsStale` (`Invoice.Lifecycle.cs:7-22`) ⇒ phiếu đã chốt vẫn `isStale: true` trên DTO / lưới chỉ số.
-- **L-03** `GetForUpdateAsync(...)!` rồi đọc `.Status` (`DraftRecalculator.cs:16`, `FinalizeInvoice.cs:139`, `VoidInvoice.cs:37`) ⇒ phiếu bị xóa giữa chừng ⇒ NullReference 500. Sửa: null ⇒ `NOT_FOUND`.
 
 ## N4 — Phiếu thu và hoàn tiền
 - **H-04** ✔ [Kẹt + 500] Hóa đơn có phiếu hoàn PC (điều chỉnh chỉ số "Xử lý ngay") ⇒ đảo phiếu thu gốc: `ReversePayment.cs:56-63` trừ `paid` thành âm ⇒ `Invoice.Payments.cs:25-28` throw ⇒ 500. Đảo PC trước ⇒ 422 `PAYMENT_EXCEEDS_DEBT` (`ReversePayment.cs:60`); hủy hóa đơn cần `paid = 0` ⇒ phiếu thu sai kẹt vĩnh viễn.

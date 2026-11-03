@@ -33,6 +33,44 @@ public sealed class UsagePeriodStartReadingTests
         start.Value.Should().Be(1200);
     }
 
+    // H-03 (M06 MT-BR-12 bước 2(g)): kỳ sau lấy số đầu từ chỉ số chốt kỳ liền trước trên lưới, không theo đoạn đo của phiếu trước.
+    private static readonly DateOnly Oct1 = new(2026, 10, 1);
+    private static readonly UsagePeriod November = new(Nov1, new DateOnly(2026, 11, 30), Nov1, false, PreviousClosingPeriodStart: Oct1);
+
+    private static (Meter Meter, MeterReading Sep, MeterReading Oct) MeterWithClosings()
+    {
+        var meter = Meter.Install(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), null, new DateOnly(2026, 8, 31), 900, null);
+        var sep = meter.Record(ReadingKind.Periodic, new DateOnly(2026, 9, 30), 1000, NewContract, null, new DateOnly(2026, 9, 1)).Value!;
+        var oct = meter.Record(ReadingKind.Periodic, new DateOnly(2026, 10, 31), 1080, NewContract, null, Oct1).Value!;
+        return (meter, sep, oct);
+    }
+
+    [Fact]
+    public void NextPeriod_StartsAtPreviousClosingOnGrid_NotAtLastInvoiceSegment()
+    {
+        var (meter, sep, oct) = MeterWithClosings();
+
+        // Phiếu gần nhất còn đoạn đo kết thúc ở chốt tháng 9 (nháp tháng 10 mất đoạn đo) ⇒ vẫn lấy chốt tháng 10.
+        November.StartReading(meter, sep.Id, NewContract)!.Id.Should().Be(oct.Id);
+    }
+
+    [Fact]
+    public void NextPeriod_PreviousClosingVoided_HasNoStart_InsteadOfOlderReading()
+    {
+        var (meter, sep, oct) = MeterWithClosings();
+        meter.VoidEntry(oct.Id, "Ghi nhầm", DateTimeOffset.UtcNow).IsSuccess.Should().BeTrue();
+
+        November.StartReading(meter, sep.Id, NewContract).Should().BeNull();
+    }
+
+    [Fact]
+    public void NextPeriod_MeterInstalledDuringPeriod_StartsAtInitial()
+    {
+        var meter = Meter.Install(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), null, new DateOnly(2026, 11, 10), 0, null);
+
+        November.StartReading(meter, null, NewContract)!.Kind.Should().Be(ReadingKind.Initial);
+    }
+
     [Fact]
     public void FirstPeriod_WithoutHandover_FallsBackToLatestReadingOnOrBeforeStart()
     {

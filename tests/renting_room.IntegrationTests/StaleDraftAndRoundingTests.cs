@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using Npgsql;
 using renting_room.IntegrationTests.Infrastructure;
 
 namespace renting_room.IntegrationTests;
@@ -83,6 +84,95 @@ public sealed class StaleDraftAndRoundingTests(ApiFactory factory)
         (await _client.PostJsonAsync($"/api/v1/contracts/{s.ContractId}/occupants",
             new { renterId = renter, moveInDate = s.Month.AddDays(10), relationshipType = "CoTenant" }, s.Token)).IsSuccessStatusCode.Should().BeTrue();
         (await DraftAsync(s)).GetProperty("isStale").GetBoolean().Should().BeTrue("người ở thay đổi");
+    }
+
+    private async Task<JsonElement> SheetRowAsync(Setup s) =>
+        (await (await _client.GetAsync($"/api/v1/properties/{s.PropertyId}/meter-reading-sheet?billingMonth={s.Month:yyyy-MM}", s.Token))
+            .ReadAsync<JsonElement>()).GetProperty("rows")[0];
+
+    /// <summary>L-02 (BL-BR-20, M07 §12 kịch bản 3d): chốt thành công ⇒ hết "Cần tính lại" — kể cả khi nguồn đổi mà không làm lệch tiền.</summary>
+    [Fact]
+    public async Task Finalize_StaleDraftWhoseAmountsStillMatch_ClearsStaleFlag()
+    {
+        var s = await ArrangeAsync();
+        var laundry = await (await _client.PostJsonAsync($"/api/v1/properties/{s.PropertyId}/fee-types", new
+        {
+            name = "Giặt sấy", group = "Service", chargeBasis = "PerRoom", unit = "phòng", autoAttach = false,
+            initialPrice = new { effectiveFrom = s.Month.AddDays(-30), unitPrice = 50000 }
+        }, s.Token)).ReadIdAsync();
+        (await _client.PostJsonAsync($"/api/v1/fee-types/{laundry}/prices", new { effectiveFrom = s.Month, unitPrice = 60000 }, s.Token))
+            .IsSuccessStatusCode.Should().BeTrue();
+        var draft = await DraftAsync(s);
+        draft.GetProperty("isStale").GetBoolean().Should().BeTrue("bản giá mới của khu có hiệu lực trong kỳ");
+        var id = draft.GetProperty("id").GetGuid();
+
+        var finalized = await _client.PostJsonAsync($"/api/v1/invoices/{id}/finalize", null, s.Token);
+        finalized.StatusCode.Should().Be(HttpStatusCode.OK, "phòng không dùng Giặt sấy ⇒ phần hệ thống không đổi");
+        (await finalized.ReadAsync<JsonElement>()).GetProperty("summary").GetProperty("isStale").GetBoolean().Should().BeFalse();
+        (await DraftAsync(s)).GetProperty("isStale").GetBoolean().Should().BeFalse();
+        var row = (await SheetRowAsync(s)).GetProperty("invoice");
+        row.GetProperty("status").GetString().Should().Be("Finalized");
+        row.GetProperty("isStale").GetBoolean().Should().BeFalse("lưới không được hiện phiếu đã chốt ở bộ lọc \"Cần tính lại\"");
+    }
+
+    /// <summary>Kết nối khác giữ khóa HĐ và xóa nháp (chưa commit) — như lệnh xóa nháp đang chạy (M07 §10).</summary>
+    private async Task<(NpgsqlConnection Connection, NpgsqlTransaction Holder)> DeleteDraftHoldingContractLockAsync(Setup s, Guid invoiceId)
+    {
+        var connection = new NpgsqlConnection(factory.ConnectionString);
+        await connection.OpenAsync();
+        var holder = await connection.BeginTransactionAsync();
+        await using var command = new NpgsqlCommand(
+            "SELECT 1 FROM contracts WHERE id = @contract FOR UPDATE; DELETE FROM invoices WHERE id = @invoice AND status = 'Draft'", connection, holder);
+        command.Parameters.AddWithValue("contract", s.ContractId);
+        command.Parameters.AddWithValue("invoice", invoiceId);
+        await command.ExecuteNonQueryAsync();
+        return (connection, holder);
+    }
+
+    private static async Task<HttpResponseMessage> AfterDeleteCommitsAsync(
+        (NpgsqlConnection Connection, NpgsqlTransaction Holder) deletion, Task<HttpResponseMessage> request)
+    {
+        await using var connection = deletion.Connection;
+        await using var holder = deletion.Holder;
+        (await Task.WhenAny(request, Task.Delay(TimeSpan.FromSeconds(1)))).Should().NotBeSameAs(request, "lệnh phải chờ khóa HĐ");
+        await holder.CommitAsync();
+        return await request;
+    }
+
+    /// <summary>L-03 (M07 §10, §12 kịch bản 3e): nháp bị xóa trong lúc lệnh chờ khóa ⇒ 404, không NullReference 500.</summary>
+    [Theory]
+    [InlineData("finalize")]
+    [InlineData("void")]
+    public async Task FinalizeOrVoid_DraftDeletedWhileWaitingForLock_ReturnsNotFound(string action)
+    {
+        var s = await ArrangeAsync();
+        var id = (await DraftAsync(s)).GetProperty("id").GetGuid();
+
+        var deletion = await DeleteDraftHoldingContractLockAsync(s, id);
+        var response = await AfterDeleteCommitsAsync(deletion,
+            factory.CreateClient().PostJsonAsync($"/api/v1/invoices/{id}/{action}", action == "void" ? new { reason = "Sai" } : null, s.Token));
+
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound, await response.Content.ReadAsStringAsync());
+        (await response.ReadProblemCodeAsync()).Should().Be("INVOICE_NOT_FOUND");
+    }
+
+    /// <summary>L-03: lưu lưới chỉ số tính lại nháp dùng công tơ — nháp bị xóa giữa chừng thì bỏ qua, chỉ số vẫn lưu (trước: 500, mất cả lệnh).</summary>
+    [Fact]
+    public async Task SaveReadings_DraftDeletedWhileWaitingForLock_SavesReadingAndSkipsDraft()
+    {
+        var s = await ArrangeAsync();
+        var id = (await DraftAsync(s)).GetProperty("id").GetGuid();
+
+        var deletion = await DeleteDraftHoldingContractLockAsync(s, id);
+        var response = await AfterDeleteCommitsAsync(deletion, factory.CreateClient().PutJsonAsync($"/api/v1/properties/{s.PropertyId}/meter-readings", new
+        {
+            readings = new[] { new { meterId = s.MeterId, contractId = s.ContractId, closingPeriodStart = s.Month, readingDate = s.Month.AddMonths(1), value = 187m } }
+        }, s.Token));
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
+        var row = await SheetRowAsync(s);
+        row.GetProperty("current").GetProperty("value").GetDecimal().Should().Be(187);
+        row.GetProperty("invoice").ValueKind.Should().Be(JsonValueKind.Null, "nháp đã bị xóa");
     }
 
     [Fact]

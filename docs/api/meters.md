@@ -241,9 +241,9 @@ cho phiếu tháng đó. Hợp đồng **trả sau** (`Postpaid`): kỳ của th
 }
 ```
 
-- `previous` = chỉ số cũ (số cuối của phiếu trước / nhận phòng / tháng trước); `current` = số đã nhập; `consumption` = mới − cũ (tạm tính).
+- `previous` = chỉ số cũ: từ 31/10/2026 (H-03) là **chỉ số chốt kỳ liền trước của HĐ** trên lưới (`null` nếu chưa nhập / đã hủy — phiếu kỳ này sẽ báo `MISSING_READING`); kỳ đầu / vào phòng trong kỳ ⇒ chỉ số nhận phòng, công tơ lắp trong kỳ ⇒ chỉ số lắp; `current` = số đã nhập; `consumption` = mới − cũ (tạm tính).
 - `locked: true` ⇒ chỉ số đã dùng cho hóa đơn đã chốt — ô chỉ đọc (gõ sai ⇒ "Điều chỉnh chỉ số đã chốt").
-- **`invoice`** (20/10/2026) = hóa đơn thường của HĐ cho kỳ đang ghi: `{ id, status: Draft | Finalized, isStale }`; `null` = chưa lập. UI dựng cột
+- **`invoice`** (20/10/2026) = hóa đơn thường của HĐ cho kỳ đang ghi: `{ id, status: Draft | Finalized, isStale }` (`isStale` chỉ có thể `true` khi `Draft`); `null` = chưa lập. UI dựng cột
   **"Hóa đơn"** và lọc phía client: **Chưa nhập** (`current = null`), **Chưa có hóa đơn** (`invoice = null`), **Cần tính lại** (`isStale`), **Đã chốt**.
   VD khu 34 phòng mới nhập 25 ⇒ "Tạo hóa đơn" tạo 25, bỏ qua 9 (`MISSING_READING`) — lọc "Chưa nhập" ra đúng 9 phòng.
 - **`moveOutDate`** (20/10/2026): ngày dự kiến trả đã báo / ngày trả phòng ⇒ nhãn **"Trả phòng dd/MM"**; kỳ chứa ngày đó không lập hóa đơn tháng.

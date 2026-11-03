@@ -205,6 +205,16 @@ public sealed class DemoDataSeederTests(ApiFactory factory)
         var gaps232 = await (await _client.GetAsync($"/api/v1/contracts/{moved232.GetProperty("id").GetGuid()}/billing-gaps", token)).ReadAsync<JsonElement>();
         gaps232.GetArrayLength().Should().Be(1);
         gaps232[0].GetProperty("periodCount").GetInt32().Should().Be(2);
+        // H-03 (31/10/2026): 234 — hủy chỉ số chốt M−2 sau khi lập 2 nháp ⇒ cả 2 thiếu chỉ số, nháp M−1 không gộp điện 2 tháng.
+        foreach (var draft234 in await InvoicesOfAsync("234", "Active"))
+        {
+            var detail234 = await (await _client.GetAsync($"/api/v1/invoices/{draft234.GetProperty("id").GetGuid()}", token)).ReadAsync<JsonElement>();
+            detail234.GetProperty("summary").GetProperty("status").GetString().Should().Be("Draft");
+            detail234.GetProperty("issues").EnumerateArray().Select(i => i.GetProperty("code").GetString()).Should().Contain("MISSING_READING");
+            detail234.GetProperty("lines").EnumerateArray().Should().NotContain(l => l.GetProperty("type").GetString() == "Metered"
+                && l.GetProperty("description").GetString()!.StartsWith("Điện"), "không lùi về chỉ số nhận phòng để tính gộp 2 tháng");
+        }
+        (await InvoicesOfAsync("234", "Active")).Should().HaveCount(2);
         var final10 = (await InvoicesOfAsync("B10", "Liquidating")).Single(i => i.GetProperty("type").GetString() == "Final");
         var overpaid10 = (await (await _client.GetAsync($"/api/v1/invoices/{final10.GetProperty("id").GetGuid()}", token)).ReadAsync<JsonElement>())
             .GetProperty("issues").EnumerateArray().Single(i => i.GetProperty("code").GetString() == "RENT_OVERPAID");
