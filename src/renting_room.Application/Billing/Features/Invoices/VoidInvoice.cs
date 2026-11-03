@@ -35,7 +35,9 @@ public sealed class VoidInvoiceHandler(
         if (await contracts.GetStatusAsync(contractId.Value, cancellationToken) == ContractStatus.Ended)
             return PaymentErrors.ContractNotBillable;
         await unitOfWork.LockForUpdateAsync<Invoice>(request.Id, cancellationToken);
-        var invoice = (await invoices.GetForUpdateAsync(request.Id, cancellationToken))!;
+        // Nháp bị xóa trong lúc chờ khóa (M07 §10).
+        if (await invoices.GetForUpdateAsync(request.Id, cancellationToken) is not { } invoice)
+            return BillingErrors.NotFound;
         if (invoice.Status == InvoiceStatus.Finalized && await invoiceQueries.HasLaterInvoiceAsync(invoice, cancellationToken))
             return BillingErrors.NotLatest;
 

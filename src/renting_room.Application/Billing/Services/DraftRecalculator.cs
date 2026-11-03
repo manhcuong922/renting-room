@@ -6,15 +6,15 @@ using renting_room.Domain.Contracts;
 
 namespace renting_room.Application.Billing;
 
-/// <summary>Tính lại 1 nháp trong transaction của người gọi — HĐ và hóa đơn đã khóa (C-07). Không phải nháp ⇒ null.</summary>
+/// <summary>Tính lại 1 nháp trong transaction của người gọi — HĐ và hóa đơn đã khóa (C-07). Không phải nháp / nháp đã bị xóa ⇒ null.</summary>
 public sealed class DraftRecalculator(
     IContractRepository contracts, IInvoiceRepository invoices, IPropertyQueries properties, InvoiceInputLoader inputs, RoomChargeBilling roomCharges)
 {
     public async Task<Invoice?> RecalculateAsync(Guid contractId, Guid invoiceId, bool keepManualEdits, CancellationToken ct)
     {
         var contract = (await contracts.GetForUpdateAsync(contractId, ct))!;
-        var invoice = (await invoices.GetForUpdateAsync(invoiceId, ct))!;
-        if (invoice.Status != InvoiceStatus.Draft)
+        var invoice = await invoices.GetForUpdateAsync(invoiceId, ct);
+        if (invoice is null || invoice.Status != InvoiceStatus.Draft)
             return null;
 
         var schedule = (await properties.GetBillingAsync(contract.PropertyId, ct)).Schedule;

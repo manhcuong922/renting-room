@@ -503,6 +503,19 @@ public sealed partial class DemoDataSeeder
         await Send(new TransferRoomCommand(c232, r233.Id, [FinalReading(r232.Electricity, 25), FinalReading(r232.Water!.Value, 2)], null, null,
             "Chuyển sang phòng 233, hai tháng trước thu tay", SkipUnbilledPeriods: true));
 
+        // 234 — số đầu kỳ lấy từ lưới (H-03, 31/10/2026): nháp tháng M−2 và M−1 đã lập, sau đó hủy chỉ số điện chốt tháng M−2 (ghi nhầm) ⇒
+        // cả 2 nháp thiếu chỉ số; nháp M−1 KHÔNG lùi về chỉ số nhận phòng để tính gộp 2 tháng. Nhập lại chỉ số chốt M−2 ở lưới ⇒ cả 2 tự tính lại.
+        var r234 = await Room("234");
+        var c234 = await ContractAsync(r234.Id, await RenterAsync("Lạc Văn Bình", new DateOnly(1995, 5, 5), Gender.Male, Phone(67)),
+            Month(-2), 3000000, r234.Meters, fees: standard);
+        await Close(r234, c234, Month(-2), Month(-2), 80);
+        await Close(r234, c234, Month(-1), Month(-1), 80);
+        await DraftAsync(propertyId, r234.Id, c234, Month(-2));
+        await DraftAsync(propertyId, r234.Id, c234, Month(-1));
+        var closing234 = (await Send(new ListMeterReadingsQuery(r234.Electricity)))
+            .Where(r => r.Kind == ReadingKind.Periodic).OrderBy(r => r.ReadingDate).First();
+        await Send(new VoidMeterReadingCommand(closing234.Id, "Ghi nhầm số phòng bên cạnh"));
+
         // RT-UC-05: 101 — chồng đồng ý theo điều khoản HĐ; vợ xác nhận miệng việc gửi thông báo rồi rút lại 10 ngày trước.
         await Send(new AddRenterConsentCommand(husband, "Quản lý hợp đồng thuê, đăng ký tạm trú", ConsentMethod.ContractClause, Month(-3), "Điều 9 hợp đồng"));
         var notify = await Send(new AddRenterConsentCommand(wife, "Nhận thông báo tiền phòng qua Zalo", ConsentMethod.Verbal, Month(-3), null));

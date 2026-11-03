@@ -36,7 +36,8 @@ public sealed class RecalculateInvoicesHandler(IUnitOfWork unitOfWork, IInvoiceQ
         int recalculated = 0, withIssues = 0;
         foreach (var target in targets.Where(t => t.Status == InvoiceStatus.Draft))
         {
-            var hasIssues = await RecalculateOneAsync(target.ContractId, target.Id, request.KeepManualEdits, cancellationToken);
+            if (await RecalculateOneAsync(target.ContractId, target.Id, request.KeepManualEdits, cancellationToken) is not { } hasIssues)
+                continue; // nháp vừa bị xóa / chốt
             recalculated++;
             if (hasIssues)
                 withIssues++;
@@ -45,14 +46,14 @@ public sealed class RecalculateInvoicesHandler(IUnitOfWork unitOfWork, IInvoiceQ
             targets.Where(t => t.Status != InvoiceStatus.Draft).Select(t => t.Id).ToList());
     }
 
-    private async Task<bool> RecalculateOneAsync(Guid contractId, Guid invoiceId, bool keepManualEdits, CancellationToken ct)
+    private async Task<bool?> RecalculateOneAsync(Guid contractId, Guid invoiceId, bool keepManualEdits, CancellationToken ct)
     {
         await using var transaction = await unitOfWork.BeginTransactionAsync(ct);
         await unitOfWork.LockForUpdateAsync<Contract>(contractId, ct);
         await unitOfWork.LockForUpdateAsync<Invoice>(invoiceId, ct);
         var invoice = await recalculator.RecalculateAsync(contractId, invoiceId, keepManualEdits, ct);
         if (invoice is null)
-            return false;
+            return null;
         await unitOfWork.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
         return invoice.HasBlockingIssues;

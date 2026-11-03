@@ -18,6 +18,7 @@ public sealed partial class Invoice
         DueDate = today.AddDays(paymentDueDays);
         FinalizedAt = now;
         Status = InvoiceStatus.Finalized;
+        IsStale = false; // BL-BR-20: lệnh chốt vừa tính lại và so khớp nguồn (BL-BR-12)
         return Result.Success();
     }
 

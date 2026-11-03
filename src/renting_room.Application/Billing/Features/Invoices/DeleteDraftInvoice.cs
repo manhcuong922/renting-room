@@ -2,6 +2,7 @@ using Mediator;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Domain.Billing;
 using renting_room.Domain.Common;
+using renting_room.Domain.Contracts;
 
 namespace renting_room.Application.Billing;
 
@@ -13,7 +14,13 @@ public sealed class DeleteDraftInvoiceHandler(
 {
     public async ValueTask<Result> Handle(DeleteDraftInvoiceCommand request, CancellationToken cancellationToken)
     {
+        var contractId = await invoiceQueries.GetContractIdAsync(request.Id, cancellationToken);
+        if (contractId is null)
+            return Result.Failure(BillingErrors.NotFound);
+
         await using var transaction = await unitOfWork.BeginTransactionAsync(cancellationToken);
+        // BL-BR-22 (M-21): khóa HĐ trước phiếu như tạo phiếu — không thì tạo kỳ sau song song lọt kiểm tra "mới nhất" ⇒ mất kỳ này, không khoảng ngắt.
+        await unitOfWork.LockForUpdateAsync<Contract>(contractId.Value, cancellationToken);
         await unitOfWork.LockForUpdateAsync<Invoice>(request.Id, cancellationToken);
         var invoice = await invoices.GetForUpdateAsync(request.Id, cancellationToken);
         if (invoice is null)

@@ -76,7 +76,7 @@ Quyền: chủ trọ và phó quản lý.
 | `outstanding` / `refundDue` | Còn phải thu / còn phải trả lại người thuê (phiếu tổng âm) |
 | `dueDate` | Hạn thanh toán — `null` khi nháp |
 | `errorCount` | Số vấn đề chặn chốt (> 0 ⇒ nhãn đỏ "Cần sửa", không chốt được) |
-| `isStale` | Nháp "Cần tính lại" |
+| `isStale` | Nháp "Cần tính lại" — phiếu đã chốt / đã hủy luôn `false` (chốt xóa cờ, 02/11/2026) |
 | `roundingAmount` | Phần làm tròn tổng phiếu (âm = làm tròn xuống) |
 | `invoiceAmount` / `totalAmount` | (27/10/2026 — BL-BR-41) **Tổng hóa đơn** = tiền của chính kỳ đó (doanh thu) / **Tổng thu** = số người thuê phải trả (âm: nhận lại) sau khi cộng nợ chuyển vào và trừ cọc. Hóa đơn thường hai số bằng nhau; hóa đơn trả phòng hiện cả hai |
 | `carriedToInvoiceNo` | Số hóa đơn trả phòng đã nhận nợ của hóa đơn này (`paymentStatus` `Carried…`) — hiện "Chờ thu ở hóa đơn trả phòng PB…"; `null` nếu không chuyển |
@@ -110,7 +110,7 @@ Quyền: chủ trọ và phó quản lý.
 | `LATER_PERIOD_BILLED` | Đã có phiếu kỳ sau |
 | `NO_PERIOD_IN_MONTH` | HĐ không có kỳ thuộc tháng thu này |
 | `USE_FINAL_INVOICE` | Kỳ chứa ngày trả phòng — lập **hóa đơn trả phòng** thay phiếu thường |
-| `MISSING_READING` | (17/10/2026) Thiếu chỉ số cuối kỳ của công tơ đang hoạt động ⇒ **không tạo nháp**. UI: link sang lưới ghi chỉ số tháng đó, nhập xong bấm tạo lại (phòng khác vẫn được tạo) |
+| `MISSING_READING` | (17/10/2026) Thiếu chỉ số cuối kỳ của công tơ đang hoạt động ⇒ **không tạo nháp**. UI: link sang lưới ghi chỉ số tháng đó, nhập xong bấm tạo lại (phòng khác vẫn được tạo). (31/10/2026 — H-03) Cũng báo khi **thiếu chỉ số chốt kỳ liền trước** (số đầu kỳ lấy từ lưới, không từ phiếu kỳ trước): `message` nêu kỳ cần nhập ("Thiếu chỉ số chốt kỳ 10/2026 (số đầu kỳ này)…") — nháp đã có mà chỉ số chốt kỳ trước bị hủy ⇒ nháp kỳ đó **và** kỳ sau cùng mang lỗi này, không tính gộp 2 kỳ |
 | `PREVIOUS_PERIOD_INCOMPLETE` | (17/10/2026) Kỳ trước còn nháp mang lỗi `MISSING_READING` (chỉ số bị hủy sau khi lập) — nhập lại chỉ số, tính lại nháp kỳ trước rồi mới tạo kỳ này |
 | `GAP_NOT_SUPPORTED_PREPAID` / `GAP_PREVIOUS_NOT_FINALIZED` / `GAP_TOO_LONG` / `GAP_SPANS_SCHEDULE_CHANGE` | (27/10/2026) Gửi `skipUnbilledPeriods: true` nhưng không đủ điều kiện ghi khoảng ngắt: khu thu trước · phiếu liền trước các kỳ bỏ qua còn nháp (chốt hoặc xóa nháp trước) · quá 12 kỳ · các kỳ có đổi ngày chốt của khu |
 
@@ -273,10 +273,10 @@ phiếu đã chốt → `INVOICE_NOT_DRAFT`; giảm trừ vượt phần thu →
 ```
 
 **"Cần tính lại"** (`summary.isStale`, BL-BR-20): nháp đã lập mà sau đó dữ liệu nguồn đổi — chỉ số công tơ của phòng (nhập / sửa / hủy,
-thay công tơ), giá khoản thu của khu, HĐ (giá thuê, dịch vụ, người ở, ngày trả phòng, "Tính tiền từ ngày", chuyển phòng). Tự đặt cùng lần lưu dữ liệu nguồn; tính lại thì hết. Chỉ là gợi ý — chốt vẫn tính lại và so (`DRAFT_STALE`).
+thay công tơ), giá khoản thu của khu, HĐ (giá thuê, dịch vụ, người ở, ngày trả phòng, "Tính tiền từ ngày", chuyển phòng). Tự đặt cùng lần lưu dữ liệu nguồn; tính lại thì hết. Chỉ là gợi ý — chốt vẫn tính lại và so (`DRAFT_STALE`); chốt thành công thì hết cờ.
 `staleOnly: true` = tính lại mọi nháp có cờ của khu (`billingMonth` tùy chọn).
 
-→ **200** `{ "recalculated": 12, "withIssues": 0, "notDraft": ["…"] }`. Mặc định **giữ ô sửa tay** (số hệ thống được cập nhật bên cạnh;
+→ **200** `{ "recalculated": 12, "withIssues": 0, "notDraft": ["…"] }` (nháp vừa bị xóa / chốt trong lúc chạy: bỏ qua, không đếm). Mặc định **giữ ô sửa tay** (số hệ thống được cập nhật bên cạnh;
 khác lúc sửa ⇒ cảnh báo `EDITED_BASE_CHANGED`); `keepManualEdits: false` ⇒ tính lại từ đầu. Phụ thu / giảm trừ luôn giữ.
 
 ## Chốt
@@ -298,6 +298,7 @@ thanh toán của HĐ). Sau khi chốt: chỉ số cuối kỳ bị khóa và th
   thu trước; đã xác nhận hoàn tiền → 422 `REFUND_CONFIRMED` — bỏ xác nhận trước) và là **phiếu mới nhất** của HĐ (422 `NOT_LATEST_INVOICE` — hủy / xóa phiếu kỳ sau trước). **Hóa đơn trả phòng chưa hủy luôn là mới nhất** (17/10/2026):
   phiếu tháng cuối không hủy / xóa được khi còn hóa đơn trả phòng — xóa / hủy hóa đơn trả phòng trước. Hủy xong lập lại được, chỉ số được mở khóa.
 - `DELETE /invoices/{id}` → 204: xóa **nháp** (cũng chỉ phiếu mới nhất).
+- Chốt / hủy đúng lúc phiếu bị xóa (2 tab) → 404 `INVOICE_NOT_FOUND` — tải lại danh sách.
 
 ## Trạng thái thu tiền (`paymentStatus`, chỉ phiếu đã chốt)
 

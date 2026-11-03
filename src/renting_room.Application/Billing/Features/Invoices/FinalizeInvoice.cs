@@ -38,7 +38,9 @@ public sealed class InvoiceFinalizer(
         foreach (var meterId in (await meters.ListRoomMetersAsync(roomIds, ct)).Select(m => m.Id).Order())
             await unitOfWork.LockForUpdateAsync<Meter>(meterId, ct);
         await unitOfWork.LockForUpdateAsync<Invoice>(id, ct);
-        var invoice = (await invoices.GetForUpdateAsync(id, ct))!;
+        // Nháp bị xóa trong lúc chờ khóa (M07 §10).
+        if (await invoices.GetForUpdateAsync(id, ct) is not { } invoice)
+            return BillingErrors.NotFound;
         if (invoice.Status != InvoiceStatus.Draft)
             return BillingErrors.NotDraft;
 

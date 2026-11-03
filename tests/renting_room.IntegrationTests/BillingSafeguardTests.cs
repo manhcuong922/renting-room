@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using Npgsql;
 using renting_room.IntegrationTests.Infrastructure;
 
 namespace renting_room.IntegrationTests;
@@ -133,6 +134,107 @@ public sealed class BillingSafeguardTests(ApiFactory factory)
         var next = await GenerateAsync(propertyId, first.AddMonths(1), token);
         next.GetProperty("created").GetInt32().Should().Be(0);
         next.GetProperty("skipped").EnumerateArray().Select(x => x.GetProperty("reason").GetString()).Should().Equal("PREVIOUS_PERIOD_INCOMPLETE");
+    }
+
+    /// <summary>
+    /// H-03 (M06 MT-BR-12, M07 §12 kịch bản 3b): số đầu kỳ lấy từ chỉ số chốt kỳ liền trước trên lưới, không từ phiếu kỳ trước —
+    /// hủy chỉ số cuối kỳ k thì nháp k+1 báo thiếu chỉ số chứ không lùi về kỳ k−1 (gộp sản lượng 2 kỳ); nhập lại thì cả hai tự đúng.
+    /// </summary>
+    [Theory]
+    [InlineData("Postpaid")]
+    [InlineData("Prepaid")]
+    public async Task VoidingClosingReading_NextDraftReportsMissingReading_InsteadOfChainingToOlderReading(string chargeMode)
+    {
+        var owner = await _client.CreateActiveOwnerAsync();
+        var token = owner.Tokens.AccessToken;
+        var today = TestData.Today(factory);
+        var prepaid = chargeMode == "Prepaid";
+        // Thu sau: phiếu tháng M tính điện tháng M. Thu trước: phiếu tháng M tính điện tháng M−1 (phiếu đầu không có điện).
+        var first = new DateOnly(today.Year, today.Month, 1).AddMonths(prepaid ? -3 : -2);
+        var k = prepaid ? first.AddMonths(1) : first; // phiếu có điện đến chỉ số chốt kỳ `first`
+        var propertyId = await _client.CreatePropertyAsync(token, anchorDay: 1, chargeMode: chargeMode);
+        var electricity = await _client.FeeIdAsync(token, propertyId, "Điện");
+        await _client.PostJsonAsync($"/api/v1/fee-types/{electricity}/prices", new { effectiveFrom = first.AddDays(-30), unitPrice = 3000 }, token);
+        var roomId = await _client.CreateRoomAsync(token, propertyId);
+        var meterId = await _client.InstallMeterAsync(token, roomId, electricity, first.AddDays(-1), 1000);
+        var contractId = await _client.CreateContractAsync(token, roomId, await _client.CreateRenterAsync(token), first);
+        (await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/activate",
+            new { handoverReadings = new[] { new { meterId, value = (decimal?)null } } }, token)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+        Task<HttpResponseMessage> SaveAsync(DateOnly closing, decimal value) => _client.PutJsonAsync($"/api/v1/properties/{propertyId}/meter-readings",
+            new { readings = new[] { new { meterId, contractId, closingPeriodStart = closing, readingDate = closing.AddMonths(1), value } } }, token);
+        async Task<(decimal? Kwh, List<string?> Issues)> ElectricityAsync(Guid invoiceId)
+        {
+            var detail = await (await _client.GetAsync($"/api/v1/invoices/{invoiceId}", token)).ReadAsync<JsonElement>();
+            var metered = detail.GetProperty("lines").EnumerateArray().Where(l => l.GetProperty("type").GetString() == "Metered").ToList();
+            return (metered.Count == 0 ? null : metered.Sum(l => l.GetProperty("quantity").GetDecimal()),
+                detail.GetProperty("issues").EnumerateArray().Select(i => i.GetProperty("code").GetString()).ToList());
+        }
+
+        (await SaveAsync(first, 1080)).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await SaveAsync(first.AddMonths(1), 1160)).StatusCode.Should().Be(HttpStatusCode.OK);
+        if (prepaid)
+            (await GenerateAsync(propertyId, first, token)).GetProperty("created").GetInt32().Should().Be(1);
+        (await GenerateAsync(propertyId, k, token)).GetProperty("created").GetInt32().Should().Be(1);
+        (await GenerateAsync(propertyId, k.AddMonths(1), token)).GetProperty("created").GetInt32().Should().Be(1);
+        var draftK = await InvoiceIdAsync(contractId, k, token);
+        var draftNext = await InvoiceIdAsync(contractId, k.AddMonths(1), token);
+        (await ElectricityAsync(draftK)).Kwh.Should().Be(80);
+        (await ElectricityAsync(draftNext)).Kwh.Should().Be(80);
+
+        // Hủy chỉ số chốt kỳ `first` (1.080): cả 2 nháp thiếu chỉ số — kỳ sau KHÔNG lùi về 1.000 (160 kWh).
+        var closingK = (await (await _client.GetAsync($"/api/v1/meters/{meterId}/readings", token)).ReadAsync<List<JsonElement>>())
+            .Single(r => r.GetProperty("kind").GetString() == "Periodic" && r.GetProperty("value").GetDecimal() == 1080);
+        (await _client.PostJsonAsync($"/api/v1/meter-readings/{closingK.GetProperty("id").GetGuid()}/void", new { reason = "Ghi nhầm" }, token))
+            .IsSuccessStatusCode.Should().BeTrue();
+        (await ElectricityAsync(draftK)).Issues.Should().Contain("MISSING_READING");
+        var next = await ElectricityAsync(draftNext);
+        next.Issues.Should().Contain("MISSING_READING");
+        next.Kwh.Should().BeNull("không được gộp 1.000 → 1.160");
+        (await _client.PostJsonAsync("/api/v1/invoices/recalculate", new { invoiceIds = new[] { draftNext } }, token)).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await ElectricityAsync(draftNext)).Kwh.Should().BeNull();
+        var refused = await _client.PostJsonAsync($"/api/v1/invoices/{draftNext}/finalize", null, token);
+        refused.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity, await refused.Content.ReadAsStringAsync());
+
+        // Nhập lại 1.090: cả hai tự tính lại, không đụng ràng buộc điểm đầu (409).
+        var saved = await SaveAsync(first, 1090);
+        saved.StatusCode.Should().Be(HttpStatusCode.OK, await saved.Content.ReadAsStringAsync());
+        (await ElectricityAsync(draftK)).Should().Match<(decimal? Kwh, List<string?> Issues)>(x => x.Kwh == 90 && !x.Issues.Contains("MISSING_READING"));
+        (await ElectricityAsync(draftNext)).Should().Match<(decimal? Kwh, List<string?> Issues)>(x => x.Kwh == 70 && !x.Issues.Contains("MISSING_READING"));
+    }
+
+    /// <summary>
+    /// M-21 (M07 BL-BR-22, §10, §12 kịch bản 3c): xóa nháp khóa HĐ trước phiếu như tạo phiếu / Void / chốt — không thì xóa nháp kỳ k
+    /// song song tạo kỳ k+1 lọt kiểm tra "mới nhất" (k+1 chưa commit) ⇒ còn k+1, mất k, không khoảng ngắt nào ghi lại.
+    /// </summary>
+    [Fact]
+    public async Task DeleteDraft_WaitsForContractLock_HeldByConcurrentGeneration()
+    {
+        var owner = await _client.CreateActiveOwnerAsync();
+        var token = owner.Tokens.AccessToken;
+        var today = TestData.Today(factory);
+        var month = new DateOnly(today.Year, today.Month, 1).AddMonths(-1);
+        var propertyId = await _client.CreatePropertyAsync(token, anchorDay: 1, chargeMode: "Prepaid");
+        var roomId = await _client.CreateRoomAsync(token, propertyId);
+        var contractId = await _client.CreateContractAsync(token, roomId, await _client.CreateRenterAsync(token), month);
+        (await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/activate", null, token)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+        (await GenerateAsync(propertyId, month, token)).GetProperty("created").GetInt32().Should().Be(1);
+        var draft = await InvoiceIdAsync(contractId, month, token);
+
+        // Giả lập lệnh tạo phiếu kỳ sau đang chạy: giữ khóa hàng contracts của HĐ.
+        await using var connection = new NpgsqlConnection(factory.ConnectionString);
+        await connection.OpenAsync();
+        await using var holder = await connection.BeginTransactionAsync();
+        await using (var lockContract = new NpgsqlCommand("SELECT 1 FROM contracts WHERE id = @id FOR UPDATE", connection, holder))
+        {
+            lockContract.Parameters.AddWithValue("id", contractId);
+            await lockContract.ExecuteScalarAsync();
+        }
+
+        var delete = factory.CreateClient().DeleteAsync($"/api/v1/invoices/{draft}", token);
+        (await Task.WhenAny(delete, Task.Delay(TimeSpan.FromSeconds(1)))).Should().NotBeSameAs(delete, "xóa nháp phải chờ khóa HĐ");
+
+        await holder.RollbackAsync();
+        (await delete).StatusCode.Should().Be(HttpStatusCode.NoContent);
     }
 
     [Fact]
