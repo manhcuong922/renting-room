@@ -166,7 +166,7 @@ public static class TestData
         var final = await client.PostJsonAsync($"/api/v1/contracts/{contractId}/final-invoice", new { finalReadings }, token);
         final.StatusCode.Should().Be(HttpStatusCode.Created, await final.Content.ReadAsStringAsync());
         var invoiceId = (await final.ReadAsync<System.Text.Json.JsonElement>()).GetProperty("summary").GetProperty("id").GetGuid();
-        var finalized = await client.PostJsonAsync($"/api/v1/invoices/{invoiceId}/finalize", null, token);
+        var finalized = await client.FinalizeInvoiceAsync(invoiceId, token);
         finalized.StatusCode.Should().Be(HttpStatusCode.OK, await finalized.Content.ReadAsStringAsync());
         var issueDate = (await finalized.ReadAsync<System.Text.Json.JsonElement>()).GetProperty("issueDate").GetString();
         var completed = await client.PostJsonAsync($"/api/v1/contracts/{contractId}/liquidation/complete",

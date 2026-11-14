@@ -3,6 +3,8 @@ using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Common.Security;
+using renting_room.Application.Identity;
+using renting_room.Domain.Identity;
 using renting_room.Errors;
 using renting_room.Infrastructure.Identity;
 
@@ -73,7 +75,15 @@ internal static class JwtAuthenticationSetup
         // Đăng xuất 1 thiết bị: phiên (sid) không còn refresh token hiệu lực ⇒ access token của phiên đó cũng hết hiệu lực.
         if (Guid.TryParse(principal?.FindFirst(AppClaimTypes.SessionId)?.Value, out var sessionId)
             && !await sessionStore.IsSessionActiveAsync(sessionId, context.HttpContext.RequestAborted))
+        {
             context.Fail(new SessionRevokedException());
+            return;
+        }
+
+        // M01 ID-BR-24: quản lý khu ⇒ nạp khu được giao cho cả request (đọc DB, cache ngắn — chủ trọ đổi giao khu có hiệu lực ngay).
+        if (principal?.FindFirst(AppClaimTypes.Role)?.Value == nameof(UserRole.OrgManager))
+            context.HttpContext.Items[HttpContextCurrentUser.PropertyScopeKey] = await context.HttpContext.RequestServices
+                .GetRequiredService<IPropertyScopeStore>().GetAsync(userId, context.HttpContext.RequestAborted) ?? [];
     }
 
     private static async Task WriteUnauthorizedAsync(JwtBearerChallengeContext context)

@@ -51,7 +51,7 @@ public sealed class GenerateInvoicesHandler(
         foreach (var candidate in candidates)
         {
             var outcome = await GenerateOneAsync(
-                candidate.Id, roomCodes[candidate.RoomId], month, request.RecalculateExistingDrafts, request.SkipUnbilledPeriods, cancellationToken);
+                request.PropertyId, candidate.Id, roomCodes[candidate.RoomId], month, request.RecalculateExistingDrafts, request.SkipUnbilledPeriods, cancellationToken);
             switch (outcome.Result)
             {
                 case "CREATED": created++; break;
@@ -71,9 +71,11 @@ public sealed class GenerateInvoicesHandler(
     private sealed record Outcome(string Result, bool HasIssues = false, bool GapCreated = false, IReadOnlyList<UnbilledPeriodDto>? Unbilled = null);
 
     private async Task<Outcome> GenerateOneAsync(
-        Guid contractId, string roomCode, DateOnly month, bool recalculateDrafts, bool skipUnbilledPeriods, CancellationToken ct)
+        Guid propertyId, Guid contractId, string roomCode, DateOnly month, bool recalculateDrafts, bool skipUnbilledPeriods, CancellationToken ct)
     {
         await using var transaction = await unitOfWork.BeginTransactionAsync(ct);
+        // L-05: giữ khu (FOR SHARE, trước HĐ — C-07) ⇒ đổi cài đặt kỳ thu không chen giữa lúc đọc lịch kỳ và lúc lưu nháp; các lệnh tạo phiếu vẫn song song.
+        await unitOfWork.LockForShareAsync<Property>(propertyId, ct);
         await unitOfWork.LockForUpdateAsync<Contract>(contractId, ct);
         var contract = (await contracts.GetForUpdateAsync(contractId, ct))!;
         var schedule = (await properties.GetBillingAsync(contract.PropertyId, ct)).Schedule;

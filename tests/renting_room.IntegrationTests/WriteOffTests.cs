@@ -29,7 +29,7 @@ public sealed class WriteOffTests(ApiFactory factory)
         await _client.PostJsonAsync("/api/v1/invoices/generate", new { propertyId, billingMonth = $"{start:yyyy-MM}" }, token);
         var page = await (await _client.GetAsync($"/api/v1/invoices?contractId={contractId}", token)).ReadAsync<JsonElement>();
         var invoiceId = page.GetProperty("items")[0].GetProperty("id").GetGuid();
-        (await _client.PostJsonAsync($"/api/v1/invoices/{invoiceId}/finalize", null, token)).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await _client.FinalizeInvoiceAsync(invoiceId, token)).StatusCode.Should().Be(HttpStatusCode.OK);
         return (token, contractId, invoiceId);
     }
 
@@ -73,7 +73,7 @@ public sealed class WriteOffTests(ApiFactory factory)
     }
 
     [Fact]
-    public async Task WriteOffAlone_WhileActive_ManagerNeedsPermissionGrantedPerPerson()
+    public async Task WriteOffAlone_WhileActive_ManagerOfProperty_CanWriteOff()
     {
         var (token, contractId, invoiceId) = await ArrangeAsync();
         var created = await _client.PostJsonAsync("/api/v1/org/members", new { fullName = "Phó Quản Lý", phone = TestApi.NewPhone() }, token);
@@ -82,13 +82,7 @@ public sealed class WriteOffTests(ApiFactory factory)
         var manager = await (await _client.PostJsonAsync("/api/v1/auth/change-password",
             new { currentPassword = credentials.TemporaryPassword, newPassword = "PhoQuanLy2026" }, login.AccessToken)).ReadAsync<TokenResponse>();
 
-        (await _client.PostJsonAsync($"/api/v1/invoices/{invoiceId}/write-off", new { amount = 500_000, reason = "Giảm do sự cố" }, manager.AccessToken))
-            .StatusCode.Should().Be(HttpStatusCode.Forbidden, "phó quản lý chưa được cấp quyền bỏ nợ");
-        (await PayAndWriteOffAsync(manager.AccessToken, invoiceId, 2_000_000)).StatusCode.Should().Be(HttpStatusCode.Forbidden);
-
-        // Chủ trọ bật quyền cho riêng phó quản lý này ⇒ được bỏ nợ.
-        (await _client.PutJsonAsync($"/api/v1/org/members/{credentials.UserId}/write-off-permission", new { allowed = true }, token))
-            .StatusCode.Should().Be(HttpStatusCode.OK);
+        // M01 ID-BR-23 (08/11/2026): quản lý khu luôn được bỏ nợ trong khu được giao (bỏ công tắc cấp quyền riêng).
         var writeOff = await _client.PostJsonAsync($"/api/v1/invoices/{invoiceId}/write-off", new { amount = 500_000, reason = "Giảm do sự cố" },
             manager.AccessToken);
         writeOff.StatusCode.Should().Be(HttpStatusCode.OK, await writeOff.Content.ReadAsStringAsync());

@@ -8,7 +8,7 @@ namespace renting_room.Application.Billing;
 
 public sealed record AddInvoiceManualLineCommand(
     Guid InvoiceId, InvoiceLineType Type, string Description, decimal? Quantity, decimal? UnitPrice, decimal Amount, string Note, Guid? FeeTypeId,
-    Guid? SourceInvoiceId = null, ChargeSettlement? Settlement = null)
+    Guid? SourceInvoiceId = null, ChargeSettlement? Settlement = null, uint? ExpectedVersion = null)
     : IRequest<Result<InvoiceDetailDto>>;
 
 public sealed class AddInvoiceManualLineCommandValidator : AbstractValidator<AddInvoiceManualLineCommand>
@@ -33,6 +33,8 @@ public sealed class AddInvoiceManualLineHandler(
         var invoice = await invoices.GetForUpdateAsync(request.InvoiceId, cancellationToken);
         if (invoice is null)
             return BillingErrors.NotFound;
+        if (InvoiceAccess.StaleVersion(invoice, request.ExpectedVersion) is { } stale)
+            return stale;
         if (request.Type == InvoiceLineType.Refund && request.SourceInvoiceId is { } sourceId && sourceId != invoice.Id)
         {
             var allowed = await RefundSource.CheckAsync(invoiceQueries, invoice, sourceId, request.Amount, cancellationToken);

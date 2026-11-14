@@ -31,7 +31,7 @@ public sealed class AnonymizeRenterHandler(IRenterQueries renters, RenterAnonymi
         if (await renters.HasUnsettledInvoiceAsync(request.Id, cancellationToken))
             return Result.Failure(RenterErrors.HasUnsettledInvoices);
 
-        await anonymizer.AnonymizeAsync(request.Id, request.Reason.Trim(), cancellationToken);
-        return Result.Success();
+        // Kiểm ở trên chỉ để báo lỗi sớm; kiểm có giá trị là bên trong bộ ẩn danh, sau khi giữ khóa người thuê (M-23).
+        return await anonymizer.AnonymizeAsync(request.Id, request.Reason.Trim(), cancellationToken);
     }
 }

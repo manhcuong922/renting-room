@@ -3,7 +3,7 @@ using renting_room.Domain.Contracts;
 
 namespace renting_room.Domain.Billing;
 
-public sealed class RoomCharge : TenantEntity
+public sealed class RoomCharge : TenantEntity, IPropertyScoped
 {
     public const decimal MaxAmount = 100_000_000;
 

@@ -27,7 +27,7 @@ public sealed class RevealRenterIdNumberHandler(
         if (renter.Encrypted is not { Length: > 0 } encrypted)
             return string.Empty;
 
-        auditTrail.RecordRead(AuditActions.RevealIdNumber, nameof(Renter), request.Id);
+        await auditTrail.RecordReadAsync(AuditActions.RevealIdNumber, nameof(Renter), request.Id, null, cancellationToken);
         return protector.Decrypt(encrypted);
     }
 }

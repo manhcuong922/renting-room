@@ -28,13 +28,14 @@ public sealed class User : AuditableEntity
     public DateTimeOffset? RemovedAt { get; private set; }
     public Guid? RemovedBy { get; private set; }
 
+    /// <summary>Thôi dùng từ 08/11/2026 (ID-BR-22: quản lý khu luôn có quyền trong khu được giao) — giữ cột tới migration xóa (expand/contract).</summary>
     public bool CanViewSensitiveData { get; private set; }
 
-    public bool HasSensitiveDataAccess => Role == UserRole.OrgOwner || (Role == UserRole.OrgManager && CanViewSensitiveData);
-
+    /// <summary>Thôi dùng từ 08/11/2026 (ID-BR-23) — giữ cột tới migration xóa.</summary>
     public bool CanWriteOff { get; private set; }
 
-    public bool HasWriteOffAccess => Role == UserRole.OrgOwner || (Role == UserRole.OrgManager && Status == UserStatus.Active && CanWriteOff);
+    /// <summary>ID-BR-22 / ID-BR-23 (08/11/2026): chủ trọ và quản lý khu đang hoạt động — trong phạm vi khu được giao (ID-BR-24).</summary>
+    public bool HasOwnerLevelAccess => Role == UserRole.OrgOwner || (Role == UserRole.OrgManager && Status == UserStatus.Active);
 
     public string Username => PhoneNormalized ?? EmailNormalized!;
 
@@ -46,8 +47,12 @@ public sealed class User : AuditableEntity
         Guid organizationId, string fullName, string? phone, string? email, string temporaryPasswordHash, DateTimeOffset now) =>
         CreateOrgMember(UserRole.OrgManager, organizationId, fullName, phone, email, temporaryPasswordHash, now);
 
+    /// <summary>
+    /// Admin bootstrap: mật khẩu do người triển khai đặt qua biến môi trường ⇒ bắt đổi ở lần đăng nhập đầu (M-18), để mật khẩu nằm trong
+    /// <c>.env</c> / backup không còn dùng được sau đó. Không có hạn như mật khẩu tạm của thành viên tổ chức.
+    /// </summary>
     public static User CreateSystemAdmin(string fullName, string? phone, string? email, string passwordHash)
-        => Create(null, UserRole.SystemAdmin, fullName, phone, email, passwordHash, mustChangePassword: false);
+        => Create(null, UserRole.SystemAdmin, fullName, phone, email, passwordHash, mustChangePassword: true);
 
     private static User CreateOrgMember(
         UserRole role, Guid organizationId, string fullName, string? phone, string? email, string temporaryPasswordHash, DateTimeOffset now)
@@ -93,6 +98,16 @@ public sealed class User : AuditableEntity
 
     public bool IsLockedOut(DateTimeOffset now) =>
         Status != UserStatus.Active || (LockoutEnd is not null && LockoutEnd > now);
+
+    /// <summary>Lần đổi / cấp lại mật khẩu gần nhất — các lần đoán sai trước đó nhắm vào mật khẩu cũ, không còn tính khóa (ID-BR-06).</summary>
+    public DateTimeOffset? CredentialsChangedAt
+    {
+        get
+        {
+            var issued = MustChangePassword && TempPasswordExpiresAt is { } expires ? expires - TemporaryPasswordLifetime : (DateTimeOffset?)null;
+            return PasswordChangedAt is null || issued > PasswordChangedAt ? issued : PasswordChangedAt;
+        }
+    }
 
     public bool IsTemporaryPasswordExpired(DateTimeOffset now) =>
         MustChangePassword && TempPasswordExpiresAt is not null && TempPasswordExpiresAt <= now;
@@ -162,28 +177,6 @@ public sealed class User : AuditableEntity
         PhoneNormalized = null;
         EmailNormalized = $"removed-{Id:N}@removed.invalid";
         RotateSecurityStamp();
-        return Result.Success();
-    }
-
-    public Result SetSensitiveDataAccess(bool allowed)
-    {
-        if (Role != UserRole.OrgManager)
-            return Result.Failure(IdentityErrors.CannotModifyOwner);
-        if (Status == UserStatus.Removed)
-            return Result.Failure(IdentityErrors.UserRemoved);
-
-        CanViewSensitiveData = allowed;
-        return Result.Success();
-    }
-
-    public Result SetWriteOffPermission(bool allowed)
-    {
-        if (Role != UserRole.OrgManager)
-            return Result.Failure(IdentityErrors.CannotModifyOwner);
-        if (Status == UserStatus.Removed)
-            return Result.Failure(IdentityErrors.UserRemoved);
-
-        CanWriteOff = allowed;
         return Result.Success();
     }
 

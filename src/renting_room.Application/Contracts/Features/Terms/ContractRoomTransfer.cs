@@ -81,6 +81,8 @@ public sealed class TransferRoomCommandValidator : AbstractValidator<TransferRoo
         RuleFor(x => x.MonthlyRent).OptionalMoney();
         RuleFor(x => x.RentFrom).IsInEnum();
         RuleFor(x => x.Note).OptionalText(500);
+        this.RuleForMeterReadings(x => x.OldRoomReadings);
+        this.RuleForMeterReadings(x => x.NewRoomReadings);
     }
 }
 

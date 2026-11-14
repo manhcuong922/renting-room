@@ -60,7 +60,7 @@ và tự **nhắc nợ** khi phiếu quá hạn mà chưa thu đủ. Gửi qua h
 | NT-UC-07 | OrgOwner / OrgManager | Bấm "Gửi lại" một phiếu đã chốt | Dòng outbox `ManualResend` trên các kênh đã chọn |
 | NT-UC-08 | OrgOwner / OrgManager | Xem lịch sử gửi của một phiếu; tổng hợp theo khu + tháng thu | Danh sách tin + số đếm theo trạng thái |
 | NT-UC-09 | OrgOwner / OrgManager | Lấy nội dung chia sẻ tay của một phiếu | Văn bản phiếu + link `https://zalo.me/<sđt>` (nếu có số) |
-| NT-UC-10 | OrgOwner | Bật / tắt tự gửi và cài số ngày nhắc nợ của khu | Lưu vào cài đặt kỳ thu của khu (M02) |
+| NT-UC-10 | OrgOwner, OrgManager (theo quyền sửa cài đặt khu — §9) | Bật / tắt tự gửi và cài số ngày nhắc nợ của khu | Lưu vào cài đặt kỳ thu của khu (M02) |
 | NT-UC-11 | OrgOwner / OrgManager | Xem kênh nào đang dùng được | Zalo: đã cấu hình chưa + tên bot; Email: đã cấu hình chưa |
 
 ### 3.2 Quy tắc nghiệp vụ
@@ -138,7 +138,7 @@ stateDiagram-v2
 | created_at | timestamptz | N | |
 | created_by | uuid | Y | null = hệ thống; có giá trị với `ManualResend` |
 
-Nội dung tin **không lưu**: dựng lại từ phiếu lúc gửi (phiếu đã chốt là bất biến ⇒ nội dung ổn định; số "còn nợ" luôn mới nhất).
+Nội dung tin **không lưu**: dựng lại từ phiếu lúc gửi (phiếu đã chốt gần như không đổi — trừ điều chỉnh chỉ số đã chốt và ẩn danh, M07 BL-BR-14 — nên dựng lại luôn ra đúng nội dung hiện hành; số "còn nợ" luôn mới nhất).
 
 **`zalo_link_codes`** (mới, `TenantEntity`)
 
@@ -229,19 +229,19 @@ Câu truy vấn nhận việc của dispatcher và tra `code_hash` của poller 
 
 | Method | Route | Quyền | Request | Response | Mã lỗi |
 |---|---|---|---|---|---|
-| POST | `/api/renters/{id}/zalo-link-code` | Owner, Manager | — | `{ code, expiresAt, botName }` | 404 `RENTER_NOT_FOUND`, 409 `RENTER_ANONYMIZED`, 409 `ZALO_BOT_NOT_CONFIGURED` |
-| DELETE | `/api/renters/{id}/zalo-link` | Owner, Manager | — | 204 | 404 |
-| GET | `/api/invoices/{id}/notifications` | Owner, Manager | — | `[{ id, channel, kind, step, status, attempts, lastError, sentAt, createdAt }]` | 404 |
-| POST | `/api/invoices/{id}/notifications/resend` | Owner, Manager | `{ channels?: ["Zalo","Email"] }` | 202 + danh sách tin | 404, 409 `INVOICE_NOT_FINALIZED`, 409 `INVOICE_VOIDED`, 422 `NO_NOTIFICATION_CHANNEL` |
-| GET | `/api/invoices/{id}/share-content` | Owner, Manager | — | `{ text, zaloLink }` | 404, 409 `INVOICE_NOT_FINALIZED` |
-| GET | `/api/notifications/summary?propertyId=&billingMonth=` | Owner, Manager | — | `{ total, pending, sent, failed, skipped, cancelled, noChannel }` | 404 `PROPERTY_NOT_FOUND` |
-| GET | `/api/notifications/channels` | Owner, Manager | — | `{ zalo: { configured, botName }, email: { configured } }` | — |
+| POST | `/api/v1/renters/{id}/zalo-link-code` | Owner, Manager | — | `{ code, expiresAt, botName }` | 404 `RENTER_NOT_FOUND`, 409 `RENTER_ANONYMIZED`, 409 `ZALO_BOT_NOT_CONFIGURED` |
+| DELETE | `/api/v1/renters/{id}/zalo-link` | Owner, Manager | — | 204 | 404 |
+| GET | `/api/v1/invoices/{id}/notifications` | Owner, Manager | — | `[{ id, channel, kind, step, status, attempts, lastError, sentAt, createdAt }]` | 404 |
+| POST | `/api/v1/invoices/{id}/notifications/resend` | Owner, Manager | `{ channels?: ["Zalo","Email"] }` | 202 + danh sách tin | 404, 409 `INVOICE_NOT_FINALIZED`, 409 `INVOICE_VOIDED`, 422 `NO_NOTIFICATION_CHANNEL` |
+| GET | `/api/v1/invoices/{id}/share-content` | Owner, Manager | — | `{ text, zaloLink }` | 404, 409 `INVOICE_NOT_FINALIZED` |
+| GET | `/api/v1/notifications/summary?propertyId=&billingMonth=` | Owner, Manager | — | `{ total, pending, sent, failed, skipped, cancelled, noChannel }` | 404 `PROPERTY_NOT_FOUND` |
+| GET | `/api/v1/notifications/channels` | Owner, Manager | — | `{ zalo: { configured, botName }, email: { configured } }` | — |
 
 Thay đổi endpoint có sẵn: DTO người thuê thêm `zaloLinked`, `zaloLinkedAt`; cài đặt kỳ thu của khu thêm `notifyOnFinalize`, `overdueReminderDays`;
 DTO phiếu thêm `notificationStatus` (mục 4.3). `POST …/resend` theo C-08 (idempotency key).
 
 ```json
-// POST /api/renters/{id}/zalo-link-code → 200
+// POST /api/v1/renters/{id}/zalo-link-code → 200
 { "code": "K7XM2QPD", "expiresAt": "2026-10-19T03:15:00Z", "botName": "Bot Nha Tro Cuong" }
 ```
 
@@ -353,7 +353,7 @@ Cấu hình máy chủ kiểm lúc khởi động (`ValidateOnStart`): token Zal
 | NT-T03 | `InvoiceMessageBuilder` + unit test | Application | 0,5 ngày | T01 |
 | NT-T04 | `INotificationEnqueuer` + nối vào chốt đơn / chốt hàng loạt / hủy phiếu | Application | 1 ngày | T02 |
 | NT-T05 | `NotificationOutboxStore`, `NotificationDispatcher`, rate limit, retry | Infrastructure | 1,5 ngày | T04 |
-| NT-T06 | `EmailSender` (MailKit) + options | Infrastructure | 0,5 ngày | T05 |
+| NT-T06 | `EmailSender` (MailKit) + options | Infrastructure | 0,5 ngày | T05 — **bản tối thiểu đã có 11/11/2026 (M-14)**: `IEmailSender` (`Application.Common.Interfaces`), `SmtpEmailSender` + `EmailOptions` (`Email:Smtp`: Host, Port, Security, Username, FromAddress, FromName, TimeoutSeconds; **mật khẩu `Email:Smtp:Password` chỉ qua user-secrets / biến môi trường**), chưa cấu hình ⇒ `EMAIL_NOT_CONFIGURED`. Hiện chỉ dùng gửi mật khẩu tạm khi admin cấp lại (M01); phần còn lại của M11 (hàng đợi, token bucket, mẫu tin) làm sau trên cùng `IEmailSender` |
 | NT-T07 | `ZaloBotClient`, `ZaloBotSender`, phân loại lỗi | Infrastructure | 1 ngày | T00, T05 |
 | NT-T08 | Liên kết: lệnh tạo mã, `ZaloBotUpdatePoller`, `HandleZaloBotMessage`, `HUY`, giới hạn nhập sai | App + Infra | 1,5 ngày | T07 |
 | NT-T09 | `OverdueReminderScheduler` + lệnh tạo tin nhắc | App + Infra | 1 ngày | T05 |
@@ -371,7 +371,7 @@ Thứ tự: T00 chạy song song với T01–T06 (không cần Zalo). Kết qu�
 |---|---|---|
 | Q1 | Bot có được **chủ động nhắn** sau nhiều ngày người dùng im lặng không? (chưa kiểm chứng) | Chờ NT-T00. Nếu bị giới hạn: nhắc nợ chỉ đi email; Zalo chỉ dùng cho phiếu mới khi còn trong thời hạn cho phép; tin không gửi được ⇒ `Failed` + UI gợi ý chia sẻ tay |
 | Q2 | Giới hạn tốc độ và phí của Zalo Bot? (chưa kiểm chứng) | Chờ NT-T00. Mặc định 5 tin / giây, chỉnh bằng cấu hình |
-| Q3 | Ảnh VietQR trong tin? | Để sau. Cần thêm `bank_bin` cho khu (M02) vì `bank_name` là chữ tự do; và cần kiểm `sendPhoto` nhận URL ảnh |
+| Q3 | Ảnh VietQR trong tin? | Để sau. Khi làm: cấu hình mã ngân hàng / QR **chỉ chủ trọ** (M01 ID-BR-28, 08/11/2026). Cần thêm `bank_bin` cho khu (M02) vì `bank_name` là chữ tự do; và cần kiểm `sendPhoto` nhận URL ảnh |
 | Q4 | Trang xem phiếu công khai (link trong tin)? | Để sau — repo chỉ có API, cần UI công khai và domain |
 | Q5 | Webhook thay polling? | Để sau, khi triển khai lên máy chủ có HTTPS. `IZaloBotClient` không đổi, chỉ thêm endpoint nhận |
 | Q6 | Nhắc trước hạn; tin "đã nhận tiền"; chủ trọ sửa mẫu tin? | Chưa làm (YAGNI). Thêm `NotificationKind` mới khi cần, không đổi cấu trúc bảng |

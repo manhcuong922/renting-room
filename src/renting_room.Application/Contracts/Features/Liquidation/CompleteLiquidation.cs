@@ -60,6 +60,7 @@ public sealed class CompleteLiquidationCommandValidator : AbstractValidator<Comp
         RuleFor(x => x.Settlement).IsInEnum().When(x => x.Settlement is not null);
         RuleFor(x => x.Method).IsInEnum().When(x => x.Method is not null);
         RuleFor(x => x.Reason).OptionalText(500);
+        this.RuleForMeterReadings(x => x.FinalReadings);
         RuleFor(x => x.Reason).NotEmpty().When(x => x.Settlement == DebtSettlement.WriteOff)
             .WithErrorCode("REQUIRED").WithMessage("Nhập lý do bỏ nợ.");
         RuleFor(x => x.PaidAt).Must(d => d is null || d <= clock.GetUtcNow().ToBusinessDate())
@@ -176,8 +177,7 @@ public sealed class CompleteLiquidationHandler(
             return Result.Success();
         if (refund is null)
             return Result.Failure(BillingErrors.RefundPending(await invoiceQueries.GetRefundDueAsync(contract.Id, ct)));
-        if (refund.Waive && currentUser.Role != UserRole.OrgOwner)
-            return Result.Failure(BillingErrors.RefundWaiveNotAllowed);
+        // ID-BR-23 (08/11/2026): "Không hoàn" — chủ trọ và quản lý khu (trước chỉ chủ trọ, M-06).
         foreach (var invoice in (await invoices.LockForUpdateAsync(ids, ct)).Values)
         {
             var confirmed = refund.Waive

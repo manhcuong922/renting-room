@@ -15,11 +15,12 @@ public sealed record RecalculateInvoicesRequest(
     IReadOnlyList<Guid>? InvoiceIds, Guid? PropertyId, string? BillingMonth, IReadOnlyList<Guid>? RoomIds, string? Floor, bool? KeepManualEdits,
     bool? StaleOnly);
 
-public sealed record EditInvoiceLineRequest(decimal? Quantity, decimal? UnitPrice, decimal? Amount, string? Note);
+/// <summary><c>Version</c>: version phiếu đang thấy (M07 §10) — lệch ⇒ 409 <c>CONCURRENCY_CONFLICT</c>; cũng vậy ở thêm dòng, ghi chú, chốt.</summary>
+public sealed record EditInvoiceLineRequest(decimal? Quantity, decimal? UnitPrice, decimal? Amount, string? Note, uint Version);
 
 public sealed record AddInvoiceLineRequest(
     InvoiceLineType Type, string Description, decimal? Quantity, decimal? UnitPrice, decimal Amount, string Note, Guid? FeeTypeId, Guid? SourceInvoiceId,
-    bool? Settled = null, DateOnly? SettledOn = null, PaymentMethod? Method = null);
+    uint Version, bool? Settled = null, DateOnly? SettledOn = null, PaymentMethod? Method = null);
 
 public sealed record BulkAddInvoiceLineRequest(
     IReadOnlyList<Guid>? InvoiceIds, Guid? PropertyId, string? BillingMonth, IReadOnlyList<Guid>? RoomIds, string? Floor,
@@ -28,7 +29,9 @@ public sealed record BulkAddInvoiceLineRequest(
 
 public sealed record ConfirmRefundRequest(DateOnly RefundedOn, PaymentMethod Method, string? Note);
 
-public sealed record InvoiceNoteRequest(string? Note);
+public sealed record InvoiceNoteRequest(string? Note, uint Version);
+
+public sealed record FinalizeInvoiceRequest(uint Version);
 
 public sealed record FinalizeBatchRequest(IReadOnlyList<Guid> InvoiceIds);
 
@@ -40,6 +43,9 @@ public sealed record RecordPaymentRequest(
     decimal Amount, PaymentMethod Method, DateOnly PaidAt, Guid? InvoiceId, string? PayerName, string? Reference, string? Note);
 
 public sealed record ReversePaymentRequest(string Reason);
+
+/// <summary>M08 PM-BR-38: số đã thu mới + số người dùng đang thấy (chống 2 người cùng sửa). Giảm ⇒ reason bắt buộc.</summary>
+public sealed record EditCollectedAmountRequest(decimal Amount, decimal ExpectedAmount, DateOnly? PaidAt, PaymentMethod? Method, string? Reason);
 
 public sealed record WriteOffInvoiceRequest(decimal? Amount, string Reason);
 

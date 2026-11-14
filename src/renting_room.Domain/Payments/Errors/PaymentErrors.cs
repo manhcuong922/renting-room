@@ -12,4 +12,15 @@ public static class PaymentErrors
         "Hợp đồng đã kết thúc — không ghi / đảo phiếu thu (hoàn tất thanh lý đã xử lý hết nợ).");
     public static readonly Error PaidBeforeContract = Error.Validation("INVALID_PAID_AT", "Ngày thu không được trước ngày bắt đầu hợp đồng quá 60 ngày.");
     public static readonly Error NoDebt = Error.BusinessRule("NO_OUTSTANDING_INVOICE", "Hợp đồng không còn phiếu nào chưa thu đủ.");
+
+    // M08 PM-BR-38 (09/11/2026) — sửa trực tiếp số đã thu.
+    public static readonly Error CollectedAmountChanged = Error.Conflict("COLLECTED_AMOUNT_CHANGED",
+        "Số đã thu vừa được người khác thay đổi — tải lại hóa đơn rồi sửa lại.");
+    public static readonly Error CollectedAmountUnchanged = Error.BusinessRule("COLLECTED_AMOUNT_UNCHANGED", "Số đã thu mới bằng số hiện tại.");
+    public static readonly Error CollectedPeriodLocked = Error.Forbidden("COLLECTED_PERIOD_LOCKED",
+        "Tiền thu trước tháng trước đã đối chiếu — quản lý khu không giảm được, liên hệ chủ trọ.");
+
+    public static Error CollectedBelowRefunded(decimal refunded) => Error.BusinessRule("COLLECTED_BELOW_REFUNDED",
+        $"Hóa đơn này đã được hoàn trả {refunded:N0}đ trên phiếu sau — số đã thu không được nhỏ hơn số đó (hủy dòng hoàn trả trước).")
+        .WithDetail("refunded", refunded);
 }

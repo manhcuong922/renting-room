@@ -66,7 +66,7 @@ tổ chức, nhật ký đăng nhập (`login_events`), dọn refresh token hế
 | ID-BR-03 | `SystemAdmin` ⇔ `organization_id IS NULL`; role khác ⇔ `organization_id IS NOT NULL` | DB CHECK + Domain |
 | ID-BR-04 | Mỗi tổ chức có **đúng 1** OrgOwner ở trạng thái không bị xóa (P1). Không được khóa OrgOwner duy nhất mà không tạm ngưng tổ chức | Domain + partial unique index |
 | ID-BR-05 | Mật khẩu: ≥ 8 ký tự, có chữ và số, không trùng tên đăng nhập; tối đa 128 | Validator |
-| ID-BR-06 | Sai mật khẩu 5 lần liên tiếp (đăng nhập **và** đổi mật khẩu dùng chung bộ đếm) → khóa tạm 15 phút (`lockout_end`). Đăng nhập đúng → reset bộ đếm. Khi đang khóa, đăng nhập trả **cùng lỗi `INVALID_CREDENTIALS`** dù mật khẩu đúng hay sai (không lộ tài khoản tồn tại/bị khóa, không thành công cụ dò mật khẩu). Đổi mật khẩu khi đang khóa → 423 `ACCOUNT_LOCKED` | Domain + Application |
+| ID-BR-06 | **Đăng nhập — khóa theo IP + tài khoản (đổi 05/11/2026, L-13)**: trước đây sai 5 lần (từ bất kỳ đâu) khóa cả tài khoản 15 phút ⇒ ai biết SĐT chủ trọ gõ sai 5 lần mỗi 15 phút là chủ trọ bị khóa cả ngày. Nay đếm từ `login_events`: (1) **cùng IP** sai ≥ 5 lần trong 15 phút gần nhất ⇒ chỉ IP đó bị từ chối tài khoản đó (chủ trọ ở nhà / 4G vẫn vào được); lần sai được đếm kể từ lần đăng nhập đúng gần nhất **từ IP đó** và từ lần đổi / cấp lại mật khẩu gần nhất (đoán mật khẩu cũ không còn nghĩa). (2) **Trần cho IP lạ** — IP chưa từng đăng nhập đúng tài khoản này trong 90 ngày: tổng ≥ 30 lần sai từ các IP lạ trong 60 phút ⇒ mọi IP lạ bị từ chối tài khoản này, IP quen vẫn vào được (chặn dò bằng nhiều IP: 100 IP × 5 lần / 15 phút = 2.000 lần/giờ nếu không có trần). Cái giá: chủ trọ đúng lúc bị dò hàng loạt mà dùng IP mới (4G đổi IP) phải chờ tới 1 giờ hoặc vào từ wifi quen. Lần bị từ chối không tính là lần sai. **Đổi mật khẩu / sửa SĐT-email của mình** (đã đăng nhập, nhập lại mật khẩu hiện tại) giữ bộ đếm của tài khoản như cũ: sai 5 lần liên tiếp → khóa tạm 15 phút (`lockout_end`) — muốn dò kiểu này phải có phiên đăng nhập sẵn. Đăng nhập đúng → reset bộ đếm. Khi đang khóa, đăng nhập trả **cùng lỗi `INVALID_CREDENTIALS`** dù mật khẩu đúng hay sai (không lộ tài khoản tồn tại/bị khóa, không thành công cụ dò mật khẩu). Đổi mật khẩu khi đang khóa → 423 `ACCOUNT_LOCKED` | Domain + Application |
 | ID-BR-07 | User `MustChangePassword=true` chỉ được gọi: `change-password`, `logout`, `me` (GET). Còn lại → 403 `PASSWORD_CHANGE_REQUIRED` | Authorization policy |
 | ID-BR-08 | Tổ chức `Suspended` hoặc user `Locked` → không đăng nhập, không refresh; access token đang có bị từ chối (kiểm tra trạng thái có cache ≤ 60s) | Middleware |
 | ID-BR-09 | Refresh token dùng 1 lần. Dùng lại token **đã bị xoay vòng** (sau grace 10s) → thu hồi **toàn bộ family** và đổi security stamp (vô hiệu access token của kẻ gian). Token bị thu hồi vì đăng xuất/đổi mật khẩu/admin chỉ bị từ chối. Mỗi phiên có hạn tuyệt đối (`SessionAbsoluteDays`, mặc định 90 ngày) — xoay vòng không kéo dài quá mốc này | Domain |
@@ -75,21 +75,23 @@ tổ chức, nhật ký đăng nhập (`login_events`), dọn refresh token hế
 | ID-BR-12 | Không xóa vật lý user/tổ chức (dữ liệu tài chính tham chiếu `created_by`). Chỉ khóa/tạm ngưng | Không có endpoint DELETE |
 | ID-BR-13 | Thông báo lỗi đăng nhập **không** phân biệt "sai tài khoản" hay "sai mật khẩu" | Application |
 
-### 3.3 Phó quản lý (OrgManager)
+### 3.3 Quản lý khu (OrgManager)
 
-Chủ trọ thêm một hoặc nhiều **phó quản lý**: thao tác nghiệp vụ (khu, phòng, người thuê, hợp đồng, chỉ số, phiếu, thu tiền, xuất Excel)
-**giống chủ trọ**, nhưng không quản lý thành viên và **không xem dữ liệu nhạy cảm** (số giấy tờ đầy đủ của người thuê / bên cho thuê;
-xuất Excel, in hợp đồng có số đầy đủ) trừ khi chủ trọ cấp quyền (ID-BR-22). SystemAdmin chỉ quản lý tài khoản, **không** xem dữ liệu trọ (ID-BR-11).
+**Đổi 08/11/2026** (thay "phó quản lý"): chủ trọ tạo tài khoản **quản lý khu** và **giao khu** cho từng người — VD chủ ở xa có 3 khu, anh Minh quản
+khu A, chị Lan quản khu B + C. Quản lý khu làm **mọi việc như chủ trọ nhưng chỉ trong các khu được giao**: tuyển khách, lập / in / ký thay hợp đồng
+(theo giấy ủy quyền của chủ — M02 PR-BR-13), chỉ số, phiếu, thu tiền, bỏ nợ, xem số giấy tờ đầy đủ, nhập / xuất Excel. Tên bên cho thuê vẫn là chủ trọ;
+chủ trọ thấy mọi khu và theo dõi qua nhật ký (ID-BR-19). Trừ các việc **chỉ chủ trọ** (ID-BR-28) — nhất là mọi thứ dính tới **tài khoản ngân hàng
+nhận tiền**. Tên kỹ thuật vẫn là `OrgManager`. SystemAdmin chỉ quản lý tài khoản, **không** xem dữ liệu trọ (ID-BR-11).
 
 | ID | Actor | Mô tả |
 |----|-------|-------|
-| ID-UC-13 | OrgOwner | Thêm phó quản lý (họ tên, SĐT/email, ghi chú) → trả mật khẩu tạm một lần, bắt buộc đổi khi đăng nhập |
-| ID-UC-14 | OrgOwner, OrgManager | Xem danh sách thành viên tổ chức (chủ + phó) |
-| ID-UC-15 | OrgOwner | Sửa thông tin phó quản lý |
-| ID-UC-16 | OrgOwner | Khóa / mở khóa phó quản lý (tạm thời) |
-| ID-UC-17 | OrgOwner | Cấp lại mật khẩu tạm cho phó quản lý |
-| ID-UC-18 | OrgOwner | Gỡ phó quản lý khỏi tổ chức (vĩnh viễn) |
-| ID-UC-19 ✅ | OrgOwner | Cấp / thu hồi quyền xem dữ liệu nhạy cảm cho phó quản lý (`PUT /org/members/{id}/sensitive-data-access`) |
+| ID-UC-13 | OrgOwner | Thêm quản lý khu (họ tên, SĐT/email, ghi chú, **khu được giao**) → trả mật khẩu tạm một lần, bắt buộc đổi khi đăng nhập |
+| ID-UC-14 | OrgOwner, OrgManager | Xem danh sách thành viên tổ chức (chủ + quản lý khu, kèm khu được giao) |
+| ID-UC-15 | OrgOwner | Sửa thông tin quản lý khu |
+| ID-UC-16 | OrgOwner | Khóa / mở khóa quản lý khu (tạm thời) |
+| ID-UC-17 | OrgOwner | Cấp lại mật khẩu tạm cho quản lý khu |
+| ID-UC-18 | OrgOwner | Gỡ quản lý khu khỏi tổ chức (vĩnh viễn) |
+| ID-UC-19 | OrgOwner | **Giao khu** cho quản lý khu (`PUT /org/members/{id}/properties { propertyIds }`) — thay quyền dữ liệu nhạy cảm / quyền bỏ nợ riêng (bỏ 08/11/2026) |
 
 | Mã | Quy tắc | Nơi kiểm tra |
 |----|---------|-------------|
@@ -100,9 +102,15 @@ xuất Excel, in hợp đồng có số đầy đủ) trừ khi chủ trọ cấ
 | ID-BR-18 | SĐT/email unique toàn hệ thống ⇒ một người chỉ thuộc 1 tổ chức (P1). Cần làm cho nhiều tổ chức → P3 `memberships` | DB unique |
 | ID-BR-19 ✅ | Mọi thao tác nghiệp vụ lưu `created_by`/`updated_by` và **nhật ký `audit_logs`** (C-10) ⇒ chủ trọ xem phó quản lý nào đã làm gì qua `GET /audit-logs` (chỉ chủ trọ; lọc đối tượng / người / hành động / ngày) | AppDbContext + `AuditLogReader` |
 | ID-BR-20 | Mật khẩu tạm (tạo tài khoản, cấp lại) hết hạn sau `Auth:TemporaryPasswordHours` (mặc định 72h). Đăng nhập **đúng** mật khẩu tạm nhưng đã hết hạn → 401 `TEMPORARY_PASSWORD_EXPIRED` (người cấp phải cấp lại) | Domain + LoginHandler |
-| ID-BR-21 | Phó quản lý xem được thông tin bên cho thuê của khu (M02) và hồ sơ người thuê như chủ trọ, nhưng số giấy tờ luôn ở dạng che (`********1234`). **Đã đổi 04/10/2026** — thay mặc định cũ "phó quản lý xem số đầy đủ" bằng ID-BR-22 | Policy |
-| ID-BR-22 ✅ | **Quyền dữ liệu nhạy cảm**: chủ trọ luôn có; phó quản lý chỉ khi chủ trọ cấp (`users.can_view_sensitive_data`). Áp cho: xem số giấy tờ đầy đủ (người thuê, bên cho thuê) → 403 `SENSITIVE_DATA_FORBIDDEN`; xuất Excel `includeSensitive` → 403; in hợp đồng → **vẫn in được** nhưng số giấy tờ ở dạng che. Quyền đọc từ DB ở mỗi request (không nằm trong token) ⇒ thu hồi có hiệu lực ngay. Cấp / thu hồi ghi audit; gỡ phó quản lý ⇒ mất quyền. `/me` và danh sách thành viên trả `canViewSensitiveData` để UI ẩn nút | Domain `User` + `SensitiveDataAccess` |
-| ID-BR-23 ✅ | **Quyền bỏ nợ** (10/10/2026, M08 PM-BR-16): chủ trọ luôn có; phó quản lý chỉ khi chủ trọ bật **cho riêng người đó** (`users.can_write_off`, mặc định tắt) — người tin tưởng thì bật, người mới thì không. `PUT /org/members/{id}/write-off-permission { allowed }`; gỡ phó quản lý ⇒ tắt. Áp cho: bỏ nợ riêng, "Thanh toán + bỏ phần còn lại", "Bỏ nợ" khi hoàn tất thanh lý → 403 `WRITE_OFF_NOT_ALLOWED` | Domain + Application |
+| ID-BR-21 | ~~Phó quản lý xem số giấy tờ ở dạng che~~ — thay bởi ID-BR-27 (08/11/2026) | — |
+| ID-BR-22 | **Quyền dữ liệu nhạy cảm** (đổi 08/11/2026): chủ trọ và **quản lý khu đang hoạt động** luôn có (quản lý: chỉ người thuê / bên cho thuê của khu được giao — ID-BR-24). Áp cho xem số giấy tờ đầy đủ, xuất Excel `includeSensitive`, in hợp đồng số đầy đủ. Mỗi lần xem / in / xuất số đầy đủ ghi audit (LEG-06). Cột `users.can_view_sensitive_data` thôi dùng (giữ cột, xóa ở migration sau — expand/contract), bỏ `PUT /org/members/{id}/sensitive-data-access` | `SensitiveDataAccess` |
+| ID-BR-23 | **Quyền bỏ nợ** (đổi 08/11/2026): chủ trọ và quản lý khu đang hoạt động luôn có — bỏ nợ riêng, "Thanh toán + bỏ phần còn lại", "Bỏ nợ" và **"Không hoàn"** khi hoàn tất thanh lý (trước chỉ chủ trọ — M-06). Lý do bắt buộc + audit như cũ. Cột `users.can_write_off` thôi dùng, bỏ `PUT /org/members/{id}/write-off-permission`; `/me` vẫn trả `canViewSensitiveData` / `canWriteOff` (= true với chủ + quản lý) để UI cũ không vỡ | Application |
+| ID-BR-24 | **Phạm vi khu** (08/11/2026): quản lý khu chỉ thấy và thao tác dữ liệu của **khu được giao** (`user_property_access`); chủ trọ và job hệ thống thấy mọi khu. Dữ liệu khu khác coi như **không tồn tại**: mở → 404 như id sai, danh sách / số tổng hợp / xuất Excel / lịch sử thuê không gồm. Giao 0 khu ⇒ không thấy dữ liệu khu nào. Chủ trọ đổi khu được giao ⇒ có hiệu lực ngay ở phiên đang mở (không cần đăng nhập lại). Tạo khu mới **không** tự giao cho quản lý nào | Global query filter + chặn ghi ở `SaveChanges` |
+| ID-BR-25 | **Dữ liệu gắn khu**: khu, phòng, nhóm phòng, khoản thu + bản giá, công tơ + chỉ số, hợp đồng (người ở, xe, tài sản, điều khoản, lịch sử đứng tên / chuyển phòng — chuyển phòng chỉ trong cùng khu), phiếu (dòng, đoạn sản lượng, điều chỉnh, khoảng ngắt), khoản phát sinh, phiếu thu (phân bổ). **Dùng chung tổ chức** (không lọc khu): mẫu hợp đồng (quản lý chỉ dùng), bên cho thuê mặc định của tổ chức, cài đặt tổ chức | — |
+| ID-BR-26 | **Hồ sơ người thuê** (không gắn khu): quản lý khu thấy hồ sơ có hợp đồng (bất kỳ trạng thái; đứng tên / ở cùng / từng đứng tên) ở khu được giao, hoặc hồ sơ **chính mình tạo**. Tạo hồ sơ trùng số giấy tờ với hồ sơ ngoài phạm vi ⇒ 409 `RENTER_ID_NUMBER_EXISTS` kèm **họ tên + 4 số cuối** (không gì thêm) để **dùng lại hồ sơ đó** khi lập hợp đồng ở khu mình; sau đó thấy hồ sơ nhưng lịch sử thuê / hợp đồng ở khu khác vẫn ẩn. VD chị Hoa từng thuê khu A (anh Minh), nay thuê khu B: chị Lan nhập CCCD → "Đã có hồ sơ: Nguyễn Thị Hoa, ***4567" → dùng hồ sơ → lập HĐ khu B | Query filter + `CreateRenter` |
+| ID-BR-27 | **Quyền của quản lý khu = chủ trọ trong phạm vi khu** (thay ID-BR-21): mọi thao tác nghiệp vụ M02–M10 trên khu được giao, kể cả xem / in / xuất số giấy tờ đầy đủ (ID-BR-22), bỏ nợ / không hoàn (ID-BR-23), nhập Excel phòng / người thuê (trước chỉ chủ trọ), sửa thông tin khu / cài đặt kỳ thu / nội quy / khoản thu, hủy phiếu | Policy + ID-BR-24 |
+| ID-BR-28 | **Chỉ chủ trọ** (quản lý khu → 403 `FORBIDDEN`): (1) tài khoản ngân hàng nhận tiền của khu (quản lý chỉ xem — PR-BR-18); (2) **sau này** mọi thứ liên quan ngân hàng: mã QR VietQR trên phiếu, thanh toán online, liên kết / đối soát ngân hàng (M07 BL-UC-13, M08, M11 — khi làm mặc định `OrgOwner`); (3) bên cho thuê của khu — thông tin chủ + **người ký thay / giấy ủy quyền** (`PUT /properties/{id}/lessor`, chủ cài một lần, quản lý xem và in theo); bên cho thuê của tổ chức (`PUT /org/lessor`); (4) tạo khu, ngừng sử dụng / khôi phục khu; (5) thành viên (tạo, sửa, giao khu, khóa, gỡ, cấp lại mật khẩu); (6) thông tin tổ chức, cài đặt giữ dữ liệu; (7) ẩn danh người thuê bằng tay; (8) nhật ký hệ thống, nhật ký đăng nhập; (9) tạo / sửa / ngừng dùng mẫu hợp đồng | Policy `OrgOwner` |
+| ID-BR-29 | Chuyển đổi 08/11/2026: phó quản lý đang có ⇒ **được giao mọi khu hiện có** (không ai mất quyền đột ngột); chủ trọ bớt khu sau | Migration |
 
 API (owner/manager — trong phạm vi tổ chức của mình):
 
@@ -115,8 +123,8 @@ API (owner/manager — trong phạm vi tổ chức của mình):
 | POST | `/org/members/{id}/lock` · `/unlock` | OrgOwner | |
 | POST | `/org/members/{id}/reset-password` | OrgOwner | Trả mật khẩu tạm mới (no-store) |
 | POST | `/org/members/{id}/remove` | OrgOwner | Không đảo ngược |
-| PUT | `/org/members/{id}/sensitive-data-access` | OrgOwner | `{ allowed }` — ID-BR-22 |
-| PUT | `/org/members/{id}/write-off-permission` | OrgOwner | `{ allowed }` — ID-BR-23 |
+| PUT | `/org/members/{id}/properties` | OrgOwner | `{ propertyIds[] }` (≤ 200, khu của tổ chức, chưa ngừng dùng; `[]` = không giao khu nào) → 200 thành viên — ID-BR-24. Chỉ quản lý khu; 422 `CANNOT_MODIFY_OWNER`. `POST /org/members` nhận thêm `propertyIds[]` |
+| ~~PUT~~ | ~~`/org/members/{id}/sensitive-data-access`, `/write-off-permission`~~ | — | Bỏ 08/11/2026 (ID-BR-22, ID-BR-23) |
 | GET · PUT | `/org/data-retention` | Xem: OrgMember · Sửa: OrgOwner | Thời gian giữ dữ liệu cá nhân + bật / tắt tự ẩn danh (M03 RT-BR-06) |
 | GET · PUT | `/org/lessor` | Xem: OrgMember · Sửa: OrgOwner | Bên cho thuê mặc định của chủ trọ (M02 PR-BR-17) |
 
@@ -188,8 +196,8 @@ stateDiagram-v2
 | lockout_end | timestamptz | Y | |
 | last_login_at | timestamptz | Y | |
 | temp_password_expires_at | timestamptz | Y | hạn mật khẩu tạm (ID-BR-20); NULL khi mật khẩu đã đổi |
-| can_view_sensitive_data | bool | N | false — phó quản lý được chủ trọ cấp quyền dữ liệu nhạy cảm (ID-BR-22); chủ trọ bỏ qua cờ này |
-| can_write_off | bool | N | false — phó quản lý được chủ trọ cấp quyền bỏ nợ (ID-BR-23) |
+| can_view_sensitive_data | bool | N | **Thôi dùng 08/11/2026** (ID-BR-22) — giữ cột, xóa ở migration sau |
+| can_write_off | bool | N | **Thôi dùng 08/11/2026** (ID-BR-23) — giữ cột, xóa ở migration sau |
 | password_changed_at | timestamptz | Y | lần đổi mật khẩu gần nhất |
 | removed_at / removed_by | timestamptz / uuid | Y | CHECK: NOT NULL ⇔ status = `Removed` |
 | created_at/by, updated_at/by, xmin | | | |
@@ -217,7 +225,9 @@ Dọn rác ✅ (12/10/2026 — `AccountCleanupService`, chạy mỗi 6 giờ): x
 
 **Đăng xuất 1 thiết bị vô hiệu ngay access token của phiên đó** ✅ (12/10/2026): access token mang claim `sid` = `family_id` của phiên; mỗi request kiểm phiên còn refresh token chưa thu hồi (cache như kiểm tài khoản bị khóa, xóa cache ngay khi đăng xuất). Trước đây access token của phiên vừa đăng xuất còn dùng được tới khi hết hạn (≤ 15 phút). Token cũ không có `sid` vẫn hợp lệ tới khi hết hạn.
 
-**(P3, chừa chỗ)** `user_property_access(organization_id, user_id, property_id)` cho `OrgManager`.
+**`user_property_access`** (08/11/2026 — ID-BR-24): `organization_id`, `user_id` → `users`, `property_id` → `properties` (FK composite cùng tổ chức — C-01),
+`created_at`, `created_by`. PK `(user_id, property_id)`; index `(organization_id, property_id)`. Chỉ cho user `OrgManager`. Đổi khu được giao = thay toàn bộ tập
+(ghi audit danh sách cũ → mới). Ngừng sử dụng khu không xóa dòng (khôi phục khu thì quyền còn nguyên).
 
 ### 4.2 Ràng buộc & index
 
@@ -262,9 +272,9 @@ Domain không phụ thuộc ASP.NET Identity; băm mật khẩu qua interface `I
 | Use case | Loại | Input | Output | Lỗi nghiệp vụ |
 |----------|------|-------|--------|---------------|
 | `CreateOrganizationCommand` | Cmd | code, name, contact*, taxCode?, owner{fullName, phone?, email?} | orgId, ownerUserId, **temporaryPassword** | `ORG_CODE_TAKEN`, `PHONE_TAKEN`, `EMAIL_TAKEN` |
-| `ListOrganizationsQuery` | Qry | search?, status?, page | page of OrgSummary (propertyCount, roomCount: chưa code) | |
+| `ListOrganizationsQuery` | Qry | search?, status?, page | page of OrgSummary (propertyCount, roomCount) | |
 | `GetOrganizationQuery` | Qry | id | OrgDetail + danh sách user (không password) | `NOT_FOUND` |
-| `UpdateOrganizationCommand` (chưa code) | Cmd | id, version, fields | OrgDetail | `CONCURRENCY_CONFLICT` |
+| `UpdateOrganizationInfoCommand` | Cmd | name, contact*, taxCode?, address? — chủ trọ tự sửa (`PUT /org`, ID-UC-03); admin sửa hộ (`PUT /admin/organizations/{id}`) chưa code | OrgDetail | |
 | `SuspendOrganizationCommand` | Cmd | id, reason | — | `ORG_ALREADY_SUSPENDED` |
 | `ReactivateOrganizationCommand` | Cmd | id | — | `ORG_NOT_SUSPENDED` |
 | `ResetUserPasswordCommand` | Cmd | userId | temporaryPassword | `NOT_FOUND` |
@@ -274,7 +284,7 @@ Domain không phụ thuộc ASP.NET Identity; băm mật khẩu qua interface `I
 | `LogoutCommand` | Cmd | refreshToken | — | (luôn 204) |
 | `ChangePasswordCommand` | Cmd | currentPassword, newPassword | TokenPair mới | `INVALID_CURRENT_PASSWORD`, `PASSWORD_REUSED` |
 | `GetMeQuery` | Qry | — | MeDto (id, fullName, role, org{id,name}, mustChangePassword) | |
-| `UpdateMeCommand` (chưa code) | Cmd | fullName, phone?, email?, version | MeDto | `PHONE_TAKEN`, `EMAIL_TAKEN` |
+| `UpdateMeCommand` | Cmd | fullName, phone?, email?, currentPassword? (bắt buộc khi đổi SĐT / email) | — | `PHONE_TAKEN`, `EMAIL_TAKEN`, `INVALID_CURRENT_PASSWORD`, 403 `PROFILE_MANAGED_BY_OWNER` (phó quản lý) |
 
 `ICurrentUser` (Application/Common/Interfaces): `Guid UserId`, `Guid? OrganizationId`, `UserRole Role`, `bool IsSystemAdmin`.
 Hiện thực đọc claim `sub`, `org`, `role` từ `HttpContext.User`.
@@ -290,14 +300,14 @@ Tiền tố `/api/v1`. Lỗi theo C-09.
 | POST | `/auth/logout` · `/auth/logout-all` | Authenticated | 204 | |
 | POST | `/auth/change-password` | Authenticated (kể cả MustChange) | 200 TokenResponse | 400, 422 `INVALID_CURRENT_PASSWORD` |
 | GET | `/me` | Authenticated | 200 MeDto | |
-| PUT | `/me` (chưa code) | Authenticated | 200 MeDto | 409 `PHONE_TAKEN`/`EMAIL_TAKEN`/`CONCURRENCY_CONFLICT` |
+| PUT | `/me` | Chủ trọ (phó quản lý → 403 `PROFILE_MANAGED_BY_OWNER`) | 204 | 409 `PHONE_TAKEN`/`EMAIL_TAKEN`, 422 `INVALID_CURRENT_PASSWORD` |
 | GET | `/admin/organizations` | SystemAdmin | 200 Page | |
 | POST | `/admin/organizations` | SystemAdmin | 201 + Location | 409 `ORG_CODE_TAKEN`/`PHONE_TAKEN`/`EMAIL_TAKEN` |
 | GET | `/admin/organizations/{id}` | SystemAdmin | 200 | 404 |
 | PUT | `/admin/organizations/{id}` (chưa code) | SystemAdmin | 200 | 409 |
 | POST | `/admin/organizations/{id}/suspend` | SystemAdmin | 204 | 409 `ORG_ALREADY_SUSPENDED` |
 | POST | `/admin/organizations/{id}/reactivate` | SystemAdmin | 204 | 409 `ORG_NOT_SUSPENDED` |
-| POST | `/admin/users/{id}/reset-password` | SystemAdmin | 200 `{ temporaryPassword }` | 404 |
+| POST | `/admin/users/{id}/reset-password` | SystemAdmin | 200 `{ userId, username, temporaryPassword, expiresAt, deliveredTo }` — **có email (11/11/2026, M-14)**: mật khẩu tạm gửi tới email của chính chủ, `temporaryPassword = null`, `deliveredTo` = email đã che, admin không thấy mật khẩu; gửi mail lỗi ⇒ hủy (rollback, mật khẩu cũ còn dùng được). **Chưa có email: TẠM như cũ** (admin nhận mật khẩu trong response) — xử lý sau (kênh Zalo M11 hoặc bắt buộc email) | 404; 503 `EMAIL_NOT_CONFIGURED`, `EMAIL_SEND_FAILED` |
 | POST | `/admin/users/{id}/lock` | SystemAdmin | 204 | 422 `CANNOT_LOCK_SOLE_OWNER` |
 | POST | `/admin/users/{id}/unlock` | SystemAdmin | 204 | |
 
@@ -361,13 +371,12 @@ Access token claims: `sub`, `org` (nếu có), `role`, `stamp`, `jti`, `exp`. K�
 | Hành động | SystemAdmin | OrgOwner | OrgManager |
 |-----------|:-:|:-:|:-:|
 | Quản lý tổ chức, reset/khóa user | ✅ | ❌ | ❌ |
-| API nghiệp vụ (M02–M10) | ❌ (ID-BR-11) | ✅ tổ chức mình | ✅ như chủ trọ (P1); P3 theo khu được gán |
+| API nghiệp vụ (M02–M10) | ❌ (ID-BR-11) | ✅ mọi khu của tổ chức | ✅ như chủ trọ, **chỉ khu được giao** (ID-BR-24, ID-BR-27) |
 | `/me`, đổi mật khẩu | ✅ | ✅ | ✅ |
-| Quản lý phó quản lý (§3.3) | ❌ | ✅ | ❌ |
-| Xem / xuất / in số giấy tờ đầy đủ (ID-BR-22) | ❌ | ✅ | Chỉ khi chủ trọ cấp quyền |
-| Cấp / thu hồi quyền dữ liệu nhạy cảm | ❌ | ✅ | ❌ |
-| Bỏ nợ (ID-BR-23) | ❌ | ✅ | Chỉ khi chủ trọ cấp quyền cho riêng người đó |
-| Cấp / thu hồi quyền bỏ nợ | ❌ | ✅ | ❌ |
+| Quản lý thành viên, giao khu (§3.3) | ❌ | ✅ | ❌ |
+| Xem / xuất / in số giấy tờ đầy đủ (ID-BR-22) | ❌ | ✅ | ✅ khu được giao |
+| Bỏ nợ, "Không hoàn" (ID-BR-23) | ❌ | ✅ | ✅ khu được giao |
+| Danh sách "chỉ chủ trọ" (ID-BR-28: ngân hàng nhận tiền, bên cho thuê / người ký thay, tạo / ngừng khu, mẫu hợp đồng, tổ chức, giữ dữ liệu, ẩn danh tay, nhật ký) | ❌ | ✅ | ❌ |
 | Xem danh sách thành viên tổ chức | ✅ (chỉ thông tin tài khoản) | ✅ | ✅ (chỉ xem) |
 
 Policies: `RequireSystemAdmin`, `RequireOrgMember` (role ∈ OrgOwner/OrgManager ∧ org Active ∧ !MustChangePassword).
@@ -390,7 +399,7 @@ Mặc định **mọi endpoint** yêu cầu `RequireOrgMember` (fallback policy)
 - Không log mật khẩu, token, mật khẩu tạm. Response chứa mật khẩu tạm có `Cache-Control: no-store`.
 - Rate limit ✅ (ASP.NET Core RateLimiter, cửa sổ trượt): `/auth/login` 5 req/phút theo IP+username (`LoginAttemptLimiter` trong endpoint — username lấy từ body, chuẩn hóa SĐT/email), 20 req/phút theo IP (policy `login`); `/auth/refresh` 30/phút/IP. Cấu hình section `RateLimiting`.
 - Chống timing attack: khi username không tồn tại vẫn chạy hash giả.
-- Seed SystemAdmin: đọc `Bootstrap:AdminPhone`/`AdminPassword` từ secret; chỉ chạy khi chưa có SystemAdmin nào.
+- Seed SystemAdmin: đọc `Bootstrap:Admin:Phone`/`Password` từ secret; chỉ chạy khi chưa có SystemAdmin nào. **Từ 11/11/2026 (M-18) admin bootstrap được tạo với `must_change_password = true`**: lần đăng nhập đầu chỉ được đổi mật khẩu (như thành viên tổ chức), nên mật khẩu nằm trong `.env` / biến môi trường / backup không còn dùng được sau đó (trước đây `false` — dùng được mãi). Không có hạn mật khẩu tạm như thành viên (không tự khóa admin duy nhất nếu triển khai chậm). Admin đã tạo từ trước không bị ảnh hưởng.
 
 ## 12. Kế hoạch test
 
@@ -407,6 +416,20 @@ Mặc định **mọi endpoint** yêu cầu `RequireOrgMember` (fallback policy)
 - Tạm ngưng org → login 403; access token cũ bị từ chối sau ≤ 60s (dùng FakeTimeProvider/cache TTL 0 trong test).
 - OrgOwner gọi `/admin/*` → 403; SystemAdmin gọi `/api/v1/rooms` → 403.
 - Rate limit login trả 429.
+- **L-13 (05/11/2026)**: IP A sai 5 lần ⇒ IP A đăng nhập đúng vẫn `INVALID_CREDENTIALS`; IP B (chưa từng vào) đăng nhập đúng → 200. Sai 4 + đúng + sai 4 cùng IP ⇒ vẫn vào được. Chủ trọ cấp lại mật khẩu cho phó quản lý đã sai 5 lần ⇒ vào ngay bằng mật khẩu tạm từ IP đó. 30 lần sai từ 30 IP lạ ⇒ IP lạ thứ 31 đăng nhập đúng → 401, IP quen (đã vào trước đó) → 200.
+
+- **Quản lý khu (08/11/2026, ID-BR-24..29)** — chủ có khu A, B; quản lý M được giao A (test `PropertyScopeTests`):
+  - S1 Phạm vi đọc: M xem danh sách khu / phòng / hợp đồng / phiếu / phiếu thu / khoản phát sinh / công tơ / khoản thu ⇒ chỉ của A; mở id của B
+    (khu, phòng, hợp đồng, phiếu, phiếu thu, công tơ, chỉ số, khoản thu) → 404; số tổng hợp phiếu, số nợ, lưới chỉ số, xuất Excel người thuê, lịch sử thuê chỉ tính A.
+  - S2 Phạm vi ghi: M tạo phòng / khoản thu ở B, ghi thu cho HĐ ở B, lưu chỉ số công tơ B, tạo phiếu cho B (`generate` 1 khu, `generate-bulk` để trống ⇒ chỉ A) → 404 / không đụng B.
+  - S3 Đổi giao khu có hiệu lực ngay: chủ đổi M sang B (không đăng nhập lại) ⇒ M thấy B, mở A → 404; giao `[]` ⇒ danh sách trống.
+  - S4 Người thuê: hồ sơ chỉ có HĐ ở B ⇒ M không thấy (danh sách, mở → 404); hồ sơ M tự tạo ⇒ thấy; M tạo hồ sơ trùng CCCD hồ sơ ở B ⇒ 409 kèm họ tên + 4 số cuối;
+    lập HĐ khu A với hồ sơ đó được ⇒ thấy hồ sơ, lịch sử thuê không có HĐ ở B.
+  - S5 Quyền như chủ trong khu: M xem CCCD đầy đủ, bỏ nợ, "Không hoàn" khi hoàn tất thanh lý, nhập Excel phòng vào A → được (trước 403).
+  - S6 Chỉ chủ trọ: M gọi tạo khu, ngừng / khôi phục khu A, `PUT /properties/{A}/lessor`, tài khoản ngân hàng A, tạo / sửa / ngừng mẫu HĐ, thành viên, giao khu,
+    `PUT /org`, giữ dữ liệu, ẩn danh tay, nhật ký, nhật ký đăng nhập → 403.
+  - S7 Chủ trọ thấy cả A và B; job ẩn danh (hệ thống) xử lý cả hai khu.
+  - S8 Giao khu: khu của tổ chức khác / khu đã ngừng / id lạ → 422; giao cho chủ trọ → 422 `CANNOT_MODIFY_OWNER`; danh sách thành viên trả `propertyIds`.
 
 **E2E**: F1 onboarding.
 
@@ -418,10 +441,7 @@ Mặc định **mọi endpoint** yêu cầu `RequireOrgMember` (fallback policy)
 
 | Việc | Ghi chú |
 |------|---------|
-| `PUT /admin/organizations/{id}` — sửa thông tin tổ chức (ID-UC-03) | Hiện muốn đổi tên / liên hệ tổ chức phải sửa DB |
-| `PUT /me` — tự sửa họ tên, SĐT, email (ID-UC-12) | Phó quản lý: chủ trọ sửa hộ được; chủ trọ thì chưa có cách |
-| Số khu / số phòng trong danh sách tổ chức (ID-UC-02) | |
-| Bảng `login_events` + job dọn refresh token hết hạn | P2 |
+| `PUT /admin/organizations/{id}` — admin sửa hộ thông tin tổ chức | Chủ trọ tự sửa được qua `PUT /org` (ID-UC-03) — chỉ thiếu đường cho admin |
 
 ## 15. Câu hỏi mở
 

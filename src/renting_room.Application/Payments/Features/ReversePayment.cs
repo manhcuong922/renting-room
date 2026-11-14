@@ -19,8 +19,7 @@ public sealed class ReversePaymentCommandValidator : AbstractValidator<ReversePa
 }
 
 public sealed class ReversePaymentHandler(
-    IPaymentRepository payments, IPaymentQueries paymentQueries, IInvoiceRepository invoices, IInvoiceQueries invoiceQueries,
-    IContractQueries contracts, IUnitOfWork unitOfWork, TimeProvider clock)
+    IPaymentQueries paymentQueries, IInvoiceQueries invoiceQueries, IContractQueries contracts, IUnitOfWork unitOfWork, CollectionLedger ledger)
     : IRequestHandler<ReversePaymentCommand, Result<PaymentDto>>
 {
     public async ValueTask<Result<PaymentDto>> Handle(ReversePaymentCommand request, CancellationToken cancellationToken)
@@ -33,38 +32,13 @@ public sealed class ReversePaymentHandler(
         await unitOfWork.LockForUpdateAsync<Contract>(contractId.Value, cancellationToken);
         if (await contracts.GetStatusAsync(contractId.Value, cancellationToken) == ContractStatus.Ended)
             return PaymentErrors.ContractNotBillable;
-        var payment = await PaymentReversal.ReverseAsync(payments, invoices, request.PaymentId, request.Reason, clock.GetUtcNow(), cancellationToken);
-        if (payment.IsFailure)
-            return payment.Error!;
-
-        await unitOfWork.SaveChangesAsync(cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
-        return (await PaymentMapping.ToDtosAsync(invoiceQueries, [payment.Value!], cancellationToken))[0];
-    }
-}
-
-/// <summary>Đảo phiếu thu trong transaction của người gọi (đã khóa HĐ): hủy phân bổ, khóa phiếu báo theo id rồi giảm tiền đã thu.</summary>
-internal static class PaymentReversal
-{
-    public static async Task<Result<Payment>> ReverseAsync(
-        IPaymentRepository payments, IInvoiceRepository invoiceRepository, Guid paymentId, string reason, DateTimeOffset now, CancellationToken ct)
-    {
-        var payment = (await payments.GetWithAllocationsForUpdateAsync(paymentId, ct))!;
-        var ids = payment.Allocations.Where(a => a.CancelledAt is null).Select(a => a.InvoiceId).Distinct().ToList();
-        var invoices = await invoiceRepository.LockForUpdateAsync(ids, ct);
-        // BL-BR-41: nợ còn lại đã chuyển vào hóa đơn trả phòng theo số thu lúc đó — đảo thu bây giờ sẽ lệch bản kết toán.
-        if (invoices.Values.Any(i => i.CarriedToInvoiceId is not null))
-            return BillingErrors.InvoiceCarriedOver;
-        var reversed = payment.Reverse(reason, now);
+        // PM-BR-39: đảo phiếu thu có thể đảo kèm phiếu hoàn của cùng hóa đơn — trả phiếu được yêu cầu.
+        var reversed = await ledger.ReverseAsync(request.PaymentId, request.Reason, cancellationToken);
         if (reversed.IsFailure)
             return reversed.Error!;
 
-        // Phiếu hoàn tiền đã giảm "đã thu" của hóa đơn ⇒ đảo nó là tăng lại, không được vượt tổng.
-        var sign = payment.Kind == PaymentKind.Refund ? 1 : -1;
-        if (sign > 0 && reversed.Value!.Any(a => invoices[a.InvoiceId].PaidAmount + a.Amount > invoices[a.InvoiceId].TotalAmount))
-            return PaymentErrors.ExceedsDebt;
-        foreach (var (invoiceId, amount) in reversed.Value!)
-            invoices[invoiceId].ApplyPayment(sign * amount, payment.Kind == PaymentKind.WriteOff);
-        return payment;
+        await unitOfWork.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return (await PaymentMapping.ToDtosAsync(invoiceQueries, [reversed.Value![0]], cancellationToken))[0];
     }
 }

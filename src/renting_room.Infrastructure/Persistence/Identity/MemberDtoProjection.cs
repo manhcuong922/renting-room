@@ -20,7 +20,7 @@ internal static class MemberDtoProjection
             u.TempPasswordExpiresAt,
             u.LastLoginAt,
             u.CreatedAt,
-            u.Role == UserRole.OrgOwner || u.CanViewSensitiveData,
+            u.Role == UserRole.OrgOwner || u.Role == UserRole.OrgManager,
             u.Version.ToString(),
-            u.Role == UserRole.OrgOwner || u.CanWriteOff));
+            u.Role == UserRole.OrgOwner || u.Role == UserRole.OrgManager));
 }

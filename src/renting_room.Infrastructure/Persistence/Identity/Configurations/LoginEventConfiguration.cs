@@ -15,5 +15,7 @@ internal sealed class LoginEventConfiguration : IEntityTypeConfiguration<LoginEv
         builder.Property(e => e.Reason).HasConversion<string>().HasMaxLength(32);
         builder.HasIndex(e => new { e.OrganizationId, e.OccurredAt }).HasDatabaseName("ix_login_events_organization");
         builder.HasIndex(e => e.OccurredAt).HasDatabaseName("ix_login_events_occurred_at");
+        // ID-BR-06: mỗi lần đăng nhập đếm lần sai / IP quen của một tài khoản.
+        builder.HasIndex(e => new { e.UserId, e.OccurredAt }).HasDatabaseName("ix_login_events_user");
     }
 }

@@ -24,6 +24,17 @@ public sealed class UserTests
     }
 
     [Fact]
+    public void CreateSystemAdmin_RequiresPasswordChange_SoABootstrapPasswordLeftInEnvIsUselessAfterFirstLogin()
+    {
+        // M-18 (11/11/2026): mật khẩu bootstrap nằm trong .env / biến môi trường — dùng được đúng 1 lần để vào đổi mật khẩu.
+        var admin = User.CreateSystemAdmin("System Administrator", "0900000001", null, "hash");
+
+        admin.Role.Should().Be(UserRole.SystemAdmin);
+        admin.MustChangePassword.Should().BeTrue();
+        admin.TempPasswordExpiresAt.Should().BeNull("admin không có hạn mật khẩu tạm — không tự khóa mình ngoài hệ thống khi triển khai chậm");
+    }
+
+    [Fact]
     public void CreateOrgOwner_Throws_WhenNoValidPhoneOrEmail()
     {
         var act = () => User.CreateOrgOwner(OrganizationId, "Minh", "123", "invalid", "hash", Now);
@@ -40,13 +51,13 @@ public sealed class UserTests
     }
 
     [Fact]
-    public void CreateSystemAdmin_HasNoOrganization_AndNoForcedPasswordChange()
+    public void CreateSystemAdmin_HasNoOrganization_AndUsernameFromEmail()
     {
+        // Trước 11/11/2026 admin không bị bắt đổi mật khẩu — đã bỏ (M-18), xem CreateSystemAdmin_RequiresPasswordChange_….
         var admin = User.CreateSystemAdmin("Admin", null, "admin@example.com", "hash");
 
         admin.OrganizationId.Should().BeNull();
         admin.Role.Should().Be(UserRole.SystemAdmin);
-        admin.MustChangePassword.Should().BeFalse();
         admin.Username.Should().Be("admin@example.com");
     }
 

@@ -11,6 +11,7 @@
 | Thời điểm | ISO 8601 UTC: `"2026-10-02T13:17:51.514457+00:00"` → hiển thị đổi sang giờ VN (+07:00) |
 | Tiền | Số nguyên VND: `3500000` → hiển thị `3.500.000 đ` |
 | Id | UUID chuỗi |
+| Chuỗi nhập | Server chuẩn hóa mọi chuỗi trong body: bỏ ký tự điều khiển (VD NUL) trừ `\n` `\r` `\t`; U+000B / U+000C (Shift+Enter của Word) ⇒ `\n`. Kết quả lưu có thể khác chuỗi gửi (M-25) |
 
 ## Xác thực
 
@@ -31,7 +32,7 @@ Xem chi tiết luồng token ở [auth.md](auth.md). Tóm tắt xử lý chung c
 
 ## Phân trang
 
-Danh sách dùng query `?page=1&pageSize=20` (tối đa 100). Response:
+Danh sách dùng query `?page=1&pageSize=20` (`pageSize` tối đa 100, `page` từ 1 tới 100.000 — ngoài khoảng ⇒ 400 `OUT_OF_RANGE`). Response:
 
 ```json
 {
@@ -47,7 +48,7 @@ Ngoại lệ trả **mảng** (không phân trang): `GET /org/members`, `GET /pr
 
 ## Cập nhật có `version` (chống ghi đè)
 
-Các bản ghi sửa được (khu, phòng, người thuê, hợp đồng nháp, phó quản lý) có field `"version": "904"`.
+Các bản ghi sửa được (khu, phòng, người thuê, hợp đồng nháp, quản lý khu, **phiếu nháp** — mọi thao tác sửa / chốt một phiếu, xem [invoices.md](invoices.md)) có field `"version": "904"`.
 
 1. Khi mở form sửa: lưu `version` từ response GET.
 2. Gửi kèm `version` trong body `PUT`.
@@ -135,7 +136,7 @@ Vượt giới hạn → **429 `TOO_MANY_REQUESTS`** + header `Retry-After` (gi�
 
 | Enum | Giá trị → nhãn hiển thị gợi ý |
 |------|-------------------------------|
-| `UserRole` | `SystemAdmin` Quản trị viên · `OrgOwner` Chủ trọ · `OrgManager` Phó quản lý |
+| `UserRole` | `SystemAdmin` Quản trị viên · `OrgOwner` Chủ trọ · `OrgManager` Quản lý khu |
 | `UserStatus` | `Active` Hoạt động · `Locked` Đã khóa · `Removed` Đã gỡ |
 | `OrganizationStatus` | `Active` Hoạt động · `Suspended` Tạm ngưng |
 | `IdDocumentType` | `CitizenId` CCCD / Căn cước (12 số) · `LegacyId` CMND cũ (9 số) · `Passport` Hộ chiếu |
@@ -156,7 +157,7 @@ Vượt giới hạn → **429 `TOO_MANY_REQUESTS`** + header `Retry-After` (gi�
 | `InvoiceLineType` | `Rent` Tiền phòng · `Metered` Điện nước · `Service` Dịch vụ · `Surcharge` Phụ thu · `ManualDiscount` Giảm trừ · `Refund` Hoàn trả (hóa đơn trả phòng) · `PreviousDebt` Nợ chuyển từ hóa đơn trước · `Deposit` Trừ tiền cọc (2 dòng kết toán của hóa đơn trả phòng — 27/10/2026) |
 | `InvoicePaymentStatus` | `Unpaid` Chưa thu · `PartiallyPaid` Thu một phần · `Paid` Đã thu đủ · `Overdue` Quá hạn · `WrittenOff` Đã bỏ nợ · `RefundPending` Chờ hoàn tiền cho người thuê · `Refunded` Đã hoàn · `RefundWaived` Không hoàn (chủ trọ quyết định, có lý do) · `CarriedOver` Chờ thu ở hóa đơn trả phòng · `CarriedSettled` Hoàn thành (qua hóa đơn trả phòng) · `CarriedWrittenOff` Đã bỏ nợ (qua hóa đơn trả phòng) (27/10/2026 — đi theo hóa đơn trả phòng) |
 | `InvoiceType` | `Regular` Phiếu tháng · `Final` Hóa đơn trả phòng |
-| `PaymentKind` | `Receipt` Tiền thu · `WriteOff` Bỏ nợ |
+| `PaymentKind` | `Receipt` Tiền thu · `WriteOff` Bỏ nợ (không tính doanh thu) · `Refund` Phiếu hoàn tiền PC — tiền chi ra, **không** cộng vào tiền thu |
 | `PaymentStatus` | `Recorded` Đã ghi · `Reversed` Đã đảo |
 | `RoomChargeKind` | `Surcharge` Phụ thu · `Credit` Bù (trừ cho người thuê) |
 | `RoomChargeStatus` | `Pending` Chờ lên phiếu · `OnDraft` Trên phiếu nháp · `Billed` Đã vào phiếu đã chốt · `Cancelled` Đã hủy |
@@ -173,6 +174,9 @@ Vượt giới hạn → **429 `TOO_MANY_REQUESTS`** + header `Retry-After` (gi�
 Số giấy tờ (CCCD / hộ chiếu) **luôn trả dạng che** `"********2345"`. Muốn xem đầy đủ: gọi endpoint `reveal-id-number` (POST) —
 mỗi lần xem đều được ghi log. UI: nút "Hiện số" có biểu tượng con mắt, không tự động gọi.
 
-**Quyền dữ liệu nhạy cảm**: chủ trọ luôn có; phó quản lý chỉ khi chủ trọ cấp. Đọc `canViewSensitiveData` từ `GET /me`:
-`false` ⇒ **ẩn** nút 👁, ô "Hiện đầy đủ số giấy tờ" khi xuất Excel. Gọi khi không có quyền → 403 `SENSITIVE_DATA_FORBIDDEN`
-(quyền có thể bị thu hồi giữa chừng — xử lý lỗi này bằng thông báo, không đăng xuất). In hợp đồng vẫn được, số giấy tờ in dạng che.
+**Quyền dữ liệu nhạy cảm** (đổi 08/11/2026): chủ trọ và quản lý khu luôn có (quản lý: người thuê / bên cho thuê của khu được giao). `canViewSensitiveData`
+trong `GET /me` luôn `true` với hai vai trò này; 403 `SENSITIVE_DATA_FORBIDDEN` chỉ còn khi tài khoản không phải thành viên đang hoạt động.
+
+**Phạm vi khu** (08/11/2026): quản lý khu chỉ thấy dữ liệu của **khu được giao** — id thuộc khu khác trả **404 như id sai** (không phải 403), danh sách,
+số tổng hợp, xuất Excel tự lọc. Chủ trọ đổi khu được giao có hiệu lực ngay ⇒ màn đang mở có thể gặp 404: báo "Không tìm thấy (có thể bạn không còn
+quản lý khu này)", tải lại danh sách khu ([members.md](members.md)).

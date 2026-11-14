@@ -46,7 +46,7 @@ public sealed class MeterPeriodLockAndResignTests(ApiFactory factory)
         // Kỳ tháng trước đã chốt phiếu tới chỉ số 150 (ghi ngày 1 tháng này).
         (await SaveAsync(meterId, previous, month, 150)).StatusCode.Should().Be(HttpStatusCode.OK);
         var closed = await InvoiceAsync(previous);
-        (await _client.PostJsonAsync($"/api/v1/invoices/{closed.GetProperty("summary").GetProperty("id").GetGuid()}/finalize", null, token))
+        (await _client.FinalizeInvoiceAsync(closed.GetProperty("summary").GetProperty("id").GetGuid(), token))
             .StatusCode.Should().Be(HttpStatusCode.OK);
 
         // Khai thay công tơ lùi vào kỳ đã chốt ⇒ chặn (cả thay từng phòng lẫn thay hàng loạt).

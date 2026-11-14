@@ -45,6 +45,7 @@ public sealed class AuthFlowTests(ApiFactory factory)
 
         for (var attempt = 0; attempt < 5; attempt++)
         {
+            factory.Clock.Advance(TimeSpan.FromMilliseconds(1)); // đồng hồ test đứng yên — lần sai phải sau lúc cấp mật khẩu tạm (ID-BR-06)
             var failed = await _client.PostJsonAsync("/api/v1/auth/login", new { username = phone, password = "wrong-pass1" });
             failed.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
         }

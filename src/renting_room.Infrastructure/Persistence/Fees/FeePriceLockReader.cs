@@ -6,9 +6,11 @@ namespace renting_room.Infrastructure.Persistence;
 
 public sealed class FeePriceLockReader(AppDbContext db) : IFeePriceLockReader
 {
-    public async Task<DateOnly?> GetLockedUntilAsync(Guid feeTypeId, CancellationToken cancellationToken) =>
+    public async Task<IReadOnlyCollection<DateOnly>> GetLockedDatesAsync(Guid feeTypeId, CancellationToken cancellationToken) =>
         await db.Invoices.Where(i => i.Status == InvoiceStatus.Finalized)
             .SelectMany(i => i.Lines)
             .Where(l => l.FeeTypeId == feeTypeId)
-            .MaxAsync(l => (DateOnly?)l.ServiceTo, cancellationToken);
+            .Select(l => l.ServiceTo)
+            .Distinct()
+            .ToListAsync(cancellationToken);
 }

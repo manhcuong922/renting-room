@@ -9,7 +9,8 @@ namespace renting_room.Application.Contracts;
 
 public sealed record AddOccupantCommand(
     Guid ContractId, Guid RenterId, DateOnly MoveInDate, DateOnly? ExpectedEndDate, string? Relationship, string? Note,
-    OccupantRelationship? RelationshipType = null, bool GuardianConsent = false, OccupantRole Role = OccupantRole.Resident) : IRequest<Result>;
+    OccupantRelationship? RelationshipType = null, bool GuardianConsent = false, OccupantRole Role = OccupantRole.Resident,
+    Guid? MovedFromContractId = null) : IRequest<Result>;
 
 public sealed class AddOccupantCommandValidator : AbstractValidator<AddOccupantCommand>
 {
@@ -52,6 +53,8 @@ public sealed class AddOccupantHandler(ContractMutation mutation, OccupantChecks
             var added = contract.AddOccupant(input);
             if (added.IsFailure || contract.Status != ContractStatus.Active)
                 return added;
-            return await occupantChecks.FindRoleConflictAsync(contract, cancellationToken) is { } conflict ? Result.Failure(conflict) : added;
+            return await occupantChecks.FindRoleConflictAsync(contract, cancellationToken, request.MovedFromContractId) is { } conflict
+                ? Result.Failure(conflict)
+                : added;
         }, cancellationToken));
 }

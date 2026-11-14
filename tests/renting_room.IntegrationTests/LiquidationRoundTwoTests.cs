@@ -87,7 +87,7 @@ public sealed class LiquidationRoundTwoTests(ApiFactory factory)
 
     private async Task<JsonElement> FinalizeAsync(Setup s, Guid invoiceId)
     {
-        var finalized = await _client.PostJsonAsync($"/api/v1/invoices/{invoiceId}/finalize", null, s.Token);
+        var finalized = await _client.FinalizeInvoiceAsync(invoiceId, s.Token);
         finalized.StatusCode.Should().Be(HttpStatusCode.OK, await finalized.Content.ReadAsStringAsync());
         return await finalized.ReadAsync<JsonElement>();
     }
@@ -168,9 +168,9 @@ public sealed class LiquidationRoundTwoTests(ApiFactory factory)
         summary.GetProperty("rentBilledInvoiceNo").ValueKind.Should().Be(JsonValueKind.Null);
 
         var metered = none.GetProperty("lines").EnumerateArray().Single(l => l.GetProperty("type").GetString() == "Metered").GetProperty("id").GetGuid();
-        (await (await _client.PutJsonAsync($"/api/v1/invoices/{Id(final)}/lines/{metered}", new { amount = 50_000 }, s.Token))
+        (await (await _client.EditInvoiceLineAsync(Id(final), metered, new { amount = 50_000 }, s.Token))
             .ReadProblemCodeAsync()).Should().Be("NOTE_REQUIRED", "hóa đơn trả phòng: mọi dòng sửa tay phải có lý do");
-        var edited = await (await _client.PutJsonAsync($"/api/v1/invoices/{Id(final)}/lines/{metered}",
+        var edited = await (await _client.EditInvoiceLineAsync(Id(final), metered,
             new { amount = 50_000, note = "Trừ điện thợ sửa máy lạnh" }, s.Token)).ReadAsync<JsonElement>();
         var line = edited.GetProperty("lines").EnumerateArray().Single(l => l.GetProperty("id").GetGuid() == metered);
         line.GetProperty("isManuallyEdited").GetBoolean().Should().BeTrue();
@@ -218,7 +218,7 @@ public sealed class LiquidationRoundTwoTests(ApiFactory factory)
         (await SaveReadingAsync(s, february, 180, onAnchorDay: true)).StatusCode.Should().Be(HttpStatusCode.OK);
         (await GenerateAsync(s, february)).GetProperty("created").GetInt32().Should().Be(1);
         var phantom = Id(await InvoiceForAsync(s, february));
-        (await _client.PostJsonAsync($"/api/v1/invoices/{phantom}/manual-lines",
+        (await _client.AddInvoiceLineAsync(phantom,
             new { type = "Surcharge", description = "Phụ thu nước tháng 2", amount = 50_000, note = "Lập trước khi biết người thuê đi" }, s.Token))
             .StatusCode.Should().Be(HttpStatusCode.OK);
 
@@ -289,7 +289,7 @@ public sealed class LiquidationRoundTwoTests(ApiFactory factory)
         var suggestion = (await OverpaidAsync(Id(final), "Daily"))!.Value;
         suggestion.GetProperty("amount").GetDecimal().Should().Be(overpaid);
         suggestion.GetProperty("ref").GetGuid().Should().Be(Id(feb), "UI điền sẵn dòng Hoàn trả với hóa đơn nguồn");
-        (await _client.PostJsonAsync($"/api/v1/invoices/{Id(final)}/manual-lines", new
+        (await _client.AddInvoiceLineAsync(Id(final), new
         {
             type = "Refund", description = "Hoàn tiền phòng những ngày chưa ở", amount = overpaid, note = "Trả phòng 15/2", sourceInvoiceId = Id(feb)
         }, s.Token)).StatusCode.Should().Be(HttpStatusCode.OK, "số gợi ý luôn hoàn được");
@@ -467,7 +467,7 @@ public sealed class LiquidationRoundTwoTests(ApiFactory factory)
     }
 
     [Fact]
-    public async Task Complete_WaiveRefund_OwnerOnly_NeedsReason_RecordsNoRefundMethod()
+    public async Task Complete_WaiveRefund_ByPropertyManager_NeedsReason_RecordsNoRefundMethod()
     {
         var s = await ArrangeAsync();
         var end = s.Start.AddDays(9);
@@ -480,17 +480,14 @@ public sealed class LiquidationRoundTwoTests(ApiFactory factory)
         var complete = $"/api/v1/contracts/{s.ContractId}/liquidation/complete";
         var waive = new { refundedOn = s.Today, waive = true, reason = "Người thuê bỏ đi, không liên lạc được" };
 
+        // M01 ID-BR-23 (08/11/2026): quản lý khu "Không hoàn" được như chủ trọ (trước chỉ chủ trọ — 403 REFUND_WAIVE_NOT_ALLOWED).
         var manager = await AddActiveManagerAsync(s.Token);
-        var denied = await _client.PostJsonAsync(complete, new { refund = waive, pendingCharges = new { method = "Cash" } }, manager);
-        denied.StatusCode.Should().Be(HttpStatusCode.Forbidden);
-        (await denied.ReadProblemCodeAsync()).Should().Be("REFUND_WAIVE_NOT_ALLOWED");
-
-        (await _client.PostJsonAsync(complete, new { refund = new { refundedOn = s.Today, waive = true }, pendingCharges = new { method = "Cash" } }, s.Token))
+        (await _client.PostJsonAsync(complete, new { refund = new { refundedOn = s.Today, waive = true }, pendingCharges = new { method = "Cash" } }, manager))
             .StatusCode.Should().Be(HttpStatusCode.BadRequest, "không hoàn phải có lý do");
-        (await _client.PostJsonAsync(complete, new { refund = new { refundedOn = s.Today }, pendingCharges = new { method = "Cash" } }, s.Token))
+        (await _client.PostJsonAsync(complete, new { refund = new { refundedOn = s.Today }, pendingCharges = new { method = "Cash" } }, manager))
             .StatusCode.Should().Be(HttpStatusCode.BadRequest, "đã hoàn thì phải chọn cách hoàn");
 
-        var completed = await _client.PostJsonAsync(complete, new { refund = waive, pendingCharges = new { method = "Cash" } }, s.Token);
+        var completed = await _client.PostJsonAsync(complete, new { refund = waive, pendingCharges = new { method = "Cash" } }, manager);
         completed.StatusCode.Should().Be(HttpStatusCode.NoContent, await completed.Content.ReadAsStringAsync());
         var invoice = await InvoiceAsync(s, Id(final));
         invoice.GetProperty("summary").GetProperty("paymentStatus").GetString().Should().Be("RefundWaived");
@@ -636,6 +633,8 @@ public sealed class LiquidationRoundTwoTests(ApiFactory factory)
             value = 110, reason = "Kiểm lại lần 2", settlement = new { date = s.Today, method = "BankTransfer" }
         })).ReadAsync<JsonElement>();
         refunded.GetProperty("charge").GetProperty("amount").GetDecimal().Should().Be(60 * Price, "luôn so với số lúc chốt");
+        // M-05: khoản mới gồm cả phần đã chọn "Không trả lại" ⇒ mô tả nói rõ để chủ trọ không hoàn nhầm số đã quyết bỏ.
+        refunded.GetProperty("charge").GetProperty("description").GetString().Should().Contain("Không trả lại").And.Contain($"{50 * Price:N0}");
         refunded.GetProperty("charge").GetProperty("isSettled").GetBoolean().Should().BeTrue();
         var refundedId = refunded.GetProperty("charge").GetProperty("id").GetGuid();
         (await _client.DeleteAsync($"/api/v1/room-charges/{refundedId}/settle", s.Token)).StatusCode.Should().Be(HttpStatusCode.OK,

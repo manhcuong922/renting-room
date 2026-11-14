@@ -3,7 +3,7 @@
 Công tơ **đi theo phòng**, không gắn vào hợp đồng. Mỗi phòng có tối đa **1 công tơ đang hoạt động** cho mỗi khoản điện / nước theo
 công tơ của khu ("Điện", "Nước"). Phòng tính nước **theo đầu người** thì không lắp công tơ nước (dùng dịch vụ "Nước" `PerOccupant` — [fees.md](fees.md)).
 
-Quyền: chủ trọ và phó quản lý.
+Quyền: chủ trọ và quản lý khu.
 
 ## Màn hình
 
@@ -96,7 +96,8 @@ Lưu: `POST /properties/{propertyId}/meters/bulk-replace` — **Idempotency-Key*
 ```
 
 - Một ngày thay chung; mỗi dòng = 1 lệnh thay đơn (số cuối công tơ cũ, serial mới, chỉ số đầu mới — bỏ trống = 0). Chỉ gửi phòng có thay; tối đa 500 dòng.
-- **Tất cả hoặc không**: dòng lỗi (số cuối nhỏ hơn chỉ số cũ, ngày thay trước chỉ số gần nhất, công tơ không thuộc khu / khoản thu) ⇒
+- **Tất cả hoặc không**: dòng lỗi (số cuối nhỏ hơn chỉ số cũ, ngày thay trước chỉ số gần nhất, công tơ không thuộc khu / khoản thu,
+  serial mới trùng dòng trước trong lô — không phân biệt hoa / thường, bỏ khoảng trắng đầu cuối: `DUPLICATE_SERIAL`, 03/11/2026) ⇒
   422 `BULK_REPLACE_INVALID` kèm `rowErrors: [ { "index", "meterId", "code", "message" } ]`, không lưu dòng nào.
 - → **200** `{ "replaced": 18, "newMeterIds": ["…"] }`. Kỳ có thay: phiếu tự cộng 2 công tơ (2 đoạn đo); nháp đã lập của phòng ⇒ "Cần tính lại".
 

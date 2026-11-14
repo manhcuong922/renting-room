@@ -26,6 +26,7 @@ Lọc thêm (12/10/2026, chỉ ở `GET /renters`):
 
 **Theo số giấy tờ:** `POST /renters/search` — số giấy tờ đi trong **body**, không đặt trên URL (URL bị ghi vào log proxy,
 lịch sử trình duyệt, header `Referer`). Không cần `Idempotency-Key` (chỉ đọc).
+**Dò số giấy tờ (11/11/2026, M-13):** tìm có `idNumber` và `POST /renters` (409 `RENTER_ID_NUMBER_EXISTS` trả họ tên + 4 số cuối) dùng **chung một hạn mức theo user** — mặc định 30 lần / 10 phút, vượt ⇒ 429 `TOO_MANY_REQUESTS` (+ `Retry-After`; lệnh 429 không lưu theo `Idempotency-Key`, thử lại sau vẫn chạy). Mỗi lần tìm có số và mỗi lần 409 trùng số đều ghi audit `IdNumberLookup` (không ghi số). Tìm theo `q` (tên / SĐT) không tính hạn mức.
 
 ```json
 { "idNumber": "036202012345", "idType": "CitizenId", "q": null, "page": 1, "pageSize": 20 }
@@ -92,7 +93,7 @@ UI: `idType = Passport` → gợi ý chọn `nationality` khác VN; nhãn ô s�
 
 | Lỗi | UI |
 |-----|----|
-| 409 `RENTER_ID_NUMBER_EXISTS` | "Số giấy tờ đã có hồ sơ" → body có `existingRenterId` → mở / đề xuất **dùng hồ sơ đó** (một người được đứng tên nhiều phòng; là người ở thì chỉ ở 1 phòng) |
+| 409 `RENTER_ID_NUMBER_EXISTS` | "Số giấy tờ đã có hồ sơ" → body có `existingRenterId`, `existingRenterName`, `existingIdNumberLast4` → "Đã có hồ sơ: {tên}, ***{4 số cuối} — dùng hồ sơ này" → mở / **dùng hồ sơ đó** (một người được đứng tên nhiều phòng; là người ở thì chỉ ở 1 phòng). Quản lý khu: hồ sơ của người thuê cũ ở khu khác — từ lúc này thấy và dùng được hồ sơ, hợp đồng ở khu khác vẫn ẩn (08/11/2026, [members.md](members.md)) |
 | 400 `VALIDATION_FAILED` | Key `errors` trùng tên field body: `fullName`, `idNumber`… |
 
 ## Chi tiết
@@ -148,7 +149,7 @@ Tab "Lịch sử thuê" trong chi tiết: `GET /contracts?renterId={id}` — cá
 
 ## Xem số giấy tờ
 
-`POST /renters/{id}/reveal-id-number` → `{ "idNumber": "036202012345" }`. Không có quyền dữ liệu nhạy cảm → 403 `SENSITIVE_DATA_FORBIDDEN` (ẩn nút khi `canViewSensitiveData = false`).
+`POST /renters/{id}/reveal-id-number` → `{ "idNumber": "036202012345" }`. Chủ trọ và quản lý khu (hồ sơ trong phạm vi khu) đều xem được; tài khoản không có quyền → 403 `SENSITIVE_DATA_FORBIDDEN`.
 Mỗi lần gọi được ghi log kiểm toán. Không cache, không tự gọi; ẩn lại sau ~30 giây.
 Giới hạn **5 lần/phút mỗi tài khoản**, dùng chung với xem số giấy tờ bên cho thuê, xuất Excel và đổi mật khẩu → 429 `TOO_MANY_REQUESTS` (khóa nút theo `Retry-After`).
 
@@ -158,6 +159,11 @@ Giới hạn **5 lần/phút mỗi tài khoản**, dùng chung với xem số gi
   phiếu thu và lịch sử phòng giữ nguyên ⇒ vẫn tra được "ai từng ở phòng nào".
 - **Bằng tay theo yêu cầu của người thuê** (`POST /renters/{id}/anonymize`): xóa cả họ tên — hồ sơ, bản chụp hợp đồng, phiếu (kể cả phiếu thời
   người đó từng đứng tên), phiếu thu hiện "Đã ẩn danh #XXXX".
+
+**Ô ghi chú tự do** (05/11/2026): HĐ người đó đứng tên — tự động ⇒ mọi ghi chú (HĐ, cọc, thanh lý, phiếu, dòng phiếu, khoản phát sinh,
+phiếu thu…) thành "(đã xóa khi ẩn danh)"; bằng tay ⇒ chỉ họ tên / SĐT / email / số giấy tờ **của người đó** trong ghi chú thành `***`, phần
+lý do còn lại giữ nguyên. HĐ người đó chỉ ở cùng ⇒ luôn che kiểu `***` (tự động không che họ tên). Ghi chú dòng người ở và ghi chú đồng ý xử lý
+dữ liệu của người đó luôn xóa trắng. Nhật ký thay đổi của các bản ghi này bỏ hẳn các trường ghi chú.
 
 Cả hai mức đều đặt `anonymizedAt` và không đảo ngược được.
 

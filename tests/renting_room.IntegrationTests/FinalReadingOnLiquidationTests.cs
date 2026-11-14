@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using Npgsql;
 using renting_room.IntegrationTests.Infrastructure;
 
 namespace renting_room.IntegrationTests;
@@ -19,7 +20,7 @@ public sealed class FinalReadingOnLiquidationTests(ApiFactory factory)
     {
         var token = (await _client.CreateActiveOwnerAsync()).Tokens.AccessToken;
         var today = TestData.Today(factory);
-        var start = billingDelayDays > 0 ? today.AddDays(-stayDays) : TestData.StartWithinOnePeriod(today, stayDays);
+        var start = TestData.StartWithinOnePeriod(today, stayDays); // mốc kỳ = start.Day ⇒ phải ≤ 28
         var propertyId = await _client.CreatePropertyAsync(token, anchorDay: start.Day, chargeMode: "Postpaid");
         var electricity = await _client.FeeIdAsync(token, propertyId, "Điện");
         await _client.PostJsonAsync($"/api/v1/fee-types/{electricity}/prices", new { effectiveFrom = start.AddDays(-30), unitPrice = 3800 }, token);
@@ -73,6 +74,41 @@ public sealed class FinalReadingOnLiquidationTests(ApiFactory factory)
 
         (await _client.PostJsonAsync($"/api/v1/contracts/{s.ContractId}/liquidation/cancel", null, s.Token)).StatusCode.Should().Be(HttpStatusCode.OK);
         (await ReadingsAsync(s, "Final")).Should().BeEmpty("hủy thanh lý ⇒ hủy số cuối đã ghi");
+    }
+
+    /// <summary>
+    /// L-04 (03/11/2026, README C-07): hủy thanh lý khóa người thuê trước công tơ như kích hoạt HĐ — ngược lại, kích hoạt HĐ ký lại chạy song song
+    /// (giữ người thuê, chờ công tơ) và hủy thanh lý (giữ công tơ, chờ người thuê) chờ nhau ⇒ deadlock.
+    /// </summary>
+    [Fact]
+    public async Task CancelLiquidation_WaitingForRenterLock_HasNotLockedMetersYet()
+    {
+        var s = await ArrangeAsync();
+        (await StartAsync(s, s.Today, 1080)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+        var renter = (await (await _client.GetAsync($"/api/v1/contracts/{s.ContractId}", s.Token)).ReadAsync<JsonElement>())
+            .GetProperty("representativeRenterId").GetGuid();
+
+        // Giả lập lệnh kích hoạt đang chạy: giữ khóa người thuê (advisory lock như AppDbContext.LockRentersAsync).
+        await using var connection = new NpgsqlConnection(factory.ConnectionString);
+        await connection.OpenAsync();
+        await using var holder = await connection.BeginTransactionAsync();
+        await using (var lockRenter = new NpgsqlCommand("SELECT pg_advisory_xact_lock(@key)", connection, holder))
+        {
+            lockRenter.Parameters.AddWithValue("key", BitConverter.ToInt64(renter.ToByteArray(), 0));
+            await lockRenter.ExecuteScalarAsync();
+        }
+
+        var cancel = factory.CreateClient().PostJsonAsync($"/api/v1/contracts/{s.ContractId}/liquidation/cancel", null, s.Token);
+        (await Task.WhenAny(cancel, Task.Delay(TimeSpan.FromSeconds(1)))).Should().NotBeSameAs(cancel, "hủy thanh lý phải chờ khóa người thuê");
+        // Lệnh kích hoạt đi tiếp tới công tơ: chưa bị hủy thanh lý giữ ⇒ lấy được ngay.
+        await using (var lockMeter = new NpgsqlCommand("SELECT 1 FROM meters WHERE id = @id FOR UPDATE NOWAIT", connection, holder))
+        {
+            lockMeter.Parameters.AddWithValue("id", s.MeterId);
+            await lockMeter.ExecuteScalarAsync();
+        }
+
+        await holder.RollbackAsync();
+        (await cancel).StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
     [Fact]

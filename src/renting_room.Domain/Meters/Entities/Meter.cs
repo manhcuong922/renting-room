@@ -2,7 +2,7 @@ using renting_room.Domain.Common;
 
 namespace renting_room.Domain.Meters;
 
-public sealed class Meter : TenantEntity
+public sealed class Meter : TenantEntity, IPropertyScoped
 {
     public const decimal MaxValue = 99_999_999.99m;
 

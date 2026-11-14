@@ -103,11 +103,11 @@ public sealed class BillingTests(ApiFactory factory)
 
         // Sửa tay tiền phòng + phụ thu sửa khóa.
         var rentLine = draft.GetProperty("lines")[0].GetProperty("id").GetGuid();
-        var edited = await (await _client.PutJsonAsync($"/api/v1/invoices/{Id(draft)}/lines/{rentLine}",
+        var edited = await (await _client.EditInvoiceLineAsync(Id(draft), rentLine,
             new { amount = 2_800_000, note = "Giảm do sửa nhà" }, s.Token)).ReadAsync<JsonElement>();
         edited.GetProperty("lines")[0].GetProperty("isManuallyEdited").GetBoolean().Should().BeTrue();
         edited.GetProperty("lines")[0].GetProperty("systemAmount").GetDecimal().Should().Be(3_000_000);
-        var surcharge = await _client.PostJsonAsync($"/api/v1/invoices/{Id(draft)}/manual-lines",
+        var surcharge = await _client.AddInvoiceLineAsync(Id(draft),
             new { type = "Surcharge", description = "Thay khóa cửa", amount = 250_000, note = "Người thuê làm hỏng khóa" }, s.Token);
         Total(await surcharge.ReadAsync<JsonElement>()).Should().Be(3_378_000);
 
@@ -115,7 +115,7 @@ public sealed class BillingTests(ApiFactory factory)
         await _client.PostJsonAsync("/api/v1/invoices/recalculate", new { invoiceIds = new[] { Id(draft) } }, s.Token);
         Total(await InvoiceForAsync(s, month)).Should().Be(3_378_000);
 
-        var finalized = await (await _client.PostJsonAsync($"/api/v1/invoices/{Id(draft)}/finalize", null, s.Token)).ReadAsync<JsonElement>();
+        var finalized = await (await _client.FinalizeInvoiceAsync(Id(draft), s.Token)).ReadAsync<JsonElement>();
         finalized.GetProperty("summary").GetProperty("invoiceNo").GetString().Should().StartWith($"PB{TestData.Today(factory).Year}-");
         finalized.GetProperty("summary").GetProperty("status").GetString().Should().Be("Finalized");
 
@@ -126,7 +126,10 @@ public sealed class BillingTests(ApiFactory factory)
             .ReadProblemCodeAsync()).Should().Be("READING_LOCKED");
         (await (await _client.PostJsonAsync($"/api/v1/fee-types/{s.ElectricityId}/prices", new { effectiveFrom = month.AddDays(3), unitPrice = 3600 }, s.Token))
             .ReadProblemCodeAsync()).Should().Be("FEE_PRICE_LOCKED");
-        (await (await _client.PutJsonAsync($"/api/v1/invoices/{Id(draft)}/lines/{rentLine}", new { amount = 1 , note = "x" }, s.Token))
+        // M-08: bản giá cũ hơn bản đang được phiếu đã chốt dùng không đổi giá dòng nào ⇒ vẫn thêm được (nháp kỳ cũ thiếu giá không bị kẹt).
+        var older = await _client.PostJsonAsync($"/api/v1/fee-types/{s.ElectricityId}/prices", new { effectiveFrom = month.AddYears(-5), unitPrice = 3000 }, s.Token);
+        older.StatusCode.Should().Be(HttpStatusCode.Created, await older.Content.ReadAsStringAsync());
+        (await (await _client.EditInvoiceLineAsync(Id(draft), rentLine, new { amount = 1 , note = "x" }, s.Token))
             .ReadProblemCodeAsync()).Should().Be("INVOICE_NOT_DRAFT");
 
         // Thu 1 phần bằng tay; thu vượt nợ bị chặn; phòng hiện "còn nợ".
@@ -194,7 +197,7 @@ public sealed class BillingTests(ApiFactory factory)
 
     private async Task<JsonElement> FinalizeAsync(Setup s, Guid invoiceId)
     {
-        var response = await _client.PostJsonAsync($"/api/v1/invoices/{invoiceId}/finalize", null, s.Token);
+        var response = await _client.FinalizeInvoiceAsync(invoiceId, s.Token);
         response.StatusCode.Should().Be(HttpStatusCode.OK, await response.Content.ReadAsStringAsync());
         return await response.ReadAsync<JsonElement>();
     }
@@ -230,7 +233,7 @@ public sealed class BillingTests(ApiFactory factory)
             .ReadProblemCodeAsync()).Should().Be("FINAL_INVOICE_EXISTS");
 
         // Phụ thu phạt báo trễ trên phiếu quyết toán rồi chốt.
-        await _client.PostJsonAsync($"/api/v1/invoices/{Id(final)}/manual-lines",
+        await _client.AddInvoiceLineAsync(Id(final),
             new { type = "Surcharge", description = "Phạt báo trả phòng muộn", amount = 500_000, note = "Theo điều khoản HĐ" }, s.Token);
         Total(await FinalizeAsync(s, Id(final))).Should().Be(20 * 3500 + 500_000 + debts);
 
@@ -276,7 +279,7 @@ public sealed class BillingTests(ApiFactory factory)
 
         // E (BL-BR-27): hoàn trả phải chỉ ra phiếu nguồn và ≤ số người thuê đã trả thật cho phiếu đó.
         var second = await InvoiceForAsync(s, secondMonth);
-        Task<HttpResponseMessage> RefundAsync(Guid? source, decimal amount) => _client.PostJsonAsync($"/api/v1/invoices/{Id(final)}/manual-lines",
+        Task<HttpResponseMessage> RefundAsync(Guid? source, decimal amount) => _client.AddInvoiceLineAsync(Id(final),
             new { type = "Refund", description = "Hoàn tiền phòng 15 ngày chưa ở", amount, note = "Trả phòng sớm theo thỏa thuận", sourceInvoiceId = source }, s.Token);
         var noSource = await RefundAsync(null, 1_000_000);
         noSource.StatusCode.Should().Be(HttpStatusCode.BadRequest);
@@ -289,7 +292,7 @@ public sealed class BillingTests(ApiFactory factory)
         }, s.Token)).StatusCode.Should().Be(HttpStatusCode.Created);
 
         // Vừa thu tháng 2 ⇒ dòng nợ chuyển trên nháp đã cũ ⇒ chốt bị chặn tới khi tính lại (BL-BR-41).
-        (await (await _client.PostJsonAsync($"/api/v1/invoices/{Id(final)}/finalize", null, s.Token)).ReadProblemCodeAsync()).Should().Be("DRAFT_STALE");
+        (await (await _client.FinalizeInvoiceAsync(Id(final), s.Token)).ReadProblemCodeAsync()).Should().Be("DRAFT_STALE");
         (await _client.PostJsonAsync("/api/v1/invoices/recalculate", new { invoiceIds = new[] { Id(final) } }, s.Token))
             .IsSuccessStatusCode.Should().BeTrue();
 

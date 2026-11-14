@@ -2,7 +2,7 @@ using renting_room.Domain.Common;
 
 namespace renting_room.Domain.Properties;
 
-public sealed class RoomGroup : TenantEntity
+public sealed class RoomGroup : TenantEntity, IPropertyScoped
 {
     private readonly List<RoomGroupMember> _members = [];
 

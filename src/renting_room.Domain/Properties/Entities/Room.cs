@@ -2,7 +2,7 @@ using renting_room.Domain.Common;
 
 namespace renting_room.Domain.Properties;
 
-public sealed class Room : TenantEntity
+public sealed class Room : TenantEntity, IPropertyScoped
 {
     public const int MaxOccupantsLimit = 20;
 

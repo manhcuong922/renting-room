@@ -3,7 +3,7 @@
 Phiếu báo tiền phòng hằng kỳ cho từng hợp đồng — **không phải hóa đơn GTGT**. Vòng đời: **Nháp** (sửa thoải mái) → **Chốt** (cấp số,
 bất biến, gửi người thuê) → thu tiền ([payments.md](payments.md)); sai sót sau khi chốt thì **Hủy** rồi lập lại.
 
-Quyền: chủ trọ và phó quản lý.
+Quyền: chủ trọ và quản lý khu.
 
 ## Các nhóm trên phiếu
 
@@ -235,14 +235,20 @@ người thuê rồi bấm "Đã gửi lại".
 
 ## Sửa phiếu nháp
 
+**Bắt buộc gửi `version`** (05/11/2026) — `summary.version` của lần mở phiếu đang hiện — ở mọi thao tác trên **một** phiếu: sửa / bỏ sửa / xóa dòng,
+thêm dòng tay, ghi chú, chốt. Người khác vừa sửa phiếu (hoặc hệ thống vừa tính lại / gắn khoản phát sinh) ⇒ **409 `CONCURRENCY_CONFLICT`**, phiếu
+không đổi — UI báo "Phiếu vừa được người khác sửa", tải lại rồi làm lại. Response 200 trả chi tiết có `version` mới — dùng cho thao tác kế tiếp.
+`version` đổi ở mọi thay đổi của phiếu, kể cả chỉ sửa ghi chú một dòng. Thao tác hàng loạt (`POST /invoices/manual-lines`,
+`POST /invoices/finalize-batch`, tính lại) không nhận `version`.
+
 | Thao tác | Endpoint | Ghi chú |
 |----------|----------|---------|
-| Sửa tay ô của dòng hệ thống | `PUT /invoices/{id}/lines/{lineId}` `{ "quantity": null, "unitPrice": null, "amount": 2800000, "note": "…" }` | Bỏ trống `amount` ⇒ = số lượng × đơn giá × hệ số kỳ. Dòng Tiền phòng **bắt buộc ghi chú** |
-| Bỏ sửa tay / xóa phụ thu, giảm trừ, hoàn trả | `DELETE /invoices/{id}/lines/{lineId}` | Dòng hệ thống về số hệ thống; dòng tay bị xóa |
-| Thêm phụ thu / giảm trừ | `POST /invoices/{id}/manual-lines` `{ "type": "Surcharge", "description": "Thay khóa", "quantity": null, "unitPrice": null, "amount": 250000, "note": "Lý do", "feeTypeId": null, "settled": false, "settledOn": null, "method": null }` | `type`: `Surcharge` / `ManualDiscount`; `note` (lý do) bắt buộc. Tạo luôn **khoản phát sinh của phòng** ([room-charges.md](room-charges.md)); `settled: true` = đã thanh toán / đã hoàn ngay ⇒ dòng hiện trên phiếu, **không tính vào tổng** |
-| Thêm **hoàn trả** | `POST /invoices/{id}/manual-lines` `{ "type": "Refund", "description": "Hoàn tiền phòng 15 ngày chưa ở", "amount": 1500000, "note": "Trả phòng sớm", "sourceInvoiceId": "…phiếu đã thu" }` | Chỉ khi **phiếu đã chốt bị tính sai mà người thuê đã trả**: `sourceInvoiceId` bắt buộc (400), phiếu đã chốt của cùng HĐ (422 `REFUND_SOURCE_INVALID`); `amount` ≤ số đã thu thật của phiếu nguồn (đã thu − bỏ nợ) − các lần hoàn trước trỏ tới nó (422 `REFUND_EXCEEDS_PAID`, body `available`). Phiếu nguồn chưa thu mà tính sai ⇒ không hoàn — bỏ nợ phần sai ([payments.md](payments.md)) |
+| Sửa tay ô của dòng hệ thống | `PUT /invoices/{id}/lines/{lineId}` `{ "quantity": null, "unitPrice": null, "amount": 2800000, "note": "…", "version": "904" }` | Bỏ trống `amount` ⇒ = số lượng × đơn giá × hệ số kỳ. **Dòng giá bậc (điện / nước) — 11/11/2026, M-04:** gửi `quantity` mới mà bỏ trống cả `amount` và `unitPrice` ⇒ server **chia bậc lại** theo sản lượng mới (80→120 kWh, bậc 1.800/2.200/2.800 ⇒ 256.000, không phải 120 × giá bình quân cũ); đơn giá trả về là bình quân mới. **Client chỉ nên gửi trường người dùng thực sự đổi** — đơn giá trên màn là bình quân, gửi lại nó sẽ bị tính như người dùng tự đặt đơn giá. Dòng Tiền phòng **bắt buộc ghi chú** |
+| Bỏ sửa tay / xóa phụ thu, giảm trừ, hoàn trả | `DELETE /invoices/{id}/lines/{lineId}?version=904` | Dòng hệ thống về số hệ thống; dòng tay bị xóa |
+| Thêm phụ thu / giảm trừ | `POST /invoices/{id}/manual-lines` `{ "type": "Surcharge", "description": "Thay khóa", "quantity": null, "unitPrice": null, "amount": 250000, "note": "Lý do", "feeTypeId": null, "settled": false, "settledOn": null, "method": null, "version": "904" }` | `type`: `Surcharge` / `ManualDiscount`; `note` (lý do) bắt buộc. Tạo luôn **khoản phát sinh của phòng** ([room-charges.md](room-charges.md)); `settled: true` = đã thanh toán / đã hoàn ngay ⇒ dòng hiện trên phiếu, **không tính vào tổng** |
+| Thêm **hoàn trả** | `POST /invoices/{id}/manual-lines` `{ "type": "Refund", "description": "Hoàn tiền phòng 15 ngày chưa ở", "amount": 1500000, "note": "Trả phòng sớm", "sourceInvoiceId": "…phiếu đã thu", "version": "904" }` | Chỉ khi **phiếu đã chốt bị tính sai mà người thuê đã trả**: `sourceInvoiceId` bắt buộc (400), phiếu đã chốt của cùng HĐ (422 `REFUND_SOURCE_INVALID`); `amount` ≤ số đã thu thật của phiếu nguồn (đã thu − bỏ nợ) − các lần hoàn trước trỏ tới nó (422 `REFUND_EXCEEDS_PAID`, body `available`). Phiếu nguồn chưa thu mà tính sai ⇒ không hoàn — bỏ nợ phần sai ([payments.md](payments.md)) |
 | Sửa phụ thu / giảm trừ / hoàn trả | `PUT /invoices/{id}/lines/{lineId}` (như trên, `note` bắt buộc) | Hoàn trả: số mới vẫn ≤ số đã thu của phiếu nguồn (422 `REFUND_EXCEEDS_PAID` — 17/10/2026). Chốt phiếu cũng kiểm lại (phiếu nguồn có thể đã bị đảo thu) |
-| Ghi chú in trên phiếu | `PUT /invoices/{id}/note` `{ "note": "…" }` | |
+| Ghi chú in trên phiếu | `PUT /invoices/{id}/note` `{ "note": "…", "version": "904" }` | |
 
 Mọi thao tác trả **chi tiết phiếu** sau khi sửa. Giảm trừ không được lớn hơn phần thu (422 `NEGATIVE_TOTAL`) — trả lại tiền cho người thuê thì dùng **Hoàn trả**.
 Phiếu đã chốt → 422 `INVOICE_NOT_DRAFT`.
@@ -281,12 +287,13 @@ khác lúc sửa ⇒ cảnh báo `EDITED_BASE_CHANGED`); `keepManualEdits: false
 
 ## Chốt
 
-`POST /invoices/{id}/finalize` → **200** chi tiết phiếu (`invoiceNo` `PB2026-000101`, `issueDate` hôm nay, `dueDate` = hôm nay + số ngày hạn
+`POST /invoices/{id}/finalize` `{ "version": "904" }` → **200** chi tiết phiếu (`invoiceNo` `PB2026-000101`, `issueDate` hôm nay, `dueDate` = hôm nay + số ngày hạn
 thanh toán của HĐ). Sau khi chốt: chỉ số cuối kỳ bị khóa và thành chỉ số cũ của kỳ sau; bảng giá trước ngày cuối kỳ không sửa được.
 
 | Lỗi | Khi nào / UI |
 |-----|--------------|
 | 422 `INVOICE_HAS_ISSUES` | Còn vấn đề chặn (`issues` trong body) — xử lý rồi Tính lại |
+| 409 `CONCURRENCY_CONFLICT` | Phiếu vừa đổi sau lần mở (người khác thêm giảm trừ, sửa dòng…) — tải lại, xem số mới rồi chốt |
 | 409 `DRAFT_STALE` | Dữ liệu nguồn (giá, chỉ số, người ở, dịch vụ) đổi sau lần tính — bấm **Tính lại** rồi chốt |
 | 422 `INVOICE_NOT_DRAFT` | Đã chốt / hủy — tải lại |
 

@@ -25,7 +25,7 @@ public sealed class RevealOrganizationLessorIdNumberHandler(
         if (lessor?.IdNumberEncrypted is null)
             return string.Empty;
 
-        auditTrail.RecordRead(AuditActions.RevealIdNumber, nameof(Organization), organizationId);
+        await auditTrail.RecordReadAsync(AuditActions.RevealIdNumber, nameof(Organization), organizationId, null, cancellationToken);
         return protector.Decrypt(lessor.IdNumberEncrypted);
     }
 }

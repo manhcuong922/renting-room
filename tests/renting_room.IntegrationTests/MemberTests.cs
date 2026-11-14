@@ -7,7 +7,7 @@ public sealed record MemberResponse(Guid Id, string FullName, string? Phone, str
 
 public sealed record TemporaryCredentialsResponse(Guid UserId, string Username, string TemporaryPassword, DateTimeOffset ExpiresAt);
 
-/// <summary>M01 §3.3: phó quản lý — chủ trọ quản lý, phó quản lý thao tác nghiệp vụ như chủ trọ.</summary>
+/// <summary>M01 §3.3: quản lý khu — chủ trọ quản lý thành viên, quản lý khu thao tác nghiệp vụ như chủ trọ trong khu được giao (phạm vi: PropertyScopeTests).</summary>
 [Collection(ApiCollection.Name)]
 public sealed class MemberTests(ApiFactory factory)
 {
@@ -30,66 +30,38 @@ public sealed class MemberTests(ApiFactory factory)
     public async Task Manager_CanOperateBusinessData_LikeOwner()
     {
         var owner = await _client.CreateActiveOwnerAsync();
-        var (_, manager) = await AddActiveManagerAsync(owner);
+        var propertyId = await _client.CreatePropertyAsync(owner.Tokens.AccessToken); // tạo khu: chỉ chủ trọ (ID-BR-28)
+        var (_, manager) = await AddActiveManagerAsync(owner); // không gửi propertyIds ⇒ mọi khu đang dùng
 
-        var propertyId = await _client.CreatePropertyAsync(manager.AccessToken);
-        await _client.CreateRoomAsync(manager.AccessToken, propertyId);
+        var roomId = await _client.CreateRoomAsync(manager.AccessToken, propertyId);
 
-        // Chủ trọ thấy dữ liệu phó quản lý tạo (cùng tổ chức).
-        (await _client.GetAsync($"/api/v1/properties/{propertyId}", owner.Tokens.AccessToken)).StatusCode.Should().Be(HttpStatusCode.OK);
+        // Chủ trọ thấy dữ liệu quản lý khu tạo (cùng tổ chức).
+        (await _client.GetAsync($"/api/v1/rooms/{roomId}", owner.Tokens.AccessToken)).StatusCode.Should().Be(HttpStatusCode.OK);
         var members = await (await _client.GetAsync(MembersUrl, manager.AccessToken)).ReadAsync<List<MemberResponse>>();
         members.Select(m => m.Role).Should().BeEquivalentTo(["OrgOwner", "OrgManager"]);
     }
 
     [Fact]
-    public async Task Manager_SeesFullIdNumbers_OnlyAfterOwnerGrants_RevokeTakesEffectImmediately()
+    public async Task Manager_SeesFullIdNumbers_InAssignedProperty_WithoutGrant()
     {
+        // ID-BR-22 (đổi 08/11/2026): quản lý khu luôn xem / xuất / in số giấy tờ đầy đủ trong khu được giao — không còn công tắc cấp quyền.
         var owner = await _client.CreateActiveOwnerAsync();
+        var (propertyId, _, renterId, contractId) = await _client.CreateActiveContractAsync(owner.Tokens.AccessToken, TestData.Today(factory));
         var (credentials, manager) = await AddActiveManagerAsync(owner);
-        var idNumber = TestData.NewCitizenId();
-        var (propertyId, _, _, contractId) = await _client.CreateActiveContractAsync(owner.Tokens.AccessToken, TestData.Today(factory));
-        var renterId = await _client.CreateRenterAsync(owner.Tokens.AccessToken, idNumber);
 
-        async Task<HttpStatusCode> RevealAsync() =>
-            (await _client.PostJsonAsync($"/api/v1/renters/{renterId}/reveal-id-number", null, manager.AccessToken)).StatusCode;
-        async Task<HttpResponseMessage> ExportAsync() =>
-            await _client.PostJsonAsync("/api/v1/exports/renters", new { propertyIds = new[] { propertyId }, includeSensitive = true }, manager.AccessToken);
-
-        // Mặc định: phó quản lý vẫn thao tác được, nhưng không xem được số giấy tờ đầy đủ.
-        var denied = await _client.PostJsonAsync($"/api/v1/renters/{renterId}/reveal-id-number", null, manager.AccessToken);
-        denied.StatusCode.Should().Be(HttpStatusCode.Forbidden);
-        (await denied.ReadProblemCodeAsync()).Should().Be("SENSITIVE_DATA_FORBIDDEN");
-        (await (await ExportAsync()).ReadProblemCodeAsync()).Should().Be("SENSITIVE_DATA_FORBIDDEN");
-        (await _client.PostJsonAsync($"/api/v1/properties/{propertyId}/lessor/reveal-id-number", null, manager.AccessToken))
-            .StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        var revealed = await _client.PostJsonAsync($"/api/v1/renters/{renterId}/reveal-id-number", null, manager.AccessToken);
+        revealed.StatusCode.Should().Be(HttpStatusCode.OK, await revealed.Content.ReadAsStringAsync());
+        (await _client.PostJsonAsync("/api/v1/exports/renters", new { propertyIds = new[] { propertyId }, includeSensitive = true }, manager.AccessToken))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
         var print = await _client.GetAsync($"/api/v1/contracts/{contractId}/document", manager.AccessToken);
-        print.StatusCode.Should().Be(HttpStatusCode.OK, "in hợp đồng vẫn được — số giấy tờ in dạng che");
+        print.StatusCode.Should().Be(HttpStatusCode.OK);
         using (var stream = new MemoryStream(await print.Content.ReadAsByteArrayAsync()))
         using (var doc = DocumentFormat.OpenXml.Packaging.WordprocessingDocument.Open(stream, false))
-        {
-            var text = doc.MainDocumentPart!.Document.Body!.InnerText;
-            text.Should().Contain("********");
-            System.Text.RegularExpressions.Regex.IsMatch(text, @"\d{12}").Should().BeFalse("không có số CCCD 12 chữ số đầy đủ nào");
-        }
-        (await _client.GetAsync($"/api/v1/renters/{renterId}", manager.AccessToken)).StatusCode.Should().Be(HttpStatusCode.OK);
+            System.Text.RegularExpressions.Regex.IsMatch(doc.MainDocumentPart!.Document.Body!.InnerText, @"\d{12}").Should().BeTrue("in số giấy tờ đầy đủ");
 
-        // Chủ trọ cấp quyền ⇒ xem được; thu hồi ⇒ bị chặn ngay, không cần đăng nhập lại.
-        var granted = await _client.PutJsonAsync($"{MembersUrl}/{credentials.UserId}/sensitive-data-access", new { allowed = true }, owner.Tokens.AccessToken);
-        granted.StatusCode.Should().Be(HttpStatusCode.OK);
-        (await granted.ReadAsync<System.Text.Json.JsonElement>()).GetProperty("canViewSensitiveData").GetBoolean().Should().BeTrue();
-        var revealed = await _client.PostJsonAsync($"/api/v1/renters/{renterId}/reveal-id-number", null, manager.AccessToken);
-        (await revealed.ReadAsync<System.Text.Json.JsonElement>()).GetProperty("idNumber").GetString().Should().Be(idNumber);
-        (await ExportAsync()).StatusCode.Should().Be(HttpStatusCode.OK);
-
-        await _client.PutJsonAsync($"{MembersUrl}/{credentials.UserId}/sensitive-data-access", new { allowed = false }, owner.Tokens.AccessToken);
-        (await RevealAsync()).Should().Be(HttpStatusCode.Forbidden);
-
-        // Phó quản lý không tự cấp quyền được; không áp lên tài khoản chủ trọ.
-        (await _client.PutJsonAsync($"{MembersUrl}/{credentials.UserId}/sensitive-data-access", new { allowed = true }, manager.AccessToken))
-            .StatusCode.Should().Be(HttpStatusCode.Forbidden);
-        var ownerId = (await (await _client.GetAsync("/api/v1/me", owner.Tokens.AccessToken)).ReadAsync<System.Text.Json.JsonElement>()).GetProperty("id").GetGuid();
-        (await (await _client.PutJsonAsync($"{MembersUrl}/{ownerId}/sensitive-data-access", new { allowed = false }, owner.Tokens.AccessToken))
-            .ReadProblemCodeAsync()).Should().Be("CANNOT_MODIFY_OWNER");
+        // Công tắc cũ đã bỏ.
+        (await _client.PutJsonAsync($"{MembersUrl}/{credentials.UserId}/sensitive-data-access", new { allowed = false }, owner.Tokens.AccessToken))
+            .StatusCode.Should().BeOneOf(HttpStatusCode.NotFound, HttpStatusCode.MethodNotAllowed);
     }
 
     [Fact]

@@ -220,6 +220,26 @@ public sealed class ImportTests(ApiFactory factory)
         detail.GetProperty("currentRent").GetDecimal().Should().Be(3_000_000);
     }
 
+    /// <summary>L-07 (03/11/2026): lưu gửi 2 dòng trùng số dòng ⇒ 400 (không phải 500 khi gom lỗi theo dòng).</summary>
+    [Fact]
+    public async Task TenancyImport_Save_DuplicateRowNumber_IsRejected()
+    {
+        var token = (await _client.CreateActiveOwnerAsync()).Tokens.AccessToken;
+        var propertyId = await _client.CreatePropertyAsync(token, anchorDay: 1);
+        await _client.CreateRoomAsync(token, propertyId, "301");
+        var url = $"/api/v1/properties/{propertyId}/tenancies/import";
+        var preview = await PreviewAsync($"{url}/preview", Workbook("Người thuê",
+            TenancyHeader,
+            ["301", "Đứng tên", "Đỗ Văn Tùng", new DateOnly(1996, 1, 5), "Nam", "0911222333", "CCCD", TestData.NewCitizenId(), "VN", null, null, null,
+                TestData.Today(factory).AddMonths(-2), 3_000_000, 1_000_000]), token);
+        var row = preview.GetProperty("rows")[0].GetProperty("row");
+
+        var response = await _client.PostJsonAsync(url, new { rows = new[] { row, row } }, token);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest, await response.Content.ReadAsStringAsync());
+        (await response.ReadAsync<JsonElement>()).GetProperty("errors").TryGetProperty("rows", out _).Should().BeTrue();
+    }
+
     /// <summary>
     /// RT-UC-10: xem trước kiểm như lúc lưu — phòng đã có HĐ khác ở (đã chuyển đi hôm nay — ngày chuyển còn tính là đang ở) sau ngày vào ở khai
     /// trong file ⇒ báo ngay.
@@ -275,6 +295,47 @@ public sealed class ImportTests(ApiFactory factory)
 
         var formula = await PreviewAsync(url, Workbook("Phòng", RoomHeader, ["101", "1", 20, 2, "=1+1", null, null, null, null, null, null, null]), token);
         Codes(formula.GetProperty("rows")[0].GetProperty("errors")).Should().Contain("FORMULA_NOT_ALLOWED");
+    }
+
+    /// <summary>
+    /// H-05 (06/11/2026): ô rác ở cột cuối của Excel (XFD) không làm đọc mọi dòng tới 16.384 cột — xem trước vẫn bình thường;
+    /// quá 500 dòng ⇒ dừng đọc, báo "hơn 500 dòng".
+    /// </summary>
+    [Fact]
+    public async Task RoomImport_JunkCellInLastExcelColumn_StillPreviews_TooManyRowsStopsEarly()
+    {
+        var owner = await _client.CreateActiveOwnerAsync();
+        var token = owner.Tokens.AccessToken;
+        var propertyId = await _client.CreatePropertyAsync(token);
+        var url = $"/api/v1/properties/{propertyId}/rooms/import/preview";
+
+        byte[] File(int dataRows, bool junk)
+        {
+            using var workbook = new XLWorkbook();
+            var ws = workbook.Worksheets.Add("Phòng");
+            for (var c = 0; c < RoomHeader.Length; c++)
+                ws.Cell(1, c + 1).Value = (string)RoomHeader[c]!;
+            if (junk)
+                ws.Cell(1, 16_384).Value = "rác";
+            for (var r = 0; r < dataRows; r++)
+            {
+                ws.Cell(r + 2, 1).Value = $"P{r + 1:000}";
+                ws.Cell(r + 2, 4).Value = 2;
+                ws.Cell(r + 2, 5).Value = 3_000_000;
+            }
+            using var stream = new MemoryStream();
+            workbook.SaveAs(stream);
+            return stream.ToArray();
+        }
+
+        var preview = await PreviewAsync(url, File(3, junk: true), token);
+        preview.GetProperty("validCount").GetInt32().Should().Be(3);
+
+        var tooMany = await UploadAsync(url, File(501, junk: true), token);
+        tooMany.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var problem = await tooMany.ReadAsync<JsonElement>();
+        problem.GetProperty("code").GetString().Should().Be("IMPORT_TOO_MANY_ROWS");
+        problem.GetProperty("detail").GetString().Should().Contain("hơn 500 dòng");
     }
 
     /// <summary>

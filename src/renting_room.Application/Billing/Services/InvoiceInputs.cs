@@ -24,7 +24,7 @@ public static class BillingMonths
 }
 
 public sealed class InvoiceInputLoader(
-    IPropertyQueries properties, IFeeQueries fees, IMeterQueries meters, IInvoiceQueries invoices, IBillingGapRepository gaps)
+    IPropertyQueries properties, IFeeQueries fees, IMeterQueries meters, IInvoiceQueries invoices, IBillingGapRepository gaps, IContractQueries contracts)
 {
     /// <param name="type"><c>Final</c> ⇒ kèm bối cảnh trả phòng (tiền phòng kỳ cuối đã thu chưa, kỳ cuối đã có phiếu thường chưa) và
     /// nối chuỗi chỉ số cả với phiếu thường của chính kỳ cuối.</param>
@@ -63,7 +63,8 @@ public sealed class InvoiceInputLoader(
             .GroupBy(x => x.FeeTypeId)
             .ToDictionary(g => g.Key, g => (IReadOnlyList<decimal>)g.OrderByDescending(x => x.PeriodStart).Select(x => x.Quantity).ToList());
         return new InvoiceCalcInput(contract, period, billing.Schedule, billing.ProrationMode, types, source.Meters.ToList(), lastEnd, final, recent,
-            billing.RoundInvoiceTotal, source.ClosedReadingIds, source.RoomCodes, closing);
+            billing.RoundInvoiceTotal, source.ClosedReadingIds, source.RoomCodes, closing,
+            ServicesBilledByNextContract: isFinal && await contracts.HasSignedSuccessorAsync(contract.Id, ct));
     }
 
     /// <summary>Khu thu trước: tiền phòng kỳ cuối đã lập ở hóa đơn tháng ⇒ kèm số người thuê đã trả thật + đã hoàn để gợi ý hoàn đúng.</summary>

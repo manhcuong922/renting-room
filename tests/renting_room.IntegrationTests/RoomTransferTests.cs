@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using renting_room.Domain.Billing;
 using renting_room.IntegrationTests.Infrastructure;
 
 namespace renting_room.IntegrationTests;
@@ -125,8 +126,11 @@ public sealed class RoomTransferTests(ApiFactory factory)
         var owner = await _client.CreateActiveOwnerAsync();
         var token = owner.Tokens.AccessToken;
         var today = TestData.Today(factory);
+        // Mốc kỳ = ngày bắt đầu HĐ ⇒ hôm nay luôn nằm trong kỳ đầu (không vướng PREVIOUS_PERIOD_NOT_BILLED dù chạy ngày nào).
         var start = today.AddDays(-20);
-        var propertyId = await _client.CreatePropertyAsync(token, anchorDay: 1, chargeMode: "Postpaid");
+        if (start.Day > BillingSchedule.MaxAnchorDay)
+            start = new DateOnly(start.Year, start.Month, BillingSchedule.MaxAnchorDay);
+        var propertyId = await _client.CreatePropertyAsync(token, anchorDay: start.Day, chargeMode: "Postpaid");
         var electricity = await _client.FeeIdAsync(token, propertyId, "Điện");
         await _client.PostJsonAsync($"/api/v1/fee-types/{electricity}/prices", new { effectiveFrom = start.AddDays(-30), unitPrice = 3500 }, token);
         var wifi = await (await _client.PostJsonAsync($"/api/v1/properties/{propertyId}/fee-types", new
@@ -337,7 +341,7 @@ public sealed class RoomTransferTests(ApiFactory factory)
         foreach (var billingMonth in new[] { month.AddMonths(-1), month })
         {
             var invoice = await InvoiceAsync(propertyId, contractId, roomA, billingMonth, token);
-            var finalized = await _client.PostJsonAsync($"/api/v1/invoices/{invoice.GetProperty("summary").GetProperty("id").GetGuid()}/finalize", null, token);
+            var finalized = await _client.FinalizeInvoiceAsync(invoice.GetProperty("summary").GetProperty("id").GetGuid(), token);
             finalized.StatusCode.Should().Be(HttpStatusCode.OK, await finalized.Content.ReadAsStringAsync());
         }
 
@@ -401,7 +405,7 @@ public sealed class RoomTransferTests(ApiFactory factory)
         var contractId = await _client.CreateContractAsync(token, roomA, await _client.CreateRenterAsync(token), month);
         (await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/activate", null, token)).StatusCode.Should().Be(HttpStatusCode.NoContent);
         var invoice = await InvoiceAsync(propertyId, contractId, roomA, month, token);
-        var finalized = await _client.PostJsonAsync($"/api/v1/invoices/{invoice.GetProperty("summary").GetProperty("id").GetGuid()}/finalize", null, token);
+        var finalized = await _client.FinalizeInvoiceAsync(invoice.GetProperty("summary").GetProperty("id").GetGuid(), token);
         finalized.StatusCode.Should().Be(HttpStatusCode.OK, await finalized.Content.ReadAsStringAsync());
 
         async Task<decimal> OutstandingAsync(Guid roomId) =>
@@ -416,9 +420,12 @@ public sealed class RoomTransferTests(ApiFactory factory)
         (await OutstandingAsync(roomB)).Should().Be(debt);
     }
 
-    /// <summary>M02 PR-BR-02: số phòng đang thuê của khu khớp trạng thái phòng — ngày chuyển tính cả phòng cũ lẫn phòng mới.</summary>
+    /// <summary>
+    /// M02 PR-BR-02: số phòng đang thuê của khu khớp trạng thái phòng — ngày chuyển tính cả phòng cũ lẫn phòng mới; phòng cũ vì thế chưa
+    /// bảo trì / ngừng dùng được trong ngày chuyển (L-09).
+    /// </summary>
     [Fact]
-    public async Task Transfer_OnTransferDay_PropertyCountsBothRoomsAsOccupied()
+    public async Task Transfer_OnTransferDay_PropertyCountsBothRoomsAsOccupied_OldRoomCannotBeClosed()
     {
         var owner = await _client.CreateActiveOwnerAsync();
         var token = owner.Tokens.AccessToken;
@@ -439,5 +446,12 @@ public sealed class RoomTransferTests(ApiFactory factory)
 
         (await RoomStatusAsync(roomA, token)).Should().Be("Occupied");
         (await OccupiedAsync()).Should().Be(2, "ngày chuyển phòng tính là đang thuê ở cả 2 phòng");
+
+        // L-09 (04/11/2026, PR-BR-03/05): phòng cũ hiện "Đang thuê" trong ngày chuyển ⇒ không bảo trì / ngừng dùng được.
+        (await (await _client.PostJsonAsync($"/api/v1/rooms/{roomA}/maintenance/start", null, token)).ReadProblemCodeAsync())
+            .Should().Be("ROOM_OCCUPIED");
+        (await (await _client.PostJsonAsync($"/api/v1/rooms/{roomA}/archive", null, token)).ReadProblemCodeAsync())
+            .Should().Be("ROOM_HAS_CONTRACTS");
+        (await RoomStatusAsync(roomA, token)).Should().Be("Occupied");
     }
 }

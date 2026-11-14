@@ -7,7 +7,7 @@ using renting_room.Domain.Common;
 
 namespace renting_room.Application.Billing;
 
-public sealed record UpdateInvoiceNoteCommand(Guid InvoiceId, string? Note) : IRequest<Result<InvoiceDetailDto>>;
+public sealed record UpdateInvoiceNoteCommand(Guid InvoiceId, string? Note, uint? ExpectedVersion = null) : IRequest<Result<InvoiceDetailDto>>;
 
 public sealed class UpdateInvoiceNoteCommandValidator : AbstractValidator<UpdateInvoiceNoteCommand>
 {
@@ -18,7 +18,7 @@ public sealed class UpdateInvoiceNoteHandler(IUnitOfWork unitOfWork, IInvoiceRep
     : IRequestHandler<UpdateInvoiceNoteCommand, Result<InvoiceDetailDto>>
 {
     public async ValueTask<Result<InvoiceDetailDto>> Handle(UpdateInvoiceNoteCommand request, CancellationToken cancellationToken) =>
-        await InvoiceAccess.MutateAsync(unitOfWork, invoices, invoiceQueries, request.InvoiceId, clock.GetUtcNow().ToBusinessDate(), invoice =>
+        await InvoiceAccess.MutateAsync(unitOfWork, invoices, invoiceQueries, request.InvoiceId, clock.GetUtcNow().ToBusinessDate(), request.ExpectedVersion, invoice =>
         {
             if (invoice.Status != InvoiceStatus.Draft)
                 return Result.Failure(BillingErrors.NotDraft);

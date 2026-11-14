@@ -1,9 +1,8 @@
 namespace renting_room.Requests;
 
-public sealed record CreateManagerRequest(string FullName, string? Phone, string? Email);
+/// <param name="PropertyIds">Khu được giao (M01 ID-BR-24); không gửi = mọi khu đang dùng, <c>[]</c> = chưa giao khu nào.</param>
+public sealed record CreateManagerRequest(string FullName, string? Phone, string? Email, IReadOnlyList<Guid>? PropertyIds = null);
 
 public sealed record UpdateManagerRequest(string FullName, string? Phone, string? Email, uint Version);
 
-public sealed record SensitiveDataAccessRequest(bool Allowed);
-
-public sealed record WriteOffPermissionRequest(bool Allowed);
+public sealed record AssignPropertiesRequest(IReadOnlyList<Guid> PropertyIds);

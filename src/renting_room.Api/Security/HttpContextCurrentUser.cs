@@ -23,6 +23,13 @@ internal sealed class HttpContextCurrentUser(IHttpContextAccessor httpContextAcc
 
     public string? IpAddress => httpContextAccessor.HttpContext?.Connection.RemoteIpAddress?.ToString();
 
+    public const string PropertyScopeKey = "renting_room.PropertyScope";
+
+    /// <summary>M01 ID-BR-24: khu được giao (nạp khi xác thực token — <c>JwtAuthenticationSetup</c>); quản lý khu chưa nạp được ⇒ rỗng (fail-closed).</summary>
+    public Guid[]? PropertyIds =>
+        Role != UserRole.OrgManager ? null
+        : httpContextAccessor.HttpContext?.Items[PropertyScopeKey] as Guid[] ?? [];
+
     private Guid? ReadGuid(string claimType) =>
         IsAuthenticated && Guid.TryParse(Principal!.FindFirstValue(claimType), out var value) ? value : null;
 }

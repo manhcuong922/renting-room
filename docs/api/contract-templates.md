@@ -14,7 +14,7 @@ Khi tạo hợp đồng chọn mẫu, server **chép** tiêu đề, điều kho�
 > **Điện, nước, dịch vụ không khai bằng trường tùy biến** — khai bằng [khoản thu](fees.md) để vừa tính tiền vừa in vào văn bản.
 > Trường tùy biến dành cho thỏa thuận khác (khách qua đêm, giờ đóng cổng, mục đích sử dụng nhà…).
 
-Quyền: chủ trọ và phó quản lý.
+Quyền: xem / dùng mẫu — chủ trọ và quản lý khu; **tạo / sửa / ngừng dùng / khôi phục mẫu — chỉ chủ trọ** (mẫu dùng chung mọi khu — 08/11/2026, quản lý khu → 403, ẩn nút).
 
 ## Màn hình
 

@@ -353,7 +353,7 @@ từ phòng 203 sang 206 ngày 13/10):
 | `endDate` `null` + `holdoverSince` khác `null` | HĐ **đang ở tiếp** = không thời hạn; `previousEndDate` là hạn cũ. Hiện "Không thời hạn — ở tiếp từ …, hạn cũ …"; nút Gia hạn vẫn bật |
 | `hasSignedDocument`, `signedDocumentNote` | Đã có bản HĐ ký chưa — `false` ⇒ nhãn xám "Thiếu tài liệu" + nút "Đã có bản ký" |
 | `deposit` | Xem [Tiền cọc](#tiền-cọc) |
-| `roomSince` | Ngày HĐ vào **phòng hiện tại** (= ngày chuyển phòng gần nhất, hoặc ngày bắt đầu). Nút "Hủy chuyển phòng" chỉ hiện khi `roomMoves` không rỗng **và** hôm nay ≤ `roomSince` + 3 ngày |
+| `roomSince` | Ngày HĐ vào **phòng hiện tại** (= ngày chuyển phòng gần nhất, hoặc ngày bắt đầu). Chuyển nhầm: chuyển lại về **đúng phòng vừa rời** khi hôm nay = `roomSince` ⇒ xóa lần chuyển (không còn lệnh / nút "Hủy chuyển phòng" — bỏ 17/10/2026) |
 | `roomMoves[]` | Các phòng HĐ đã ở trước đó, cũ trước (`toDate` = ngày chuyển đi). Rỗng = chưa chuyển lần nào |
 | `representativeSince`, `representativeHistory[]` | Người đứng tên hiện tại đứng tên từ ngày nào; những người đứng tên trước: `{ "renterId", "fullName", "fromDate", "toDate" }` |
 | `occupants[].role` | `Resident` người ở · `CoTenant` đồng thuê (có tên trên HĐ). `isRepresentative` = là người đứng tên |
@@ -492,6 +492,8 @@ thuê trước) hoặc **nhập số khác** ≥ số đó (VD sửa chữa phò
 ```json
 { "handoverReadings": [ { "meterId": "…điện", "value": 200, "acceptBelowPrevious": true } ] }
 ```
+
+**Kiểm chỉ số gửi kèm (11/11/2026, M-19)** — áp dụng cho mọi mảng chỉ số trong lệnh hợp đồng: `handoverReadings` (kích hoạt), `oldRoomReadings` / `newRoomReadings` (chuyển phòng), `finalReadings` (hóa đơn trả phòng, bắt đầu / hoàn tất thanh lý): `value` bỏ trống (`null`) = "dùng số mới nhất" (chỉ chỉ số nhận phòng); có số thì 0–99.999.999,99 và tối đa 2 số lẻ, sai ⇒ 400 `INVALID_READING` ở `<mảng>[i].value`; cùng `meterId` hai lần ⇒ 400 `DUPLICATE_METER` ở `<mảng>`. Trước đây các trường hợp này ra 500.
 
 Cờ `acceptBelowPrevious` có ở mọi nơi nhận `MeterReadingInput` cho chỉ số nhận phòng: kích hoạt, chuyển phòng (`newRoomReadings`), ký lại. Vẫn **không** nhỏ hơn số lúc lắp công tơ (`READING_NOT_MONOTONIC`).
 
@@ -1010,7 +1012,7 @@ Các mục chủ trọ phải quyết — thiếu ⇒ 422, UI hiện lựa chọ
 
 | Mục | Thiếu ⇒ | Gửi | Kết quả |
 |---|---|---|---|
-| **Cần trả lại** (hóa đơn Chờ hoàn) | 422 `REFUND_PENDING` | `refund { refundedOn, method }` hoặc **"Không hoàn"** `refund { refundedOn, waive: true, reason }` | Mọi hóa đơn Chờ hoàn của HĐ được xác nhận **đã hoàn** (ghi chú "Xác nhận khi hoàn tất thanh lý"). "Không hoàn" (27/10/2026 — vd người thuê bỏ đi, không liên lạc được): **chỉ chủ trọ** (403 `REFUND_WAIVE_NOT_ALLOWED`), `reason` bắt buộc ≤ 300 (400 `REQUIRED`), không có `method`; hóa đơn `paymentStatus = "RefundWaived"`, `refundMethod = null`, `refundNote` = lý do |
+| **Cần trả lại** (hóa đơn Chờ hoàn) | 422 `REFUND_PENDING` | `refund { refundedOn, method }` hoặc **"Không hoàn"** `refund { refundedOn, waive: true, reason }` | Mọi hóa đơn Chờ hoàn của HĐ được xác nhận **đã hoàn** (ghi chú "Xác nhận khi hoàn tất thanh lý"). "Không hoàn" (27/10/2026 — vd người thuê bỏ đi, không liên lạc được): chủ trọ và quản lý khu (08/11/2026 — trước chỉ chủ trọ), `reason` bắt buộc ≤ 300 (400 `REQUIRED`), không có `method`; hóa đơn `paymentStatus = "RefundWaived"`, `refundMethod = null`, `refundNote` = lý do |
 | **Khoản chưa xử lý** | 422 `PENDING_CHARGES` (`count`, `surcharge`, `credit`) | `pendingCharges { method }` | Mỗi khoản đánh dấu **đã trả / đã thu tay** ngày hôm nay (báo cáo ghi đúng tiền vào / ra) |
 | **Còn nợ** | 422 `CONTRACT_HAS_DEBT` (`outstanding`) | `settlement` (+ `method`, `paidAt`, `reason`) | Như trước: "Đã thu toàn bộ" ghi 1 phiếu thu; "Bỏ nợ" (`reason` bắt buộc, theo quyền — 403 `WRITE_OFF_NOT_ALLOWED`) không tính doanh thu |
 | **Cọc** (không chặn — chỉ khi **không** có hóa đơn trả phòng; có thì cọc đã trừ trong kết toán, `Deducted` — 27/10/2026) | — | `deposit { action, amount?, date?, note? }` | `Refund` = Đã hoàn trả cọc (`amount` null = đủ; ít hơn ⇒ `note` bắt buộc — 400 `INVALID_REFUND_AMOUNT`); `Forfeit` = **Không trả cọc** (`note` bắt buộc — 400 `REQUIRED`); `Later` / bỏ trống = Để sau (nhắc "Chưa hoàn cọc"). `date` bỏ trống = hôm nay |

@@ -20,7 +20,8 @@ public sealed class CreateRenterCommandValidator : AbstractValidator<CreateRente
 }
 
 /// <summary>RT-BR-02: cùng số giấy tờ trong tổ chức ⇒ 409, dùng lại hồ sơ cũ (unique index là chốt chặn khi gửi song song).</summary>
-public sealed class CreateRenterHandler(IRenterRepository renters, IUnitOfWork unitOfWork, ICurrentUser currentUser, IPersonalDataProtector protector)
+public sealed class CreateRenterHandler(
+    IRenterRepository renters, IUnitOfWork unitOfWork, ICurrentUser currentUser, IPersonalDataProtector protector, IAuditTrail auditTrail)
     : IRequestHandler<CreateRenterCommand, Result<Guid>>
 {
     public async ValueTask<Result<Guid>> Handle(CreateRenterCommand request, CancellationToken cancellationToken)
@@ -30,7 +31,14 @@ public sealed class CreateRenterHandler(IRenterRepository renters, IUnitOfWork u
             : null;
         if (idNumber is not null
             && await renters.FindIdByIdNumberHashAsync(idNumber.Hash, excludeId: null, cancellationToken) is { } existing)
-            return RenterErrors.IdNumberExistsFor(existing);
+        {
+            // ID-BR-26: người thuê cũ của khu khác quay lại ⇒ quản lý khu nhập đúng số giấy tờ được dùng lại hồ sơ.
+            var (fullName, last4) = await renters.ClaimAsync(existing, cancellationToken);
+            await unitOfWork.SaveChangesAsync(cancellationToken);
+            // M-13: 409 này trả họ tên + 4 số cuối của hồ sơ có sẵn ⇒ là đường dò CCCD, ghi dấu vết (không ghi số đã nhập).
+            await auditTrail.RecordReadAsync(AuditActions.IdNumberLookup, nameof(Renter), existing, new { source = "Create" }, cancellationToken);
+            return RenterErrors.IdNumberExistsFor(existing, fullName, last4);
+        }
 
         var renter = Renter.Create(request.Renter.ToProfile(), idNumber);
         renters.Add(renter);

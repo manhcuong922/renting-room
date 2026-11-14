@@ -36,10 +36,12 @@ internal static class ImportErrors
     public const int MaxRows = 500;
 
     public static readonly Error FileInvalid = Error.Validation("IMPORT_FILE_INVALID", "Không đọc được file — dùng file .xlsx tải từ mẫu.");
-    public static readonly Error FileTooLarge = Error.Validation("IMPORT_FILE_TOO_LARGE", "File quá lớn (tối đa 2 MB, giải nén tối đa 20 MB).");
+    public static readonly Error FileTooLarge = Error.Validation("IMPORT_FILE_TOO_LARGE",
+        "File quá lớn (tối đa 2 MB, giải nén tối đa 5 MB) — chỉ giữ sheet theo mẫu, bỏ ảnh / sheet khác rồi tải lại.");
 
-    public static Error TooManyRows(int count) =>
-        Error.Validation("IMPORT_TOO_MANY_ROWS", $"File có {count} dòng — tối đa {MaxRows} dòng mỗi lần.");
+    /// <summary>Đọc dừng ngay sau dòng thứ <see cref="MaxRows"/> + 1 (H-05) ⇒ không biết tổng số dòng.</summary>
+    public static readonly Error TooManyRows =
+        Error.Validation("IMPORT_TOO_MANY_ROWS", $"File có hơn {MaxRows} dòng dữ liệu — tối đa {MaxRows} dòng mỗi lần, hãy tách thành nhiều file.");
 }
 
 /// <summary>Bước chung: đọc file + tìm bảng theo mẫu (giới hạn dung lượng, chống zip bomb).</summary>
@@ -58,7 +60,7 @@ internal static class ImportFiles
         IReadOnlyList<SheetData> sheets;
         try
         {
-            sheets = reader.Read(content);
+            sheets = reader.Read(content, ImportTable.HeaderSearchRows + ImportErrors.MaxRows);
         }
         catch (SpreadsheetTooLargeException)
         {
@@ -75,8 +77,8 @@ internal static class ImportFiles
         if (table is null)
             error = Error.Validation("IMPORT_TEMPLATE_MISMATCH",
                 $"Không thấy bảng theo mẫu — cần các cột: {string.Join(", ", columns.Select(c => c.Header))}.");
-        else if (table.Rows.Count > ImportErrors.MaxRows)
-            error = ImportErrors.TooManyRows(table.Rows.Count);
+        else if (table.Truncated || table.Rows.Count > ImportErrors.MaxRows)
+            error = ImportErrors.TooManyRows;
         return error is null ? table : null;
     }
 
@@ -112,11 +114,14 @@ internal static class ImportFiles
 
 internal sealed class ImportTable
 {
-    private const int HeaderSearchRows = 10;
+    public const int HeaderSearchRows = 10;
 
-    private ImportTable(IReadOnlyList<ImportRow> rows) => Rows = rows;
+    private ImportTable(IReadOnlyList<ImportRow> rows, bool truncated) => (Rows, Truncated) = (rows, truncated);
 
     public IReadOnlyList<ImportRow> Rows { get; }
+
+    /// <summary>Sheet còn dòng chưa đọc ⇒ chắc chắn quá <see cref="ImportErrors.MaxRows"/> dòng dữ liệu.</summary>
+    public bool Truncated { get; }
 
     public static ImportTable? Locate(SheetData sheet, IReadOnlyList<ImportColumn> columns)
     {
@@ -132,7 +137,7 @@ internal sealed class ImportTable
             var rows = sheet.Rows.Where(r => r.RowNumber > header.RowNumber && (r.HasFormula || r.Cells.Any(c => c is not null)))
                 .Select(r => new ImportRow(r, index, headerByKey))
                 .ToList();
-            return new ImportTable(rows);
+            return new ImportTable(rows, sheet.Truncated);
         }
         return null;
     }

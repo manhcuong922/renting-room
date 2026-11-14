@@ -29,15 +29,21 @@ public sealed class PaymentsController(ISender sender) : ControllerBase
         return result.IsSuccess ? Results.Created($"{Route}/{result.Value!.Id}", result.Value) : result.ToHttp();
     }
 
+    [HttpPut("invoices/{id:guid}/collected")]
+    [Idempotent(required: false)]
+    [EndpointSummary("Sửa số \"Đã thu\" của hóa đơn: tăng ⇒ ghi phiếu thu phần chênh; giảm ⇒ lý do bắt buộc, tự đảo phiếu thu mới nhất rồi ghi lại phần giữ")]
+    public async Task<IResult> EditCollected(Guid id, EditCollectedAmountRequest b, CancellationToken ct) =>
+        (await sender.Send(new EditCollectedAmountCommand(id, b.Amount, b.ExpectedAmount, b.PaidAt, b.Method, b.Reason), ct)).ToHttp();
+
     [HttpPost("invoices/{id:guid}/write-off")]
     [Idempotent]
-    [EndpointSummary("Bỏ nợ phiếu (mặc định toàn bộ số còn nợ) — chủ trọ / phó quản lý được cấp quyền, lý do bắt buộc, không tính doanh thu")]
+    [EndpointSummary("Bỏ nợ phiếu (mặc định toàn bộ số còn nợ) — chủ trọ / quản lý khu, lý do bắt buộc, không tính doanh thu")]
     public async Task<IResult> WriteOff(Guid id, WriteOffInvoiceRequest b, CancellationToken ct) =>
         (await sender.Send(new WriteOffInvoiceCommand(id, b.Amount, b.Reason), ct)).ToHttp();
 
     [HttpPost("invoices/{id:guid}/pay-and-write-off")]
     [Idempotent]
-    [EndpointSummary("Thanh toán + bỏ phần còn lại của phiếu (VD nợ 3tr, trả 2tr, cho 1tr) — chủ trọ / phó quản lý được cấp quyền")]
+    [EndpointSummary("Thanh toán + bỏ phần còn lại của phiếu (VD nợ 3tr, trả 2tr, cho 1tr) — chủ trọ / quản lý khu")]
     public async Task<IResult> PayAndWriteOff(Guid id, PayAndWriteOffRequest b, CancellationToken ct) =>
         (await sender.Send(new PayAndWriteOffCommand(id, b.Amount, b.Method, b.PaidAt, b.PayerName, b.Reference, b.Reason), ct)).ToHttp();
 
@@ -47,7 +53,7 @@ public sealed class PaymentsController(ISender sender) : ControllerBase
         Results.Ok(await sender.Send(new ListPaymentsQuery(contractId, roomId, invoiceId), ct));
 
     [HttpPost("payments/{id:guid}/reverse")]
-    [EndpointSummary("Đảo phiếu thu nhập sai (hủy phân bổ, phiếu báo về còn nợ)")]
+    [EndpointSummary("Đảo phiếu thu nhập sai (hủy phân bổ, phiếu báo về còn nợ) — phiếu thu đảo kèm phiếu hoàn không còn được che")]
     public async Task<IResult> Reverse(Guid id, ReversePaymentRequest b, CancellationToken ct) =>
         (await sender.Send(new ReversePaymentCommand(id, b.Reason), ct)).ToHttp();
 }

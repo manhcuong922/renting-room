@@ -19,7 +19,7 @@ public sealed class UpdateManagerCommandValidator : AbstractValidator<UpdateMana
         RuleFor(x => x)
             .Must(x => !string.IsNullOrWhiteSpace(x.Phone) || !string.IsNullOrWhiteSpace(x.Email))
             .OverridePropertyName("phone").WithErrorCode("USERNAME_REQUIRED")
-            .WithMessage("Phó quản lý phải có số điện thoại hoặc email để đăng nhập.");
+            .WithMessage("Quản lý khu phải có số điện thoại hoặc email để đăng nhập.");
     }
 }
 

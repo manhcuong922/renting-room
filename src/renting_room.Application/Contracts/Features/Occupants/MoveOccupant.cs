@@ -50,7 +50,7 @@ public sealed class MoveOccupantHandler(IContractQueries contracts, IUnitOfWork 
         if (left.IsFailure)
             return left;
         var arrived = await sender.Send(new AddOccupantCommand(request.ToContractId, renterId, request.Date, null, request.Relationship, request.Note,
-            request.RelationshipType, request.GuardianConsent, request.Role), cancellationToken);
+            request.RelationshipType, request.GuardianConsent, request.Role, MovedFromContractId: request.ContractId), cancellationToken);
         if (arrived.IsFailure)
             return arrived;
 

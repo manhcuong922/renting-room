@@ -27,7 +27,7 @@ public sealed class BillingSafeguardTests(ApiFactory factory)
     {
         (await GenerateAsync(propertyId, month, token)).GetProperty("created").GetInt32().Should().Be(1);
         var id = await InvoiceIdAsync(contractId, month, token);
-        var finalized = await _client.PostJsonAsync($"/api/v1/invoices/{id}/finalize", null, token);
+        var finalized = await _client.FinalizeInvoiceAsync(id, token);
         finalized.StatusCode.Should().Be(HttpStatusCode.OK, await finalized.Content.ReadAsStringAsync());
         return id;
     }
@@ -92,7 +92,7 @@ public sealed class BillingSafeguardTests(ApiFactory factory)
         var finalId = (await created.ReadAsync<JsonElement>()).GetProperty("summary").GetProperty("id").GetGuid();
 
         (await _client.PostJsonAsync("/api/v1/invoices/recalculate", new { invoiceIds = new[] { finalId } }, token)).StatusCode.Should().Be(HttpStatusCode.OK);
-        var finalized = await _client.PostJsonAsync($"/api/v1/invoices/{finalId}/finalize", null, token);
+        var finalized = await _client.FinalizeInvoiceAsync(finalId, token);
         finalized.StatusCode.Should().Be(HttpStatusCode.OK, await finalized.Content.ReadAsStringAsync());
         var metered = (await finalized.ReadAsync<JsonElement>()).GetProperty("lines").EnumerateArray()
             .Where(l => l.GetProperty("type").GetString() == "Metered").ToList();
@@ -192,7 +192,7 @@ public sealed class BillingSafeguardTests(ApiFactory factory)
         next.Kwh.Should().BeNull("không được gộp 1.000 → 1.160");
         (await _client.PostJsonAsync("/api/v1/invoices/recalculate", new { invoiceIds = new[] { draftNext } }, token)).StatusCode.Should().Be(HttpStatusCode.OK);
         (await ElectricityAsync(draftNext)).Kwh.Should().BeNull();
-        var refused = await _client.PostJsonAsync($"/api/v1/invoices/{draftNext}/finalize", null, token);
+        var refused = await _client.FinalizeInvoiceAsync(draftNext, token);
         refused.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity, await refused.Content.ReadAsStringAsync());
 
         // Nhập lại 1.090: cả hai tự tính lại, không đụng ràng buộc điểm đầu (409).
@@ -254,18 +254,18 @@ public sealed class BillingSafeguardTests(ApiFactory factory)
 
         (await GenerateAsync(propertyId, month, token)).GetProperty("created").GetInt32().Should().Be(1);
         var draftId = await InvoiceIdAsync(contractId, month, token);
-        var added = await (await _client.PostJsonAsync($"/api/v1/invoices/{draftId}/manual-lines", new
+        var added = await (await _client.AddInvoiceLineAsync(draftId, new
         {
             type = "Refund", description = "Hoàn tiền thu nhầm", amount = 100_000, note = "Thu nhầm phí rác", sourceInvoiceId = source
         }, token)).ReadAsync<JsonElement>();
         var refundLine = added.GetProperty("lines").EnumerateArray().Single(l => l.GetProperty("type").GetString() == "Refund").GetProperty("id").GetGuid();
 
-        var edited = await _client.PutJsonAsync($"/api/v1/invoices/{draftId}/lines/{refundLine}", new { amount = 2_000_000, note = "Sửa số" }, token);
+        var edited = await _client.EditInvoiceLineAsync(draftId, refundLine, new { amount = 2_000_000, note = "Sửa số" }, token);
         (await edited.ReadProblemCodeAsync()).Should().Be("REFUND_EXCEEDS_PAID", "phiếu nguồn mới thu 1.000.000");
 
         (await _client.PostJsonAsync($"/api/v1/payments/{payment.GetProperty("id").GetGuid()}/reverse", new { reason = "Nhập nhầm" }, token))
             .StatusCode.Should().Be(HttpStatusCode.OK);
-        var finalize = await _client.PostJsonAsync($"/api/v1/invoices/{draftId}/finalize", null, token);
+        var finalize = await _client.FinalizeInvoiceAsync(draftId, token);
         (await finalize.ReadProblemCodeAsync()).Should().Be("REFUND_EXCEEDS_PAID", "phiếu nguồn đã bị đảo thu — không còn gì để hoàn");
     }
 }

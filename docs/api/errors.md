@@ -31,14 +31,16 @@ Mọi lỗi có dạng ProblemDetails (xem [conventions.md](conventions.md#lỗi
 | `IDEMPOTENCY_REQUEST_IN_PROGRESS` | 409 | Lần gửi trước còn chạy — chờ `Retry-After` rồi gửi lại cùng key |
 | `IDEMPOTENCY_REPLAY_UNAVAILABLE` | 409 | Đã xử lý nhưng không trả lại được kết quả cũ — tải lại danh sách để kiểm tra |
 | `IDEMPOTENCY_KEY_REUSED` | 422 | Cùng key, khác nội dung — sinh key mới |
-| `CONCURRENCY_CONFLICT` | 409 | Người khác vừa sửa (`version` cũ) — tải lại form |
+| `CONCURRENCY_CONFLICT` | 409 | Người khác vừa sửa (`version` cũ), hoặc 2 thao tác chạy cùng lúc chặn nhau (DB báo xung đột / deadlock) — tải lại rồi thử lại |
 | `DUPLICATE_VALUE`, `OVERLAP_CONFLICT`, `REFERENCE_CONFLICT` | 409 | Ràng buộc dữ liệu (hiếm) — tải lại |
 | `CONSTRAINT_VIOLATION` | 422 | Dữ liệu vi phạm ràng buộc — báo hỗ trợ kèm `traceId` |
 | `NOT_FOUND` | 404 | Sai URL |
 | `METHOD_NOT_ALLOWED` | 405 | Sai method |
 | `PAYLOAD_TOO_LARGE` | 413 | Body > 1 MB |
 | `UNSUPPORTED_MEDIA_TYPE` | 415 | Thiếu `Content-Type: application/json` |
-| `TOO_MANY_REQUESTS` | 429 | Vượt giới hạn tần suất |
+| `TOO_MANY_REQUESTS` | 429 | Vượt giới hạn tần suất. Từ 11/11/2026: `POST /renters/search` **có `idNumber`** và `POST /renters` dùng chung hạn mức dò số giấy tờ (mặc định 30 lần / 10 phút / user, `RateLimiting:IdLookup`); tìm theo tên / SĐT không tính. Hiện câu "thử lại sau N giây" theo `Retry-After` |
+| `EMAIL_NOT_CONFIGURED` | 503 | Máy chủ chưa cấu hình SMTP (`Email:Smtp`) — việc cần gửi email (cấp lại mật khẩu cho tài khoản có email) bị hủy, chưa đổi gì. Hiện nguyên `detail` của server, báo người vận hành |
+| `EMAIL_SEND_FAILED` | 503 | Máy chủ thư từ chối / không phản hồi — chưa đổi gì, thử lại sau. Hiện nguyên `detail` |
 | `INTERNAL_ERROR` | 500 | Lỗi hệ thống |
 
 ## Xác thực & tài khoản
@@ -50,7 +52,7 @@ Mọi lỗi có dạng ProblemDetails (xem [conventions.md](conventions.md#lỗi
 | `INVALID_TOKEN` | 401 | Đăng nhập lại |
 | `SESSION_REVOKED` | 401 | Phiên bị thu hồi (đổi mật khẩu, bị khóa, đăng xuất mọi nơi, tổ chức tạm ngưng) → đăng nhập lại |
 | `INVALID_REFRESH_TOKEN` | 401 | Đăng nhập lại |
-| `INVALID_CREDENTIALS` | 401 | Sai tài khoản/mật khẩu hoặc đang bị khóa tạm 15 phút |
+| `INVALID_CREDENTIALS` | 401 | Sai tài khoản/mật khẩu hoặc thiết bị (IP) đang bị chặn tạm 15 phút với tài khoản này |
 | `TEMPORARY_PASSWORD_EXPIRED` | 401 | Mật khẩu tạm quá 72h — xin cấp lại |
 | `PASSWORD_CHANGE_REQUIRED` | 403 | Chuyển màn đổi mật khẩu |
 | `FORBIDDEN` | 403 | Sai vai trò |
@@ -69,9 +71,10 @@ Mọi lỗi có dạng ProblemDetails (xem [conventions.md](conventions.md#lỗi
 | `ORGANIZATION_NOT_FOUND` / `USER_NOT_FOUND` / `MEMBER_NOT_FOUND` | 404 | Tải lại |
 | `ORG_ALREADY_SUSPENDED` / `ORG_NOT_SUSPENDED` | 409 | Tải lại |
 | `USER_ALREADY_LOCKED` / `USER_NOT_LOCKED` / `USER_REMOVED` | 409 | Tải lại |
-| `MANAGER_LIMIT_REACHED` | 422 | Đã đủ số phó quản lý |
+| `MANAGER_LIMIT_REACHED` | 422 | Đã đủ số quản lý khu |
 | `CANNOT_MODIFY_OWNER` / `CANNOT_LOCK_OWNER` | 422 | Không thao tác trên chủ trọ — ẩn nút |
-| `SENSITIVE_DATA_FORBIDDEN` | 403 | Phó quản lý chưa được cấp quyền xem số giấy tờ đầy đủ / xuất đầy đủ — ẩn nút theo `canViewSensitiveData`, báo "Cần chủ trọ cấp quyền" |
+| `SENSITIVE_DATA_FORBIDDEN` | 403 | Tài khoản không được xem số giấy tờ đầy đủ (từ 08/11/2026 chủ trọ và quản lý khu luôn được — chỉ gặp khi tài khoản vừa bị khóa / gỡ) |
+| `PROPERTY_ASSIGNMENT_INVALID` | 422 | Giao khu cho quản lý khu: có khu không thuộc tổ chức / đã ngừng sử dụng / không tồn tại — tải lại danh sách khu, chọn lại |
 
 ## Khu trọ & phòng
 
@@ -177,6 +180,7 @@ giấy tờ / pháp lý (09/10/2026 — trước là lỗi chặn): `LESSOR_INFO
 | `FEE_NOT_METERED` | 422 | Chỉ lắp công tơ cho điện nước theo công tơ |
 | `METER_REMOVED` | 422 | Công tơ đã tháo |
 | `METER_PERIOD_LOCKED` | 422 | Ngày thay / tháo công tơ thuộc kỳ đã chốt phiếu (`lockedUntil`) — chọn ngày sau đó |
+| `DUPLICATE_SERIAL` | 422 (trong `rowErrors` của `BULK_REPLACE_INVALID`) | Thay hàng loạt: serial mới trùng dòng trước trong lô — sửa serial |
 | `INVALID_READING_DATE` | 422 | Ngày ngoài thời gian công tơ hoạt động / trước chỉ số đã ghi |
 | `READING_NOT_MONOTONIC` | 422 | Chỉ số phải ≥ `previousValue` và ≤ `nextValue` (trong body) — so trong cùng HĐ và với số lắp công tơ, không so với chỉ số của HĐ khác (28/10/2026 — M-10) |
 | `HANDOVER_READING_REQUIRED` | 422 | Kích hoạt: nhập chỉ số nhận phòng cho các công tơ trong `meterIds` |
@@ -235,16 +239,20 @@ Cảnh báo mềm: `ROOM_WITHOUT_METER` (HĐ hiệu lực, phòng chưa có côn
 | `USERNAME_REQUIRED` | 400 | Tài khoản phải còn SĐT hoặc email để đăng nhập |
 | `CONTRACT_READING_EXISTS` | 409 | HĐ đã có chỉ số nhận phòng / chỉ số cuối trên công tơ trong ngày — tải lại |
 | `PAYMENT_EXCEEDS_DEBT` | 422 | Số tiền lớn hơn số còn nợ |
-| `WRITE_OFF_NOT_ALLOWED` | 403 | Bỏ nợ (riêng / kèm thanh toán / khi hoàn tất thanh lý) — phó quản lý chưa được chủ trọ cấp quyền |
-| `REFUND_WAIVE_NOT_ALLOWED` | 403 | "Không hoàn" tiền cho người thuê khi hoàn tất thanh lý — chỉ chủ trọ |
+| `WRITE_OFF_NOT_ALLOWED` | 403 | Bỏ nợ — tài khoản không có quyền (từ 08/11/2026 chủ trọ và quản lý khu luôn được — chỉ gặp khi tài khoản vừa bị khóa / gỡ) |
 | `REFUND_WAIVE_REASON_REQUIRED` | 400 | "Không hoàn" thiếu lý do |
 | `NOTHING_TO_WRITE_OFF` | 422 | "Thanh toán + bỏ phần còn lại" mà số trả = số còn nợ — dùng "Đã thu" |
 | `NO_OUTSTANDING_INVOICE` | 422 | Không còn phiếu nào chưa thu đủ |
 | `PAYMENT_ALREADY_REVERSED` | 409 | Phiếu thu đã đảo — tải lại |
+| `COLLECTED_AMOUNT_CHANGED` | 409 | Sửa số đã thu: người khác vừa đổi số — tải lại hóa đơn ([payments.md](payments.md#sửa-số-đã-thu-09112026)) |
+| `COLLECTED_AMOUNT_UNCHANGED` | 422 | Sửa số đã thu: số mới bằng số hiện tại |
+| `COLLECTED_BELOW_REFUNDED` | 422 | Sửa số đã thu / đảo phiếu thu: phiếu sau đã hoàn trả từ hóa đơn này (`refunded`) — không giảm dưới số đó (đảo: chỉ tính phiếu đã chốt; hủy phiếu chứa dòng hoàn trước) |
+| `COLLECTED_PERIOD_LOCKED` | 403 | Quản lý khu giảm / đảo tiền có ngày thu trước ngày 1 tháng trước — liên hệ chủ trọ |
+| `INVALID_MONTH_RANGE` | 400 | Xuất Excel thu tiền: đến tháng < từ tháng hoặc quá 24 tháng |
 | `FINAL_INVOICE_EXISTS` | 409 | Đã có hóa đơn trả phòng — mở phiếu đó |
 | `FINAL_INVOICE_REQUIRED` | 422 | Hoàn tất thanh lý: lập + chốt hóa đơn trả phòng trước |
 | `SETTLEMENT_LINE_LOCKED` | 422 | Sửa / xóa dòng kết toán (nợ chuyển / trừ cọc) của hóa đơn trả phòng — do hệ thống tính (BL-BR-41) |
-| `INVOICE_CARRIED_OVER` | 422 | Đảo phiếu thu / điều chỉnh chỉ số đã chốt (27/10/2026) của hóa đơn đã chuyển nợ vào hóa đơn trả phòng — hủy hóa đơn trả phòng trước |
+| `INVOICE_CARRIED_OVER` | 422 | Đảo phiếu thu / sửa số đã thu / điều chỉnh chỉ số đã chốt (27/10/2026) của hóa đơn đã chuyển nợ vào hóa đơn trả phòng — hủy hóa đơn trả phòng trước |
 | `DEPOSIT_DEDUCTED` | 422 | Trả / không trả / bỏ đánh dấu cọc đã trừ vào hóa đơn trả phòng — hủy hóa đơn trả phòng trước |
 | `FINAL_INVOICE_NOT_REQUIRED` | 422 | Lập hóa đơn trả phòng khi người thuê đi trước "Tính tiền từ ngày" — không có kỳ nào để tính, hoàn tất thanh lý luôn |
 | `FINAL_INVOICE_FINALIZED` | 422 | Hủy thanh lý: hủy hóa đơn trả phòng đã chốt trước |
@@ -273,7 +281,7 @@ Cảnh báo trên phiếu (`issues`, `severity: "Warning"`): `EDITED_BASE_CHANGE
 |------|------|----|
 | `FEE_TYPE_NOT_FOUND` / `FEE_PRICE_NOT_FOUND` / `CONTRACT_FEE_NOT_FOUND` | 404 | |
 | `FEE_NAME_TAKEN` / `FEE_SYSTEM_CODE_TAKEN` / `FEE_PRICE_DATE_EXISTS` | 409 | Ô tên / ngày |
-| `FEE_PRICE_LOCKED` | 422 | Ngày thuộc kỳ đã chốt phiếu |
+| `FEE_PRICE_LOCKED` | 422 | Bản giá thêm / xóa làm đổi giá của phiếu đã chốt |
 | `FEE_TIERS_METERED_ONLY` | 400 | Giá theo bậc chỉ cho điện nước theo công tơ |
 | `FEE_METERED_FOLLOWS_ROOM` | 400 | Điện / nước theo công tơ đi theo phòng — không gắn vào hợp đồng |
 | `FEE_IN_USE` | 422 | Gỡ khỏi hợp đồng trước khi ngừng dùng |
@@ -327,9 +335,9 @@ Cảnh báo (không chặn): `READING_DATE_FAR_FROM_PERIOD_END` trong `warnings[
 
 | Code | HTTP | UI |
 |------|------|----|
-| `PROFILE_MANAGED_BY_OWNER` | 403 | Phó quản lý không tự sửa hồ sơ — ẩn nút sửa, ghi "Liên hệ chủ trọ để đổi thông tin" |
-| `CURRENT_PASSWORD_REQUIRED` | 400 | Đổi SĐT / email đăng nhập phải nhập mật khẩu hiện tại — hiện ô mật khẩu |
-| `INVALID_CURRENT_PASSWORD` | 422 | Mật khẩu hiện tại sai (cũng dùng cho `PUT /me`) |
+| `PROFILE_MANAGED_BY_OWNER` | 403 | Quản lý khu không tự sửa hồ sơ — ẩn nút sửa, ghi "Liên hệ chủ trọ để đổi thông tin" |
+| `CURRENT_PASSWORD_REQUIRED` | 400 | Đổi SĐT / email đăng nhập, đổi / xóa tài khoản ngân hàng của khu (H-06) phải nhập mật khẩu hiện tại — hiện ô mật khẩu |
+| `INVALID_CURRENT_PASSWORD` | 422 | Mật khẩu hiện tại sai (cũng dùng cho `PUT /me`, `PUT /properties/{id}/bank-account`) |
 
 Đã bỏ: cờ `Holdover`, cảnh báo `HOLDOVER_SIGN_ADDENDUM` ("Ở tiếp" giờ chuyển hợp đồng sang không thời hạn).
 `ROOM_CHARGE_CREDIT_TOO_HIGH` giờ còn trả khi bỏ đánh dấu "đã thanh toán" một khoản bù.

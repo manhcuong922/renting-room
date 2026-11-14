@@ -28,6 +28,7 @@ public sealed class PropertiesController(ISender sender) : ControllerBase
             new ListPropertiesQuery(search, includeArchived ?? false, page ?? 1, pageSize ?? Paging.DefaultPageSize), ct));
 
     [HttpPost("properties")]
+    [Authorize(Policy = AuthPolicies.OrgOwner)] // M01 ID-BR-28: chỉ chủ trọ
     [Idempotent]
     [EndpointSummary("Tạo khu trọ")]
     public async Task<IResult> Create(CreatePropertyCommand command, CancellationToken ct) =>
@@ -57,16 +58,19 @@ public sealed class PropertiesController(ISender sender) : ControllerBase
             b.TransitionAdjustDays), ct)).ToHttp();
 
     [HttpPost("properties/{id:guid}/archive")]
+    [Authorize(Policy = AuthPolicies.OrgOwner)] // M01 ID-BR-28: chỉ chủ trọ
     [EndpointSummary("Ngừng sử dụng khu (cùng toàn bộ phòng)")]
     public async Task<IResult> Archive(Guid id, CancellationToken ct) =>
         (await sender.Send(new ArchivePropertyCommand(id), ct)).ToHttp();
 
     [HttpPost("properties/{id:guid}/restore")]
+    [Authorize(Policy = AuthPolicies.OrgOwner)] // M01 ID-BR-28: chỉ chủ trọ
     [EndpointSummary("Khôi phục khu")]
     public async Task<IResult> Restore(Guid id, CancellationToken ct) =>
         (await sender.Send(new RestorePropertyCommand(id), ct)).ToHttp();
 
     [HttpPut("properties/{id:guid}/lessor")]
+    [Authorize(Policy = AuthPolicies.OrgOwner)] // M01 ID-BR-28: chỉ chủ trọ
     [EndpointSummary("Khai bên cho thuê riêng của khu (khác chủ trọ — PR-BR-17). idNumber = null ⇒ giữ số cũ")]
     public async Task<IResult> UpdateLessor(Guid id, UpdateLessorRequest b, CancellationToken ct) =>
         (await sender.Send(new UpdateLessorCommand(
@@ -89,9 +93,10 @@ public sealed class PropertiesController(ISender sender) : ControllerBase
     }
 
     [HttpPut("properties/{id:guid}/bank-account")]
-    [EndpointSummary("Tài khoản nhận tiền (gửi cả 3 trường null để xóa)")]
+    [Authorize(Policy = AuthPolicies.OrgOwner)]
+    [EndpointSummary("Tài khoản nhận tiền — chỉ chủ trọ; đổi / xóa phải kèm currentPassword (gửi cả 3 trường null để xóa)")]
     public async Task<IResult> UpdateBankAccount(Guid id, UpdateBankAccountRequest body, CancellationToken ct) =>
-        (await sender.Send(new UpdateBankAccountCommand(id, body.BankName, body.AccountNo, body.AccountName), ct)).ToHttp();
+        (await sender.Send(new UpdateBankAccountCommand(id, body.BankName, body.AccountNo, body.AccountName, body.CurrentPassword), ct)).ToHttp();
 
     [HttpPut("properties/{id:guid}/house-rules")]
     [EndpointSummary("Nội quy khu trọ (đính kèm hợp đồng khi kích hoạt)")]

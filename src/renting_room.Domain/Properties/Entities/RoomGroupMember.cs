@@ -2,7 +2,7 @@ using renting_room.Domain.Common;
 
 namespace renting_room.Domain.Properties;
 
-public sealed class RoomGroupMember : TenantEntity
+public sealed class RoomGroupMember : TenantEntity, IPropertyScoped
 {
     private RoomGroupMember() { } // EF Core
 

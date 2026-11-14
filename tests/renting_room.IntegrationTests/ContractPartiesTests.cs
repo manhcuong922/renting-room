@@ -126,7 +126,7 @@ public sealed class ContractPartiesTests(ApiFactory factory)
         await _client.PutJsonAsync($"/api/v1/contracts/{contractId}/signed-document", new { hasSignedDocument = true, note = "Tủ hồ sơ" }, token);
         await _client.PostJsonAsync("/api/v1/invoices/generate", new { propertyId, billingMonth = $"{month:yyyy-MM}", roomIds = new[] { roomId } }, token);
         var page = await (await _client.GetAsync($"/api/v1/invoices?contractId={contractId}", token)).ReadAsync<JsonElement>();
-        (await _client.PostJsonAsync($"/api/v1/invoices/{page.GetProperty("items")[0].GetProperty("id").GetGuid()}/finalize", null, token))
+        (await _client.FinalizeInvoiceAsync(page.GetProperty("items")[0].GetProperty("id").GetGuid(), token))
             .StatusCode.Should().Be(HttpStatusCode.OK);
         async Task<decimal> DebtAsync() =>
             (await (await _client.GetAsync($"/api/v1/rooms/{roomId}", token)).ReadAsync<JsonElement>()).GetProperty("outstandingAmount").GetDecimal();
@@ -153,6 +153,112 @@ public sealed class ContractPartiesTests(ApiFactory factory)
         OccupantOf(after, successor).GetProperty("relationshipType").ValueKind.Should().Be(JsonValueKind.Null);
         after.GetProperty("flags").EnumerateArray().Select(f => f.GetString()).Should().NotContain("RepresentativeMovedOut");
         (await DebtAsync()).Should().Be(debt, "nợ ở lại trên HĐ — người đứng tên mới nhận");
+    }
+
+    /// <summary>
+    /// M-11 (11/11/2026, CT-BR-50 / 51): chỉ xét người đứng tên từ NGÀY BẮT ĐẦU ĐỨNG TÊN. Trước đây so với ngày bắt đầu HĐ ⇒ người vừa chuyển từ
+    /// phòng khác sang rồi được nâng lên đứng tên bị chặn nhầm vì lần ở cũ (đã kết thúc trước ngày đứng tên) nằm trong khoảng "từ ngày ký HĐ".
+    /// </summary>
+    [Fact]
+    public async Task ChangeRepresentative_ToSomeoneWhoMovedFromAnotherRoomBeforeTheChangeDate_IsAllowed()
+    {
+        var owner = await _client.CreateActiveOwnerAsync();
+        var token = owner.Tokens.AccessToken;
+        var today = TestData.Today(factory);
+        var propertyId = await _client.CreatePropertyAsync(token);
+        var mover = await _client.CreateRenterAsync(token);
+        var oldHost = await _client.CreateRenterAsync(token);
+        var source = await ActiveContractAsync(token, await _client.CreateRoomAsync(token, propertyId), oldHost, today.AddDays(-30),
+            Occupant(oldHost), Occupant(mover, relationshipType: "CoTenant"));
+        var targetRepresentative = await _client.CreateRenterAsync(token);
+        var target = await ActiveContractAsync(token, await _client.CreateRoomAsync(token, propertyId), targetRepresentative, today.AddDays(-30),
+            Occupant(targetRepresentative));
+
+        // Người ở thường phòng 1 đến hết hôm trước, sang phòng 2 ở thường; hôm nay được nâng lên đứng tên phòng 2.
+        var occupancy = OccupantOf(await DetailAsync(token, source), mover).GetProperty("id").GetGuid();
+        var moved = await _client.PostJsonAsync($"/api/v1/contracts/{source}/occupants/{occupancy}/move",
+            new { toContractId = target, date = today.AddDays(-5), relationshipType = "CoTenant" }, token);
+        moved.StatusCode.Should().Be(HttpStatusCode.NoContent, await moved.Content.ReadAsStringAsync());
+
+        var changed = await _client.PostJsonAsync($"/api/v1/contracts/{target}/representative", new { renterId = mover, date = today }, token);
+
+        changed.StatusCode.Should().Be(HttpStatusCode.NoContent, await changed.Content.ReadAsStringAsync());
+        (await DetailAsync(token, target)).GetProperty("representativeRenterId").GetGuid().Should().Be(mover);
+    }
+
+    [Fact]
+    public async Task ChangeRepresentative_ToSomeoneStillLivingElsewhereOnTheChangeDate_IsStillBlocked()
+    {
+        var owner = await _client.CreateActiveOwnerAsync();
+        var token = owner.Tokens.AccessToken;
+        var today = TestData.Today(factory);
+        var propertyId = await _client.CreatePropertyAsync(token);
+        var resident = await _client.CreateRenterAsync(token);
+        var oldHost = await _client.CreateRenterAsync(token);
+        await ActiveContractAsync(token, await _client.CreateRoomAsync(token, propertyId), oldHost, today.AddDays(-30),
+            Occupant(oldHost), Occupant(resident, relationshipType: "CoTenant"));
+        var targetRepresentative = await _client.CreateRenterAsync(token);
+        var target = await ActiveContractAsync(token, await _client.CreateRoomAsync(token, propertyId), targetRepresentative, today.AddDays(-30),
+            Occupant(targetRepresentative));
+
+        // Vẫn là người ở thường phòng 1 mà đòi đứng tên phòng 2 ⇒ vẫn chặn (CT-BR-50).
+        var blocked = await _client.PostJsonAsync($"/api/v1/contracts/{target}/representative", new { renterId = resident, date = today }, token);
+
+        (await blocked.ReadProblemCodeAsync()).Should().Be("REPRESENTATIVE_IS_RESIDENT_ELSEWHERE");
+    }
+
+    /// <summary>
+    /// M-11 (11/11/2026, CT-BR-52): "người đứng tên chuyển đi vẫn được — HĐ nguồn hiện cờ RepresentativeMovedOut". Trước đây vai trò mặc định
+    /// (Resident) bị 409 vì chính HĐ nguồn mà người đó còn đứng tên bị tính là "HĐ khác".
+    /// </summary>
+    [Fact]
+    public async Task MoveOccupant_RepresentativeMovesToAnotherContract_WithDefaultRole_FlagsSourceContract()
+    {
+        var owner = await _client.CreateActiveOwnerAsync();
+        var token = owner.Tokens.AccessToken;
+        var today = TestData.Today(factory);
+        var start = today.AddDays(-10);
+        var propertyId = await _client.CreatePropertyAsync(token);
+        var representative = await _client.CreateRenterAsync(token);
+        var roommate = await _client.CreateRenterAsync(token);
+        var source = await ActiveContractAsync(token, await _client.CreateRoomAsync(token, propertyId), representative, start,
+            Occupant(representative), Occupant(roommate, relationshipType: "CoTenant"));
+        var targetRepresentative = await _client.CreateRenterAsync(token);
+        var target = await ActiveContractAsync(token, await _client.CreateRoomAsync(token, propertyId), targetRepresentative, start, Occupant(targetRepresentative));
+
+        var occupancy = OccupantOf(await DetailAsync(token, source), representative).GetProperty("id").GetGuid();
+        var moved = await _client.PostJsonAsync($"/api/v1/contracts/{source}/occupants/{occupancy}/move",
+            new { toContractId = target, date = today, relationshipType = "CoTenant" }, token);
+
+        moved.StatusCode.Should().Be(HttpStatusCode.NoContent, await moved.Content.ReadAsStringAsync());
+        OccupantOf(await DetailAsync(token, target), representative).GetProperty("role").GetString().Should().Be("Resident");
+        (await DetailAsync(token, source)).GetProperty("flags").EnumerateArray().Select(f => f.GetString()).Should().Contain("RepresentativeMovedOut");
+    }
+
+    [Fact]
+    public async Task MoveOccupant_PlainResidentWhoRepresentsAnotherRunningContract_IsStillBlocked()
+    {
+        var owner = await _client.CreateActiveOwnerAsync();
+        var token = owner.Tokens.AccessToken;
+        var today = TestData.Today(factory);
+        var start = today.AddDays(-10);
+        var propertyId = await _client.CreatePropertyAsync(token);
+        var mover = await _client.CreateRenterAsync(token);
+        // `mover` đứng tên phòng 3 (hộ người khác), ở phòng 1 với vai trò đồng thuê (hợp lệ).
+        await ActiveContractAsync(token, await _client.CreateRoomAsync(token, propertyId), mover, start,
+            Occupant(await _client.CreateRenterAsync(token), relationshipType: "CoTenant"));
+        var host = await _client.CreateRenterAsync(token);
+        var source = await ActiveContractAsync(token, await _client.CreateRoomAsync(token, propertyId), host, start,
+            Occupant(host), Occupant(mover, "CoTenant", "CoTenant"));
+        var targetRepresentative = await _client.CreateRenterAsync(token);
+        var target = await ActiveContractAsync(token, await _client.CreateRoomAsync(token, propertyId), targetRepresentative, start, Occupant(targetRepresentative));
+
+        // Sang phòng 2 làm người ở thường (vai trò mặc định) khi vẫn đứng tên phòng 3 ⇒ chặn: bỏ qua HĐ nguồn không được làm lọt ca này.
+        var occupancy = OccupantOf(await DetailAsync(token, source), mover).GetProperty("id").GetGuid();
+        var blocked = await _client.PostJsonAsync($"/api/v1/contracts/{source}/occupants/{occupancy}/move",
+            new { toContractId = target, date = today, relationshipType = "CoTenant" }, token);
+
+        (await blocked.ReadProblemCodeAsync()).Should().Be("REPRESENTATIVE_IS_RESIDENT_ELSEWHERE");
     }
 
     [Fact]

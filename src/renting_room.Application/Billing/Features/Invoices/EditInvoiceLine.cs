@@ -7,7 +7,8 @@ using renting_room.Domain.Common;
 
 namespace renting_room.Application.Billing;
 
-public sealed record EditInvoiceLineCommand(Guid InvoiceId, Guid LineId, decimal? Quantity, decimal? UnitPrice, decimal? Amount, string? Note)
+public sealed record EditInvoiceLineCommand(Guid InvoiceId, Guid LineId, decimal? Quantity, decimal? UnitPrice, decimal? Amount, string? Note,
+    uint? ExpectedVersion = null)
     : IRequest<Result<InvoiceDetailDto>>;
 
 public sealed class EditInvoiceLineCommandValidator : AbstractValidator<EditInvoiceLineCommand>
@@ -29,7 +30,7 @@ public sealed class EditInvoiceLineHandler(
     : IRequestHandler<EditInvoiceLineCommand, Result<InvoiceDetailDto>>
 {
     public async ValueTask<Result<InvoiceDetailDto>> Handle(EditInvoiceLineCommand request, CancellationToken cancellationToken) =>
-        await InvoiceAccess.MutateAsync(unitOfWork, invoices, invoiceQueries, request.InvoiceId, clock.GetUtcNow().ToBusinessDate(), async invoice =>
+        await InvoiceAccess.MutateAsync(unitOfWork, invoices, invoiceQueries, request.InvoiceId, clock.GetUtcNow().ToBusinessDate(), request.ExpectedVersion, async invoice =>
         {
             if (await IsSystemChargeLineAsync(roomChargeQueries, invoice, request.LineId, cancellationToken))
                 return Result.Failure(RoomChargeErrors.System);

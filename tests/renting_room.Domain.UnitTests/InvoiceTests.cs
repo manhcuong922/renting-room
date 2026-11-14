@@ -367,6 +367,34 @@ public sealed class InvoiceTests
             .Which.Amount.Should().Be(overpaid);
     }
 
+    /// <summary>M-02 (CT-BR-11 / BL-BR-04): ký lại giữa kỳ — HĐ mới thu trọn dịch vụ kỳ đầu ⇒ HĐ cũ "theo ngày" chỉ thu tiền phòng, dịch vụ = 0.</summary>
+    [Fact]
+    public void FinalInvoice_DailyWhenResigned_ChargesRentByDays_ButNoServices()
+    {
+        var contract = Active(ChargeMode.Postpaid);
+        contract.StartLiquidation(Start.AddDays(14), TerminationReason.MutualAgreement, null, null, Start.AddDays(14)).IsSuccess.Should().BeTrue();
+        var meter = MeterWithHandover(contract, 108);
+        meter.Record(ReadingKind.Final, Start.AddDays(14), 130, contract.Id, null);
+        var period = Periods(contract, contract.ActualEndDate!.Value).Last();
+        var feeTypes = new Dictionary<Guid, FeeType> { [Electricity.Id] = Electricity, [WaterPerPerson.Id] = WaterPerPerson, [Parking.Id] = Parking };
+        var daily = new FinalSettlement(RentBilled: null, LastPeriodHasRegular: false, FinalPeriodCharge.Daily);
+
+        var resigned = InvoiceCalculator.Calculate(new InvoiceCalcInput(contract, period, ScheduleOf(contract), ProrationMode.Daily, feeTypes,
+            [meter], new Dictionary<Guid, Guid>(), daily, ServicesBilledByNextContract: true));
+
+        resigned.Lines.Single(l => l.Type == InvoiceLineType.Rent).Amount.Should().Be(Invoice.Money(3_500_000 * (15m / 31)));
+        resigned.Lines.Where(l => l.Type == InvoiceLineType.Service).Should().OnlyContain(l => l.Amount == 0);
+        resigned.Lines.Single(l => l.Type == InvoiceLineType.Metered).Quantity.Should().Be(22, "điện nước luôn theo công tơ");
+
+        // Thanh lý thường (không có HĐ nối tiếp) vẫn tính dịch vụ theo ngày; chủ trọ chọn "thu trọn kỳ" thì không bị đổi.
+        var plain = InvoiceCalculator.Calculate(new InvoiceCalcInput(contract, period, ScheduleOf(contract), ProrationMode.Daily, feeTypes,
+            [meter], new Dictionary<Guid, Guid>(), daily));
+        plain.Lines.Where(l => l.Type == InvoiceLineType.Service).Sum(l => l.Amount).Should().BeGreaterThan(0);
+        var full = InvoiceCalculator.Calculate(new InvoiceCalcInput(contract, period, ScheduleOf(contract), ProrationMode.Daily, feeTypes,
+            [meter], new Dictionary<Guid, Guid>(), daily with { Charge = FinalPeriodCharge.FullPeriod }, ServicesBilledByNextContract: true));
+        full.Lines.Where(l => l.Type == InvoiceLineType.Service).Sum(l => l.Amount).Should().Be(2 * 20_000 + 2 * 100_000);
+    }
+
     /// <summary>BL-BR-41 (27/10/2026): hóa đơn trả phòng là bản kết toán — nợ hóa đơn trước + trừ cọc, không thuộc phần thu.</summary>
     [Fact]
     public void FinalInvoice_SettlementLines_CarryDebtsAndDeposit_OutsideChargesAndRounding_AndAreLocked()

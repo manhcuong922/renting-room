@@ -1,3 +1,4 @@
+using Npgsql;
 using renting_room.Application.Audit;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -14,6 +15,7 @@ using renting_room.Application.Properties;
 using renting_room.Application.Renters;
 using renting_room.Application.Rooms;
 using renting_room.Infrastructure.Auditing;
+using renting_room.Infrastructure.Email;
 using renting_room.Infrastructure.Jobs;
 using renting_room.Infrastructure.Seeding;
 using renting_room.Application.Exports;
@@ -55,6 +57,9 @@ public static class DependencyInjection
         services.AddSingleton<ITokenService, JwtTokenService>();
         services.AddSingleton<IPasswordHasher, PasswordHasher>();
         services.AddScoped<IUserSessionStore, UserSessionStore>();
+        // M01 ID-BR-24: khu được giao của quản lý khu.
+        services.AddScoped<IPropertyScopeStore, PropertyScopeStore>();
+        services.AddScoped<IPropertyAccessRepository, PropertyAccessRepository>();
 
         services.AddOptions<PersonalDataOptions>()
             .Bind(configuration.GetSection(PersonalDataOptions.SectionName))
@@ -64,6 +69,8 @@ public static class DependencyInjection
         services.AddScoped<IContractNumberGenerator, ContractNumberGenerator>();
         services.AddScoped<IInvoiceLockReader, InvoiceLockReader>();
         services.AddScoped<IDocumentNumberGenerator, DocumentNumberGenerator>();
+        services.AddOptions<EmailOptions>().Bind(configuration.GetSection(EmailOptions.SectionName));
+        services.AddSingleton<IEmailSender, SmtpEmailSender>();
         services.AddSingleton<ISpreadsheetWriter, ClosedXmlSpreadsheetWriter>();
         services.AddSingleton<IWordDocumentWriter, OpenXmlWordWriter>();
         services.AddSingleton<ISpreadsheetReader, ClosedXmlSpreadsheetReader>();
@@ -114,12 +121,11 @@ public static class DependencyInjection
         services.AddOptions<AuditOptions>()
             .Bind(configuration.GetSection(AuditOptions.SectionName))
             .ValidateDataAnnotations()
-            .Validate(o => o.FlushInterval > TimeSpan.Zero, "Audit:FlushInterval must be positive.")
             .ValidateOnStart();
-        services.AddSingleton<AuditQueue>();
         services.AddScoped<IAuditTrail, AuditTrail>();
         services.AddScoped<IAuditLogReader, AuditLogReader>();
         services.AddScoped<IAuditLogEraser, AuditLogEraser>();
+        services.AddScoped<IPersonalNoteEraser, PersonalNoteEraser>();
 
         // Job nền chạy dưới danh nghĩa hệ thống của từng tổ chức (CurrentUserOverride) — RT-BR-06 ẩn danh sau 36 tháng.
         services.AddScoped<CurrentUserOverride>();
@@ -135,13 +141,19 @@ public static class DependencyInjection
         // Dữ liệu demo cho dev / server test — chỉ chạy khi bật Seed:DemoData:Enabled (DatabaseInitializer).
         services.AddOptions<DemoDataOptions>().Bind(configuration.GetSection(DemoDataOptions.SectionName));
         services.AddTransient<DemoDataSeeder>();
-        services.AddHostedService<AuditLogWriter>();
 
         return services;
     }
 
     internal static void ConfigureDbContext(DbContextOptionsBuilder options, string connectionString) =>
         options
-            .UseNpgsql(connectionString, npgsql => npgsql.MigrationsHistoryTable("__ef_migrations_history"))
+            .UseNpgsql(WithoutErrorDetail(connectionString), npgsql => npgsql.MigrationsHistoryTable("__ef_migrations_history"))
             .UseSnakeCaseNamingConvention();
+
+    /// <summary>
+    /// L-12 (05/11/2026): <c>Include Error Detail</c> làm <c>PostgresException.Detail</c> chứa giá trị của dòng lỗi ("Failing row contains
+    /// (…, họ tên, SĐT, …)") và đi thẳng vào log ⇒ luôn tắt, kể cả khi chuỗi kết nối bật.
+    /// </summary>
+    private static string WithoutErrorDetail(string connectionString) =>
+        new NpgsqlConnectionStringBuilder(connectionString) { IncludeErrorDetail = false }.ConnectionString;
 }

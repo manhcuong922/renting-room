@@ -15,7 +15,10 @@ public sealed record SaveRoomImportCommand(Guid PropertyId, IReadOnlyList<RoomIm
 public sealed class SaveRoomImportCommandValidator : AbstractValidator<SaveRoomImportCommand>
 {
     public SaveRoomImportCommandValidator() =>
-        RuleFor(x => x.Rows).NotEmpty().WithErrorCode("REQUIRED").Must(r => r is null || r.Count <= ImportErrors.MaxRows).WithErrorCode("IMPORT_TOO_MANY_ROWS");
+        RuleFor(x => x.Rows).NotEmpty().WithErrorCode("REQUIRED").Must(r => r is null || r.Count <= ImportErrors.MaxRows).WithErrorCode("IMPORT_TOO_MANY_ROWS")
+            // L-07: kết quả / lỗi gom theo số dòng.
+            .Must(r => r is null || r.Select(x => x.RowNumber).Distinct().Count() == r.Count).WithErrorCode("DUPLICATE_ROW")
+            .WithMessage("Số dòng bị trùng.");
 }
 
 public sealed class SaveRoomImportHandler(

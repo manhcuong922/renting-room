@@ -41,6 +41,8 @@ internal sealed class GlobalExceptionHandler(
             DbUpdateConcurrencyException => Problem(StatusCodes.Status409Conflict, "CONCURRENCY_CONFLICT",
                 "Dữ liệu đã bị người khác thay đổi. Vui lòng tải lại và thử lại."),
             DbUpdateException { InnerException: PostgresException postgres } => FromPostgres(postgres),
+            // Lệnh khóa (SELECT … FOR UPDATE) ném thẳng, không qua SaveChanges — VD deadlock 40P01.
+            PostgresException postgres => FromPostgres(postgres),
             _ => null
         };
 
@@ -95,17 +97,25 @@ internal sealed class GlobalExceptionHandler(
             case PostgresErrorCodes.ForeignKeyViolation:
                 return Problem(StatusCodes.Status409Conflict, "REFERENCE_CONFLICT",
                     "Dữ liệu đang được tham chiếu hoặc tham chiếu tới dữ liệu không tồn tại.");
-            case PostgresErrorCodes.SerializationFailure:
+            case PostgresErrorCodes.SerializationFailure or PostgresErrorCodes.DeadlockDetected:
                 return Problem(StatusCodes.Status409Conflict, "CONCURRENCY_CONFLICT",
                     "Dữ liệu đang được xử lý đồng thời. Vui lòng thử lại.");
             case PostgresErrorCodes.CheckViolation:
-                logger.LogError(exception, "Check constraint {Constraint} violated", exception.ConstraintName);
+                LogPostgres(exception, "Check constraint violated");
                 return Problem(StatusCodes.Status422UnprocessableEntity, "CONSTRAINT_VIOLATION", "Dữ liệu vi phạm ràng buộc.");
             default:
-                logger.LogError(exception, "Unhandled PostgreSQL error {SqlState}", exception.SqlState);
+                LogPostgres(exception, "Unhandled PostgreSQL error");
                 return Problem(StatusCodes.Status500InternalServerError, "INTERNAL_ERROR", "Đã có lỗi xảy ra. Vui lòng thử lại sau.");
         }
     }
+
+    /// <summary>
+    /// L-12 (05/11/2026): không log nguyên exception — câu lỗi / Detail của PostgreSQL có thể chứa giá trị người dùng nhập
+    /// (VD <c>invalid input syntax …: "…"</c>, "Failing row contains (…)"). Chỉ ghi mã lỗi + vị trí trong schema; method + path đã có ở dòng log "Request … failed" của cùng request.
+    /// </summary>
+    private void LogPostgres(PostgresException exception, string message) =>
+        logger.LogError("{Message}: {SqlState} on {Table}.{Column} constraint {Constraint}", message,
+            exception.SqlState, exception.TableName, exception.ColumnName, exception.ConstraintName);
 
     private static ProblemDetails Problem(int status, string code, string detail) => new()
     {

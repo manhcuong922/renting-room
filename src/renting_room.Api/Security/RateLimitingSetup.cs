@@ -41,6 +41,12 @@ public sealed class RateLimitingOptions
     /// <summary>Thao tác nhạy cảm (đổi mật khẩu, tạo tổ chức…) — theo user.</summary>
     [Required] public RateLimitRule Sensitive { get; init; } = new() { PermitLimit = 5 };
 
+    /// <summary>
+    /// Dò số giấy tờ — theo user (M-13): tìm theo số giấy tờ và tạo hồ sơ (409 trùng số trả họ tên). Mặc định 30 lần / 10 phút:
+    /// đủ cho nhập liệu thật, quá chậm để dò hàng loạt 12 chữ số. Tìm theo tên / SĐT không tính.
+    /// </summary>
+    [Required] public RateLimitRule IdLookup { get; init; } = new() { PermitLimit = 30, WindowSeconds = 600 };
+
     [Required] public RateLimitRule Import { get; init; } = new() { PermitLimit = 10 };
 
     [Required] public RateLimitRule Authenticated { get; init; } = new() { PermitLimit = 300 };
@@ -86,11 +92,12 @@ internal static class RateLimitingSetup
         services.AddOptions<RateLimitingOptions>()
             .Bind(configuration.GetSection(RateLimitingOptions.SectionName))
             .ValidateDataAnnotations()
-            .Validate(o => new[] { o.Login, o.LoginPerAccount, o.Refresh, o.Sensitive, o.Import, o.Authenticated, o.Anonymous, o.Write }
+            .Validate(o => new[] { o.Login, o.LoginPerAccount, o.Refresh, o.Sensitive, o.IdLookup, o.Import, o.Authenticated, o.Anonymous, o.Write }
                     .All(r => r.PermitLimit >= 1 && r.WindowSeconds is >= 1 and <= 3600),
                 "Every RateLimiting rule needs PermitLimit >= 1 and WindowSeconds in [1, 3600].")
             .ValidateOnStart();
         services.AddSingleton<LoginAttemptLimiter>();
+        services.AddSingleton<IdNumberLookupLimiter>();
 
         services.AddRateLimiter(options =>
         {
@@ -187,7 +194,7 @@ internal static class RateLimitingSetup
         HttpMethods.IsGet(method) || HttpMethods.IsHead(method) || HttpMethods.IsOptions(method);
 
     /// <summary>User đã đăng nhập → theo user (đổi IP không lách được); chưa đăng nhập → theo IP.</summary>
-    private static string ClientKey(HttpContext http)
+    internal static string ClientKey(HttpContext http)
     {
         var userId = IsAuthenticated(http) ? http.User.FindFirst(AppClaimTypes.Subject)?.Value : null;
         return userId is not null ? $"user:{userId}" : $"ip:{ClientIp(http)}";

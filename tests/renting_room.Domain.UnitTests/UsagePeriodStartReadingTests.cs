@@ -72,6 +72,19 @@ public sealed class UsagePeriodStartReadingTests
     }
 
     [Fact]
+    public void NextPeriod_MeterReplacedOnPeriodStart_StartsAtInitial_EvenWithSameDayClosing()
+    {
+        // M06 §3.3 bước 2(c) (03/11/2026): thay công tơ sáng 01/11 (mới = 0), số chốt kỳ tháng 11 cũng ghi ngày 01/11 (20) ⇒ đầu kỳ 0, không phải 20.
+        var meter = Meter.Install(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), null, Nov1, 0, null);
+        meter.Record(ReadingKind.Periodic, Nov1, 20, NewContract, null, Nov1).IsSuccess.Should().BeTrue();
+
+        var start = November.StartReading(meter, null, NewContract);
+
+        start!.Kind.Should().Be(ReadingKind.Initial);
+        start.Value.Should().Be(0);
+    }
+
+    [Fact]
     public void FirstPeriod_WithoutHandover_FallsBackToLatestReadingOnOrBeforeStart()
     {
         var meter = MeterWithSameDayReadings();

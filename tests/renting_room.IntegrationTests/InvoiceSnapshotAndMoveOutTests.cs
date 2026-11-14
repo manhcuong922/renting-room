@@ -91,7 +91,7 @@ public sealed class InvoiceSnapshotAndMoveOutTests(ApiFactory factory)
         row.GetProperty("invoice").GetProperty("status").GetString().Should().Be("Draft");
         row.GetProperty("invoice").GetProperty("id").GetGuid().Should().Be(draft.GetProperty("summary").GetProperty("id").GetGuid());
 
-        (await _client.PostJsonAsync($"/api/v1/invoices/{draft.GetProperty("summary").GetProperty("id").GetGuid()}/finalize", null, s.Token))
+        (await _client.FinalizeInvoiceAsync(draft.GetProperty("summary").GetProperty("id").GetGuid(), s.Token))
             .StatusCode.Should().Be(HttpStatusCode.OK);
         (await SheetRowAsync(s)).GetProperty("invoice").GetProperty("status").GetString().Should().Be("Finalized");
     }
@@ -105,7 +105,7 @@ public sealed class InvoiceSnapshotAndMoveOutTests(ApiFactory factory)
         var readingId = (await (await _client.GetAsync($"/api/v1/meters/{s.MeterId}/readings", s.Token)).ReadAsync<List<JsonElement>>())
             .Single(r => r.GetProperty("kind").GetString() == "Periodic").GetProperty("id").GetGuid();
 
-        var finalize = _client.PostJsonAsync($"/api/v1/invoices/{invoiceId}/finalize", null, s.Token);
+        var finalize = _client.FinalizeInvoiceAsync(invoiceId, s.Token);
         var correct = _client.PutJsonAsync($"/api/v1/meter-readings/{readingId}", new { value = 160 }, s.Token);
         await Task.WhenAll(finalize, correct);
 
@@ -140,7 +140,7 @@ public sealed class InvoiceSnapshotAndMoveOutTests(ApiFactory factory)
         credit.StatusCode.Should().Be(HttpStatusCode.Created, await credit.Content.ReadAsStringAsync());
         (await credit.ReadAsync<JsonElement>()).GetProperty("status").GetString().Should().Be("OnDraft", "hóa đơn trả phòng nhận khoản bù dù âm");
 
-        (await _client.PostJsonAsync($"/api/v1/invoices/{moveOutId}/finalize", null, token)).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await _client.FinalizeInvoiceAsync(moveOutId, token)).StatusCode.Should().Be(HttpStatusCode.OK);
         var finalized = await (await _client.GetAsync($"/api/v1/invoices/{moveOutId}", token)).ReadAsync<JsonElement>();
         finalized.GetProperty("summary").GetProperty("totalAmount").GetDecimal().Should().BeNegative();
         finalized.GetProperty("summary").GetProperty("paymentStatus").GetString().Should().Be("RefundPending");

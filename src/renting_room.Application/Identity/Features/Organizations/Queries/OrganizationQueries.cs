@@ -1,6 +1,7 @@
 using FluentValidation;
 using Mediator;
 using renting_room.Application.Common.Models;
+using renting_room.Application.Common.Validation;
 using renting_room.Domain.Common;
 using renting_room.Domain.Identity;
 
@@ -52,8 +53,8 @@ public sealed class ListOrganizationsQueryValidator : AbstractValidator<ListOrga
 {
     public ListOrganizationsQueryValidator()
     {
-        RuleFor(x => x.Page).GreaterThanOrEqualTo(1).WithErrorCode("OUT_OF_RANGE");
-        RuleFor(x => x.PageSize).InclusiveBetween(1, Paging.MaxPageSize).WithErrorCode("OUT_OF_RANGE");
+        RuleFor(x => x.Page).Page();
+        RuleFor(x => x.PageSize).PageSize();
         RuleFor(x => x.Search).MaximumLength(100).WithErrorCode("MAX_LENGTH");
     }
 }

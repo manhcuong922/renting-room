@@ -76,6 +76,7 @@ public static class ProblemResponses
         ErrorType.Conflict => StatusCodes.Status409Conflict,
         ErrorType.BusinessRule => StatusCodes.Status422UnprocessableEntity,
         ErrorType.Locked => StatusCodes.Status423Locked,
+        ErrorType.Unavailable => StatusCodes.Status503ServiceUnavailable,
         _ => StatusCodes.Status500InternalServerError
     };
 
@@ -92,6 +93,7 @@ public static class ProblemResponses
         422 => "Vi phạm quy tắc nghiệp vụ",
         423 => "Tài khoản bị khóa",
         429 => "Quá nhiều yêu cầu",
+        503 => "Dịch vụ tạm thời không khả dụng",
         _ when status >= 500 => "Lỗi hệ thống",
         _ => "Yêu cầu không thành công"
     };
@@ -108,6 +110,7 @@ public static class ProblemResponses
         415 => "UNSUPPORTED_MEDIA_TYPE",
         422 => "BUSINESS_RULE_VIOLATION",
         429 => "TOO_MANY_REQUESTS",
+        503 => "SERVICE_UNAVAILABLE",
         _ when status >= 500 => "INTERNAL_ERROR",
         _ => "ERROR"
     };

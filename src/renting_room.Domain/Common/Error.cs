@@ -8,7 +8,10 @@ public enum ErrorType
     Unauthorized,
     Forbidden,
     Locked,
-    BusinessRule
+    BusinessRule,
+
+    /// <summary>Phụ thuộc bên ngoài chưa cấu hình / không phản hồi (VD máy chủ mail) — 503, thử lại sau.</summary>
+    Unavailable
 }
 
 /// <summary>
@@ -27,4 +30,5 @@ public sealed record Error(string Code, string Message, ErrorType Type, IReadOnl
     public static Error Forbidden(string code, string message) => new(code, message, ErrorType.Forbidden);
     public static Error Locked(string code, string message) => new(code, message, ErrorType.Locked);
     public static Error BusinessRule(string code, string message) => new(code, message, ErrorType.BusinessRule);
+    public static Error Unavailable(string code, string message) => new(code, message, ErrorType.Unavailable);
 }

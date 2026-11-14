@@ -165,9 +165,9 @@ Lỗi validation trả key `spec.areaM2`, `spec.maxOccupants`… khớp đúng b
 
 | Nút | Endpoint | Hiện khi | Lỗi |
 |-----|----------|----------|-----|
-| Bắt đầu bảo trì | `POST /rooms/{id}/maintenance/start` body `{ "note": "Sửa điện" }` (tùy chọn, ≤ 500) | `Vacant`, `Reserved` | 422 `ROOM_OCCUPIED` nếu có HĐ hiệu lực |
+| Bắt đầu bảo trì | `POST /rooms/{id}/maintenance/start` body `{ "note": "Sửa điện" }` (tùy chọn, ≤ 500) | `Vacant`, `Reserved` (HĐ nháp không chặn — sửa phòng trước khi khách vào; kích hoạt HĐ bị chặn tới khi kết thúc bảo trì) | 422 `ROOM_OCCUPIED` nếu có HĐ hiệu lực / đang thanh lý / trả phòng hôm nay, hoặc là phòng cũ trong ngày chuyển phòng |
 | Kết thúc bảo trì | `POST /rooms/{id}/maintenance/end` | `Maintenance` | 409 `ROOM_NOT_UNDER_MAINTENANCE` |
-| Ngừng sử dụng | `POST /rooms/{id}/archive` | Không có HĐ nháp/hiệu lực/thanh lý | 422 `ROOM_HAS_CONTRACTS` |
+| Ngừng sử dụng | `POST /rooms/{id}/archive` | Không có HĐ nháp/hiệu lực/thanh lý, không là phòng cũ trong ngày chuyển phòng | 422 `ROOM_HAS_CONTRACTS` |
 | Khôi phục | `POST /rooms/{id}/restore` | `Archived` | 422 `PROPERTY_ARCHIVED` (khôi phục khu trước) |
 
 Tất cả trả **204** → tải lại phòng. Trong **ngày trả phòng** của hợp đồng vừa kết thúc, phòng vẫn tính là đang thuê → không ngừng dùng / bảo trì được tới hôm sau.

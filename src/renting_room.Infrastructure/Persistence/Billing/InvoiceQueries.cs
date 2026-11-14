@@ -193,6 +193,11 @@ internal sealed class InvoiceQueries(AppDbContext db) : IInvoiceQueries
             .SelectMany(i => i.Lines).Where(l => l.SourceInvoiceId == sourceInvoiceId && l.Type == InvoiceLineType.Refund && l.Id != excludeLineId)
             .SumAsync(l => (decimal?)l.Amount, cancellationToken) ?? 0;
 
+    public async Task<decimal> GetFinalizedRefundLinesTotalAsync(Guid sourceInvoiceId, CancellationToken cancellationToken) =>
+        await db.Invoices.Where(i => i.Status == InvoiceStatus.Finalized)
+            .SelectMany(i => i.Lines).Where(l => l.SourceInvoiceId == sourceInvoiceId && l.Type == InvoiceLineType.Refund)
+            .SumAsync(l => (decimal?)l.Amount, cancellationToken) ?? 0;
+
     public async Task<IReadOnlyList<InvoiceTarget>> ListRecalculationTargetsAsync(RecalculateInvoicesCommand request, CancellationToken cancellationToken)
     {
         var query = db.Invoices.AsNoTracking().Where(i => i.Status != InvoiceStatus.Void);

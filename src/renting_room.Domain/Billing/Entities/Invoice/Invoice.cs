@@ -3,7 +3,7 @@ using renting_room.Domain.Contracts;
 
 namespace renting_room.Domain.Billing;
 
-public sealed partial class Invoice : TenantEntity
+public sealed partial class Invoice : TenantEntity, IPropertyScoped
 {
     private readonly List<InvoiceLine> _lines = [];
     private readonly List<InvoiceMeterSegment> _segments = [];

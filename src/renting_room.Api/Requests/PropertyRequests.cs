@@ -33,7 +33,8 @@ public sealed record UpdateLessorRequest(
     string? AuthorizationDocNo,
     DateOnly? AuthorizationDocDate);
 
-public sealed record UpdateBankAccountRequest(string? BankName, string? AccountNo, string? AccountName);
+/// <param name="CurrentPassword">Mật khẩu đăng nhập — bắt buộc khi đổi / xóa tài khoản (H-06).</param>
+public sealed record UpdateBankAccountRequest(string? BankName, string? AccountNo, string? AccountName, string? CurrentPassword = null);
 
 public sealed record UpdateHouseRulesRequest(string? Text);
 

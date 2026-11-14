@@ -77,11 +77,7 @@ Không áp dụng, vì đây là hạ tầng. Không có use case nghiệp vụ 
 
 Volume chứng chỉ của Caddy (`caddy_data`) **không** cần mang theo khi chuyển máy, Caddy tự xin lại. Nhưng phải là volume bền, nếu không Let's Encrypt sẽ khoá việc xin chứng chỉ vì vượt giới hạn 5 chứng chỉ giống nhau mỗi tuần.
 
-**Hiện trạng (31/10/2026)**: `DataProtection:KeysPath` mặc định là rỗng ([ApiSetup.cs](../../src/renting_room.Api/ApiSetup.cs), đoạn `AddDataProtection`). Khi rỗng, app **vẫn chạy mà không báo gì**:
-- Trên Windows: khoá nằm ở `%LOCALAPPDATA%\ASP.NET\DataProtection-Keys`, mã hoá DPAPI, không chuyển sang máy khác được.
-- Trong container: khoá nằm ở `~/.aspnet/...`, mất khi tạo lại container. Nếu filesystem chỉ đọc thì khoá chỉ ở trong RAM, mất ngay khi restart.
-
-Bước 1 sửa chỗ này.
+**Trước 11/11/2026**: `DataProtection:KeysPath` rỗng thì app vẫn chạy mà không báo gì (Windows: khoá DPAPI theo tài khoản; container: khoá mất khi tạo lại, filesystem chỉ đọc thì chỉ ở RAM) — **đã bỏ**: ngoài Development thiếu `KeysPath`, thư mục không tồn tại hoặc không ghi được ⇒ app dừng khi khởi động (M-17).
 
 ### 4.2 Lịch giữ backup
 
@@ -145,9 +141,11 @@ Không áp dụng. Code chỉ đổi ở phần khởi động: `DataProtection:
 
 Không thêm endpoint. Dùng hai endpoint đã có:
 - `/health/live`: cho healthcheck của container;
-- `/health/ready`: có kiểm tra DB, dùng cho script deploy.
+- `/health/ready`: có kiểm tra DB, dùng cho script deploy. Kết quả được **cache 5 giây** (`Health:ReadyCacheSeconds`, `CachedHealthCheckService`) để gọi dồn dập không mở kết nối DB mỗi lần (M-16).
 
 Cả hai đều cho phép truy cập ẩn danh ([ApiSetup.cs](../../src/renting_room.Api/ApiSetup.cs), đoạn `MapHealthChecks`).
+
+**Host của healthcheck (M-24)**: ngoài Development `AllowedHosts` chỉ nhận tên miền thật (L-15), Host khác ⇒ 400. Healthcheck của container và `scripts/deploy` gọi `http://localhost:8080/health/...` (Host `localhost`) ⇒ compose phải đặt `AllowedHosts=tro.example.vn;localhost`, nếu không container luôn `unhealthy` và deploy quay về image cũ. Caddy / Cloudflare Tunnel giữ nguyên Host của người dùng nên request thật không bị ảnh hưởng. Test: `HostFilteringTests` (Host lạ ⇒ 400) và `AuthorizationAndErrorTests` (chạy với `AllowedHosts=localhost` ⇒ `/health/live`, `/health/ready` 200).
 
 ## 8. Validation cấu hình khi khởi động (fail-fast)
 
@@ -155,7 +153,8 @@ Cả hai đều cho phép truy cập ẩn danh ([ApiSetup.cs](../../src/renting_
 |---|---|---|
 | `Jwt:SigningKey` | Bắt buộc, tối thiểu 32 byte | ✅ `JwtSigningKeyProvider` |
 | `PersonalData:HashKey` | Bắt buộc, tối thiểu 32 ký tự | ✅ `PersonalDataOptions` |
-| `DataProtection:KeysPath` | **Bắt buộc, thư mục tồn tại và ghi được** | ❌ **Bước 1** |
+| `DataProtection:KeysPath` | **Bắt buộc, thư mục tồn tại và ghi được** | ✅ `ApiSetup.RequireDataProtectionKeysPath` (T1, T2, T5, T6 — code 11/11/2026, M-17) |
+| `Seed:DemoData:Enabled` | Chỉ được `true` ở Development, ngoài ra dừng khi khởi động | ✅ `DatabaseInitializer` (M-18, 11/11/2026) |
 | `ReverseProxy:KnownProxies/KnownNetworks` | Rỗng thì chỉ cảnh báo | ✅ cảnh báo. Bước 8 xem lại |
 
 Lưu ý: integration test chạy với environment **`Testing`**, không phải Development (`ApiFactory.UseEnvironment("Testing")`). Vì vậy `ApiFactory` phải đặt `DataProtection:KeysPath` trỏ tới một thư mục tạm, giống cách đang đặt `Jwt:SigningKey`.
@@ -175,8 +174,8 @@ Không áp dụng cho người dùng ứng dụng. Phân quyền ở tầng hạ
 
 | Kịch bản | Cách chặn mất dữ liệu |
 |---|---|
-| Tắt êm (deploy, `docker compose stop`) | `stop_grace_period`: api 40 giây, vì `ShutdownTimeout` mặc định của .NET là 30 giây và `AuditLogWriter` cần ghi nốt hàng đợi. Postgres 60 giây để kịp checkpoint. Mặc định của Docker là 10 giây rồi SIGKILL, không đủ |
-| Tắt đột ngột (cúp điện, `kill -9`) | Postgres phục hồi từ WAL. **Không bao giờ** tắt `fsync`, `full_page_writes` hay `synchronous_commit` để tăng tốc. Audit đọc đang nằm trong hàng đợi có thể mất vài giây, chấp nhận được |
+| Tắt êm (deploy, `docker compose stop`) | `stop_grace_period`: api 40 giây, vì `ShutdownTimeout` mặc định của .NET là 30 giây và các job nền cần dừng êm. Postgres 60 giây để kịp checkpoint. Mặc định của Docker là 10 giây rồi SIGKILL, không đủ |
+| Tắt đột ngột (cúp điện, `kill -9`) | Postgres phục hồi từ WAL. **Không bao giờ** tắt `fsync`, `full_page_writes` hay `synchronous_commit` để tăng tốc. Audit đọc dữ liệu nhạy cảm ghi thẳng trước khi trả dữ liệu (05/11/2026) nên không mất |
 | API lên trước khi DB sẵn sàng | `depends_on: postgres: condition: service_healthy` (healthcheck `pg_isready`, đã có trong compose dev) |
 | Client gửi lại request trong lúc API khởi động lại | `Idempotency-Key` đã có sẵn, nên phiếu thu hay hoá đơn không bị ghi trùng |
 | Migration lỗi giữa chừng | `psql -v ON_ERROR_STOP=1 --single-transaction -f migrate.sql`: lỗi thì rollback toàn bộ, API cũ vẫn chạy. Cẩn thận với migration có `CREATE INDEX CONCURRENTLY`, vì lệnh này không chạy được trong transaction |
@@ -195,7 +194,8 @@ Các lớp phòng thủ, theo thứ tự từ ngoài vào trong:
 6. **Image**: build nhiều tầng, cố định digest image gốc, quét lỗ hổng (`docker scout` hoặc `trivy`) trước khi deploy.
 7. **Backup**: mã hoá `age`, private key cất ngoài máy, `.env` cất riêng.
 8. **Máy chủ (laptop)**: Device Encryption (Windows Home không có BitLocker), cập nhật Windows, tài khoản Windows có mật khẩu mạnh.
-9. **Tài khoản bootstrap admin**: đổi mật khẩu sau lần chạy đầu, rồi xoá `Bootstrap__Admin__Password` khỏi `.env`.
+9. **Tài khoản bootstrap admin**: **bị bắt đổi mật khẩu ở lần đăng nhập đầu** (11/11/2026, M-18 — mật khẩu trong `.env` chỉ dùng được đúng 1 lần), rồi xoá `Bootstrap__Admin__Password` khỏi `.env`. Lưu ý giới hạn: `.env` lộ thì thường lộ luôn `Jwt__SigningKey` (giả mạo token admin được) và `PersonalData__HashKey`, nên đây là lớp giảm thiệt hại (lộ bản cũ của `.env` / backup / log CI sau khi đã đổi mật khẩu), không thay cho việc giữ `.env` kín và đổi `SigningKey` khi nghi lộ.
+10. **SMTP gửi mật khẩu tạm (M-14)**: cấu hình `Email__Smtp__Host`, `Email__Smtp__Port`, `Email__Smtp__Security` (`StartTls` / `SslOnConnect`), `Email__Smtp__Username`, `Email__Smtp__FromAddress` trong `.env` (hoặc phần `Email:Smtp` của appsettings); **`Email__Smtp__Password` (Gmail: App Password) chỉ đặt trong `.env` / user-secrets, không ghi vào file json commit vào git**. Chưa cấu hình ⇒ app vẫn chạy, nhưng admin cấp lại mật khẩu cho tài khoản **có email** nhận 503 `EMAIL_NOT_CONFIGURED`.
 
 Khoá DataProtection lưu trên đĩa **không mã hoá** khi dùng `PersistKeysToFileSystem` trong Linux. **Có cân nhắc nhưng không làm** `ProtectKeysWithCertificate`, vì lại sinh thêm một certificate phải backup, và mất certificate cũng là mất CCCD. Thay vào đó: bảo vệ bằng quyền của volume (chỉ user của app đọc được) và mã hoá bản backup.
 
@@ -287,6 +287,9 @@ Git **không** mang theo những thứ sau:
 - [ ] Không có secret nào trong git, trong image, hay trong `appsettings.json`
 - [ ] Đủ 4 trạng thái bền ở mục 4.1 đều nằm trên volume bền **và** có trong backup (`.env` cất riêng)
 - [ ] Ngoài Development, thiếu `KeysPath`, `SigningKey` hoặc `HashKey` thì app dừng khi khởi động
+- [ ] Đặt `AllowedHosts` = tên miền thật **kèm `localhost`** (`AllowedHosts=tro.example.vn;localhost`) — để `*` / trống thì app dừng khi khởi động (L-15, code 05/11/2026); thiếu `localhost` thì healthcheck nội bộ nhận 400 (M-24)
+- [ ] `Seed__DemoData__Enabled` không bật ở production (bật ngoài Development ⇒ app dừng, M-18)
+- [ ] Postgres dev (`docker-compose.yml`) chỉ bind `127.0.0.1` (code 05/11/2026)
 - [ ] Backup được mã hoá, kiểm tra được, có bản ở nơi khác, và **đã diễn tập restore thành công** (D7, D12)
 - [ ] Deploy luôn backup trước, migration chạy trong transaction, có đường quay lại
 - [ ] `stop_grace_period` đủ dài cho api (≥ 40 giây) và postgres (≥ 60 giây)

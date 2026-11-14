@@ -1,6 +1,6 @@
 # Xuất Excel
 
-Quyền: chủ trọ và phó quản lý. File `.xlsx` tải về trực tiếp (không lưu trên server).
+Quyền: chủ trọ và quản lý khu. File `.xlsx` tải về trực tiếp (không lưu trên server).
 Giới hạn **5 lần/phút mỗi tài khoản** (chung với xem số giấy tờ đầy đủ và đổi mật khẩu) → 429 `TOO_MANY_REQUESTS`.
 
 ## Danh sách người thuê
@@ -20,7 +20,7 @@ Nút **"Xuất Excel"** ở danh sách người thuê / danh sách khu / sơ đ�
 | Phòng (chọn nhiều) | `roomIds` | `GET /rooms?propertyId=` |
 | Thời điểm: "Đang ở hôm nay" / "Trong khoảng ngày" | `fromDate`, `toDate` | |
 | Chia sheet: theo khu / theo tầng / gộp 1 sheet | `layout` | |
-| ☐ Hiện đầy đủ số giấy tờ | `includeSensitive` | Cảnh báo: dữ liệu cá nhân, thao tác được ghi log. **Ẩn** khi `canViewSensitiveData = false` (gửi `true` → 403 `SENSITIVE_DATA_FORBIDDEN`) |
+| ☐ Hiện đầy đủ số giấy tờ | `includeSensitive` | Cảnh báo: dữ liệu cá nhân, thao tác được ghi log. **Ẩn** khi `canViewSensitiveData = false`. Quản lý khu: chỉ xuất được khu được giao (bộ lọc trống = các khu đó) |
 
 Các bộ lọc kết hợp **AND** (VD khu A + tầng 2 = tầng 2 của khu A).
 
@@ -99,4 +99,35 @@ Ngày là kiểu ngày Excel (`dd/MM/yyyy`) — sắp xếp/lọc được. Chu�
 | `EXPORT_TOO_LARGE` | 422 | > 20.000 dòng — thu hẹp bộ lọc |
 | `VALIDATION_FAILED` (`toDate`: `INVALID_DATE_RANGE`) | 400 | Lỗi dưới ô ngày |
 
-Xuất thông tin phòng, tiền phòng tháng, công nợ, danh sách cọc: chưa có (M10 — để sau).
+## Thu tiền theo kỳ
+
+Xem lại tiền từng tháng của từng khu: đã thu bao nhiêu, bỏ nợ bao nhiêu (ai, vì sao), số đã thu có bị **sửa giảm** không (ai, vì sao), còn nợ.
+Quản lý khu chỉ có dữ liệu khu được giao.
+
+### `POST /exports/monthly-invoices`
+
+```json
+{ "propertyIds": ["…"], "fromMonth": "2026-09", "toMonth": "2026-11", "includeDrafts": false }
+```
+
+| Trường | Ghi chú |
+|--------|---------|
+| `propertyIds` | Trống = mọi khu được xem; tối đa 100; khu không có / ngoài khu được giao ⇒ 404 `PROPERTY_NOT_FOUND` |
+| `fromMonth`, `toMonth` | Tháng thu `yyyy-MM`, `fromMonth ≤ toMonth`, tối đa 24 tháng |
+| `includeDrafts` | Kèm phiếu nháp (trạng thái "Nháp", đã thu = 0) — mặc định chỉ hóa đơn đã chốt. Hóa đơn đã hủy không bao giờ có |
+
+→ **200** file `thu-tien-theo-ky_yyyyMMdd-HHmm.xlsx`, 2 sheet:
+
+**Chi tiết** — mỗi hóa đơn (tháng + trả phòng) 1 dòng, xếp theo kỳ → khu → phòng. Cột:
+
+- STT · Kỳ (`MM/yyyy`) · Khu · Phòng · Số hóa đơn · Loại (Tháng / Trả phòng) · Người đứng tên · Trạng thái
+- Tiền phòng · Điện nước · Dịch vụ · Phụ thu − giảm trừ − hoàn trả · Kết toán (nợ chuyển − trừ cọc) · **Tổng** (5 cột trước cộng lại đúng tổng)
+- **Đã thu** (tiền thật, không gồm bỏ nợ) · Ngày thu gần nhất · **Bỏ nợ** · Lý do bỏ nợ · Người bỏ nợ
+- **Sửa giảm** (tổng phần đã thu bị giảm — [Sửa số đã thu](payments.md#sửa-số-đã-thu-09112026)) · Lý do sửa giảm · Người sửa · **Còn nợ**
+- Đơn giá điện · Đơn giá nước — bộ giá trên hóa đơn: `3.800`, theo bậc `bậc 1.984–3.460`, 2 kỳ khác giá `3.500 / 3.800`
+
+**Tổng theo kỳ** — 1 dòng / (kỳ, khu): số hóa đơn, tổng, đã thu, bỏ nợ, sửa giảm, còn nợ + dòng **Tổng cộng**.
+
+Lỗi: như danh sách người thuê; `VALIDATION_FAILED` (`toMonth`: `INVALID_MONTH_RANGE`; `fromMonth` / `toMonth`: `INVALID_BILLING_MONTH`).
+
+Xuất thông tin phòng, công nợ, danh sách cọc: chưa có (M10 — để sau).

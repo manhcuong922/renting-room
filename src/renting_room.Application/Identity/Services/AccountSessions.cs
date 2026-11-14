@@ -25,7 +25,8 @@ public sealed record MemberDto(
     DateTimeOffset CreatedAt,
     bool CanViewSensitiveData,
     string Version,
-    bool CanWriteOff = false);
+    bool CanWriteOff = false,
+    IReadOnlyList<Guid>? PropertyIds = null);
 
 /// <summary>Mật khẩu tạm chỉ trả về đúng một lần — không lưu dạng rõ, không ghi log.</summary>
 public sealed record TemporaryCredentials(Guid UserId, string Username, string TemporaryPassword, DateTimeOffset ExpiresAt);

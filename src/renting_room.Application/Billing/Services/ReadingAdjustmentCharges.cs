@@ -40,6 +40,10 @@ public sealed class ReadingAdjustmentCharges(
         return holder is { Status: InvoiceStatus.Draft } ? Result.Success<RoomCharge?>(charge) : MeterErrors.AdjustmentAlreadyBilled;
     }
 
+    /// <summary>M-05: tổng khoản bù của dòng nguồn mà chủ trọ đã hủy với lý do <paramref name="cancelReason"/> ("Không trả lại").</summary>
+    public async Task<decimal> WaivedAmountAsync(Invoice source, InvoiceLine line, string cancelReason, CancellationToken ct) =>
+        await charges.SumCancelledCreditsAsync(source.Id, line.FeeTypeId!.Value, line.ServiceFrom, cancelReason, ct);
+
     public async Task<Result> CancelAsync(RoomCharge charge, string reason, CancellationToken ct)
     {
         var detached = await DetachAsync(charge, ct);

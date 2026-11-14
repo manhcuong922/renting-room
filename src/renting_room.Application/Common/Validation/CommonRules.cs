@@ -56,7 +56,7 @@ public static class CommonRules
             .WithMessage("Số giấy tờ không hợp lệ (CCCD: 12 chữ số; CMND: 9 chữ số; hộ chiếu: 6–20 ký tự chữ/số).");
 
     public static IRuleBuilderOptions<T, int> Page<T>(this IRuleBuilder<T, int> rule) =>
-        rule.GreaterThanOrEqualTo(1).WithErrorCode("OUT_OF_RANGE");
+        rule.InclusiveBetween(1, Paging.MaxPage).WithErrorCode("OUT_OF_RANGE");
 
     public static IRuleBuilderOptions<T, int> PageSize<T>(this IRuleBuilder<T, int> rule) =>
         rule.InclusiveBetween(1, Paging.MaxPageSize).WithErrorCode("OUT_OF_RANGE");

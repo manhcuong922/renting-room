@@ -55,9 +55,14 @@ public sealed class OccupantChecks(IRenterQueries renters, IContractQueries cont
         return null;
     }
 
-    public async Task<Error?> FindRoleConflictAsync(Contract contract, CancellationToken ct)
+    /// <param name="movedFromContractId">
+    /// Chuyển người (CT-BR-52): HĐ nguồn không tính là "HĐ khác" — người đứng tên chuyển đi vẫn được, HĐ nguồn hiện cờ
+    /// <c>RepresentativeMovedOut</c> để đổi người đứng tên sau (M-11). Chỉ bỏ qua đúng HĐ nguồn; đứng tên HĐ khác vẫn bị chặn.
+    /// </param>
+    public async Task<Error?> FindRoleConflictAsync(Contract contract, CancellationToken ct, Guid? movedFromContractId = null)
     {
-        var (representativeId, contractId, start) = (contract.RepresentativeRenterId, contract.Id, contract.StartDate);
+        // Người đứng tên chỉ bị xét từ NGÀY BẮT ĐẦU ĐỨNG TÊN (M-11): lần ở cũ đã kết thúc trước ngày đó không gây xung đột.
+        var (representativeId, contractId, start) = (contract.RepresentativeRenterId, contract.Id, contract.RepresentativeSince ?? contract.StartDate);
         var found = await contracts.FindResidentElsewhereAsync(contractId, representativeId, start, ct);
         (Guid RenterId, string ContractNo, string RoomCode)? elsewhere = found is null ? null : (representativeId, found.ContractNo, found.RoomCode);
 
@@ -69,7 +74,8 @@ public sealed class OccupantChecks(IRenterQueries renters, IContractQueries cont
             var residentIds = residents.Keys.ToList();
             var signed = residents.Count == 0
                 ? []
-                : await contracts.ListRunningSignedByAsync(contractId, residentIds, ct);
+                : await contracts.ListRunningSignedByAsync(
+                    movedFromContractId is { } source ? [contractId, source] : [contractId], residentIds, ct);
             var signer = signed.FirstOrDefault(c => c.ActualEndDate is null || c.ActualEndDate > residents[c.RepresentativeRenterId])?.RepresentativeRenterId;
             if (signer is { } signerId)
                 elsewhere = (signerId, contract.ContractNo, (await rooms.GetCodeAsync(contract.RoomId, ct))!);

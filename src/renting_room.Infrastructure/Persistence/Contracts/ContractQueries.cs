@@ -104,6 +104,9 @@ internal sealed class ContractQueries(AppDbContext db) : IContractQueries
         db.Contracts.AnyAsync(c => c.RoomId == roomId
             && (c.Status == ContractStatus.Active || c.Status == ContractStatus.Liquidating), cancellationToken);
 
+    public Task<bool> HasSignedSuccessorAsync(Guid id, CancellationToken cancellationToken) =>
+        db.Contracts.AnyAsync(c => c.PreviousContractId == id && c.Status != ContractStatus.Draft && c.Status != ContractStatus.Cancelled, cancellationToken);
+
     public Task<Guid?> GetPreviousContractIdAsync(Guid id, CancellationToken cancellationToken) =>
         db.Contracts.Where(c => c.Id == id).Select(c => c.PreviousContractId).FirstOrDefaultAsync(cancellationToken);
 
@@ -180,6 +183,9 @@ internal sealed class ContractQueries(AppDbContext db) : IContractQueries
     public Task<Guid?> GetRoomIdAsync(Guid id, CancellationToken cancellationToken) =>
         db.Contracts.Where(c => c.Id == id).Select(c => (Guid?)c.RoomId).FirstOrDefaultAsync(cancellationToken);
 
+    public Task<Guid?> GetPropertyIdAsync(Guid id, CancellationToken cancellationToken) =>
+        db.Contracts.Where(c => c.Id == id).Select(c => (Guid?)c.PropertyId).FirstOrDefaultAsync(cancellationToken);
+
     public Task<bool> IsContractNoTakenAsync(string contractNo, CancellationToken cancellationToken) =>
         db.Contracts.AnyAsync(c => c.ContractNo == contractNo, cancellationToken);
 
@@ -254,8 +260,8 @@ internal sealed class ContractQueries(AppDbContext db) : IContractQueries
             .FirstOrDefaultAsync(cancellationToken);
 
     public async Task<IReadOnlyList<SignedContractRow>> ListRunningSignedByAsync(
-        Guid exceptContractId, IReadOnlyCollection<Guid> renterIds, CancellationToken cancellationToken) =>
-        await db.Contracts.Where(c => c.Id != exceptContractId && RunningStatuses.Contains(c.Status) && renterIds.Contains(c.RepresentativeRenterId))
+        IReadOnlyCollection<Guid> exceptContractIds, IReadOnlyCollection<Guid> renterIds, CancellationToken cancellationToken) =>
+        await db.Contracts.Where(c => !exceptContractIds.Contains(c.Id) && RunningStatuses.Contains(c.Status) && renterIds.Contains(c.RepresentativeRenterId))
             .Select(c => new SignedContractRow(c.RepresentativeRenterId, c.ActualEndDate)).ToListAsync(cancellationToken);
 
     private static readonly ContractStatus[] OpenStatuses = [ContractStatus.Draft, ContractStatus.Active, ContractStatus.Liquidating];

@@ -121,6 +121,7 @@ public sealed class AdminOrganizationTests(ApiFactory factory)
     [InlineData("pageSize=0")]
     [InlineData("pageSize=101")]
     [InlineData("page=0")]
+    [InlineData("page=2147483647")]
     public async Task ListOrganizations_Returns400_ForInvalidPaging(string query)
     {
         var admin = await _client.LoginAdminAsync();

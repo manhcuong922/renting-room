@@ -3,7 +3,7 @@ using renting_room.Domain.Contracts;
 
 namespace renting_room.Domain.Fees;
 
-public sealed class FeeType : TenantEntity
+public sealed class FeeType : TenantEntity, IPropertyScoped
 {
     public const decimal MaxQuantity = 100;
 
@@ -74,7 +74,12 @@ public sealed class FeeType : TenantEntity
     /// <summary>Số gói mặc định khi gắn vào HĐ: <c>PerUnit</c> dùng <see cref="DefaultQuantity"/> (mặc định 1), cách khác luôn 1.</summary>
     public decimal AttachQuantity => IsPerUnit ? DefaultQuantity ?? 1 : 1;
 
-    public Result<FeePrice> AddPrice(DateOnly effectiveFrom, decimal unitPrice, string? note, DateOnly? lockedUntil, IReadOnlyList<PriceTier>? tiers = null)
+    /// <param name="lockedDates">
+    /// FE-BR-07: ngày cuối của các dòng phiếu đã chốt dùng khoản thu này — giá áp của dòng = bản giá hiệu lực tại ngày đó.
+    /// Chỉ khóa khi bản giá mới làm đổi giá áp của một dòng trong số đó (M-08).
+    /// </param>
+    public Result<FeePrice> AddPrice(
+        DateOnly effectiveFrom, decimal unitPrice, string? note, IReadOnlyCollection<DateOnly>? lockedDates, IReadOnlyList<PriceTier>? tiers = null)
     {
         if (IsArchived)
             return Result.Failure<FeePrice>(FeeErrors.Archived);
@@ -82,7 +87,7 @@ public sealed class FeeType : TenantEntity
             return Result.Failure<FeePrice>(FeeErrors.TiersForMeteredOnly);
         if (_prices.Any(p => p.EffectiveFrom == effectiveFrom))
             return Result.Failure<FeePrice>(FeeErrors.PriceDateExists);
-        if (lockedUntil is { } locked && effectiveFrom <= locked)
+        if (lockedDates?.Any(d => effectiveFrom <= d && ResolvePrice(d) is { } applied && applied.EffectiveFrom < effectiveFrom) == true)
             return Result.Failure<FeePrice>(FeeErrors.PriceLocked);
 
         var price = new FeePrice(Id, effectiveFrom, unitPrice, note, tiers);
@@ -91,12 +96,12 @@ public sealed class FeeType : TenantEntity
         return Result.Success(price);
     }
 
-    public Result RemovePrice(Guid priceId, DateOnly? lockedUntil)
+    public Result RemovePrice(Guid priceId, IReadOnlyCollection<DateOnly>? lockedDates)
     {
         var price = _prices.FirstOrDefault(p => p.Id == priceId);
         if (price is null)
             return Result.Failure(FeeErrors.PriceNotFound);
-        if (lockedUntil is { } locked && price.EffectiveFrom <= locked)
+        if (lockedDates?.Any(d => ResolvePrice(d)?.Id == price.Id) == true)
             return Result.Failure(FeeErrors.PriceLocked);
 
         _prices.Remove(price);

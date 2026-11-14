@@ -57,8 +57,49 @@ public sealed class FeeTypeTests
         fee.AddPrice(Oct1, 3500, null, null).IsSuccess.Should().BeTrue();
 
         fee.AddPrice(Oct1, 3600, null, null).Error.Should().Be(FeeErrors.PriceDateExists);
-        fee.AddPrice(Oct1.AddDays(10), 3600, null, lockedUntil: Oct1.AddDays(30)).Error.Should().Be(FeeErrors.PriceLocked);
+        // Dòng đã chốt có ngày cuối kỳ 31/10 đang dùng bản giá 1/10 ⇒ bản mới hiệu lực 11/10 sẽ đổi giá dòng đó.
+        fee.AddPrice(Oct1.AddDays(10), 3600, null, lockedDates: [Oct1.AddDays(30)]).Error.Should().Be(FeeErrors.PriceLocked);
+    }
 
+    // M-08 / FE-BR-07: chỉ khóa khi bản giá mới làm ĐỔI giá áp của một dòng đã chốt (giá áp = bản giá hiệu lực tại ngày cuối dòng).
+    [Fact]
+    public void AddPrice_OlderThanPriceUsedByFinalizedLine_IsAllowed()
+    {
+        var fee = Electricity();
+        fee.AddPrice(Oct1, 3500, null, null).IsSuccess.Should().BeTrue();
+        var finalizedLineEnds = new[] { Oct1.AddDays(30), Oct1.AddDays(60) }; // đều dùng bản 1/10
+
+        // Bản hiệu lực 1/9 (nháp kỳ cũ thiếu giá) không đổi giá của dòng nào đã chốt.
+        fee.AddPrice(Oct1.AddMonths(-1), 3000, null, finalizedLineEnds).IsSuccess.Should().BeTrue();
+        fee.ResolvePrice(Oct1.AddDays(30))!.UnitPrice.Should().Be(3500);
+    }
+
+    [Fact]
+    public void AddPrice_LaterThanFinalizedLines_IsAllowed()
+    {
+        var fee = Electricity();
+        fee.AddPrice(Oct1, 3500, null, null);
+
+        fee.AddPrice(Oct1.AddDays(40), 3800, null, [Oct1.AddDays(30)]).IsSuccess.Should().BeTrue();
+    }
+
+    [Fact]
+    public void AddPrice_BeforeFirstPrice_WhenFinalizedLineHadNoCatalogPrice_IsAllowed()
+    {
+        var fee = Electricity(); // dòng đã chốt dùng giá riêng của hợp đồng, bảng giá chưa có bản nào
+        fee.AddPrice(Oct1, 3500, null, [Oct1.AddDays(30)]).IsSuccess.Should().BeTrue();
+    }
+
+    [Fact]
+    public void RemovePrice_OnlyBlocked_WhenFinalizedLineUsesIt()
+    {
+        var fee = Electricity();
+        var old = fee.AddPrice(Oct1.AddMonths(-1), 3000, null, null).Value!;
+        var current = fee.AddPrice(Oct1, 3500, null, null).Value!;
+        var lockedDates = new[] { Oct1.AddDays(30) }; // dùng bản 1/10
+
+        fee.RemovePrice(old.Id, lockedDates).IsSuccess.Should().BeTrue("bản 1/9 không được dòng đã chốt nào dùng");
+        fee.RemovePrice(current.Id, lockedDates).Error.Should().Be(FeeErrors.PriceLocked);
     }
 
     [Theory]

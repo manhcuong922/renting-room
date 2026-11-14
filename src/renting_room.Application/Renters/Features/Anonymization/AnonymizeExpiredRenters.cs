@@ -1,5 +1,6 @@
 using FluentValidation;
 using Mediator;
+using Microsoft.Extensions.Logging;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Domain.Common;
 using renting_room.Application.Identity.Organizations;
@@ -19,7 +20,8 @@ public sealed record AnonymizeExpiredRentersCommand(DateOnly AsOf) : IRequest<in
 /// đứng tên không còn phiếu nợ chưa thu / phiếu chờ hoàn. Mỗi hồ sơ 1 transaction.
 /// </summary>
 public sealed class AnonymizeExpiredRentersHandler(
-    IRenterQueries renters, IOrganizationQueries organizations, IUnitOfWork unitOfWork, ICurrentUser currentUser, RenterAnonymizer anonymizer)
+    IRenterQueries renters, IOrganizationQueries organizations, IUnitOfWork unitOfWork, ICurrentUser currentUser, RenterAnonymizer anonymizer,
+    ILogger<AnonymizeExpiredRentersHandler> logger)
     : IRequestHandler<AnonymizeExpiredRentersCommand, int>
 {
     public async ValueTask<int> Handle(AnonymizeExpiredRentersCommand request, CancellationToken cancellationToken)
@@ -30,12 +32,32 @@ public sealed class AnonymizeExpiredRentersHandler(
 
         var cutoff = request.AsOf.AddMonths(-settings.PersonalDataRetentionMonths);
         var renterIds = await EligibleAsync(cutoff, cancellationToken);
+        var anonymized = 0;
+        var failed = 0;
         foreach (var renterId in renterIds)
         {
-            await anonymizer.AnonymizeAsync(renterId, reason: null, cancellationToken);
-            unitOfWork.ClearTracking();
+            // M-26: mỗi hồ sơ một transaction ⇒ hồ sơ lỗi (giấy tờ mã hóa hỏng, vi phạm ràng buộc…) chỉ bị bỏ qua, không chặn các hồ sơ sau.
+            try
+            {
+                var result = await anonymizer.AnonymizeAsync(renterId, reason: null, cancellationToken);
+                if (result.IsSuccess)
+                    anonymized++;
+                else
+                    logger.LogInformation("Renter {RenterId} is no longer eligible for automatic anonymization ({Code}); skipped", renterId, result.Error!.Code);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                failed++;
+                logger.LogError(ex, "Automatic anonymization failed for renter {RenterId}; continuing with the next record", renterId);
+            }
+            finally
+            {
+                unitOfWork.ClearTracking();
+            }
         }
-        return renterIds.Count;
+        if (failed > 0)
+            logger.LogWarning("Automatic anonymization: {Failed} of {Total} record(s) failed and were skipped", failed, renterIds.Count);
+        return anonymized;
     }
 
     private async Task<List<Guid>> EligibleAsync(DateOnly cutoff, CancellationToken ct)

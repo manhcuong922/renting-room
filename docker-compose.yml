@@ -12,8 +12,9 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       TZ: Asia/Ho_Chi_Minh
+    # Chỉ máy này (127.0.0.1): Docker Desktop mặc định mở 0.0.0.0 = cả mạng LAN, mà mật khẩu dev mặc định là postgres/postgres (L-15, M12 §5).
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:

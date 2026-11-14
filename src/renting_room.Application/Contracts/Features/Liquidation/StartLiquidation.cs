@@ -23,6 +23,7 @@ public sealed class StartLiquidationCommandValidator : AbstractValidator<StartLi
         RuleFor(x => x.Ground).IsInEnum().When(x => x.Ground is not null);
         RuleFor(x => x.FinalPeriodCharge).IsInEnum().When(x => x.FinalPeriodCharge is not null);
         RuleFor(x => x.Note).OptionalText(1000);
+        this.RuleForMeterReadings(x => x.FinalReadings);
         RuleFor(x => x.Note)
             .NotEmpty().When(x => x.Ground == TerminationGround.Other)
             .WithErrorCode("REQUIRED").WithMessage("Căn cứ 'Khác' cần mô tả cụ thể.");

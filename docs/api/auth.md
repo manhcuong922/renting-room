@@ -50,7 +50,7 @@ flowchart TD
 
 | Lỗi | Khi nào | UI |
 |-----|---------|----|
-| 401 `INVALID_CREDENTIALS` | Sai tài khoản/mật khẩu, **hoặc tài khoản đang bị khóa tạm** (sai 5 lần → khóa 15 phút; cố ý trả cùng mã để không lộ tài khoản tồn tại) | Hiện `detail` (đã nhắc về khóa 15 phút) |
+| 401 `INVALID_CREDENTIALS` | Sai tài khoản/mật khẩu, **hoặc thiết bị đang bị chặn tạm** với tài khoản này: sai 5 lần **từ cùng IP** trong 15 phút ⇒ chỉ IP đó bị chặn 15 phút, nơi khác vẫn vào được; nhiều IP lạ cùng dò (≥ 30 lần sai / giờ) ⇒ IP chưa từng đăng nhập tài khoản này bị chặn, IP quen vẫn vào (05/11/2026). Cố ý trả cùng mã để không lộ tài khoản tồn tại / bị chặn | Hiện `detail` (đã nhắc về chặn 15 phút) |
 | 401 `TEMPORARY_PASSWORD_EXPIRED` | Mật khẩu tạm quá 72 giờ | "Mật khẩu tạm đã hết hạn, liên hệ người cấp tài khoản" |
 | 403 `ORGANIZATION_SUSPENDED` | Tổ chức bị admin tạm ngưng | Thông báo, không cho vào |
 | 429 `TOO_MANY_REQUESTS` | > 5 lần/phút cùng tài khoản từ một IP, hoặc > 20 lần/phút từ một IP | Khóa nút trong `Retry-After` giây |
@@ -158,13 +158,13 @@ async function ensureFreshToken() {
 ```
 
 - `organization` = `null` với `SystemAdmin`.
-- `canViewSensitiveData`: chủ trọ luôn `true`; phó quản lý `true` khi chủ trọ cấp quyền — `false` thì ẩn nút xem / xuất số giấy tờ đầy đủ ([conventions.md](conventions.md#dữ-liệu-cá-nhân)).
+- `canViewSensitiveData`: chủ trọ luôn `true`; quản lý khu `true` khi chủ trọ cấp quyền — `false` thì ẩn nút xem / xuất số giấy tờ đầy đủ ([conventions.md](conventions.md#dữ-liệu-cá-nhân)).
 - Header app: hiện `organization.name` + `fullName` + nhãn vai trò.
-- Hiện chưa có API tự sửa họ tên/SĐT — chủ trọ sửa cho phó quản lý ([members.md](members.md)), admin sửa chủ trọ (P2).
+- Tự sửa họ tên / SĐT: `PUT /me` (mục dưới) — chủ trọ và SystemAdmin; quản lý khu do chủ trọ sửa hộ ([members.md](members.md)).
 
 ## Tự sửa hồ sơ của mình (11/10/2026, đổi 13/10/2026)
 
-`PUT /me` — **chủ trọ và SystemAdmin**. **Phó quản lý không tự sửa hồ sơ** → 403 `PROFILE_MANAGED_BY_OWNER`
+`PUT /me` — **chủ trọ và SystemAdmin**. **Quản lý khu không tự sửa hồ sơ** → 403 `PROFILE_MANAGED_BY_OWNER`
 (ẩn nút sửa khi `role = OrgManager`; chủ trọ sửa hộ ở [members.md](members.md)).
 
 ```json
@@ -185,8 +185,8 @@ Dựng menu và bật / tắt nút theo 3 trường của `GET /me`, **không** 
 
 | Trường | Ý nghĩa | UI |
 |--------|---------|----|
-| `role` | `SystemAdmin` · `OrgOwner` (chủ trọ) · `OrgManager` (phó quản lý) | Chọn khu vực giao diện; phó quản lý: ẩn thêm / sửa thành viên, nhật ký đăng nhập, sửa tổ chức, **sửa hồ sơ của mình** |
-| `canViewSensitiveData` | Được xem số giấy tờ đầy đủ. Chủ trọ luôn `true`; phó quản lý do chủ trọ cấp | `false` ⇒ ẩn nút 👁 và ô "hiện đầy đủ số giấy tờ" khi xuất Excel |
-| `canWriteOff` | Được **bỏ nợ**. Chủ trọ luôn `true`; phó quản lý **chỉ khi chủ trọ cấp riêng** ([members.md](members.md#quyền-bỏ-nợ)) | `false` ⇒ ẩn nút "Bỏ nợ" / "Thanh toán + bỏ phần còn lại" và lựa chọn "Bỏ nợ" khi hoàn tất thanh lý. **Không** coi bỏ nợ là quyền riêng của chủ trọ |
+| `role` | `SystemAdmin` · `OrgOwner` (chủ trọ) · `OrgManager` (quản lý khu) | Chọn khu vực giao diện; quản lý khu: ẩn các nút "chỉ chủ trọ" ([members.md](members.md)) — thành viên, ngân hàng, bên cho thuê, tạo / ngừng khu, sửa mẫu HĐ, tổ chức, nhật ký, **sửa hồ sơ của mình**. Danh sách khu (`GET /properties`) đã chỉ gồm khu được giao |
+| `canViewSensitiveData` | Được xem số giấy tờ đầy đủ. Chủ trọ và quản lý khu luôn `true` (08/11/2026) | `false` ⇒ ẩn nút 👁 và ô "hiện đầy đủ số giấy tờ" khi xuất Excel |
+| `canWriteOff` | Được **bỏ nợ** và "Không hoàn". Chủ trọ và quản lý khu luôn `true` (08/11/2026) | `false` ⇒ ẩn nút "Bỏ nợ" / "Thanh toán + bỏ phần còn lại" và lựa chọn "Bỏ nợ" khi hoàn tất thanh lý |
 
 Quyền có thể đổi giữa phiên: gọi vẫn bị 403 (`WRITE_OFF_NOT_ALLOWED`, `SENSITIVE_DATA_FORBIDDEN`) thì báo lỗi và gọi lại `GET /me`, không đăng xuất.

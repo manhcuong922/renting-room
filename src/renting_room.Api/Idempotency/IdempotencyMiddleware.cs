@@ -120,7 +120,8 @@ internal sealed class IdempotencyMiddleware(RequestDelegate next, ILogger<Idempo
         }
 
         var status = context.Response.StatusCode;
-        if (status >= StatusCodes.Status500InternalServerError)
+        // 429 từ limiter gọi trong endpoint (VD dò số giấy tờ — M-13): lệnh chưa chạy, không lưu để thử lại sau khi hết giới hạn vẫn thực hiện được.
+        if (status >= StatusCodes.Status500InternalServerError || status == StatusCodes.Status429TooManyRequests)
         {
             await store.AbandonAsync(request.UserId, request.Key, CancellationToken.None);
         }

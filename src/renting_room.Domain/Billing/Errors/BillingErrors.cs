@@ -63,8 +63,6 @@ public static class BillingErrors
     public static readonly Error InvoiceCarriedOver = Error.BusinessRule("INVOICE_CARRIED_OVER",
         "Nợ của hóa đơn này đã chuyển vào hóa đơn trả phòng — hủy hóa đơn trả phòng trước.");
     public static readonly Error RefundWaiveReasonRequired = Error.Validation("REFUND_WAIVE_REASON_REQUIRED", "Nhập lý do không hoàn tiền cho người thuê.");
-    public static readonly Error RefundWaiveNotAllowed = Error.Forbidden("REFUND_WAIVE_NOT_ALLOWED", "Chỉ chủ trọ được quyết định không hoàn tiền cho người thuê.");
-
     public static Error PendingCharges(int count, decimal surcharge, decimal credit) =>
         Error.BusinessRule("PENDING_CHARGES",
                 $"Còn {count} khoản chưa xử lý (phụ thu {surcharge:N0}đ, bù {credit:N0}đ) — xác nhận coi như đã thu / đã trả tay khi hoàn tất.")

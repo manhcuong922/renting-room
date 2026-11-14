@@ -153,7 +153,7 @@ public sealed class SelfServiceAndHistoryTests(ApiFactory factory)
         (await SaveAsync(160)).StatusCode.Should().Be(HttpStatusCode.OK);
         await _client.PostJsonAsync("/api/v1/invoices/generate", new { propertyId, billingMonth = $"{month:yyyy-MM}", roomIds = new[] { roomId } }, token);
         var page = await (await _client.GetAsync($"/api/v1/invoices?contractId={contractId}", token)).ReadAsync<JsonElement>();
-        (await _client.PostJsonAsync($"/api/v1/invoices/{page.GetProperty("items")[0].GetProperty("id").GetGuid()}/finalize", null, token))
+        (await _client.FinalizeInvoiceAsync(page.GetProperty("items")[0].GetProperty("id").GetGuid(), token))
             .StatusCode.Should().Be(HttpStatusCode.OK);
         (await (await VoidAsync(await ReadingIdAsync("Periodic"))).ReadProblemCodeAsync()).Should().Be("READING_LOCKED");
     }

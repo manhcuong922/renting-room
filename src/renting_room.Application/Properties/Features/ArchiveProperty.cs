@@ -20,6 +20,8 @@ public sealed class ArchivePropertyHandler(
         if (property is null)
             return Result.Failure(PropertyErrors.PropertyNotFound);
 
+        // L-06 (PR-BR-05): khóa phòng (sau khu — C-07) TRƯỚC khi kiểm HĐ; tạo nháp khóa hàng phòng ⇒ nháp đang tạo xong trước thì bị thấy ở bước kiểm.
+        await rooms.LockAllInPropertyAsync(property.Id, cancellationToken);
         var today = clock.GetUtcNow().ToBusinessDate();
         if (await queries.HasOpenContractsAsync(property.Id, today, cancellationToken))
             return Result.Failure(PropertyErrors.PropertyHasActiveContracts);

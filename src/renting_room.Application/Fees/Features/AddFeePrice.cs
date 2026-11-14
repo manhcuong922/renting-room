@@ -28,8 +28,8 @@ public sealed class AddFeePriceHandler(IFeeTypeRepository fees, IUnitOfWork unit
         if (price.UnitPrice is { } unit && !FeeRules.IsValidPrice(unit, fee.Group))
             return Error.Validation("INVALID_AMOUNT", $"Đơn giá tối đa {FeeRules.MaxPrice(fee.Group):N0}đ, tối đa 2 số lẻ.");
 
-        var lockedUntil = await locks.GetLockedUntilAsync(fee.Id, cancellationToken);
-        var added = fee.AddPrice(price.EffectiveFrom, price.UnitPrice ?? 0, price.Note, lockedUntil, price.Tiers);
+        var lockedDates = await locks.GetLockedDatesAsync(fee.Id, cancellationToken);
+        var added = fee.AddPrice(price.EffectiveFrom, price.UnitPrice ?? 0, price.Note, lockedDates, price.Tiers);
         if (added.IsFailure)
             return added.Error!;
 

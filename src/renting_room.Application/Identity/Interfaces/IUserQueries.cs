@@ -7,9 +7,8 @@ namespace renting_room.Application.Identity;
 
 public interface IUserQueries
 {
-    Task<bool> HasSensitiveDataAccessAsync(Guid userId, CancellationToken cancellationToken);
-
-    Task<bool> HasWriteOffPermissionAsync(Guid userId, CancellationToken cancellationToken);
+    /// <summary>M01 ID-BR-22 / ID-BR-23 (08/11/2026): user đang hoạt động là chủ trọ hoặc quản lý khu (đọc DB mỗi lần — khóa / gỡ có hiệu lực ngay).</summary>
+    Task<bool> HasOwnerLevelAccessAsync(Guid userId, CancellationToken cancellationToken);
 
     Task<User?> GetAsync(Guid id, CancellationToken cancellationToken);
 

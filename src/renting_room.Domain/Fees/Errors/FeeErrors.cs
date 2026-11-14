@@ -17,7 +17,7 @@ public static class FeeErrors
     public static readonly Error PriceNotFound = Error.NotFound("FEE_PRICE_NOT_FOUND", "Không tìm thấy bản giá.");
     public static readonly Error PriceDateExists = Error.Conflict("FEE_PRICE_DATE_EXISTS", "Đã có bản giá hiệu lực từ ngày này.");
     public static readonly Error PriceLocked = Error.BusinessRule("FEE_PRICE_LOCKED",
-        "Ngày hiệu lực thuộc kỳ đã chốt phiếu — chỉ đổi giá từ kỳ chưa chốt.");
+        "Bản giá này đang được dùng bởi phiếu đã chốt — thêm bản giá hiệu lực sau ngày cuối kỳ đã chốt, hoặc hủy phiếu đó trước.");
     public static readonly Error TiersForMeteredOnly = Error.Validation("FEE_TIERS_METERED_ONLY",
         "Giá theo bậc chỉ dùng cho điện nước theo công tơ.");
     public static readonly Error MeteredFollowsRoom = Error.Validation("FEE_METERED_FOLLOWS_ROOM",

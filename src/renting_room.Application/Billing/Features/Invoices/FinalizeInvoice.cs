@@ -11,12 +11,12 @@ using renting_room.Domain.Meters;
 
 namespace renting_room.Application.Billing;
 
-public sealed record FinalizeInvoiceCommand(Guid Id) : IRequest<Result<InvoiceDetailDto>>;
+public sealed record FinalizeInvoiceCommand(Guid Id, uint? ExpectedVersion = null) : IRequest<Result<InvoiceDetailDto>>;
 
 public sealed class FinalizeInvoiceHandler(InvoiceFinalizer finalizer) : IRequestHandler<FinalizeInvoiceCommand, Result<InvoiceDetailDto>>
 {
     public async ValueTask<Result<InvoiceDetailDto>> Handle(FinalizeInvoiceCommand request, CancellationToken cancellationToken) =>
-        await finalizer.FinalizeAsync(request.Id, cancellationToken);
+        await finalizer.FinalizeAsync(request.Id, cancellationToken, request.ExpectedVersion);
 }
 
 public sealed class InvoiceFinalizer(
@@ -24,7 +24,7 @@ public sealed class InvoiceFinalizer(
     IPropertyQueries properties, InvoiceInputLoader inputs, IDocumentNumberGenerator numbers, ICurrentUser currentUser, FinalInvoiceSettlement settlement,
     TimeProvider clock)
 {
-    public async Task<Result<InvoiceDetailDto>> FinalizeAsync(Guid id, CancellationToken ct)
+    public async Task<Result<InvoiceDetailDto>> FinalizeAsync(Guid id, CancellationToken ct, uint? expectedVersion = null)
     {
         var contractId = await invoiceQueries.GetContractIdAsync(id, ct);
         if (contractId is null)
@@ -41,6 +41,9 @@ public sealed class InvoiceFinalizer(
         // Nháp bị xóa trong lúc chờ khóa (M07 §10).
         if (await invoices.GetForUpdateAsync(id, ct) is not { } invoice)
             return BillingErrors.NotFound;
+        // Chốt đúng số người bấm đang thấy (M07 §10) — B vừa thêm giảm trừ ⇒ A phải tải lại.
+        if (InvoiceAccess.StaleVersion(invoice, expectedVersion) is { } stale)
+            return stale;
         if (invoice.Status != InvoiceStatus.Draft)
             return BillingErrors.NotDraft;
 
