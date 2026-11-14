@@ -14,7 +14,7 @@ cho biết **công nợ** theo HĐ / phòng; **theo dõi tiền cọc** ở mứ
 **Ngoài phạm vi**: sổ cọc / trừ cọc vào phiếu / quyết toán cọc / chuyển cọc / mất cọc (**không làm** — chốt 10/10/2026), tính lãi chậm trả
 (không làm), cổng thanh toán.
 
-**Để sau (backlog)**: VietQR trên phiếu gửi Zalo (P2); thanh toán online / đối soát ngân hàng (P3). Khi có thanh toán online, tiền chuyển thừa
+**Để sau (backlog)**: VietQR trên phiếu gửi Zalo (P2); thanh toán online / đối soát ngân hàng (P3). **Quyền (08/11/2026, M01 ID-BR-28)**: mọi phần dính tới ngân hàng nhận tiền (QR, liên kết, đối soát, cấu hình cổng thanh toán) **chỉ chủ trọ** — quản lý khu không được cấu hình, chỉ xem kết quả. Khi có thanh toán online, tiền chuyển thừa
 không chặn được ⇒ lúc đó mới làm **số dư có** (trả thừa, tự trừ vào phiếu sau) và bỏ chặn `PAYMENT_EXCEEDS_DEBT` cho kênh online.
 
 ## 2. Thuật ngữ
@@ -37,6 +37,7 @@ không chặn được ⇒ lúc đó mới làm **số dư có** (trả thừa, 
 | PM-UC-01 ✅ | **Đã thu** bằng tay (tiền mặt / chuyển khoản tự kiểm): từ phiếu bấm "Đã thu" (mặc định đủ số còn nợ, sửa được nếu thu một phần — **trả dần**, phần còn lại vẫn là nợ), hoặc thu theo HĐ (tự trừ phiếu cũ nhất trước); phương thức, ngày thu, người nộp, mã giao dịch |
 | PM-UC-09 ✅ | **Số nợ của một hợp đồng** (13/10/2026) — `GET /contracts/{id}/balance`: tổng còn nợ (phiếu đã chốt chưa thu đủ), phần quá hạn, tiền chờ hoàn, từng phiếu còn nợ (số phiếu, tháng, tổng, đã thu, còn nợ, hạn, quá hạn chưa), số phiếu nháp, số khoản phát sinh chưa lên phiếu. Dùng cho màn "thu theo hợp đồng": `outstanding` là số tối đa nhập được (PM-BR-03). Chỉ đọc, xem được cả HĐ đã kết thúc |
 | PM-UC-04 ✅ | Đảo phiếu thu nhập sai (lý do) — phiếu tiền phòng trở lại còn nợ |
+| PM-UC-22 ✅ | **Sửa trực tiếp số "Đã thu"** (09/11/2026 — 98 H-04; màn hình không còn bắt "đảo rồi ghi lại"): trên hóa đơn đã chốt gõ **số đã thu mới**. Tăng ⇒ app ghi 1 phiếu thu phần chênh (ngày thu, cách thu — mặc định hôm nay / tiền mặt). Giảm ⇒ **lý do bắt buộc**, app tự đảo các phiếu thu mới nhất của hóa đơn rồi ghi lại phần còn giữ — người dùng không phải biết phiếu thu (PM-BR-38). Mỗi lần giảm lưu **lịch sử giảm đã thu** (trước → sau, lý do, người sửa, lúc) — nguồn cột "Sửa giảm" của Excel thu tiền (M10 E2). Phiếu thu vẫn giữ phía sau: thu nhiều lần, tách tiền mặt / chuyển khoản, báo cáo theo ngày nhận tiền (M10 E6) |
 | PM-UC-12 ✅ | **Công nợ khi xem phòng**: nhãn "Còn nợ" + số tiền, nhãn đỏ "Quá hạn" (M02 PR-BR-16) — tính trên phiếu của HĐ đang gắn với phòng, chuyển phòng thì nợ đi theo (11/10/2026) |
 | PM-UC-14 ✅ | **"Đã thu toàn bộ"** khi hoàn tất thanh lý: 1 phiếu thu đúng tổng còn nợ (mặc định tiền mặt, hôm nay) |
 | PM-UC-16 ✅ | **"Thanh toán + bỏ phần còn lại"** trên 1 phiếu (VD nợ 3tr, trả 2tr, chủ trọ cho 1tr) và **bỏ nợ riêng** (một phần / toàn bộ) — bất kỳ lúc nào HĐ còn hiệu lực / đang thanh lý; lý do bắt buộc |
@@ -55,9 +56,11 @@ không chặn được ⇒ lúc đó mới làm **số dư có** (trả thừa, 
 | PM-BR-13 ✅ | Chỉ ghi thu / bỏ nợ cho HĐ `Active` / `Liquidating`. HĐ `Ended`: không ghi thu (hoàn tất thanh lý đã buộc hết nợ — thu đủ hoặc bỏ nợ, M05 CT-BR-12) | Domain |
 | PM-BR-14 ✅ | `paid_at` ≤ hôm nay và ≥ ngày bắt đầu HĐ − 60 ngày | Validator |
 | PM-BR-15 ✅ | Số phiếu thu `PT{yyyy}-{seq:000000}` unique trong tổ chức; `yyyy` = năm của **ngày lập** (ghi bù đầu năm không làm lộn số) | DB + sequence |
-| PM-BR-16 ✅ | **Bỏ nợ**: phiếu thu `kind = WriteOff`, lý do bắt buộc (`note`), phân bổ như tiền thật để đóng công nợ; phiếu tiền phòng hiện `WrittenOff`, `written_off_amount` ghi phần bỏ; **không** tính doanh thu / tiền thu (M10 lọc `kind = Receipt`); vẫn cấp số `PT`, đảo được. Làm được: bỏ nợ riêng, "Thanh toán + bỏ phần còn lại" (PM-BR-29), "Bỏ nợ" khi hoàn tất thanh lý. **Quyền**: chủ trọ, hoặc phó quản lý được chủ trọ cấp quyền **riêng từng người** (M01 ID-BR-23) → không có quyền 403 `WRITE_OFF_NOT_ALLOWED` | Domain + Application |
+| PM-BR-16 ✅ | **Bỏ nợ**: phiếu thu `kind = WriteOff`, lý do bắt buộc (`note`), phân bổ như tiền thật để đóng công nợ; phiếu tiền phòng hiện `WrittenOff`, `written_off_amount` ghi phần bỏ; **không** tính doanh thu / tiền thu (M10 lọc `kind = Receipt`); vẫn cấp số `PT`, đảo được. Làm được: bỏ nợ riêng, "Thanh toán + bỏ phần còn lại" (PM-BR-29), "Bỏ nợ" khi hoàn tất thanh lý. **Quyền** (đổi 08/11/2026 — M01 ID-BR-23): chủ trọ và quản lý khu (khu được giao); tài khoản không còn hoạt động → 403 `WRITE_OFF_NOT_ALLOWED` | Domain + Application |
 | PM-BR-18 ✅ | `POST /contracts/{id}/payments` chỉ ghi tiền thật (`kind = Receipt`, `method` ∈ `Cash` / `BankTransfer` / `EWallet`) | Validator |
 | PM-BR-29 ✅ | **Thanh toán + bỏ phần còn lại**: 1 lệnh, 1 transaction trên 1 phiếu — phiếu thu `Receipt` số thực trả (> 0, < số còn nợ; bằng số còn nợ → 422 `NOTHING_TO_WRITE_OFF`) + phiếu thu `WriteOff` phần còn lại. Bỏ nợ riêng: ≤ số còn nợ của phiếu (mặc định toàn bộ) | Application |
+| PM-BR-38 ✅ | **Sửa số đã thu** (PM-UC-22, 09/11/2026) — `PUT /invoices/{id}/collected { amount, expectedAmount, paidAt?, method?, reason? }`. (1) Hóa đơn `Finalized`, tổng ≥ 0, chưa chuyển nợ vào hóa đơn trả phòng (422 `INVOICE_CARRIED_OVER`); HĐ `Active` / `Liquidating` (PM-BR-13). (2) `expectedAmount` = số đã thu người dùng đang thấy (`collectedAmount`); khác số hiện tại ⇒ 409 `COLLECTED_AMOUNT_CHANGED` (2 người cùng sửa / màn hình cũ). Bằng số hiện tại ⇒ 422 `COLLECTED_AMOUNT_UNCHANGED`. (3) **Tăng**: phần chênh ≤ còn nợ (422 `PAYMENT_EXCEEDS_DEBT`) ⇒ 1 phiếu `Receipt` vào đúng hóa đơn như PM-UC-01 (PM-BR-14 ngày thu). (4) **Giảm**: `reason` bắt buộc (400). Đảo các phiếu `Receipt` chưa đảo có phân bổ vào hóa đơn, **mới nhất trước** (ngày thu, rồi lúc tạo) tới khi đủ phần giảm; phiếu chỉ cần giảm một phần ⇒ ghi lại phiếu mới (số `PT` mới) phần còn giữ, **cùng** ngày thu / cách thu / người nộp / mã giao dịch / ghi chú; phần phân bổ vào hóa đơn khác của phiếu đó ghi lại nguyên. Lý do đảo = "Sửa đã thu: {lý do}". VD PT-1 2tr ngày 28/10 + PT-2 1tr ngày 03/11, sửa 3tr → 1,5tr ⇒ PT-2 đảo hẳn, PT-1 đảo + PT-3 1,5tr ngày 28/10. (5) Hóa đơn có **phiếu hoàn** (PC — PM-BR-37): đã thu = Σ thu − Σ hoàn. Giảm về **0** ⇒ đảo luôn các phiếu hoàn của hóa đơn (chưa thu thì cũng chưa hoàn — như PM-BR-39); giảm về > 0 ⇒ giữ phiếu hoàn, phiếu thu còn lại = số mới + Σ hoàn. Khoảng [0, tổng] kiểm trên **kết quả cuối**, không theo từng bước. (6) **Hoàn trả** trên phiếu sau trỏ vào hóa đơn này làm phiếu nguồn (M07 BL-BR-27): số mới < Σ hoàn trả đó ⇒ 422 `COLLECTED_BELOW_REFUNDED`. **13/11/2026 — 98 M-01**: nút **Đảo** phiếu thu (PM-UC-04) cũng kiểm: sau khi đảo, Σ phiếu thu còn lại của hóa đơn nguồn < Σ dòng Hoàn trả của phiếu **đã chốt** trỏ vào nó ⇒ 422 `COLLECTED_BELOW_REFUNDED` (không đảo gì; hủy phiếu chứa dòng hoàn trước). Dòng hoàn còn ở **nháp** không chặn — chốt sẽ kiểm lại BL-BR-27. VD nguồn đã thu 3tr, phiếu sau (đã chốt) hoàn 500k ⇒ không đảo được phiếu thu 3tr; hủy phiếu sau rồi đảo được. (7) **Quản lý khu** chỉ giảm được tiền có **ngày thu từ ngày 1 tháng trước** trở đi (phiếu bị đảo — kể cả nút "Đảo" PM-UC-04); cũ hơn ⇒ 403 `COLLECTED_PERIOD_LOCKED` ("liên hệ chủ trọ") — tiền tháng đã đối chiếu không bị sửa lặng lẽ; tăng / thu thêm không giới hạn; chủ trọ không giới hạn. (8) Mỗi lần **giảm** (sửa hoặc đảo phiếu thu) ⇒ 1 dòng `collection_reductions` cho mỗi hóa đơn bị giảm (đã thu trước → sau, lý do, người, lúc). Idempotency-Key | Application |
+| PM-BR-39 ✅ | **Đảo phiếu thu kèm phiếu hoàn** (09/11/2026 — 98 H-04): đảo phiếu `Receipt` mà sau đó Σ phiếu thu còn lại của một hóa đơn < Σ phiếu hoàn (PC) của nó ⇒ đảo luôn các phiếu hoàn của hóa đơn đó trong cùng lệnh (lý do "Đảo kèm phiếu thu {PT}"); "đã thu" cập nhật **một lần** theo kết quả cuối, kiểm [0, tổng] trên kết quả cuối. VD PT-1 1.000.000, tổng sau điều chỉnh 800.000, PC-1 200.000 ⇒ đã thu 800.000; đảo PT-1 ⇒ PC-1 cũng đảo, đã thu 800.000 − 1.000.000 + 200.000 = 0 (trước đây 500 hoặc 422 — kẹt, không hủy được hóa đơn). Đảo riêng phiếu hoàn vẫn như cũ (vượt tổng ⇒ 422 `PAYMENT_EXCEEDS_DEBT`) | Application |
 | PM-BR-37 ✅ | **Phiếu hoàn tiền** (20/10/2026 — M06 MT-BR-19 "Xử lý ngay"): hóa đơn đã chốt được tính lại thấp hơn số người thuê **đã trả thật** ⇒ hệ thống ghi phiếu `kind = Refund`, số `PC{yyyy}-{seq:000000}`, ngày + phương thức chủ trọ chọn (mặc định hôm nay, tiền mặt), phân bổ vào hóa đơn đó và **giảm** `paid_amount` đúng số hoàn (giữ `paid_amount ≤ tổng mới`). Thực thu (`collectedAmount`) giảm theo; báo cáo tiền (M10) tính là **tiền chi ra** vào ngày hoàn. Chỉ hệ thống tạo (không có endpoint ghi tay); hiện trong danh sách phiếu thu của HĐ với `kind = Refund`. **Đảo** được như phiếu thu (nhập nhầm): hóa đơn tăng lại `paid_amount` (không vượt tổng → 422 `PAYMENT_EXCEEDS_DEBT`). **Giảm phần bỏ nợ** khi tính lại (thu dư trừ vào bỏ nợ trước): hệ thống đảo phiếu bỏ nợ của hóa đơn đó và ghi lại phiếu bỏ nợ phần còn lại (cùng lý do, phân bổ các hóa đơn khác của phiếu cũ giữ nguyên) — lịch sử còn đủ 2 phiếu | Domain + Application |
 | PM-BR-36 ✅ | **Thực thu tách khỏi bỏ nợ** (18/10/2026): mọi nơi API trả số đã thu đều tách 3 số — `paidAmount` = **đã xử lý** (thực thu + bỏ nợ; dùng tính còn nợ, giữ nguyên nghĩa để không phá UI cũ), `collectedAmount` = **thực thu** (`paid_amount − written_off_amount`, tiền người thuê trả thật), `writtenOffAmount` = **đã bỏ nợ**. Áp cho: phiếu (danh sách / chi tiết / mọi lệnh trả chi tiết phiếu), số tổng hợp `GET /invoices/totals`, số dư HĐ `GET /contracts/{id}/balance` (từng phiếu còn nợ). UI hiện "Đã thu" bằng `collectedAmount`, "Đã bỏ nợ" khi > 0. Trạng thái: thu đủ phần còn lại bằng tiền ⇒ `Paid`; đóng có phần bỏ nợ ⇒ `WrittenOff`; chưa đủ mà **có thực thu** ⇒ `PartiallyPaid`; chưa thu đồng nào (kể cả đã bỏ nợ một phần) ⇒ `Unpaid` / `Overdue`. VD phiếu 3.000.000đ: "thanh toán 2.000.000 + bỏ phần còn lại" (PM-BR-29) ⇒ `paidAmount` 3.000.000, `collectedAmount` 2.000.000, `writtenOffAmount` 1.000.000, `WrittenOff`; chỉ bỏ nợ 1.000.000 ⇒ `collectedAmount` 0, `Unpaid` / `Overdue`, còn nợ 2.000.000 | Application + Domain |
 | PM-BR-31 ✅ | **Nợ các kỳ trước** (PM-UC-18): phiếu đã chốt của cùng HĐ, kỳ trước phiếu đang xem, còn nợ; "Tổng cần thanh toán" = còn phải trả của phiếu này (nháp: tổng phiếu) + nợ các kỳ trước. **Nợ HĐ trước** (11/10/2026 — HĐ ký lại, CT-UC-21): phiếu đã chốt còn nợ của các HĐ đứng trước trong chuỗi `previous_contract_id` hiện ở **danh sách riêng** `previousContractDebts` (kèm số HĐ) + tổng `previousContractDue` — **không cộng** vào "Tổng cần thanh toán" (thu tiền vẫn ghi trên HĐ cũ, PM-BR-02; người đứng tên có thể đã đổi) | Query |
@@ -92,6 +95,8 @@ không chặn được ⇒ lúc đó mới làm **số dư có** (trả thừa, 
 
 **`payment_allocations`**: id, organization_id, contract_id, payment_id, invoice_id, amount > 0, cancelled_at.
 FK composite `(organization_id, contract_id, payment_id)` → payments và `(organization_id, contract_id, invoice_id)` → invoices ⇒ DB chặn phân bổ chéo HĐ.
+
+**`collection_reductions`** (PM-BR-38, 09/11/2026): id, organization_id, property_id, contract_id, invoice_id (FK composite → invoices), `amount_before`, `amount_after` numeric(18,0) (CHECK 0 ≤ after < before), `reason` varchar(500) N, created_at/by. Index (invoice_id). Chỉ ghi, không sửa / xóa. Ẩn danh người đứng tên (RT-BR-06): `reason` là ô ghi chú tự do — che như ghi chú phiếu thu.
 
 **Cọc trên `contracts`** (M05): `deposit_amount` numeric(18,0) ≥ 0, `deposit_terms`, `deposit_status` varchar(12) (`Holding` / `Refunded` /
 `Transferred`), `deposit_refunded_on` date, `deposit_refunded_amount` numeric(18,0), `deposit_note` varchar(500).
@@ -129,7 +134,8 @@ Contract (M05)
 |--------|-------|---------|
 | POST | `/contracts/{contractId}/payments` | Idempotency-Key; 201 phiếu thu |
 | GET | `/payments?contractId=&roomId=&invoiceId=` | gồm cả phiếu hoàn tiền (`kind = Refund`) |
-| POST | `/payments/{id}/reverse` `{ reason }` | 409 `PAYMENT_ALREADY_REVERSED` |
+| POST | `/payments/{id}/reverse` `{ reason }` | 409 `PAYMENT_ALREADY_REVERSED`; 422 `COLLECTED_BELOW_REFUNDED` (dòng hoàn trả đã chốt — M-01); kèm phiếu hoàn (PM-BR-39); quản lý khu 403 `COLLECTED_PERIOD_LOCKED` |
+| PUT | `/invoices/{id}/collected` `{ amount, expectedAmount, paidAt?, method?, reason? }` | PM-BR-38; Idempotency-Key; 200 `{ summary, payments }` (phiếu vừa ghi / đảo); 409 `COLLECTED_AMOUNT_CHANGED`; 422 `PAYMENT_EXCEEDS_DEBT`, `COLLECTED_AMOUNT_UNCHANGED`, `COLLECTED_BELOW_REFUNDED`, `INVOICE_CARRIED_OVER`; 403 `COLLECTED_PERIOD_LOCKED` |
 | POST | `/invoices/{invoiceId}/write-off` `{ amount?, reason }` | Idempotency-Key; 403 `WRITE_OFF_NOT_ALLOWED` |
 | POST | `/invoices/{invoiceId}/pay-and-write-off` `{ amount, method, paidAt, payerName?, reference?, reason }` | Idempotency-Key; 403, 422 |
 | POST | `/contracts/{id}/deposit/refund` `{ refundedOn, amount?, note? }` | "Đã hoàn trả cọc" |
@@ -148,7 +154,7 @@ Contract (M05)
 | deposit refund amount | 0 … `deposit_amount`; < cọc ⇒ `note` bắt buộc (≤ 500) |
 
 ## 9. Phân quyền
-Chủ trọ và phó quản lý làm mọi việc thu tiền; **bỏ nợ** chỉ chủ trọ hoặc phó quản lý được cấp quyền riêng (M01 ID-BR-23).
+Chủ trọ và quản lý khu (khu được giao) làm mọi việc thu tiền, kể cả **bỏ nợ** (đổi 08/11/2026 — M01 ID-BR-23, bỏ quyền cấp riêng).
 
 ## 10. Toàn vẹn dữ liệu & concurrency
 
@@ -165,10 +171,18 @@ Audit mọi phiếu thu, đảo, bỏ nợ, đánh dấu hoàn cọc. Không có
 
 ## 12. Kế hoạch test
 - Thu 1 phiếu / thu theo HĐ (cũ nhất trước) / thu vượt → `PAYMENT_EXCEEDS_DEBT`; đảo phiếu thu → phiếu về còn nợ; đảo 2 lần → 409.
-- Bỏ nợ: trả 2tr + bỏ 1tr trên phiếu 3tr → phiếu `WrittenOff`, `collectedAmount` 2tr, `writtenOffAmount` 1tr, `paidAmount` 3tr (PM-BR-36); số tổng hợp tháng và số dư HĐ cũng tách 3 số; chỉ bỏ nợ 1tr (chưa thu) → `Unpaid`/`Overdue`, `collectedAmount` 0; bằng số còn nợ → `NOTHING_TO_WRITE_OFF`; phó quản lý chưa có quyền → 403,
-  được cấp quyền → làm được; thiếu lý do → 400.
+- Bỏ nợ: trả 2tr + bỏ 1tr trên phiếu 3tr → phiếu `WrittenOff`, `collectedAmount` 2tr, `writtenOffAmount` 1tr, `paidAmount` 3tr (PM-BR-36); số tổng hợp tháng và số dư HĐ cũng tách 3 số; chỉ bỏ nợ 1tr (chưa thu) → `Unpaid`/`Overdue`, `collectedAmount` 0; bằng số còn nợ → `NOTHING_TO_WRITE_OFF`; quản lý khu làm được trong khu được giao; thiếu lý do → 400.
 - Nợ các kỳ trước: phiếu tháng 12 hiện nợ tháng 11 + tổng cần thanh toán; thu bằng tổng → trả tháng 11 trước.
 - Phiếu hoàn tiền (PM-BR-37, 20/10/2026): điều chỉnh chỉ số "Xử lý ngay" làm hóa đơn đã thu đủ giảm 190.000đ ⇒ có phiếu `Refund` số `PC…` 190.000đ, hóa đơn `paidAmount` / `collectedAmount` = tổng mới, `Paid`; đảo phiếu hoàn ⇒ hóa đơn về như trước khi hoàn → vượt tổng ⇒ 422; hóa đơn có bỏ nợ ⇒ phiếu bỏ nợ cũ bị đảo, có phiếu bỏ nợ mới phần còn lại, không phiếu hoàn khi thu dư ≤ phần bỏ nợ.
+- **Sửa đã thu (PM-BR-38 / PM-BR-39, 09/11/2026)** — điện 3.800đ/kWh, hóa đơn 3.000.000:
+  S1 tăng: đã thu 0 → 2.000.000 (chuyển khoản, ngày hôm qua) ⇒ 1 PT 2tr đúng ngày / cách thu, `PartiallyPaid`; → 3.000.000 ⇒ thêm PT 1tr, `Paid`.
+  S2 giảm 1 phiếu: PT 3tr → 2.800.000 ⇒ PT cũ `Reversed` lý do "Sửa đã thu: …", PT mới 2,8tr cùng ngày + cách thu, đã thu 2,8tr; 1 dòng lịch sử 3tr → 2,8tr; thiếu lý do ⇒ 400.
+  S3 giảm qua 2 phiếu: PT-1 2tr + PT-2 1tr (sau) → 1.500.000 ⇒ PT-2 đảo hẳn, PT-1 đảo + PT mới 1,5tr cùng ngày PT-1.
+  S4 phiếu thu chung 2 hóa đơn: thu theo HĐ 5tr (T trước 3tr + T này 2tr); sửa hóa đơn tháng này → 1tr ⇒ phiếu cũ đảo, phiếu mới 4tr phân bổ 3tr + 1tr.
+  S5 lỗi: `expectedAmount` cũ ⇒ 409 `COLLECTED_AMOUNT_CHANGED`; vượt tổng ⇒ 422 `PAYMENT_EXCEEDS_DEBT`; bằng số cũ ⇒ 422 `COLLECTED_AMOUNT_UNCHANGED`; nháp ⇒ 422 `INVOICE_NOT_FINALIZED`.
+  S6 H-04: PT 1tr đủ, điều chỉnh chỉ số "Xử lý ngay" ⇒ PC; đảo PT ⇒ 200, PC cũng `Reversed`, đã thu 0, hủy hóa đơn được; sửa đã thu về 0 ⇒ như vậy; sửa về (tổng − 100.000) ⇒ PC giữ, PT mới = số mới + PC.
+  S7 quản lý khu: giảm tiền có ngày thu trước ngày 1 tháng trước ⇒ 403 `COLLECTED_PERIOD_LOCKED` (sửa và nút Đảo), chủ trọ làm được; quản lý tăng được; giảm tiền thu tháng này được.
+  S8 hoàn trả trỏ vào hóa đơn: hóa đơn tháng trước thu 3tr, nháp tháng này có dòng hoàn trả 500k nguồn hóa đơn đó ⇒ sửa về 400k ⇒ 422 `COLLECTED_BELOW_REFUNDED`; về 500k được.
 - Cọc: HĐ có cọc mặc định "Đang giữ"; "Đã hoàn trả cọc" đủ / một phần (thiếu ghi chú → 400) / trả hơn cọc → 400; bỏ đánh dấu; HĐ không cọc → `NO_DEPOSIT`;
   ký lại → HĐ cũ "Đã chuyển"; hoàn tất thanh lý chưa hoàn cọc vẫn được, HĐ hiện trong lọc `depositNotRefunded`.
 
@@ -181,6 +195,7 @@ Audit mọi phiếu thu, đảo, bỏ nợ, đánh dấu hoàn cọc. Không có
 | ID | Task | Trạng thái |
 |----|------|-----------|
 | PM-01 | Phiếu thu, phân bổ tự động / chỉ định, đảo, "Đã thu toàn bộ" | ✅ |
-| PM-02 | Bỏ nợ riêng + thanh toán kèm bỏ nợ, quyền theo từng phó quản lý | ✅ |
+| PM-02 | Bỏ nợ riêng + thanh toán kèm bỏ nợ, quyền chủ trọ + quản lý khu | ✅ |
 | PM-03 | Nợ các kỳ trước trên phiếu | ✅ |
+| PM-05 | Sửa trực tiếp số đã thu + lịch sử giảm + đảo kèm phiếu hoàn (PM-BR-38/39, H-04) | ✅ 09/11/2026 |
 | PM-04 | Cọc tối giản: trạng thái cọc trên HĐ, "Đã hoàn trả cọc" / bỏ đánh dấu, ký lại ⇒ đã chuyển, lọc chưa hoàn cọc + test + seeder | ✅ |

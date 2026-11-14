@@ -5,7 +5,7 @@ Mỗi **khu** có danh mục khoản thu riêng. Mỗi **hợp đồng** chọn 
 từ chỉ số ngày nhận phòng — xem [meters.md](meters.md).
 Đây là dữ liệu nền cho tính tiền phiếu hằng tháng ([invoices.md](invoices.md)).
 
-Quyền: chủ trọ và phó quản lý.
+Quyền: chủ trọ và quản lý khu.
 
 ## 2 nhóm khoản thu (`group` + `chargeBasis`)
 
@@ -113,7 +113,7 @@ Bậc tính theo **lượng tiêu thụ của kỳ**, không quy đổi theo s�
 | `tiers`: 1–10 bậc, `upTo` tăng dần, bậc cuối `null`, giá mỗi bậc ≤ 100.000đ | 400 `INVALID_TIERS` |
 | Giá theo bậc cho dịch vụ | 400 `FEE_TIERS_METERED_ONLY` |
 | Trùng ngày hiệu lực với bản giá có sẵn | 409 `FEE_PRICE_DATE_EXISTS` |
-| Ngày hiệu lực thuộc kỳ đã chốt phiếu (khi có module phiếu) | 422 `FEE_PRICE_LOCKED` |
+| Bản giá mới / bản bị xóa làm đổi giá áp của một dòng phiếu đã chốt (giá áp = bản hiệu lực tại ngày cuối dòng; bản hiệu lực trước bản đang được dùng thì thêm được) | 422 `FEE_PRICE_LOCKED` |
 | Ngày hiệu lực quá hôm nay + 1 năm | 400 |
 
 Cảnh báo (vẫn lưu): `ELECTRICITY_PRICE_ABOVE_THRESHOLD` — giá điện (theo bậc: bậc cao nhất) cao hơn mức tham chiếu (mặc định 3.460đ/kWh, cấu hình
@@ -165,7 +165,7 @@ chép giá vào. `effectiveFrom` mặc định hôm nay.
 | `FEE_TYPE_NOT_FOUND` / `FEE_PRICE_NOT_FOUND` | 404 | |
 | `FEE_NAME_TAKEN` / `FEE_SYSTEM_CODE_TAKEN` | 409 | Ô tên |
 | `FEE_PRICE_DATE_EXISTS` | 409 | Ô ngày hiệu lực |
-| `FEE_PRICE_LOCKED` | 422 | Chọn ngày từ kỳ chưa chốt |
+| `FEE_PRICE_LOCKED` | 422 | Bản giá đang được phiếu đã chốt dùng — thêm bản hiệu lực sau ngày cuối kỳ đã chốt |
 | `FEE_IN_USE` | 422 | Gỡ khỏi hợp đồng trước |
 | `FEE_ALREADY_ARCHIVED` / `FEE_NOT_ARCHIVED` | 409 | Tải lại |
 | `FEE_ARCHIVED` / `FEE_NOT_IN_PROPERTY` | 422 | Khi gắn vào hợp đồng: chọn khoản khác |

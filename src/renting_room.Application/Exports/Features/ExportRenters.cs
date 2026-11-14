@@ -102,9 +102,10 @@ public sealed class ExportRentersHandler(
             .ThenBy(r => r.FullName, StringComparer.Ordinal)
             .ToList();
 
-        if (request.IncludeSensitive)
-            auditTrail.RecordRead(AuditActions.ExportWithIdNumbers, nameof(Renter), null,
-                new { rowCount = rows.Count, propertyIds = request.PropertyIds is { Count: > 0 } ids ? ids : null, from, to });
+        // RP-BR-03: mọi lần xuất đều để lại dấu vết (người, bộ lọc, số dòng) — kể cả khi không kèm số giấy tờ (vẫn có ngày sinh, SĐT, địa chỉ).
+        await auditTrail.RecordReadAsync(
+            request.IncludeSensitive ? AuditActions.ExportWithIdNumbers : AuditActions.ExportRenters, nameof(Renter), null,
+            new { rowCount = rows.Count, propertyIds = request.PropertyIds is { Count: > 0 } ids ? ids : null, from, to }, cancellationToken);
 
         var subtitle = RenterExportSheets.Subtitle(from, to, today, now, request.IncludeSensitive);
         var idNumber = (RenterExportRow r) => r.IdNumberEncrypted is not { Length: > 0 } ? string.Empty

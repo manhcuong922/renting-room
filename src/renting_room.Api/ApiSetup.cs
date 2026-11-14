@@ -27,6 +27,7 @@ internal static class ApiSetup
         services.ConfigureHttpJsonOptions(options =>
         {
             options.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
+            options.SerializerOptions.Converters.Add(new NormalizingStringConverter());
             // "version" trả ra dạng chuỗi (xmin) — client gửi lại nguyên chuỗi đó khi cập nhật.
             options.SerializerOptions.NumberHandling = JsonNumberHandling.AllowReadingFromString;
         });
@@ -43,6 +44,7 @@ internal static class ApiSetup
             .AddJsonOptions(options =>
             {
                 options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+                options.JsonSerializerOptions.Converters.Add(new NormalizingStringConverter());
                 options.JsonSerializerOptions.NumberHandling = JsonNumberHandling.AllowReadingFromString;
             })
             // JSON sai cú pháp / thiếu body / tham số sai kiểu hoặc thiếu → BadHttpRequestException ⇒ GlobalExceptionHandler trả
@@ -61,7 +63,7 @@ internal static class ApiSetup
 
         // Mã hóa dữ liệu nhạy cảm lưu tạm (response idempotency chứa token / mật khẩu tạm).
         // Nhiều instance / container: PHẢI cấu hình DataProtection:KeysPath trỏ tới thư mục dùng chung và bền vững,
-        // nếu không mỗi instance có khóa riêng và mất khóa khi container khởi động lại.
+        // nếu không mỗi instance có khóa riêng và mất khóa khi container khởi động lại. Ngoài Development thiếu ⇒ app dừng (M-17, UseApi).
         var dataProtection = services.AddDataProtection().SetApplicationName("renting_room");
         if (configuration["DataProtection:KeysPath"] is { Length: > 0 } keysPath)
             dataProtection.PersistKeysToFileSystem(new DirectoryInfo(keysPath));
@@ -88,6 +90,7 @@ internal static class ApiSetup
         });
 
         services.AddHealthChecks().AddDbContextCheck<AppDbContext>("database", tags: [ReadyTag]);
+        services.AddCachedHealthChecks(TimeSpan.FromSeconds(configuration.GetValue("Health:ReadyCacheSeconds", 5)));
 
         services.AddEndpointsApiExplorer();
         services.AddSwaggerGen(options =>
@@ -120,6 +123,8 @@ internal static class ApiSetup
         // không phải đợi tới request đăng nhập đầu tiên mới trả 500.
         _ = app.Services.GetRequiredService<JwtSigningKeyProvider>();
         _ = app.Services.GetRequiredService<IPersonalDataProtector>(); // thiếu PersonalData:HashKey ⇒ dừng ngay
+        RequireAllowedHosts(app);
+        RequireDataProtectionKeysPath(app);
         WarnIfReverseProxyNotConfigured(app);
 
         app.UseForwardedHeaders();
@@ -160,6 +165,50 @@ internal static class ApiSetup
     /// Sau proxy mà không khai báo proxy ⇒ mọi client có chung IP của proxy ⇒ giới hạn đăng nhập theo IP
     /// áp cho TẤT CẢ người dùng cùng lúc. Cảnh báo để người vận hành cấu hình đúng.
     /// </summary>
+    /// <summary>
+    /// L-15 (05/11/2026, M12 §5): ngoài Development, <c>AllowedHosts</c> phải là tên miền thật (VD <c>tro.example.vn</c>, nhiều tên cách nhau
+    /// bằng <c>;</c>) — <c>"*"</c> nhận mọi Host header ⇒ dừng ngay khi khởi động thay vì chạy với cấu hình lỏng.
+    /// </summary>
+    private static void RequireAllowedHosts(WebApplication app)
+    {
+        if (app.Environment.IsDevelopment())
+            return;
+        var hosts = (app.Configuration["AllowedHosts"] ?? string.Empty)
+            .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (hosts.Length == 0 || hosts.Contains("*"))
+            throw new InvalidOperationException(
+                "AllowedHosts must list the public host names (e.g. \"tro.example.vn\") outside Development; \"*\" accepts any Host header. " +
+                "Set AllowedHosts via environment variable.");
+    }
+
+    /// <summary>
+    /// M-17: khóa Data Protection mất khi container chạy lại ⇒ mọi <c>id_number_encrypted</c> và response idempotency thành rác không giải mã được.
+    /// Ngoài Development bắt buộc trỏ <c>DataProtection:KeysPath</c> tới volume bền vững, thiếu thì dừng ngay khi khởi động.
+    /// </summary>
+    private static void RequireDataProtectionKeysPath(WebApplication app)
+    {
+        if (app.Environment.IsDevelopment())
+            return;
+        var keysPath = app.Configuration["DataProtection:KeysPath"];
+        if (string.IsNullOrWhiteSpace(keysPath))
+            throw new InvalidOperationException(
+                "DataProtection:KeysPath must point to a persistent volume outside Development; keys kept in memory are lost on restart " +
+                "and every encrypted ID number becomes unreadable. Set DataProtection__KeysPath via environment variable.");
+        if (!Directory.Exists(keysPath))
+            throw new InvalidOperationException($"DataProtection:KeysPath '{keysPath}' does not exist; mount the persistent volume there.");
+
+        var probe = Path.Combine(keysPath, $".write-test-{Guid.NewGuid():N}");
+        try
+        {
+            File.WriteAllBytes(probe, []);
+            File.Delete(probe);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            throw new InvalidOperationException($"DataProtection:KeysPath '{keysPath}' is not writable by the application user.", ex);
+        }
+    }
+
     private static void WarnIfReverseProxyNotConfigured(WebApplication app)
     {
         if (app.Environment.IsDevelopment())

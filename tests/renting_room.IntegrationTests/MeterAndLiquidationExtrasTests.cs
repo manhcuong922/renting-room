@@ -148,7 +148,7 @@ public sealed class MeterAndLiquidationExtrasTests(ApiFactory factory)
         preview.GetProperty("canComplete").GetBoolean().Should().BeFalse();
 
         // Đã chốt: kỳ cuối thu trọn 3,5tr, cọc 3,5tr trừ vào hóa đơn trả phòng (kết toán — BL-BR-41) ⇒ tổng 0: không nợ, không phải trả lại.
-        (await _client.PostJsonAsync($"/api/v1/invoices/{invoiceId}/finalize", null, token)).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await _client.FinalizeInvoiceAsync(invoiceId, token)).StatusCode.Should().Be(HttpStatusCode.OK);
         preview = await PreviewAsync();
         preview.GetProperty("finalInvoiceId").GetGuid().Should().Be(invoiceId);
         preview.GetProperty("finalInvoiceStatus").GetString().Should().Be("Finalized");

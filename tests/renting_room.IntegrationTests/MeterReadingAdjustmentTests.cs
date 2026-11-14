@@ -62,7 +62,7 @@ public sealed class MeterReadingAdjustmentTests(ApiFactory factory)
 
     private async Task FinalizeAsync(Setup s, Guid invoiceId)
     {
-        var finalized = await _client.PostJsonAsync($"/api/v1/invoices/{invoiceId}/finalize", null, s.Token);
+        var finalized = await _client.FinalizeInvoiceAsync(invoiceId, s.Token);
         finalized.StatusCode.Should().Be(HttpStatusCode.OK, await finalized.Content.ReadAsStringAsync());
     }
 
@@ -159,6 +159,51 @@ public sealed class MeterReadingAdjustmentTests(ApiFactory factory)
 
         var reverse = await _client.PostJsonAsync($"/api/v1/payments/{refund.GetProperty("id").GetGuid()}/reverse", new { reason = "Thử" }, s.Token);
         (await reverse.ReadProblemCodeAsync()).Should().Be("PAYMENT_EXCEEDS_DEBT", "đảo phiếu hoàn làm đã thu vượt tổng mới");
+    }
+
+    /// <summary>98 H-04 / M08 PM-BR-39, PM-BR-38 (5) — S6 plan 08 §12: phiếu thu sai trên hóa đơn đã có phiếu hoàn không còn kẹt.</summary>
+    [Fact]
+    public async Task S6_ReceiptWithRefund_ReversingReceiptAlsoReversesRefund_EditToZeroOrKeepRefund()
+    {
+        var s = await ArrangeAsync();
+        var (invoiceId, readingId) = await FinalizedPreviousAsync(s, 1388);
+        var before = await InvoiceAsync(s, invoiceId);
+        await PayAsync(s, invoiceId, Total(before));
+        var adjusted = await OkAsync(await AdjustAsync(s, readingId, 1338, "Immediate", new { date = s.Today, method = "Cash" }));
+        var newTotal = adjusted.GetProperty("invoice").GetProperty("summary").GetProperty("totalAmount").GetDecimal();
+        var payments = await (await _client.GetAsync($"/api/v1/payments?invoiceId={invoiceId}", s.Token)).ReadAsync<List<JsonElement>>();
+        var receipt = payments.Single(p => p.GetProperty("kind").GetString() == "Receipt");
+
+        var reversed = await _client.PostJsonAsync($"/api/v1/payments/{receipt.GetProperty("id").GetGuid()}/reverse", new { reason = "Ghi nhầm phòng" }, s.Token);
+        reversed.StatusCode.Should().Be(HttpStatusCode.OK, await reversed.Content.ReadAsStringAsync());
+
+        var after = await (await _client.GetAsync($"/api/v1/payments?invoiceId={invoiceId}", s.Token)).ReadAsync<List<JsonElement>>();
+        after.Should().OnlyContain(p => p.GetProperty("status").GetString() == "Reversed", "phiếu hoàn đảo kèm — tiền chưa thu thì cũng chưa hoàn");
+        after.Single(p => p.GetProperty("kind").GetString() == "Refund").GetProperty("reverseReason").GetString().Should().StartWith("Đảo kèm phiếu thu PT");
+        (await InvoiceAsync(s, invoiceId)).GetProperty("summary").GetProperty("collectedAmount").GetDecimal().Should().Be(0);
+
+        // Thu lại đủ rồi sửa giảm: còn > 0 ⇒ giữ phiếu hoàn; về 0 ⇒ đảo luôn phiếu hoàn.
+        var s2 = await ArrangeAsync();
+        var (invoice2, reading2) = await FinalizedPreviousAsync(s2, 1388);
+        await PayAsync(s2, invoice2, Total(await InvoiceAsync(s2, invoice2)));
+        var adjusted2 = await OkAsync(await AdjustAsync(s2, reading2, 1338, "Immediate", new { date = s2.Today, method = "Cash" }));
+        var total2 = adjusted2.GetProperty("invoice").GetProperty("summary").GetProperty("totalAmount").GetDecimal();
+        var refund2 = 50 * Price;
+
+        var kept = await OkAsync(await _client.PutJsonAsync($"/api/v1/invoices/{invoice2}/collected",
+            new { amount = total2 - 100_000, expectedAmount = total2, reason = "Thiếu 100k" }, s2.Token));
+        kept.GetProperty("summary").GetProperty("collectedAmount").GetDecimal().Should().Be(total2 - 100_000);
+        var list2 = await (await _client.GetAsync($"/api/v1/payments?invoiceId={invoice2}", s2.Token)).ReadAsync<List<JsonElement>>();
+        list2.Single(p => p.GetProperty("kind").GetString() == "Refund").GetProperty("status").GetString().Should().Be("Recorded");
+        list2.Single(p => p.GetProperty("kind").GetString() == "Receipt" && p.GetProperty("status").GetString() == "Recorded")
+            .GetProperty("amount").GetDecimal().Should().Be(total2 - 100_000 + refund2);
+
+        var zero = await OkAsync(await _client.PutJsonAsync($"/api/v1/invoices/{invoice2}/collected",
+            new { amount = 0, expectedAmount = total2 - 100_000, reason = "Chưa thu thật" }, s2.Token));
+        zero.GetProperty("summary").GetProperty("collectedAmount").GetDecimal().Should().Be(0);
+        (await (await _client.GetAsync($"/api/v1/payments?invoiceId={invoice2}", s2.Token)).ReadAsync<List<JsonElement>>())
+            .Should().OnlyContain(p => p.GetProperty("status").GetString() == "Reversed");
+        newTotal.Should().Be(total2);
     }
 
     [Fact]
@@ -313,7 +358,7 @@ public sealed class MeterReadingAdjustmentTests(ApiFactory factory)
         (await SaveAsync(s, s.Previous, s.Month, 1388)).StatusCode.Should().Be(HttpStatusCode.OK);
         var draft = await GenerateAsync(s, s.Previous);
         var line = Metered(draft);
-        (await _client.PutJsonAsync($"/api/v1/invoices/{Id(draft)}/lines/{line.GetProperty("id").GetGuid()}",
+        (await _client.EditInvoiceLineAsync(Id(draft), line.GetProperty("id").GetGuid(),
             new { amount = 500_000, note = "Giảm cho khách quen" }, s.Token)).StatusCode.Should().Be(HttpStatusCode.OK);
         await FinalizeAsync(s, Id(draft));
 
@@ -385,7 +430,7 @@ public sealed class MeterReadingAdjustmentTests(ApiFactory factory)
         var s = await ArrangeAsync();
         (await SaveAsync(s, s.Previous, s.Month, 1388)).StatusCode.Should().Be(HttpStatusCode.OK);
         var draft = await GenerateAsync(s, s.Previous);
-        (await _client.PutJsonAsync($"/api/v1/invoices/{Id(draft)}/lines/{Metered(draft).GetProperty("id").GetGuid()}",
+        (await _client.EditInvoiceLineAsync(Id(draft), Metered(draft).GetProperty("id").GetGuid(),
             new { amount = 100_000, note = "Giảm cho khách quen" }, s.Token)).StatusCode.Should().Be(HttpStatusCode.OK);
         await FinalizeAsync(s, Id(draft));
 
@@ -402,9 +447,9 @@ public sealed class MeterReadingAdjustmentTests(ApiFactory factory)
         (await SaveAsync(s, s.Previous, s.Month, 1388)).StatusCode.Should().Be(HttpStatusCode.OK);
         var draft = await GenerateAsync(s, s.Previous);
         var rentLine = draft.GetProperty("lines").EnumerateArray().Single(l => l.GetProperty("type").GetString() == "Rent").GetProperty("id").GetGuid();
-        (await _client.PutJsonAsync($"/api/v1/invoices/{Id(draft)}/lines/{rentLine}", new { amount = 3_000_000, note = "Sửa nhà" }, s.Token))
+        (await _client.EditInvoiceLineAsync(Id(draft), rentLine, new { amount = 3_000_000, note = "Sửa nhà" }, s.Token))
             .StatusCode.Should().Be(HttpStatusCode.OK);
-        (await _client.PostJsonAsync($"/api/v1/invoices/{Id(draft)}/manual-lines",
+        (await _client.AddInvoiceLineAsync(Id(draft),
             new { type = "ManualDiscount", description = "Miễn tiền tháng sửa nhà", amount = 3_500_000, note = "Sửa nhà" }, s.Token))
             .StatusCode.Should().Be(HttpStatusCode.OK);
         await FinalizeAsync(s, Id(draft));

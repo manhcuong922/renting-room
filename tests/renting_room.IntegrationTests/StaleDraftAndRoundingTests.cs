@@ -106,7 +106,7 @@ public sealed class StaleDraftAndRoundingTests(ApiFactory factory)
         draft.GetProperty("isStale").GetBoolean().Should().BeTrue("bản giá mới của khu có hiệu lực trong kỳ");
         var id = draft.GetProperty("id").GetGuid();
 
-        var finalized = await _client.PostJsonAsync($"/api/v1/invoices/{id}/finalize", null, s.Token);
+        var finalized = await _client.FinalizeInvoiceAsync(id, s.Token);
         finalized.StatusCode.Should().Be(HttpStatusCode.OK, "phòng không dùng Giặt sấy ⇒ phần hệ thống không đổi");
         (await finalized.ReadAsync<JsonElement>()).GetProperty("summary").GetProperty("isStale").GetBoolean().Should().BeFalse();
         (await DraftAsync(s)).GetProperty("isStale").GetBoolean().Should().BeFalse();
@@ -150,7 +150,7 @@ public sealed class StaleDraftAndRoundingTests(ApiFactory factory)
 
         var deletion = await DeleteDraftHoldingContractLockAsync(s, id);
         var response = await AfterDeleteCommitsAsync(deletion,
-            factory.CreateClient().PostJsonAsync($"/api/v1/invoices/{id}/{action}", action == "void" ? new { reason = "Sai" } : null, s.Token));
+            factory.CreateClient().PostJsonAsync($"/api/v1/invoices/{id}/{action}", action == "void" ? new { reason = "Sai" } : new { version = "0" }, s.Token));
 
         response.StatusCode.Should().Be(HttpStatusCode.NotFound, await response.Content.ReadAsStringAsync());
         (await response.ReadProblemCodeAsync()).Should().Be("INVOICE_NOT_FOUND");

@@ -12,6 +12,12 @@ public interface IRoomRepository
 
     Task<IReadOnlyList<Room>> ListActiveByPropertyAsync(Guid propertyId, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// <c>FOR UPDATE</c> mọi phòng của khu (kể cả đã archive) theo id tăng dần — archive khu chờ lệnh tạo HĐ nháp / khôi phục phòng đang chạy
+    /// trên phòng của khu rồi mới kiểm (L-06).
+    /// </summary>
+    Task LockAllInPropertyAsync(Guid propertyId, CancellationToken cancellationToken);
+
     Task<bool> IsCodeTakenAsync(Guid propertyId, string code, Guid? excludeId, CancellationToken cancellationToken);
 
     /// <summary>Các mã trong <paramref name="codes"/> đã có phòng trong khu.</summary>

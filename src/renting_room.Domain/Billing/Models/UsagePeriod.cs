@@ -62,7 +62,9 @@ public sealed record UsagePeriod(DateOnly Start, DateOnly End, DateOnly ClosingP
         if (movedIn)
             return meter.FindHandover(contractId, stay!.From, stay.To);
         // Chỉ số nhận phòng của chính HĐ (M06 §3.3 bước 2(b)): không lấy chỉ số của người trước (mỗi HĐ có dải số riêng — MT-BR-03).
-        return meter.FindHandover(contractId, to: Start) ?? meter.LatestOnOrBefore(Start);
+        // Lắp đúng ngày đầu kỳ ⇒ số lắp (bước 2(c)): số chốt kỳ này ghi cùng ngày xếp sau, "mới nhất tới Start" sẽ là số cuối ⇒ mất sản lượng.
+        return meter.FindHandover(contractId, to: Start)
+            ?? (meter.InstalledDate == Start ? meter.Ordered.FirstOrDefault(r => r.Kind == ReadingKind.Initial) : meter.LatestOnOrBefore(Start));
     }
 
     public MeterReading? EndReading(Meter meter, Guid contractId, RoomStay? stay = null, RoomStay? left = null)

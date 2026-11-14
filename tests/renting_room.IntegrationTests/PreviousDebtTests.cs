@@ -34,7 +34,7 @@ public sealed class PreviousDebtTests(ApiFactory factory)
             var page = await (await _client.GetAsync($"/api/v1/invoices?contractId={contractId}&billingMonth={month:yyyy-MM}", token)).ReadAsync<JsonElement>();
             var id = page.GetProperty("items")[0].GetProperty("id").GetGuid();
             if (finalize)
-                (await _client.PostJsonAsync($"/api/v1/invoices/{id}/finalize", null, token)).StatusCode.Should().Be(HttpStatusCode.OK);
+                (await _client.FinalizeInvoiceAsync(id, token)).StatusCode.Should().Be(HttpStatusCode.OK);
             return id;
         }
         async Task<JsonElement> DetailAsync(Guid id) => await (await _client.GetAsync($"/api/v1/invoices/{id}", token)).ReadAsync<JsonElement>();
@@ -47,7 +47,7 @@ public sealed class PreviousDebtTests(ApiFactory factory)
         draft.GetProperty("summary").GetProperty("totalAmount").GetDecimal().Should().Be(Rent, "nợ cũ không cộng vào phiếu");
         (await DetailAsync(first)).GetProperty("previousDebts").GetArrayLength().Should().Be(0);
 
-        await _client.PostJsonAsync($"/api/v1/invoices/{second}/finalize", null, token);
+        await _client.FinalizeInvoiceAsync(second, token);
         (await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/payments", new { amount = 4_000_000, method = "BankTransfer", paidAt = today }, token))
             .StatusCode.Should().Be(HttpStatusCode.Created);
 
@@ -80,7 +80,7 @@ public sealed class PreviousDebtTests(ApiFactory factory)
         }
         var oldInvoice = await InvoiceAsync(oldId, start);
         var oldInvoiceId = oldInvoice.GetProperty("summary").GetProperty("id").GetGuid();
-        (await _client.PostJsonAsync($"/api/v1/invoices/{oldInvoiceId}/finalize", null, token)).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await _client.FinalizeInvoiceAsync(oldInvoiceId, token)).StatusCode.Should().Be(HttpStatusCode.OK);
         var owed = oldInvoice.GetProperty("summary").GetProperty("totalAmount").GetDecimal();
 
         // Ký lại cho người còn ở: HĐ cũ thanh lý tại hôm qua (còn nợ), HĐ mới bắt đầu hôm nay.

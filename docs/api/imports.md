@@ -1,7 +1,7 @@
 # Nhập từ Excel
 
 Dùng **một lần khi chuyển khu đang chạy từ sổ ghi chép sang phần mềm**: tạo mới hàng loạt phòng và người thuê đang ở. Import **chỉ tạo mới** —
-không sửa, ghi đè hay kết thúc dữ liệu đã có (việc đó làm ở màn phòng / người thuê / HĐ). Chỉ chủ trọ.
+không sửa, ghi đè hay kết thúc dữ liệu đã có (việc đó làm ở màn phòng / người thuê / HĐ). Chủ trọ và quản lý khu (khu được giao — 08/11/2026; trước chỉ chủ trọ).
 
 | Bước | Phòng (PR-UC-11) | Người thuê đang ở (RT-UC-10) |
 |------|------------------|------------------------------|
@@ -21,11 +21,12 @@ Nhập **phòng trước**, rồi người thuê.
 
 FE nên nhắc xem trước lại nếu quá 15 phút không thao tác (dữ liệu có thể đã đổi). Bước lưu có thể mất vài giây — hiện thanh tiến trình.
 
-**Giới hạn**: `.xlsx` ≤ 2 MB (giải nén ≤ 20 MB), ≤ 500 dòng, ≤ 10 lần xem trước / phút / người. Server tìm dòng tiêu đề theo mẫu (phía trên
-được có dòng tiêu đề / ghi chú), chỉ đọc đúng các cột của mẫu, bỏ qua cột thừa. Ô có **công thức** ⇒ lỗi `FORMULA_NOT_ALLOWED`.
+**Giới hạn**: `.xlsx` ≤ 2 MB (giải nén ≤ 5 MB — 06/11/2026, trước 20 MB), ≤ 500 dòng, ≤ 10 lần xem trước / phút / người. Server tìm dòng tiêu đề theo mẫu (phía trên
+được có dòng tiêu đề / ghi chú — tìm trong 10 dòng đầu), chỉ đọc đúng các cột của mẫu, bỏ qua cột thừa. Chỉ đọc **50 cột đầu** và **10 sheet đầu** (cột / sheet sau đó bị bỏ qua); đọc tới dòng thứ 501 sau tiêu đề thì dừng và báo `IMPORT_TOO_MANY_ROWS` "File có hơn 500 dòng" — UI gợi ý tách file (H-05: chống file lạ làm cạn bộ nhớ server). Ô có **công thức** ⇒ lỗi `FORMULA_NOT_ALLOWED`.
 Server **bỏ qua mọi id** client gửi — tra phòng theo mã phòng, người theo số giấy tờ.
 
 Lỗi cả file (400): `IMPORT_FILE_INVALID` (không phải xlsx), `IMPORT_FILE_TOO_LARGE`, `IMPORT_TEMPLATE_MISMATCH` (thiếu cột theo mẫu), `IMPORT_TOO_MANY_ROWS`.
+Lưu gửi 2 dòng cùng `rowNumber` ⇒ 400 `VALIDATION_FAILED`, lỗi `rows` mã `DUPLICATE_ROW` (03/11/2026) — gửi lại đúng mảng `row` của bước xem trước.
 
 ## Phòng
 

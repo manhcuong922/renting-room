@@ -63,6 +63,17 @@ dotnet user-secrets set "PersonalData:HashKey" "<chuỗi ngẫu nhiên ≥ 32 k�
 dotnet run --launch-profile http
 ```
 
+Lần đăng nhập **đầu tiên** bằng tài khoản admin này, hệ thống bắt **đổi mật khẩu** (11/11/2026) — mật khẩu đặt ở bước 3 chỉ dùng được một lần.
+
+(Tùy chọn) Gửi email — cần để admin cấp lại mật khẩu cho tài khoản **có email** (mật khẩu tạm gửi tới email của chính chủ; chưa cấu hình ⇒ 503 `EMAIL_NOT_CONFIGURED`). Điền `Email:Smtp` (Host, Port, Security, Username, FromAddress) trong user-secrets hoặc biến môi trường; **mật khẩu SMTP / Gmail App Password chỉ đặt bằng user-secrets, không ghi vào file json**:
+
+```bash
+dotnet user-secrets set "Email:Smtp:Host" "smtp.gmail.com"
+dotnet user-secrets set "Email:Smtp:Username" "ban@gmail.com"
+dotnet user-secrets set "Email:Smtp:FromAddress" "ban@gmail.com"
+dotnet user-secrets set "Email:Smtp:Password" "<App Password>"
+```
+
 Mở `http://localhost:5213/swagger` → gọi `POST /api/v1/auth/login` → bấm **Authorize**, dán `accessToken`.
 
 Lần chạy đầu ở Development còn tự tạo **dữ liệu mẫu** (tổ chức `DEMO`, chủ trọ `0900000009` / `ChuTroDemo2026`) với đủ tình huống

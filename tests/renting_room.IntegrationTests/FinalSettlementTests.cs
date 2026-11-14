@@ -70,7 +70,7 @@ public sealed class FinalSettlementTests(ApiFactory factory)
 
     private async Task<JsonElement> FinalizeAsync(string token, Guid invoiceId)
     {
-        var finalized = await _client.PostJsonAsync($"/api/v1/invoices/{invoiceId}/finalize", null, token);
+        var finalized = await _client.FinalizeInvoiceAsync(invoiceId, token);
         finalized.StatusCode.Should().Be(HttpStatusCode.OK, await finalized.Content.ReadAsStringAsync());
         return await finalized.ReadAsync<JsonElement>();
     }
@@ -212,7 +212,7 @@ public sealed class FinalSettlementTests(ApiFactory factory)
         (await _client.PostJsonAsync($"/api/v1/contracts/{s.ContractId}/payments",
             new { amount = s.FirstTotal, method = "Cash", paidAt = s.Today, invoiceId = s.FirstInvoiceId }, s.Token)).StatusCode.Should().Be(HttpStatusCode.Created);
 
-        (await (await _client.PostJsonAsync($"/api/v1/invoices/{Id(draft)}/finalize", null, s.Token)).ReadProblemCodeAsync()).Should().Be("DRAFT_STALE");
+        (await (await _client.FinalizeInvoiceAsync(Id(draft), s.Token)).ReadProblemCodeAsync()).Should().Be("DRAFT_STALE");
         (await _client.PostJsonAsync("/api/v1/invoices/recalculate", new { invoiceIds = new[] { Id(draft) } }, s.Token)).IsSuccessStatusCode.Should().BeTrue();
         Lines(await InvoiceAsync(s, Id(draft)), "PreviousDebt").Should().BeEmpty("đã thu đủ ⇒ không còn nợ để chuyển");
         await FinalizeAsync(s.Token, Id(draft));
@@ -230,9 +230,9 @@ public sealed class FinalSettlementTests(ApiFactory factory)
         Lines(draft, "PreviousDebt").Single().GetProperty("amount").GetDecimal().Should().Be(s.FirstTotal - 1_000_000, "chỉ chuyển phần còn nợ");
 
         var deposit = Lines(draft, "Deposit").Single().GetProperty("id").GetGuid();
-        (await (await _client.PutJsonAsync($"/api/v1/invoices/{Id(draft)}/lines/{deposit}", new { amount = 0, note = "Không trừ" }, s.Token))
+        (await (await _client.EditInvoiceLineAsync(Id(draft), deposit, new { amount = 0, note = "Không trừ" }, s.Token))
             .ReadProblemCodeAsync()).Should().Be("SETTLEMENT_LINE_LOCKED");
-        (await (await _client.DeleteAsync($"/api/v1/invoices/{Id(draft)}/lines/{deposit}", s.Token)).ReadProblemCodeAsync())
+        (await (await _client.ResetInvoiceLineAsync(Id(draft), deposit, s.Token)).ReadProblemCodeAsync())
             .Should().Be("SETTLEMENT_LINE_LOCKED");
 
         var final = await FinalizeAsync(s.Token, Id(draft));

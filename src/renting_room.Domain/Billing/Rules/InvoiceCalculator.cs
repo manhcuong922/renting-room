@@ -69,10 +69,14 @@ public static class InvoiceCalculator
         _ => schedule.RentFactor(period.Start, period.End, ProrationMode.FullPeriod)
     };
 
-    /// <summary>Hệ số dịch vụ kỳ cuối: trọn kỳ ⇒ null (đủ kỳ), theo ngày ⇒ phần số ngày ở, không thu ⇒ 0. Phiếu tháng: null.</summary>
+    /// <summary>
+    /// Hệ số dịch vụ kỳ cuối: trọn kỳ ⇒ null (đủ kỳ), theo ngày ⇒ phần số ngày ở, không thu ⇒ 0. Phiếu tháng: null.
+    /// Theo ngày mà HĐ đã ký lại ⇒ 0 (HĐ mới thu trọn dịch vụ kỳ đầu — không thu 2 lần, M-02).
+    /// </summary>
     private static decimal? ServiceFactor(InvoiceCalcInput input) => input.Final?.Charge switch
     {
-        FinalPeriodCharge.Daily when input.Schedule.DayFactor(input.Period.Start, input.Period.End) is var days && days < 1 => days,
+        FinalPeriodCharge.Daily when input.Schedule.DayFactor(input.Period.Start, input.Period.End) is var days && days < 1 =>
+            input.ServicesBilledByNextContract ? 0 : days,
         FinalPeriodCharge.None => 0,
         _ => null
     };

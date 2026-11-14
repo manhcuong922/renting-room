@@ -77,9 +77,16 @@ public sealed class BulkReplaceMetersHandler(IMeterRepository meterRepository, I
 
         var errors = new List<BulkReplaceRowError>();
         var created = new List<Meter>();
+        var serials = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         for (var index = 0; index < request.Rows.Count; index++)
         {
             var row = request.Rows[index];
+            // MT-UC-08 (L-11): 2 dòng cùng serial mới ⇒ đánh dấu dòng sau (gõ trùng khi nhập lưới).
+            if (row.NewSerialNo?.Trim() is { Length: > 0 } serial && !serials.Add(serial))
+            {
+                errors.Add(new BulkReplaceRowError(index, row.MeterId, "DUPLICATE_SERIAL", $"Serial mới {serial} trùng với dòng khác."));
+                continue;
+            }
             if (!meters.TryGetValue(row.MeterId, out var meter) || meter.PropertyId != request.PropertyId || meter.FeeTypeId != request.FeeTypeId)
             {
                 errors.Add(new BulkReplaceRowError(index, row.MeterId, MeterErrors.NotFound.Code, "Công tơ không thuộc khu / khoản thu đã chọn."));

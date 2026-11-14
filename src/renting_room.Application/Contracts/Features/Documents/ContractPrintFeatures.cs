@@ -69,7 +69,7 @@ public sealed class GetContractDocumentHandler(
             (await properties.GetAsync(contract.PropertyId, cancellationToken))!.BillingSettings);
 
         if (full)
-            auditTrail.RecordRead(AuditActions.PrintWithIdNumbers, nameof(Contract), contract.Id);
+            await auditTrail.RecordReadAsync(AuditActions.PrintWithIdNumbers, nameof(Contract), contract.Id, null, cancellationToken);
         var fileName = $"hop-dong_{contract.ContractNo.Replace('/', '-')}.docx";
         return new ExportFile(fileName, writer.Write(ContractPrintBuilder.Build(data)));
     }

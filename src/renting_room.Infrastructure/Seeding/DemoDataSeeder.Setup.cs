@@ -36,6 +36,7 @@ public sealed partial class DemoDataSeeder
         if (companyLessor)
             await Send(new UpdateLessorCommand(id, LessorType.Organization, "Công ty TNHH Nhà Trọ Demo", street + ", Hà Nội", "0900000010", null,
                 null, null, null, null, null, "0101234567", "Nguyễn Văn Chủ", "Giám đốc", null, null));
+        _propertyIds.Add(id);
         return id;
     }
 

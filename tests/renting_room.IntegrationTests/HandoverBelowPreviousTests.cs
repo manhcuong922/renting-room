@@ -33,15 +33,19 @@ public sealed class HandoverBelowPreviousTests(ApiFactory factory)
         return new S(token, propertyId, roomId, contractId, meterId, start, today);
     }
 
-    private Task<HttpResponseMessage> SavePeriodicAsync(S s, Guid contractId, DateOnly closing, decimal value, bool onAnchorDay = false) =>
-        _client.PutJsonAsync($"/api/v1/properties/{s.PropertyId}/meter-readings", new
+    /// <summary>Chỉ số cuối kỳ bắt đầu <paramref name="closing"/> (kỳ đầu HĐ có thể bắt đầu giữa tháng), ghi ngày cuối kỳ hoặc ngày mốc kế tiếp.</summary>
+    private Task<HttpResponseMessage> SavePeriodicAsync(S s, Guid contractId, DateOnly closing, decimal value, bool onAnchorDay = false)
+    {
+        var nextAnchor = new DateOnly(closing.Year, closing.Month, 1).AddMonths(1);
+        return _client.PutJsonAsync($"/api/v1/properties/{s.PropertyId}/meter-readings", new
         {
             readings = new[]
             {
                 new { meterId = s.MeterId, contractId, closingPeriodStart = closing,
-                    readingDate = onAnchorDay ? closing.AddMonths(1) : closing.AddMonths(1).AddDays(-1), value }
+                    readingDate = onAnchorDay ? nextAnchor : nextAnchor.AddDays(-1), value }
             }
         }, s.Token);
+    }
 
     private async Task<JsonElement> GenerateAndFinalizeAsync(S s, Guid contractId, DateOnly month)
     {
@@ -49,7 +53,7 @@ public sealed class HandoverBelowPreviousTests(ApiFactory factory)
             .StatusCode.Should().Be(HttpStatusCode.OK);
         var page = await (await _client.GetAsync($"/api/v1/invoices?contractId={contractId}&billingMonth={month:yyyy-MM}", s.Token)).ReadAsync<JsonElement>();
         var id = page.GetProperty("items")[0].GetProperty("id").GetGuid();
-        var finalized = await _client.PostJsonAsync($"/api/v1/invoices/{id}/finalize", null, s.Token);
+        var finalized = await _client.FinalizeInvoiceAsync(id, s.Token);
         finalized.StatusCode.Should().Be(HttpStatusCode.OK, await finalized.Content.ReadAsStringAsync());
         return await finalized.ReadAsync<JsonElement>();
     }
@@ -72,7 +76,7 @@ public sealed class HandoverBelowPreviousTests(ApiFactory factory)
         var final = await _client.PostJsonAsync($"/api/v1/contracts/{s.ContractId}/final-invoice", new { finalReadings = (object?)null }, s.Token);
         final.StatusCode.Should().Be(HttpStatusCode.Created, await final.Content.ReadAsStringAsync());
         var finalId = (await final.ReadAsync<JsonElement>()).GetProperty("summary").GetProperty("id").GetGuid();
-        var finalized = await (await _client.PostJsonAsync($"/api/v1/invoices/{finalId}/finalize", null, s.Token)).ReadAsync<JsonElement>();
+        var finalized = await (await _client.FinalizeInvoiceAsync(finalId, s.Token)).ReadAsync<JsonElement>();
         var total = finalized.GetProperty("summary").GetProperty("totalAmount").GetDecimal();
         (await _client.PostJsonAsync($"/api/v1/contracts/{s.ContractId}/payments",
             new { amount = total, method = "Cash", paidAt = s.Today, invoiceId = finalId }, s.Token)).StatusCode.Should().Be(HttpStatusCode.Created);

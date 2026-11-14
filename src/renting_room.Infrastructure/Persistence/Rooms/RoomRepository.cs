@@ -18,6 +18,13 @@ internal sealed class RoomRepository(AppDbContext db) : IRoomRepository
     public async Task<IReadOnlyList<Room>> ListActiveByPropertyAsync(Guid propertyId, CancellationToken cancellationToken) =>
         await db.Rooms.Where(r => r.PropertyId == propertyId && r.ArchivedAt == null).ToListAsync(cancellationToken);
 
+    public async Task LockAllInPropertyAsync(Guid propertyId, CancellationToken cancellationToken)
+    {
+        var ids = await db.Rooms.Where(r => r.PropertyId == propertyId).Select(r => r.Id).OrderBy(id => id).ToListAsync(cancellationToken);
+        foreach (var id in ids)
+            await db.LockForUpdateAsync<Room>(id, cancellationToken);
+    }
+
     public Task<bool> IsCodeTakenAsync(Guid propertyId, string code, Guid? excludeId, CancellationToken cancellationToken) =>
         db.Rooms.AnyAsync(r => r.PropertyId == propertyId && r.Code == code && (excludeId == null || r.Id != excludeId.Value), cancellationToken);
 

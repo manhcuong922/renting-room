@@ -17,7 +17,7 @@ public sealed class DeleteFeePriceHandler(IFeeTypeRepository fees, IUnitOfWork u
         if (fee is null)
             return Result.Failure(FeeErrors.NotFound);
 
-        var removed = fee.RemovePrice(request.PriceId, await locks.GetLockedUntilAsync(fee.Id, cancellationToken));
+        var removed = fee.RemovePrice(request.PriceId, await locks.GetLockedDatesAsync(fee.Id, cancellationToken));
         if (removed.IsFailure)
             return removed;
 

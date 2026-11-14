@@ -1,6 +1,6 @@
 # Quản trị nền tảng (SystemAdmin)
 
-Admin **chỉ quản lý tài khoản**: tạo tổ chức chủ trọ, tạm ngưng, cấp lại mật khẩu, khóa phó quản lý.
+Admin **chỉ quản lý tài khoản**: tạo tổ chức chủ trọ, tạm ngưng, cấp lại mật khẩu, khóa quản lý khu.
 Admin **không** thấy khu trọ / phòng / người thuê / hợp đồng (API trả 403). Đừng làm menu đó cho admin.
 
 ## Màn hình
@@ -141,7 +141,7 @@ UI: hộp thoại xác nhận có ô lý do; nút đổi theo `status`.
 
 | Nút | Endpoint | Hiện khi | Kết quả |
 |-----|----------|----------|---------|
-| Cấp lại mật khẩu | `POST /admin/users/{id}/reset-password` | Mọi tài khoản chưa gỡ | 200 `{ userId, username, temporaryPassword, expiresAt }` — hiện 1 lần như khi tạo; phiên cũ bị đăng xuất |
+| Cấp lại mật khẩu | `POST /admin/users/{id}/reset-password` | Mọi tài khoản chưa gỡ | 200 `{ userId, username, temporaryPassword, expiresAt, deliveredTo }` — **có email** (11/11/2026, M-14): mật khẩu tạm **gửi tới email của chính chủ**, `temporaryPassword = null`, `deliveredTo` = email đã che (`c***@gmail.com`) — admin không bao giờ thấy mật khẩu; **chưa có email**: tạm như cũ (`temporaryPassword` hiện 1 lần, `deliveredTo = null`). Phiên cũ bị đăng xuất. Gửi mail lỗi ⇒ **hủy cấp lại**, mật khẩu cũ còn dùng được: 503 `EMAIL_NOT_CONFIGURED` / `EMAIL_SEND_FAILED` |
 | Khóa | `POST /admin/users/{id}/lock` | `role = OrgManager`, `status = Active` | 204 |
 | Mở khóa | `POST /admin/users/{id}/unlock` | `status = Locked` | 204 |
 

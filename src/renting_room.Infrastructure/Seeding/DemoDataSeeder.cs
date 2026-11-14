@@ -85,6 +85,7 @@ public sealed partial class DemoDataSeeder(
         await SeedPrepaidPropertyAsync();
         await SeedImportedPropertyAsync();
         await SeedBillingChangePropertyAsync();
+        await SeedManagerPropertiesAsync();
         await ApplyBackdatesAsync();
         logger.LogInformation("Seeded demo organization {Code} (owner {Phone})", _options.OrganizationCode, _options.OwnerPhone);
         return true;
@@ -99,15 +100,24 @@ public sealed partial class DemoDataSeeder(
         _owner = new SeedUser(organization.OwnerUserId, organization.OrganizationId, UserRole.OrgOwner);
         await Send(new ChangePasswordCommand(organization.TemporaryPassword, _options.OwnerPassword!, null), _owner);
 
-        var manager = await Send(new Application.Identity.Members.CreateManagerCommand("Trần Phó Quản Lý", _options.ManagerPhone, null));
-        await Send(new ChangePasswordCommand(manager.TemporaryPassword, _options.ManagerPassword!, null),
-            new SeedUser(manager.UserId, organization.OrganizationId, UserRole.OrgManager));
+        // M01 ID-BR-24 (08/11/2026): 2 quản lý khu, mỗi người một nhóm khu — giao khu sau khi tạo khu (SeedManagerPropertiesAsync).
+        var first = await Send(new Application.Identity.Members.CreateManagerCommand("Trần Quản Lý (khu A, B)", _options.ManagerPhone, null, []));
+        await Send(new ChangePasswordCommand(first.TemporaryPassword, _options.ManagerPassword!, null),
+            new SeedUser(first.UserId, organization.OrganizationId, UserRole.OrgManager));
+        var second = await Send(new Application.Identity.Members.CreateManagerCommand("Lê Quản Lý (khu nhập Excel, đổi kỳ thu)", _options.WriteOffManagerPhone, null, []));
+        await Send(new ChangePasswordCommand(second.TemporaryPassword, _options.ManagerPassword!, null),
+            new SeedUser(second.UserId, organization.OrganizationId, UserRole.OrgManager));
+        _managerIds = [first.UserId, second.UserId];
+    }
 
-        // PM-BR-16: phó quản lý tin cậy được cấp quyền bỏ nợ riêng (phó quản lý đầu không có quyền này).
-        var trusted = await Send(new Application.Identity.Members.CreateManagerCommand("Lê Phó Quản Lý (được bỏ nợ)", _options.WriteOffManagerPhone, null));
-        await Send(new ChangePasswordCommand(trusted.TemporaryPassword, _options.ManagerPassword!, null),
-            new SeedUser(trusted.UserId, organization.OrganizationId, UserRole.OrgManager));
-        await Send(new Application.Identity.Members.SetWriteOffPermissionCommand(trusted.UserId, true));
+    private Guid[] _managerIds = [];
+    private readonly List<Guid> _propertyIds = [];
+
+    /// <summary>Quản lý thứ nhất: 2 khu đầu (thu sau, thu trước); thứ hai: các khu còn lại.</summary>
+    private async Task SeedManagerPropertiesAsync()
+    {
+        await Send(new Application.Identity.Members.AssignManagerPropertiesCommand(_managerIds[0], _propertyIds.Take(2).ToList()));
+        await Send(new Application.Identity.Members.AssignManagerPropertiesCommand(_managerIds[1], _propertyIds.Skip(2).ToList()));
     }
 
     private async Task<TResponse> Raw<TResponse>(IRequest<TResponse> request, ICurrentUser? user = null)

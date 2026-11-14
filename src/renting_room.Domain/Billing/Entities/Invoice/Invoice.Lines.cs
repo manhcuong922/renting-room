@@ -20,8 +20,13 @@ public sealed partial class Invoice
             return Result.Failure(BillingErrors.NoteRequired);
 
         var q = quantity ?? line.Quantity;
-        var p = unitPrice ?? line.UnitPrice;
-        var newAmount = amount ?? Money(q * p * (line.ProrationFactor ?? 1));
+        // M-04: dòng giá bậc đổi SỐ LƯỢNG mà người dùng không nhập thành tiền / đơn giá ⇒ chia bậc lại theo sản lượng mới
+        // (không nhân với giá bình quân của sản lượng cũ). Đơn giá hiển thị = bình quân của sản lượng mới.
+        var retier = amount is null && unitPrice is null && quantity is not null && quantity != line.Quantity && line.Price is { Tiers: not null } price
+            ? price
+            : null;
+        var p = unitPrice ?? (retier is not null && q != 0 ? decimal.Round(retier.Amount(q) / q, 2) : line.UnitPrice);
+        var newAmount = amount ?? (retier is not null ? retier.Amount(q) : Money(q * p * (line.ProrationFactor ?? 1)));
         if (RejectsNegative(NetCharges - line.Amount + newAmount))
             return Result.Failure(BillingErrors.NegativeTotal);
 

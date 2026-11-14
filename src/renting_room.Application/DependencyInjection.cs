@@ -20,6 +20,7 @@ public static class DependencyInjection
 
         services.TryAddSingleton(TimeProvider.System);
         services.AddScoped<AuthTokenIssuer>();
+        services.AddScoped<Identity.PasswordConfirmation>();
         services.AddScoped<Renters.RenterAnonymizer>();
         services.AddScoped<Payments.PaymentPosting>();
         services.AddScoped<IDomainEventHandler, Billing.DraftStalenessHandler>();
@@ -33,6 +34,7 @@ public static class DependencyInjection
         services.AddScoped<Billing.MeterDraftRefresher>();
         services.AddScoped<Billing.ReadingAdjustmentCharges>();
         services.AddScoped<Payments.WriteOffReduction>();
+        services.AddScoped<Payments.CollectionLedger>();
         services.AddScoped<Meters.AfterEndAdjustment>();
         services.AddScoped<Meters.ContractMeterReadings>();
         services.AddScoped<Contracts.ContractMutation>();

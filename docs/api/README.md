@@ -30,20 +30,20 @@
 | [conventions.md](conventions.md) | Quy ước chung: xác thực, token, phân trang, version, Idempotency-Key, lỗi, enum, ngày giờ, tiền | **Đọc trước** |
 | [auth.md](auth.md) | Đăng nhập, đổi mật khẩu lần đầu, làm mới token, đăng xuất, hồ sơ | Mọi người |
 | [admin.md](admin.md) | Quản trị nền tảng: tổ chức chủ trọ, cấp lại mật khẩu, khóa tài khoản | SystemAdmin |
-| [members.md](members.md) | Chủ trọ quản lý phó quản lý | Chủ trọ |
+| [members.md](members.md) | Chủ trọ quản lý quản lý khu | Chủ trọ |
 | [audit.md](audit.md) | Nhật ký thao tác: ai đã làm gì, với đối tượng nào, lúc nào | Chủ trọ |
-| [properties.md](properties.md) | Khu trọ, bên cho thuê, tài khoản ngân hàng, nội quy | Chủ trọ, phó quản lý |
-| [rooms.md](rooms.md) | Phòng, trạng thái phòng, bảo trì, nhóm phòng | Chủ trọ, phó quản lý |
-| [renters.md](renters.md) | Hồ sơ người thuê / người ở | Chủ trọ, phó quản lý |
-| [fees.md](fees.md) | Khoản thu của khu: điện nước theo công tơ; dịch vụ theo phòng / đầu người / số gói (mạng, nước theo người, giữ xe); bảng giá (một giá) | Chủ trọ, phó quản lý |
-| [meters.md](meters.md) | Công tơ điện nước của phòng: lắp, thay (phiên bản), tháo, lịch sử, sửa chỉ số; lưới ghi chỉ số hằng tháng | Chủ trọ, phó quản lý |
-| [invoices.md](invoices.md) | Phiếu tiền phòng: tạo nháp theo tháng, sửa tay, phụ thu, tính lại, chốt, hủy | Chủ trọ, phó quản lý |
-| [room-charges.md](room-charges.md) | Khoản phát sinh theo phòng: phụ thu / bù tạo ngay lúc xảy ra, đã thanh toán hay chưa, tự vào phiếu cuối tháng | Chủ trọ, phó quản lý |
-| [payments.md](payments.md) | Thu tiền ("Đã thu"), phiếu thu, đảo phiếu thu, còn nợ | Chủ trọ, phó quản lý |
-| [contract-templates.md](contract-templates.md) | Mẫu hợp đồng theo loại (thuê phòng trọ / thuê nhà): tiêu đề, điều khoản, trường tùy biến | Chủ trọ, phó quản lý |
-| [contracts.md](contracts.md) | Hợp đồng: tạo, kích hoạt, người ở, phụ lục, báo trả phòng, thanh lý, tài sản, xe | Chủ trọ, phó quản lý |
+| [properties.md](properties.md) | Khu trọ, bên cho thuê, tài khoản ngân hàng, nội quy | Chủ trọ, quản lý khu |
+| [rooms.md](rooms.md) | Phòng, trạng thái phòng, bảo trì, nhóm phòng | Chủ trọ, quản lý khu |
+| [renters.md](renters.md) | Hồ sơ người thuê / người ở | Chủ trọ, quản lý khu |
+| [fees.md](fees.md) | Khoản thu của khu: điện nước theo công tơ; dịch vụ theo phòng / đầu người / số gói (mạng, nước theo người, giữ xe); bảng giá (một giá) | Chủ trọ, quản lý khu |
+| [meters.md](meters.md) | Công tơ điện nước của phòng: lắp, thay (phiên bản), tháo, lịch sử, sửa chỉ số; lưới ghi chỉ số hằng tháng | Chủ trọ, quản lý khu |
+| [invoices.md](invoices.md) | Phiếu tiền phòng: tạo nháp theo tháng, sửa tay, phụ thu, tính lại, chốt, hủy | Chủ trọ, quản lý khu |
+| [room-charges.md](room-charges.md) | Khoản phát sinh theo phòng: phụ thu / bù tạo ngay lúc xảy ra, đã thanh toán hay chưa, tự vào phiếu cuối tháng | Chủ trọ, quản lý khu |
+| [payments.md](payments.md) | Thu tiền ("Đã thu"), phiếu thu, đảo phiếu thu, còn nợ | Chủ trọ, quản lý khu |
+| [contract-templates.md](contract-templates.md) | Mẫu hợp đồng theo loại (thuê phòng trọ / thuê nhà): tiêu đề, điều khoản, trường tùy biến | Chủ trọ, quản lý khu |
+| [contracts.md](contracts.md) | Hợp đồng: tạo, kích hoạt, người ở, phụ lục, báo trả phòng, thanh lý, tài sản, xe | Chủ trọ, quản lý khu |
 | [imports.md](imports.md) | Nhập từ Excel: phòng; người thuê + lượt thuê đang ở (xem trước → xác nhận) | Chủ trọ |
-| [exports.md](exports.md) | Xuất Excel danh sách người thuê theo khu / tầng / nhóm phòng / phòng / khoảng ngày | Chủ trọ, phó quản lý |
+| [exports.md](exports.md) | Xuất Excel danh sách người thuê theo khu / tầng / nhóm phòng / phòng / khoảng ngày | Chủ trọ, quản lý khu |
 | [errors.md](errors.md) | Bảng mã lỗi → câu thông báo / hành động UI | Mọi người |
 | [openapi.json](openapi.json) | Đặc tả OpenAPI 3 | Sinh code |
 
@@ -63,8 +63,8 @@ flowchart TB
 | Vai trò (`role`) | Thấy gì | Không được |
 |------------------|---------|-----------|
 | `SystemAdmin` | Danh sách tổ chức, tài khoản | **Không** xem dữ liệu trọ (khu, phòng, người thuê, hợp đồng) — API trả 403 |
-| `OrgOwner` (chủ trọ) | Toàn bộ dữ liệu tổ chức mình + quản lý phó quản lý | Dữ liệu tổ chức khác (API trả 404) |
-| `OrgManager` (phó quản lý) | Như chủ trọ | Thêm / sửa / khóa / gỡ thành viên, nhật ký đăng nhập, sửa thông tin tổ chức, **tự sửa hồ sơ** (API trả 403). **Bỏ nợ** và **xem số giấy tờ đầy đủ** chỉ khi chủ trọ cấp riêng — đọc `canWriteOff`, `canViewSensitiveData` |
+| `OrgOwner` (chủ trọ) | Toàn bộ dữ liệu tổ chức mình (mọi khu) + quản lý thành viên, giao khu | Dữ liệu tổ chức khác (API trả 404) |
+| `OrgManager` (quản lý khu — 08/11/2026) | Như chủ trọ (kể cả bỏ nợ, số giấy tờ đầy đủ, nhập Excel) nhưng **chỉ trong khu được giao** | Khu không được giao (API trả 404 như id sai); danh sách chỉ chủ trọ ([members.md](members.md)): thành viên / giao khu, tài khoản ngân hàng, bên cho thuê + người ký thay, tạo / ngừng khu, mẫu hợp đồng, tổ chức, giữ dữ liệu, ẩn danh tay, nhật ký (API trả 403); **tự sửa hồ sơ** (403) |
 
 Đọc `role`, `canWriteOff`, `canViewSensitiveData` từ `GET /api/v1/me` sau khi đăng nhập để dựng menu và bật / tắt nút ([auth.md](auth.md#quyền-theo-từng-người--đọc-từ-get-me-bổ-sung-13102026)).
 
@@ -115,7 +115,7 @@ Mỗi dòng ghi endpoint chính và file mô tả chi tiết.
 │   ├── Khoản phát sinh (phụ thu / bù)         GET /room-charges                          room-charges.md
 │   └── Thu tiền                               GET /contracts/{id}/balance · POST /contracts/{id}/payments · GET /payments   payments.md
 ├── Thành viên (chỉ chủ trọ thao tác)          /org/members                               members.md
-│   ├── Phó quản lý: thêm, sửa, khóa, quyền bỏ nợ, quyền xem giấy tờ
+│   ├── Quản lý khu: thêm, sửa, giao khu, khóa
 │   ├── Nhật ký đăng nhập                      GET /org/login-events
 │   └── Thông tin tổ chức · thời gian giữ dữ liệu   GET, PUT /org
 ├── Nhật ký thao tác                           GET /audit-logs                            audit.md
@@ -145,7 +145,7 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
-  actor Chủ as Chủ trọ / phó quản lý
+  actor Chủ as Chủ trọ / quản lý khu
   participant UI
   Chủ->>UI: Cuối kỳ: mở lưới ghi chỉ số của khu, nhập số điện nước
   Note over UI: Cảnh báo sản lượng bất thường / ngày ghi lệch xa cuối kỳ — vẫn lưu

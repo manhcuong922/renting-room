@@ -13,7 +13,6 @@ public sealed class AuditLogTests(ApiFactory factory)
 {
     private sealed record AuditRow(string Action, string EntityType, Guid? UserId, Guid? OrganizationId, string? Changes, string? IpAddress);
 
-    private static readonly TimeSpan BackgroundWriteTimeout = TimeSpan.FromSeconds(10);
 
     private readonly HttpClient _client = factory.CreateClient();
 
@@ -78,17 +77,31 @@ public sealed class AuditLogTests(ApiFactory factory)
         (await ReadAuditLogsAsync(renterId)).Count(l => l.Action == "Updated").Should().Be(1, "lần lưu bị rollback không để lại audit");
     }
 
+    /// <summary>
+    /// L-16 (05/11/2026, README C-10, LEG-06): nhật ký xem số giấy tờ ghi thẳng TRƯỚC khi trả số — chưa ghi được thì chưa trả
+    /// (trước đây qua hàng đợi RAM, crash mất tới 2 giây nhật ký).
+    /// </summary>
     [Fact]
-    public async Task RevealIdNumber_IsAuditedInBackground_WithClientIp()
+    public async Task RevealIdNumber_WritesAuditBeforeReturningNumber_WithClientIp()
     {
         var owner = await _client.CreateActiveOwnerAsync();
         var token = owner.Tokens.AccessToken;
         var renterId = await _client.CreateRenterAsync(token);
 
-        var revealed = await _client.PostJsonAsync($"/api/v1/renters/{renterId}/reveal-id-number", null, token, clientIp: "203.0.113.7");
-        revealed.StatusCode.Should().Be(HttpStatusCode.OK);
+        // Kết nối khác chặn ghi vào audit_logs ⇒ lệnh xem phải chờ, không được trả số trước khi có nhật ký.
+        await using var connection = new Npgsql.NpgsqlConnection(factory.ConnectionString);
+        await connection.OpenAsync();
+        await using var holder = await connection.BeginTransactionAsync();
+        await using (var lockTable = new Npgsql.NpgsqlCommand("LOCK TABLE audit_logs IN EXCLUSIVE MODE", connection, holder))
+            await lockTable.ExecuteNonQueryAsync();
 
-        var reveal = await WaitForAuditLogAsync(renterId, "RevealIdNumber");
+        var request = factory.CreateClient().PostJsonAsync($"/api/v1/renters/{renterId}/reveal-id-number", null, token, clientIp: "203.0.113.7");
+        (await Task.WhenAny(request, Task.Delay(TimeSpan.FromSeconds(1)))).Should().NotBeSameAs(request, "chưa ghi được nhật ký ⇒ chưa trả số");
+        await holder.RollbackAsync();
+
+        var revealed = await request;
+        revealed.StatusCode.Should().Be(HttpStatusCode.OK);
+        var reveal = (await ReadAuditLogsAsync(renterId)).Single(l => l.Action == "RevealIdNumber"); // có ngay, không chờ ghi nền
         reveal.EntityType.Should().Be("Renter");
         reveal.UserId.Should().Be(owner.Organization.OwnerUserId);
         reveal.OrganizationId.Should().Be(owner.Organization.OrganizationId);
@@ -137,23 +150,76 @@ public sealed class AuditLogTests(ApiFactory factory)
         (await _client.GetAsync("/api/v1/audit-logs", manager.AccessToken)).StatusCode.Should().Be(HttpStatusCode.Forbidden);
     }
 
+    /// <summary>
+    /// M-13 (07/11/2026): tìm theo số giấy tờ và tạo hồ sơ trùng số (409 lộ họ tên) là 2 đường dò CCCD ⇒ ghi audit "IdNumberLookup"
+    /// (ai, khi nào, kết quả) — KHÔNG ghi số đã nhập.
+    /// </summary>
+    [Fact]
+    public async Task IdNumberLookup_SearchAndDuplicateCreate_AreAudited_WithoutTheNumber()
+    {
+        var owner = await _client.CreateActiveOwnerAsync();
+        var token = owner.Tokens.AccessToken;
+        var existing = await _client.CreateRenterAsync(token, idNumber: "079200004321");
+
+        (await _client.PostJsonAsync("/api/v1/renters/search", new { idNumber = "079200004321" }, token)).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await _client.PostJsonAsync("/api/v1/renters",
+            new { fullName = "Người Trùng", dateOfBirth = "2000-01-01", gender = "Male", idType = "CitizenId", idNumber = "079200004321" }, token))
+            .StatusCode.Should().Be(HttpStatusCode.Conflict);
+
+        var rows = await LookupAuditAsync(owner.Organization.OrganizationId);
+        rows.Should().HaveCount(2);
+        var details = rows.Select(r => JsonDocument.Parse(r.Changes!).RootElement).ToList();
+        details.Should().Contain(d => d.GetProperty("source").GetString() == "Search" && d.GetProperty("matches").GetInt32() == 1);
+        rows.Should().Contain(r => r.EntityId == existing && JsonDocument.Parse(r.Changes!).RootElement.GetProperty("source").GetString() == "Create");
+        rows.Should().AllSatisfy(r => r.Changes.Should().NotContain("079200004321", "số giấy tờ không bao giờ nằm trong audit"));
+
+        // Tìm theo tên không phải dò số giấy tờ ⇒ không ghi.
+        await _client.PostJsonAsync("/api/v1/renters/search", new { q = "Trần" }, token);
+        (await LookupAuditAsync(owner.Organization.OrganizationId)).Should().HaveCount(2);
+    }
+
+    /// <summary>M-15 (07/11/2026, RP-BR-03): xuất danh sách người thuê KHÔNG kèm số giấy tờ vẫn chứa ngày sinh / SĐT / địa chỉ ⇒ cũng ghi audit.</summary>
+    [Fact]
+    public async Task ExportRenters_WithoutSensitive_IsAuditedWithRowCount()
+    {
+        var owner = await _client.CreateActiveOwnerAsync();
+        var token = owner.Tokens.AccessToken;
+        await _client.CreateRenterAsync(token);
+        var (_, _, _, _) = await _client.CreateActiveContractAsync(token, TestData.Today(factory));
+
+        (await _client.PostJsonAsync("/api/v1/exports/renters", new { includeSensitive = false }, token, idempotencyKey: null))
+            .StatusCode.Should().Be(HttpStatusCode.OK);
+
+        await using var connection = new Npgsql.NpgsqlConnection(factory.ConnectionString);
+        await connection.OpenAsync();
+        await using var command = new Npgsql.NpgsqlCommand(
+            "SELECT user_id, changes::text FROM audit_logs WHERE action = 'ExportRenters' AND organization_id = @org", connection);
+        command.Parameters.AddWithValue("org", owner.Organization.OrganizationId);
+        await using var reader = await command.ExecuteReaderAsync();
+        (await reader.ReadAsync()).Should().BeTrue("export nào cũng để lại dấu vết");
+        reader.GetGuid(0).Should().Be(owner.Organization.OwnerUserId);
+        reader.GetString(1).Should().Contain("rowCount");
+        (await reader.ReadAsync()).Should().BeFalse();
+    }
+
+    private async Task<List<(Guid? EntityId, string? Changes)>> LookupAuditAsync(Guid organizationId)
+    {
+        await using var connection = new Npgsql.NpgsqlConnection(factory.ConnectionString);
+        await connection.OpenAsync();
+        await using var command = new Npgsql.NpgsqlCommand(
+            "SELECT entity_id, changes::text FROM audit_logs WHERE action = 'IdNumberLookup' AND organization_id = @org", connection);
+        command.Parameters.AddWithValue("org", organizationId);
+        var rows = new List<(Guid?, string?)>();
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+            rows.Add((reader.IsDBNull(0) ? null : reader.GetGuid(0), reader.IsDBNull(1) ? null : reader.GetString(1)));
+        return rows;
+    }
+
     private async Task<uint> RenterVersionAsync(Guid renterId, string token)
     {
         var renter = await (await _client.GetAsync($"/api/v1/renters/{renterId}", token)).ReadAsync<JsonElement>();
         return uint.Parse(renter.GetProperty("version").GetString()!);
-    }
-
-    private async Task<AuditRow> WaitForAuditLogAsync(Guid entityId, string action)
-    {
-        var deadline = DateTime.UtcNow + BackgroundWriteTimeout;
-        while (DateTime.UtcNow < deadline)
-        {
-            var row = (await ReadAuditLogsAsync(entityId)).FirstOrDefault(l => l.Action == action);
-            if (row is not null)
-                return row;
-            await Task.Delay(100);
-        }
-        throw new TimeoutException($"Audit '{action}' for {entityId} was not written within {BackgroundWriteTimeout}.");
     }
 
     private async Task<List<AuditRow>> ReadAuditLogsAsync(Guid entityId)

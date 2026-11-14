@@ -61,7 +61,7 @@ gắn khoản **dịch vụ** vào HĐ (M05 `contract_fees`); điện nước th
 | FE-BR-04 ✅ | Tối đa 1 khoản thu chưa archive cho mỗi `system_code` trong khu | DB partial unique |
 | FE-BR-05 ✅ | Đơn giá ≥ 0 (cho phép 0 = miễn phí). Metered đơn giá ≤ 100.000đ/đơn vị (chặn nhập nhầm thêm số 0); Dịch vụ ≤ 50.000.000đ | Validator |
 | FE-BR-06 ✅ | Unique `(fee_type_id, effective_from)` | DB |
-| FE-BR-07 ✅ | **Không thêm/sửa/xóa bảng giá có `effective_from` ≤ ngày cuối của bất kỳ dòng phiếu đã chốt (Finalized, chưa Void) dùng khoản thu này** — tránh tạo mâu thuẫn giữa giá trong bảng và giá trên phiếu đã chốt | Application (query M07) |
+| FE-BR-07 ✅ | **Không thêm/xóa bản giá làm ĐỔI giá áp của một dòng phiếu đã chốt (Finalized, chưa Void) dùng khoản thu này** — giá áp của dòng = bản giá hiệu lực tại ngày cuối dòng (`ServiceTo`); thêm bản mới đổi giá áp khi `effective_from` ≤ ngày cuối dòng và bản đang áp có `effective_from` sớm hơn; xóa bản đổi giá áp khi chính bản đó đang áp cho dòng. **13/11/2026 — 98 M-08**: trước đây khóa theo `MAX(ServiceTo)` của mọi dòng đã chốt trên cả tổ chức ⇒ nháp kỳ cũ thiếu giá không thêm được bản giá (không chốt được, kẹt thanh lý); nay thêm bản hiệu lực **trước** bản đang được phiếu đã chốt dùng thì được (không đổi dòng nào). Dòng đã chốt dùng giá riêng của hợp đồng (bảng giá chưa có bản) không khóa. Tránh mâu thuẫn giữa giá trong bảng và giá trên phiếu đã chốt | Application (query M07) |
 | FE-BR-08 ✅ | Chỉ xóa được bản giá chưa từng được dùng bởi phiếu đã chốt (FE-BR-07); bản giá đang dùng ở **nháp** thì vẫn xóa / sửa được và nháp có kỳ kết thúc từ ngày hiệu lực của bản giá được đánh dấu "Cần tính lại" (M07 BL-BR-20) | Application |
 | FE-BR-09 ✅ | Thêm / sửa / xóa bản giá ảnh hưởng phiếu **nháp** ⇒ nháp có kỳ kết thúc từ ngày hiệu lực của giá được đánh dấu "Cần tính lại" (đã làm 09/10/2026 cùng M07 BL-BR-20 — tự động khi lưu bảng giá; khoản thu vừa tạo kèm giá ban đầu thì bỏ qua). Chốt vẫn tính lại và báo `DRAFT_STALE` nếu lệch (BL-BR-12) | Infrastructure (M07) |
 | FE-BR-10 ✅ | **Giá theo phiên bản** (đổi 07/10/2026): giá áp cho 1 dòng phiếu = bản giá có `effective_from` lớn nhất ≤ **ngày cuối khoảng tính của dòng** (`service_to`: cuối kỳ của phiếu với dịch vụ, cuối kỳ sử dụng U với điện nước), áp **cả dòng** — không chia nửa kỳ giá cũ / nửa kỳ giá mới (chủ trọ báo trước khi tăng giá). Áp cho mọi khoản (điện nước, dịch vụ); giá riêng của HĐ (dịch vụ) ưu tiên | Domain (`InvoiceCalculator` dùng `FeeType.ResolvePrice`) |
@@ -121,8 +121,8 @@ Tên cột nhóm là `fee_group` (tránh từ khóa SQL `group`); thêm `name_no
 FeeType (aggregate root, chứa danh sách FeePrice)
   + Create(orgId, propertyId, name, group, chargeBasis?, unit, autoAttach, defaultQty?, vehicleType?)
   + Rename / UpdateDisplay(unit, sortOrder, autoAttach, defaultQty)
-  + AddPrice(effectiveFrom, unitPrice | tiers, note, lockedUntil)    // một giá hoặc theo bậc (FE-BR-15); lockedUntil = ngày cuối dòng phiếu đã chốt (FE-BR-07)
-  + RemovePrice(priceId, lockedUntil)
+  + AddPrice(effectiveFrom, unitPrice | tiers, note, lockedDates)    // một giá hoặc theo bậc (FE-BR-15); lockedDates = các ngày cuối dòng phiếu đã chốt — chỉ khóa khi đổi giá áp của dòng (FE-BR-07, M-08)
+  + RemovePrice(priceId, lockedDates)
   + ResolvePrice(date) : FeePrice?                       // FE-BR-10
   + Archive(now) / Restore()
 ```
@@ -134,7 +134,7 @@ FeeType (aggregate root, chứa danh sách FeePrice)
 | `CreateFeeTypeCommand` | Cmd | `FEE_NAME_TAKEN`, `PROPERTY_ARCHIVED` |
 | `UpdateFeeTypeCommand` | Cmd | `FEE_NAME_TAKEN` |
 | `ArchiveFeeTypeCommand` / `RestoreFeeTypeCommand` | Cmd | `FEE_IN_USE`, `FEE_HAS_ACTIVE_METERS` |
-| `AddFeePriceCommand` | Cmd | `FEE_PRICE_DATE_EXISTS`, `FEE_PRICE_LOCKED` (kèm `lockedUntil`) → response kèm `warnings[]`; nháp bị ảnh hưởng tự gắn "Cần tính lại" |
+| `AddFeePriceCommand` | Cmd | `FEE_PRICE_DATE_EXISTS`, `FEE_PRICE_LOCKED` → response kèm `warnings[]`; nháp bị ảnh hưởng tự gắn "Cần tính lại" |
 | `DeleteFeePriceCommand` | Cmd | `FEE_PRICE_LOCKED` |
 | `GetFeeUsageQuery` / `BulkFeeUsageCommand` | Qry / Cmd | FE-UC-08 — kết quả từng HĐ |
 | `CopyFeeCatalogCommand` | Cmd | sourcePropertyId, targetPropertyId, includePrices, effectiveFrom; bỏ qua tên đã tồn tại, trả danh sách bỏ qua |
@@ -184,7 +184,7 @@ P1: chủ trọ và phó quản lý toàn quyền nghiệp vụ (M01 §3.3). P3:
 
 | Kịch bản | Giải pháp |
 |----------|-----------|
-| Thêm giá hồi tố đè lên kỳ đã chốt phiếu | FE-BR-07: tính `lockedUntil` trong cùng transaction, khóa `fee_types` row `FOR UPDATE`; lệnh chốt phiếu (M07) cũng khóa các `fee_types` liên quan theo thứ tự id ⇒ không race |
+| Thêm giá hồi tố đè lên kỳ đã chốt phiếu | FE-BR-07: tính `lockedUntil` trong cùng transaction, khóa `fee_types` row `FOR UPDATE`. **Chốt phiếu (M07) KHÔNG khóa `fee_types`** (chốt 11/11/2026, M-20 — chấp nhận, 99 O-23; trước đó plan ghi chốt cũng khóa): thêm bản giá có `effective_from` ≤ ngày cuối kỳ **đúng lúc** một phiếu cùng khoản đang được chốt thì cả hai thành công và phiếu chốt theo giá cũ. Lý do không khóa: chốt hàng loạt (tới 500 phiếu) phải giữ thêm khóa `fee_types` ⇒ chờ nhau, rủi ro deadlock lớn hơn lợi ích của ca hiếm; phiếu đã chốt vẫn đúng với giá lúc chốt, chỉ lệch với bảng giá thêm sau (hủy phiếu rồi lập lại nếu cần) |
 | Đổi tên khoản thu sau khi phiếu đã chốt | Phiếu lưu snapshot tên/đơn vị (C-06) |
 | Đổi nhóm làm hỏng dữ liệu đăng ký | FE-BR-02 |
 | Draft tính theo giá cũ sau khi có giá mới | `is_stale` (FE-BR-09) + M07 kiểm tra lại giá khi chốt |
@@ -200,7 +200,7 @@ Audit: tạo/sửa/archive khoản thu, thêm/xóa giá.
 
 ## 13. Phụ thuộc
 - Dùng: M02. Bị dùng: M05 (`contract_fees`), M06 (công tơ gắn fee type Metered), M07 (giá), M10.
-- `FeePriceLockReader` (đọc phiếu đã chốt của M07) cung cấp `lockedUntil` theo fee type.
+- `FeePriceLockReader` (đọc phiếu đã chốt của M07) cung cấp `lockedDates` (các ngày cuối dòng đã chốt, không trùng) theo fee type.
 
 ## 15. Câu hỏi mở
 

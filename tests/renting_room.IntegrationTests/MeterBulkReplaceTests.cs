@@ -10,6 +10,38 @@ public sealed class MeterBulkReplaceTests(ApiFactory factory)
 {
     private readonly HttpClient _client = factory.CreateClient();
 
+    /// <summary>MT-UC-08 (L-11, 03/11/2026): 2 dòng cùng serial mới (khác hoa / thường, khoảng trắng) ⇒ dòng sau bị đánh dấu, không lưu dòng nào.</summary>
+    [Fact]
+    public async Task BulkReplace_SameNewSerialOnTwoRows_MarksLaterRow_SavesNothing()
+    {
+        var token = (await _client.CreateActiveOwnerAsync()).Tokens.AccessToken;
+        var today = TestData.Today(factory);
+        var month = new DateOnly(today.Year, today.Month, 1).AddMonths(-1);
+        var propertyId = await _client.CreatePropertyAsync(token, anchorDay: 1, chargeMode: "Postpaid");
+        var electricity = await _client.FeeIdAsync(token, propertyId, "Điện");
+        var meterA = await _client.InstallMeterAsync(token, await _client.CreateRoomAsync(token, propertyId, "A1"), electricity, month.AddDays(-1), 100);
+        var meterB = await _client.InstallMeterAsync(token, await _client.CreateRoomAsync(token, propertyId, "A2"), electricity, month.AddDays(-1), 500);
+
+        var response = await _client.PostJsonAsync($"/api/v1/properties/{propertyId}/meters/bulk-replace", new
+        {
+            feeTypeId = electricity, replacedOn = month.AddDays(10),
+            rows = new object[]
+            {
+                new { meterId = meterA, oldFinalValue = 150, newSerialNo = "EVN-77", newInitialValue = (decimal?)0 },
+                new { meterId = meterB, oldFinalValue = 560, newSerialNo = " evn-77 ", newInitialValue = (decimal?)0 }
+            }
+        }, token);
+
+        response.StatusCode.Should().Be(HttpStatusCode.UnprocessableEntity, await response.Content.ReadAsStringAsync());
+        var body = await response.ReadAsync<JsonElement>();
+        body.GetProperty("code").GetString().Should().Be("BULK_REPLACE_INVALID");
+        var error = body.GetProperty("rowErrors").EnumerateArray().Should().ContainSingle().Subject;
+        error.GetProperty("index").GetInt32().Should().Be(1);
+        error.GetProperty("code").GetString().Should().Be("DUPLICATE_SERIAL");
+        (await (await _client.GetAsync($"/api/v1/properties/{propertyId}/meters/replace-sheet?feeTypeId={electricity}", token)).ReadAsync<JsonElement>())
+            .EnumerateArray().Select(r => r.GetProperty("meterId").GetGuid()).Should().BeEquivalentTo([meterA, meterB], "không thay công tơ nào");
+    }
+
     [Fact]
     public async Task BulkReplace_InvalidRowSavesNothing_ValidBatchReplacesAll_InvoiceSumsOldAndNewMeter()
     {

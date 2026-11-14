@@ -16,6 +16,9 @@ public interface IRoomChargeRepository
     /// <summary>Khoản điều chỉnh chỉ số chưa hủy của dòng nguồn (hóa đơn, khoản thu, ngày đầu kỳ sử dụng).</summary>
     Task<RoomCharge?> FindReadingAdjustmentForUpdateAsync(Guid sourceInvoiceId, Guid feeTypeId, DateOnly usageStart, CancellationToken cancellationToken);
 
+    /// <summary>Tổng khoản bù đã hủy với lý do <paramref name="cancelReason"/> của dòng nguồn (M-05: phần chủ trọ đã chọn "Không trả lại").</summary>
+    Task<decimal> SumCancelledCreditsAsync(Guid sourceInvoiceId, Guid feeTypeId, DateOnly usageStart, string cancelReason, CancellationToken cancellationToken);
+
     /// <summary>Khoản điều chỉnh chỉ số chưa hủy trỏ tới hóa đơn nguồn này.</summary>
     Task<IReadOnlyList<RoomCharge>> ListReadingAdjustmentsAsync(Guid sourceInvoiceId, CancellationToken cancellationToken);
 

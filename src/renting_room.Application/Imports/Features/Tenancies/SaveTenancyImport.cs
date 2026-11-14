@@ -16,7 +16,10 @@ public sealed record SaveTenancyImportCommand(Guid PropertyId, IReadOnlyList<Ten
 public sealed class SaveTenancyImportCommandValidator : AbstractValidator<SaveTenancyImportCommand>
 {
     public SaveTenancyImportCommandValidator() =>
-        RuleFor(x => x.Rows).NotEmpty().WithErrorCode("REQUIRED").Must(r => r is null || r.Count <= ImportErrors.MaxRows).WithErrorCode("IMPORT_TOO_MANY_ROWS");
+        RuleFor(x => x.Rows).NotEmpty().WithErrorCode("REQUIRED").Must(r => r is null || r.Count <= ImportErrors.MaxRows).WithErrorCode("IMPORT_TOO_MANY_ROWS")
+            // L-07: kết quả / lỗi gom theo số dòng.
+            .Must(r => r is null || r.Select(x => x.RowNumber).Distinct().Count() == r.Count).WithErrorCode("DUPLICATE_ROW")
+            .WithMessage("Số dòng bị trùng.");
 }
 
 public sealed class SaveTenancyImportHandler(
@@ -89,7 +92,10 @@ public sealed class SaveTenancyImportHandler(
         {
             var hash = protector.ProtectIdNumber(currentUser.OrganizationId!.Value, type, number).Hash;
             if (await renters.FindIdByIdNumberHashAsync(hash, excludeId: null, ct) is { } existing)
+            {
+                await renters.ClaimAsync(existing, ct); // ID-BR-26 — lưu cùng lần lưu của dòng import
                 return existing;
+            }
         }
         return await sender.Send(new CreateRenterCommand(TenancyImportTemplate.Renter(row)), ct);
     }

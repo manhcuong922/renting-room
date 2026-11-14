@@ -180,6 +180,27 @@ public sealed class PropertyRoomTests(ApiFactory factory)
             .ReadProblemCodeAsync()).Should().Be("PROPERTY_HAS_ACTIVE_CONTRACTS");
     }
 
+    /// <summary>
+    /// L-09 (04/11/2026, PR-BR-03 chốt): HĐ nháp không chặn bảo trì — sửa phòng trước khi khách vào; chưa xong bảo trì thì kích hoạt bị chặn
+    /// (PR-BR-04) nên không có ai ở trong phòng bảo trì. Ngừng dùng phòng vẫn bị nháp chặn (PR-BR-05).
+    /// </summary>
+    [Fact]
+    public async Task RoomWithDraftOnly_CanStartMaintenance_ButCannotActivateOrArchive()
+    {
+        var token = (await _client.CreateActiveOwnerAsync()).Tokens.AccessToken;
+        var roomId = await _client.CreateRoomAsync(token, await _client.CreatePropertyAsync(token));
+        var draft = await _client.CreateContractAsync(token, roomId, await _client.CreateRenterAsync(token), TestData.Today(factory));
+
+        (await _client.PostJsonAsync($"/api/v1/rooms/{roomId}/maintenance/start", new { note = "Sửa điều hòa trước khi khách vào" }, token))
+            .StatusCode.Should().Be(HttpStatusCode.NoContent);
+        (await (await _client.PostJsonAsync($"/api/v1/contracts/{draft}/activate", null, token)).ReadProblemCodeAsync()).Should().Be("ROOM_UNAVAILABLE");
+        (await (await _client.PostJsonAsync($"/api/v1/rooms/{roomId}/archive", null, token)).ReadProblemCodeAsync()).Should().Be("ROOM_HAS_CONTRACTS");
+
+        (await _client.PostJsonAsync($"/api/v1/rooms/{roomId}/maintenance/end", null, token)).StatusCode.Should().Be(HttpStatusCode.NoContent);
+        var activated = await _client.PostJsonAsync($"/api/v1/contracts/{draft}/activate", null, token);
+        activated.StatusCode.Should().Be(HttpStatusCode.NoContent, await activated.Content.ReadAsStringAsync());
+    }
+
     [Fact]
     public async Task UpdateRoom_WithStaleVersion_Returns409()
     {

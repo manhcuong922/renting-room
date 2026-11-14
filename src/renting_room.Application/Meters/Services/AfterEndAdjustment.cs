@@ -39,6 +39,10 @@ public sealed class AfterEndAdjustment(
         var fee = (await fees.FindTypeAsync(line.FeeTypeId!.Value, ct))!;
         var description = $"Chênh lệch sau thanh lý — {fee.Name} kỳ {line.ServiceFrom:dd/MM}–{line.ServiceTo:dd/MM}: " +
             $"{oldValue:0.##} → {value:0.##} (−{oldValue - value:0.##} {fee.Unit})";
+        // M-05: số tiền luôn so với số lúc chốt hóa đơn ⇒ đã gồm phần trước đó chủ trọ chọn "Không trả lại" — nói rõ để không hoàn nhầm phần đã quyết bỏ
+        // (không tự trừ: nhầm tay "Không trả lại" thì sửa lại số vẫn đòi lại được).
+        if (await adjustmentCharges.WaivedAmountAsync(source, line, NotReturnedReason, ct) is var waived and > 0)
+            description = Truncate($"{description} · gồm {waived:N0}đ từng chọn \"{NotReturnedReason}\"");
         var charge = await adjustmentCharges.SetAsync(contract, source, line, existing.Value, credit, description, reason, ct);
         if (charge.IsFailure)
             return charge.Error!;
@@ -54,6 +58,8 @@ public sealed class AfterEndAdjustment(
             charge.Value?.Id, [], reason));
         return charge.Value;
     }
+
+    private static string Truncate(string text) => text.Length <= 200 ? text : text[..199] + "…"; // cột mô tả khoản tối đa 200 ký tự
 
     private Result Resolve(RoomCharge charge, AdjustmentSettlement? settlement, bool notReturned)
     {

@@ -34,6 +34,6 @@ public sealed class MarkInvoiceResentHandler(IUnitOfWork unitOfWork, IInvoiceRep
     : IRequestHandler<MarkInvoiceResentCommand, Result<InvoiceDetailDto>>
 {
     public async ValueTask<Result<InvoiceDetailDto>> Handle(MarkInvoiceResentCommand request, CancellationToken cancellationToken) =>
-        await InvoiceAccess.MutateAsync(unitOfWork, invoices, invoiceQueries, request.InvoiceId, clock.GetUtcNow().ToBusinessDate(),
+        await InvoiceAccess.MutateAsync(unitOfWork, invoices, invoiceQueries, request.InvoiceId, clock.GetUtcNow().ToBusinessDate(), null,
             invoice => invoice.MarkResent(), cancellationToken);
 }

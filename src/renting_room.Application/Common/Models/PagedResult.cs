@@ -9,4 +9,7 @@ public static class Paging
 {
     public const int DefaultPageSize = 20;
     public const int MaxPageSize = 100;
+
+    /// <summary>Trần số trang (L-08): <c>(Page - 1) * PageSize</c> không tràn int — 10 triệu dòng, dư cho mọi danh sách.</summary>
+    public const int MaxPage = 100_000;
 }

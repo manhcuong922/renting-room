@@ -5,8 +5,8 @@ using renting_room.Application.Identity;
 namespace renting_room.Application.Common.Security;
 
 /// <summary>
-/// ID-BR-22: ai được xem dữ liệu nhạy cảm (số giấy tờ đầy đủ). Đọc từ DB ở mỗi request — không lấy từ token —
-/// để chủ trọ thu hồi quyền là có hiệu lực ngay, không chờ token hết hạn.
+/// ID-BR-22 (đổi 08/11/2026): chủ trọ và quản lý khu đang hoạt động xem được số giấy tờ đầy đủ — quản lý chỉ trong khu được giao (hồ sơ ngoài phạm vi
+/// không tải được — ID-BR-24). Trạng thái đọc từ DB ở mỗi request ⇒ khóa / gỡ có hiệu lực ngay.
 /// </summary>
 public static class SensitiveDataAccess
 {
@@ -17,6 +17,6 @@ public static class SensitiveDataAccess
         if (currentUser.Role != UserRole.OrgManager || currentUser.UserId is not { } userId)
             return false;
 
-        return await users.HasSensitiveDataAccessAsync(userId, ct);
+        return await users.HasOwnerLevelAccessAsync(userId, ct);
     }
 }

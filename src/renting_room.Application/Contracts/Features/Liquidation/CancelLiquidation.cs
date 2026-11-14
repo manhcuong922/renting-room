@@ -27,11 +27,12 @@ public sealed class CancelLiquidationHandler(
                 return cancelled.Error!;
             if (final is not null)
                 invoices.Remove(final);
-            await meterReadings.VoidFinalAsync(contract, clock.GetUtcNow(), cancellationToken);
 
+            // Khóa người thuê trước công tơ như kích hoạt HĐ (README C-07, L-04) — ngược lại song song kích hoạt HĐ ký lại ⇒ deadlock.
             var occupants = await CheckOccupantsAsync(contract, cancellationToken);
             if (occupants is not null)
                 return occupants;
+            await meterReadings.VoidFinalAsync(contract, clock.GetUtcNow(), cancellationToken);
 
             // Ký lại đã ký: HĐ mới nối tiếp đã hiệu lực nên EXCLUDE (ROOM_PERIOD_OVERLAP) chặn hủy ở bước lưu; chưa ký thì HĐ cũ chưa từng thanh lý.
             return Result.Success<IReadOnlyList<Warning>>([]);

@@ -38,7 +38,7 @@ public sealed class PropertyBillingTests(ApiFactory factory)
         (await (await _client.PutJsonAsync($"/api/v1/properties/{propertyId}/billing", Billing(5), token)).ReadProblemCodeAsync())
             .Should().Be("BILLING_SETTINGS_DRAFT_INVOICES");
         var first = await InvoiceAsync(token, contractId, month1);
-        (await _client.PostJsonAsync($"/api/v1/invoices/{first.GetProperty("summary").GetProperty("id").GetGuid()}/finalize", null, token))
+        (await _client.FinalizeInvoiceAsync(first.GetProperty("summary").GetProperty("id").GetGuid(), token))
             .StatusCode.Should().Be(HttpStatusCode.OK);
 
         var preview = await (await _client.GetAsync($"/api/v1/properties/{propertyId}/billing/preview?anchorDay=5&chargeMode=Prepaid", token))

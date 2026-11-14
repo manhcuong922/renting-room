@@ -40,6 +40,9 @@ public interface IContractQueries
 
     Task<Guid?> GetPreviousContractIdAsync(Guid id, CancellationToken cancellationToken);
 
+    /// <summary>HĐ này đã được ký lại — có HĐ nối tiếp đã kích hoạt (không tính nháp / đã hủy). M-02.</summary>
+    Task<bool> HasSignedSuccessorAsync(Guid id, CancellationToken cancellationToken);
+
     Task<ContractChainLink?> GetChainLinkAsync(Guid id, CancellationToken cancellationToken);
 
     Task<Contract?> GetDetailsAsync(Guid id, CancellationToken cancellationToken);
@@ -47,6 +50,9 @@ public interface IContractQueries
     Task<PagedResult<ContractSummaryDto>> ListAsync(ListContractsQuery request, DateOnly today, CancellationToken cancellationToken);
 
     Task<Guid?> GetRoomIdAsync(Guid id, CancellationToken cancellationToken);
+
+    /// <summary>Khu của HĐ — không đổi suốt đời HĐ (chuyển phòng chỉ trong cùng khu) ⇒ đọc trước khi khóa được (khóa khu trước HĐ — C-07).</summary>
+    Task<Guid?> GetPropertyIdAsync(Guid id, CancellationToken cancellationToken);
 
     Task<bool> IsContractNoTakenAsync(string contractNo, CancellationToken cancellationToken);
 
@@ -73,7 +79,7 @@ public interface IContractQueries
     Task<ContractRoomRef?> FindResidentElsewhereAsync(Guid contractId, Guid representativeId, DateOnly start, CancellationToken cancellationToken);
 
     Task<IReadOnlyList<SignedContractRow>> ListRunningSignedByAsync(
-        Guid exceptContractId, IReadOnlyCollection<Guid> renterIds, CancellationToken cancellationToken);
+        IReadOnlyCollection<Guid> exceptContractIds, IReadOnlyCollection<Guid> renterIds, CancellationToken cancellationToken);
 
     Task<IReadOnlyList<RenterStayRow>> ListOpenStaysAsync(IReadOnlyCollection<Guid> renterIds, DateOnly today, CancellationToken cancellationToken);
 

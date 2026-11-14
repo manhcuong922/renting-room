@@ -2213,6 +2213,29 @@
         }
       }
     },
+    "/api/v1/exports/monthly-invoices": {
+      "post": {
+        "tags": [
+          "Exports"
+        ],
+        "summary": "Xuất Excel thu tiền theo kỳ — mỗi hóa đơn 1 dòng (đã thu, bỏ nợ, sửa giảm kèm lý do / người, còn nợ, đơn giá) + tổng theo kỳ",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExportMonthlyInvoicesQuery"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/api/v1/properties/{propertyId}/fee-types": {
       "get": {
         "tags": [
@@ -3218,6 +3241,15 @@
               "type": "string",
               "format": "uuid"
             }
+          },
+          {
+            "name": "version",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int32"
+            }
           }
         ],
         "responses": {
@@ -3335,7 +3367,7 @@
         "tags": [
           "Invoices"
         ],
-        "summary": "Chốt phiếu: cấp số PB, hạn thanh toán; dữ liệu nguồn đổi ⇒ 409 DRAFT_STALE",
+        "summary": "Chốt phiếu: cấp số PB, hạn thanh toán; version lệch ⇒ 409 CONCURRENCY_CONFLICT; dữ liệu nguồn đổi ⇒ 409 DRAFT_STALE",
         "parameters": [
           {
             "name": "id",
@@ -3357,6 +3389,16 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FinalizeInvoiceRequest"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "description": "OK"
@@ -4111,7 +4153,7 @@
         "tags": [
           "Organization members"
         ],
-        "summary": "Danh sách chủ trọ và phó quản lý",
+        "summary": "Danh sách chủ trọ và quản lý khu (kèm khu được giao)",
         "parameters": [
           {
             "name": "includeRemoved",
@@ -4131,7 +4173,7 @@
         "tags": [
           "Organization members"
         ],
-        "summary": "Thêm phó quản lý — trả mật khẩu tạm một lần (hết hạn sau 72 giờ)",
+        "summary": "Thêm quản lý khu (kèm khu được giao; không gửi = mọi khu đang dùng) — trả mật khẩu tạm một lần (hết hạn sau 72 giờ)",
         "parameters": [
           {
             "name": "Idempotency-Key",
@@ -4189,7 +4231,7 @@
         "tags": [
           "Organization members"
         ],
-        "summary": "Sửa thông tin phó quản lý",
+        "summary": "Sửa thông tin quản lý khu",
         "parameters": [
           {
             "name": "id",
@@ -4269,7 +4311,7 @@
         "tags": [
           "Organization members"
         ],
-        "summary": "Khóa phó quản lý (đăng xuất ngay mọi phiên)",
+        "summary": "Khóa quản lý khu (đăng xuất ngay mọi phiên)",
         "parameters": [
           {
             "name": "id",
@@ -4293,7 +4335,7 @@
         "tags": [
           "Organization members"
         ],
-        "summary": "Mở khóa phó quản lý",
+        "summary": "Mở khóa quản lý khu",
         "parameters": [
           {
             "name": "id",
@@ -4317,7 +4359,7 @@
         "tags": [
           "Organization members"
         ],
-        "summary": "Gỡ phó quản lý khỏi tổ chức (vĩnh viễn)",
+        "summary": "Gỡ quản lý khu khỏi tổ chức (vĩnh viễn)",
         "parameters": [
           {
             "name": "id",
@@ -4336,12 +4378,12 @@
         }
       }
     },
-    "/api/v1/org/members/{id}/sensitive-data-access": {
+    "/api/v1/org/members/{id}/properties": {
       "put": {
         "tags": [
           "Organization members"
         ],
-        "summary": "Cấp / thu hồi quyền xem dữ liệu nhạy cảm (số giấy tờ đầy đủ) cho phó quản lý",
+        "summary": "Giao khu cho quản lý khu — thay cả danh sách; [] = không giao khu nào; có hiệu lực ngay ở phiên đang mở",
         "parameters": [
           {
             "name": "id",
@@ -4357,41 +4399,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/SensitiveDataAccessRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        }
-      }
-    },
-    "/api/v1/org/members/{id}/write-off-permission": {
-      "put": {
-        "tags": [
-          "Organization members"
-        ],
-        "summary": "Cấp / thu hồi quyền bỏ nợ cho từng phó quản lý (mặc định không)",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/WriteOffPermissionRequest"
+                "$ref": "#/components/schemas/AssignPropertiesRequest"
               }
             }
           },
@@ -4409,7 +4417,7 @@
         "tags": [
           "Organization members"
         ],
-        "summary": "Cấp lại mật khẩu tạm cho phó quản lý",
+        "summary": "Cấp lại mật khẩu tạm cho quản lý khu",
         "parameters": [
           {
             "name": "id",
@@ -4612,12 +4620,56 @@
         }
       }
     },
+    "/api/v1/invoices/{id}/collected": {
+      "put": {
+        "tags": [
+          "Payments"
+        ],
+        "summary": "Sửa số \"Đã thu\" của hóa đơn: tăng ⇒ ghi phiếu thu phần chênh; giảm ⇒ lý do bắt buộc, tự đảo phiếu thu mới nhất rồi ghi lại phần giữ",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Khóa duy nhất cho thao tác (VD UUID). Gửi lại cùng khóa ⇒ nhận lại kết quả cũ, không thực thi lần 2.",
+            "schema": {
+              "maxLength": 64,
+              "minLength": 8,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EditCollectedAmountRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/api/v1/invoices/{id}/write-off": {
       "post": {
         "tags": [
           "Payments"
         ],
-        "summary": "Bỏ nợ phiếu (mặc định toàn bộ số còn nợ) — chủ trọ / phó quản lý được cấp quyền, lý do bắt buộc, không tính doanh thu",
+        "summary": "Bỏ nợ phiếu (mặc định toàn bộ số còn nợ) — chủ trọ / quản lý khu, lý do bắt buộc, không tính doanh thu",
         "parameters": [
           {
             "name": "id",
@@ -4662,7 +4714,7 @@
         "tags": [
           "Payments"
         ],
-        "summary": "Thanh toán + bỏ phần còn lại của phiếu (VD nợ 3tr, trả 2tr, cho 1tr) — chủ trọ / phó quản lý được cấp quyền",
+        "summary": "Thanh toán + bỏ phần còn lại của phiếu (VD nợ 3tr, trả 2tr, cho 1tr) — chủ trọ / quản lý khu",
         "parameters": [
           {
             "name": "id",
@@ -4746,7 +4798,7 @@
         "tags": [
           "Payments"
         ],
-        "summary": "Đảo phiếu thu nhập sai (hủy phân bổ, phiếu báo về còn nợ)",
+        "summary": "Đảo phiếu thu nhập sai (hủy phân bổ, phiếu báo về còn nợ) — phiếu thu đảo kèm phiếu hoàn không còn được che",
         "parameters": [
           {
             "name": "id",
@@ -5118,7 +5170,7 @@
         "tags": [
           "Properties"
         ],
-        "summary": "Tài khoản nhận tiền (gửi cả 3 trường null để xóa)",
+        "summary": "Tài khoản nhận tiền — chỉ chủ trọ; đổi / xóa phải kèm currentPassword (gửi cả 3 trường null để xóa)",
         "parameters": [
           {
             "name": "id",
@@ -5244,7 +5296,7 @@
         "tags": [
           "Renters"
         ],
-        "summary": "Tạo hồ sơ người thuê (409 nếu số giấy tờ đã có — dùng lại hồ sơ cũ)",
+        "summary": "Tạo hồ sơ người thuê (409 nếu số giấy tờ đã có — dùng lại hồ sơ cũ). Dùng chung hạn mức dò số giấy tờ (429)",
         "parameters": [
           {
             "name": "Idempotency-Key",
@@ -6426,6 +6478,10 @@
             "format": "uuid",
             "nullable": true
           },
+          "version": {
+            "type": "integer",
+            "format": "int32"
+          },
           "settled": {
             "type": "boolean",
             "nullable": true
@@ -6592,6 +6648,20 @@
         "properties": {
           "conditionAtReturn": {
             "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "AssignPropertiesRequest": {
+        "type": "object",
+        "properties": {
+          "propertyIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
             "nullable": true
           }
         },
@@ -7364,6 +7434,14 @@
           "email": {
             "type": "string",
             "nullable": true
+          },
+          "propertyIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "nullable": true
           }
         },
         "additionalProperties": false
@@ -7592,6 +7670,32 @@
         ],
         "type": "string"
       },
+      "EditCollectedAmountRequest": {
+        "type": "object",
+        "properties": {
+          "amount": {
+            "type": "number",
+            "format": "double"
+          },
+          "expectedAmount": {
+            "type": "number",
+            "format": "double"
+          },
+          "paidAt": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          },
+          "method": {
+            "$ref": "#/components/schemas/PaymentMethod"
+          },
+          "reason": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
       "EditInvoiceLineRequest": {
         "type": "object",
         "properties": {
@@ -7613,6 +7717,10 @@
           "note": {
             "type": "string",
             "nullable": true
+          },
+          "version": {
+            "type": "integer",
+            "format": "int32"
           }
         },
         "additionalProperties": false
@@ -7633,6 +7741,31 @@
           "endDate": {
             "type": "string",
             "format": "date"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ExportMonthlyInvoicesQuery": {
+        "type": "object",
+        "properties": {
+          "propertyIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "nullable": true
+          },
+          "fromMonth": {
+            "type": "string",
+            "nullable": true
+          },
+          "toMonth": {
+            "type": "string",
+            "nullable": true
+          },
+          "includeDrafts": {
+            "type": "boolean"
           }
         },
         "additionalProperties": false
@@ -7784,6 +7917,16 @@
               "format": "uuid"
             },
             "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "FinalizeInvoiceRequest": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "integer",
+            "format": "int32"
           }
         },
         "additionalProperties": false
@@ -7960,6 +8103,10 @@
           "note": {
             "type": "string",
             "nullable": true
+          },
+          "version": {
+            "type": "integer",
+            "format": "int32"
           }
         },
         "additionalProperties": false
@@ -9077,15 +9224,6 @@
         },
         "additionalProperties": false
       },
-      "SensitiveDataAccessRequest": {
-        "type": "object",
-        "properties": {
-          "allowed": {
-            "type": "boolean"
-          }
-        },
-        "additionalProperties": false
-      },
       "SettleRoomChargeRequest": {
         "type": "object",
         "properties": {
@@ -9310,6 +9448,10 @@
             "nullable": true
           },
           "accountName": {
+            "type": "string",
+            "nullable": true
+          },
+          "currentPassword": {
             "type": "string",
             "nullable": true
           }
@@ -9731,15 +9873,6 @@
           "reason": {
             "type": "string",
             "nullable": true
-          }
-        },
-        "additionalProperties": false
-      },
-      "WriteOffPermissionRequest": {
-        "type": "object",
-        "properties": {
-          "allowed": {
-            "type": "boolean"
           }
         },
         "additionalProperties": false

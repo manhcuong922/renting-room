@@ -75,18 +75,18 @@ public sealed class InvoicesController(ISender sender) : ControllerBase
     [HttpPut("invoices/{id:guid}/lines/{lineId:guid}")]
     [EndpointSummary("Sửa tay dòng phiếu nháp (đánh dấu \"sửa tay\", giữ số hệ thống)")]
     public async Task<IResult> EditLine(Guid id, Guid lineId, EditInvoiceLineRequest b, CancellationToken ct) =>
-        (await sender.Send(new EditInvoiceLineCommand(id, lineId, b.Quantity, b.UnitPrice, b.Amount, b.Note), ct)).ToHttp();
+        (await sender.Send(new EditInvoiceLineCommand(id, lineId, b.Quantity, b.UnitPrice, b.Amount, b.Note, b.Version), ct)).ToHttp();
 
     [HttpDelete("invoices/{id:guid}/lines/{lineId:guid}")]
     [EndpointSummary("Dòng hệ thống: bỏ sửa tay; phụ thu / giảm tay: xóa dòng")]
-    public async Task<IResult> ResetLine(Guid id, Guid lineId, CancellationToken ct) =>
-        (await sender.Send(new ResetInvoiceLineCommand(id, lineId), ct)).ToHttp();
+    public async Task<IResult> ResetLine(Guid id, Guid lineId, [FromQuery] uint version, CancellationToken ct) =>
+        (await sender.Send(new ResetInvoiceLineCommand(id, lineId, version), ct)).ToHttp();
 
     [HttpPost("invoices/{id:guid}/manual-lines")]
     [EndpointSummary("Thêm phụ thu, giảm trừ hoặc hoàn trả (lý do bắt buộc) vào phiếu nháp")]
     public async Task<IResult> AddManualLine(Guid id, AddInvoiceLineRequest b, [FromServices] TimeProvider clock, CancellationToken ct) =>
         (await sender.Send(new AddInvoiceManualLineCommand(id, b.Type, b.Description, b.Quantity, b.UnitPrice, b.Amount, b.Note, b.FeeTypeId,
-            b.SourceInvoiceId, Settlement(b.Settled, b.SettledOn, b.Method, clock)), ct)).ToHttp();
+            b.SourceInvoiceId, Settlement(b.Settled, b.SettledOn, b.Method, clock), b.Version), ct)).ToHttp();
 
     [HttpPost("invoices/manual-lines")]
     [Idempotent(required: false)]
@@ -99,13 +99,13 @@ public sealed class InvoicesController(ISender sender) : ControllerBase
     [HttpPut("invoices/{id:guid}/note")]
     [EndpointSummary("Ghi chú in trên phiếu (nháp)")]
     public async Task<IResult> UpdateNote(Guid id, InvoiceNoteRequest b, CancellationToken ct) =>
-        (await sender.Send(new UpdateInvoiceNoteCommand(id, b.Note), ct)).ToHttp();
+        (await sender.Send(new UpdateInvoiceNoteCommand(id, b.Note, b.Version), ct)).ToHttp();
 
     [HttpPost("invoices/{id:guid}/finalize")]
     [Idempotent(required: false)]
-    [EndpointSummary("Chốt phiếu: cấp số PB, hạn thanh toán; dữ liệu nguồn đổi ⇒ 409 DRAFT_STALE")]
-    public async Task<IResult> Finalize(Guid id, CancellationToken ct) =>
-        (await sender.Send(new FinalizeInvoiceCommand(id), ct)).ToHttp();
+    [EndpointSummary("Chốt phiếu: cấp số PB, hạn thanh toán; version lệch ⇒ 409 CONCURRENCY_CONFLICT; dữ liệu nguồn đổi ⇒ 409 DRAFT_STALE")]
+    public async Task<IResult> Finalize(Guid id, FinalizeInvoiceRequest b, CancellationToken ct) =>
+        (await sender.Send(new FinalizeInvoiceCommand(id, b.Version), ct)).ToHttp();
 
     [HttpPost("invoices/finalize-batch")]
     [Idempotent(required: false)]

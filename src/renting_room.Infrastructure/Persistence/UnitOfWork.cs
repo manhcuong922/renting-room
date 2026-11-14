@@ -40,6 +40,9 @@ internal sealed class UnitOfWork(AppDbContext db) : IUnitOfWork
     public Task LockForUpdateAsync<TEntity>(Guid id, CancellationToken cancellationToken) where TEntity : Entity =>
         db.LockForUpdateAsync<TEntity>(id, cancellationToken);
 
+    public Task LockForShareAsync<TEntity>(Guid id, CancellationToken cancellationToken) where TEntity : Entity =>
+        db.LockForShareAsync<TEntity>(id, cancellationToken);
+
     public Task LockRentersAsync(IEnumerable<Guid> renterIds, CancellationToken cancellationToken) =>
         db.LockRentersAsync(renterIds, cancellationToken);
 

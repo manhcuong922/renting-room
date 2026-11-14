@@ -81,7 +81,7 @@ public sealed class BillingGapTests(ApiFactory factory)
         (await SaveReadingAsync(s, s.Months[0], 200)).StatusCode.Should().Be(HttpStatusCode.OK);
         (await GenerateAsync(s, s.Months[0])).GetProperty("created").GetInt32().Should().Be(1);
         if (finalize)
-            (await _client.PostJsonAsync($"/api/v1/invoices/{Id(await InvoiceForAsync(s, s.Months[0]))}/finalize", null, s.Token))
+            (await _client.FinalizeInvoiceAsync(Id(await InvoiceForAsync(s, s.Months[0])), s.Token))
                 .StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
@@ -245,7 +245,7 @@ public sealed class BillingGapTests(ApiFactory factory)
     {
         var s = await ArrangeAsync("Prepaid");
         (await GenerateAsync(s, s.Months[0])).GetProperty("created").GetInt32().Should().Be(1);
-        (await _client.PostJsonAsync($"/api/v1/invoices/{Id(await InvoiceForAsync(s, s.Months[0]))}/finalize", null, s.Token))
+        (await _client.FinalizeInvoiceAsync(Id(await InvoiceForAsync(s, s.Months[0])), s.Token))
             .StatusCode.Should().Be(HttpStatusCode.OK);
 
         Reason(await GenerateAsync(s, s.Months[4], skip: true)).Should().Be("GAP_NOT_SUPPORTED_PREPAID");

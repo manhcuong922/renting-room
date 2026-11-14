@@ -17,4 +17,8 @@ public static class RenterErrors
     public static readonly Error IdNumberRequired = Error.Validation("ID_NUMBER_REQUIRED", "Từ 14 tuổi phải có số giấy tờ.");
 
     public static Error IdNumberExistsFor(Guid existingRenterId) => IdNumberExists.WithDetail("existingRenterId", existingRenterId);
+
+    /// <summary>ID-BR-26: kèm họ tên + 4 số cuối để quản lý khu nhận ra người thuê cũ của khu khác (không thêm thông tin nào khác).</summary>
+    public static Error IdNumberExistsFor(Guid existingRenterId, string fullName, string? idNumberLast4) =>
+        IdNumberExistsFor(existingRenterId).WithDetail("existingRenterName", fullName).WithDetail("existingIdNumberLast4", idNumberLast4);
 }

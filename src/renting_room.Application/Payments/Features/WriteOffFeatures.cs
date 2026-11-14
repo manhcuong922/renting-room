@@ -18,7 +18,7 @@ public sealed record PayAndWriteOffResult(PaymentDto Payment, PaymentDto WriteOf
 public static class WriteOffErrors
 {
     public static readonly Error NotAllowed = Error.Forbidden("WRITE_OFF_NOT_ALLOWED",
-        "Bạn chưa được chủ trọ cấp quyền bỏ nợ.");
+        "Tài khoản không có quyền bỏ nợ.");
     public static readonly Error NothingLeft = Error.BusinessRule("NOTHING_TO_WRITE_OFF",
         "Số tiền trả đã bằng số còn nợ — dùng \"Đã thu\", không cần bỏ phần còn lại.");
 }
@@ -28,7 +28,7 @@ internal static class WriteOffGuard
     public static async Task<bool> IsAllowedAsync(IUserQueries users, ICurrentUser currentUser, CancellationToken ct) =>
         currentUser.Role == UserRole.OrgOwner
         || (currentUser.Role == UserRole.OrgManager && currentUser.UserId is { } userId
-            && await users.HasWriteOffPermissionAsync(userId, ct));
+            && await users.HasOwnerLevelAccessAsync(userId, ct)); // ID-BR-23 (08/11/2026): quản lý khu luôn có
 
     public static async Task<Result<Contract>> LockAsync(
         IUserQueries users, IInvoiceQueries invoices, IContractQueries contracts, IUnitOfWork unitOfWork, ICurrentUser currentUser, Guid invoiceId,

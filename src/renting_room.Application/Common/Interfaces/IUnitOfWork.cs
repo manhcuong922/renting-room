@@ -34,6 +34,12 @@ public interface IUnitOfWork
     Task LockForUpdateAsync<TEntity>(Guid id, CancellationToken cancellationToken) where TEntity : Entity;
 
     /// <summary>
+    /// <c>SELECT … FOR SHARE</c> — nhiều lệnh cùng đọc giữ được cùng lúc, chỉ chặn lệnh đang / sắp <c>FOR UPDATE</c> hàng đó
+    /// (VD tạo phiếu giữ khu để đổi cài đặt kỳ thu phải chờ — L-05). Phải gọi trong transaction.
+    /// </summary>
+    Task LockForShareAsync<TEntity>(Guid id, CancellationToken cancellationToken) where TEntity : Entity;
+
+    /// <summary>
     /// Khóa logic theo người thuê tới hết transaction — tuần tự hóa các lệnh làm thay đổi "người này đang ở đâu"
     /// trên các hợp đồng KHÁC nhau (CT-BR-31), nơi khóa hàng hợp đồng không đủ.
     /// </summary>

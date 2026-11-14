@@ -41,14 +41,19 @@ public sealed class JwtTokenServiceTests
     }
 
     [Fact]
-    public void CreateAccessToken_OmitsOrganizationAndPasswordChangeClaims_ForSystemAdmin()
+    public void CreateAccessToken_OmitsOrganizationClaim_ForSystemAdmin_AndPasswordChangeClaimOnlyUntilPasswordIsChanged()
     {
         var admin = User.CreateSystemAdmin("Admin", "0900000001", null, "hash");
 
-        var jwt = new JsonWebToken(CreateService().CreateAccessToken(admin, Now).Value);
+        // M-18 (11/11/2026): admin bootstrap bị bắt đổi mật khẩu ở lần đăng nhập đầu ⇒ token đầu chỉ dùng được để đổi mật khẩu.
+        var first = new JsonWebToken(CreateService().CreateAccessToken(admin, Now).Value);
+        first.TryGetClaim(AppClaimTypes.OrganizationId, out _).Should().BeFalse();
+        first.TryGetClaim(AppClaimTypes.MustChangePassword, out _).Should().BeTrue();
 
-        jwt.TryGetClaim(AppClaimTypes.OrganizationId, out _).Should().BeFalse();
-        jwt.TryGetClaim(AppClaimTypes.MustChangePassword, out _).Should().BeFalse();
+        admin.ChangePassword("new-hash", Now);
+        var afterChange = new JsonWebToken(CreateService().CreateAccessToken(admin, Now).Value);
+        afterChange.TryGetClaim(AppClaimTypes.OrganizationId, out _).Should().BeFalse();
+        afterChange.TryGetClaim(AppClaimTypes.MustChangePassword, out _).Should().BeFalse();
     }
 
     [Fact]

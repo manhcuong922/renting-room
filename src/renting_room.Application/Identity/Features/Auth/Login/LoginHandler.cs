@@ -44,15 +44,16 @@ public sealed class LoginHandler(
 
         // Đang bị khóa: trả CÙNG lỗi với sai mật khẩu, dù mật khẩu đúng hay sai. Nếu trả lỗi khác khi mật khẩu đúng,
         // kẻ tấn công vẫn dò được mật khẩu trong thời gian khóa (sai → 401, đúng → 423), và lộ tài khoản có tồn tại.
-        if (user.IsLockedOut(now))
+        // ID-BR-06 (L-13): khóa theo IP + tài khoản — cả tài khoản chỉ bị khóa khi bị khóa tay / sai mật khẩu ở đổi mật khẩu (đã đăng nhập).
+        if (user.IsLockedOut(now) || LoginLockoutPolicy.IsBlocked(
+                await loginEvents.GetFailureStatsAsync(user.Id, request.IpAddress, now, user.CredentialsChangedAt, cancellationToken)))
         {
-            logger.LogWarning("Login rejected: user {UserId} is locked out", user.Id);
+            logger.LogWarning("Login rejected: user {UserId} is locked out for {IpAddress}", user.Id, request.IpAddress);
             return (IdentityErrors.InvalidCredentials, LoginOutcome.LockedOut);
         }
 
         if (verification == PasswordCheckResult.Failed)
         {
-            await users.RegisterFailedLoginAsync(user.Id, now, cancellationToken);
             logger.LogInformation("Login failed: wrong password for user {UserId} from {IpAddress}", user.Id, request.IpAddress);
             return (IdentityErrors.InvalidCredentials, LoginOutcome.WrongPassword);
         }

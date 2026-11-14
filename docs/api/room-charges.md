@@ -4,7 +4,7 @@ Phụ thu hoặc bù cho người thuê **xảy ra giữa tháng**: tạo ngay l
 
 Ví dụ: ngày 3/3 phòng 301 hỏng khóa, quản lý khu thuê thợ thay ⇒ tạo phụ thu "Thay khóa 250k"; khu mất nước 2 ngày ⇒ tạo khoản bù 50k.
 
-Quyền: chủ trọ và phó quản lý.
+Quyền: chủ trọ và quản lý khu.
 
 ## Quy tắc chính
 
@@ -87,7 +87,7 @@ Khoản bù chưa trả mà lớn hơn phần thu của **phiếu tháng** ⇒ c
 | Lỗi | Khi nào |
 |-----|---------|
 | 422 `ROOM_CHARGE_NO_TENANT` | Phòng không có người thuê tại ngày phát sinh |
-| 422 `ROOM_CHARGE_NO_OPEN_INVOICE` | HĐ đã chốt hóa đơn trả phòng / đã kết thúc |
+| 422 `ROOM_CHARGE_NO_OPEN_INVOICE` | HĐ đã kết thúc (hóa đơn trả phòng đã chốt nhưng chưa hoàn tất thanh lý ⇒ vẫn tạo được, khoản chờ — xem trên) |
 | 422 `ROOM_CHARGE_LOCKED` | Khoản đã nằm trên phiếu đã chốt |
 | 422 `ROOM_CHARGE_CANCELLED` | Khoản đã hủy |
 | 422 `ROOM_CHARGE_NOT_SETTLED` | Bỏ đánh dấu khi chưa đánh dấu |

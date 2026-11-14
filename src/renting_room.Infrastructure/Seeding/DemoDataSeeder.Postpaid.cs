@@ -114,7 +114,10 @@ public sealed partial class DemoDataSeeder
             [new(await RenterAsync("Ngô Thị Lan", new DateOnly(1998, 2, 14), Gender.Female, Phone(6)), midMonth, null, null, null, OccupantRelationship.CoTenant)],
             [.. standard, new(waterPerPerson, null, null)]);
         await Close(r104, c104, midMonth, Month(-1), 60);
-        await Bill(r104, c104, Month(-1));
+        var bill104 = await Bill(r104, c104, Month(-1));
+        // PM-BR-38 (09/11/2026): ghi đủ rồi phát hiện thực thu thiếu 100.000đ ⇒ sửa thẳng số đã thu (lịch sử giảm có lý do — Excel thu tiền E2).
+        await Send(new EditCollectedAmountCommand(bill104.Summary.Id, bill104.Summary.TotalAmount - 100000, bill104.Summary.TotalAmount, null, null,
+            "Đếm lại tiền mặt thiếu 100.000đ"));
         // Tăng giá niêm yết rồi chọn "áp cho người đang thuê" (CT-UC-05): tháng trước đã lập phiếu ⇒ giá mới từ kỳ tiếp theo (tháng này).
         var room104 = await Send(new GetRoomQuery(r104.Id));
         await Send(new UpdateRoomCommand(r104.Id, "104", new RoomSpecInput("1", 20, 3, 3100000, 3000000, ["air_con", "water_heater", "wifi"], null),

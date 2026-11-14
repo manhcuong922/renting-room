@@ -53,11 +53,20 @@ public sealed class PaymentPosting(
         Contract contract, IReadOnlyDictionary<Guid, Invoice> locked, IReadOnlyList<(Guid InvoiceId, decimal Amount)> allocations, PaymentMethod method,
         DateOnly paidAt, string? note, PaymentKind kind, CancellationToken ct)
     {
-        var receiptNo = await numbers.NextAsync(currentUser.OrganizationId!.Value, "PT", clock.GetUtcNow().ToBusinessDate().Year, ct);
-        var payment = Payment.Record(contract.PropertyId, contract.Id, receiptNo, allocations.Sum(a => a.Amount), method, paidAt, null, null, note,
-            allocations, kind);
+        var payment = await RecordAllocatedAsync(contract, allocations, method, paidAt, null, null, note, kind, ct);
         foreach (var (id, part) in allocations)
             locked[id].ApplyPayment(part, kind == PaymentKind.WriteOff);
+        return payment;
+    }
+
+    /// <summary>Ghi phiếu với phân bổ cho trước, <b>không</b> cập nhật "đã thu" — người gọi tự cộng dồn thay đổi (M08 PM-BR-38: ghi lại phần còn giữ).</summary>
+    public async Task<Payment> RecordAllocatedAsync(
+        Contract contract, IReadOnlyList<(Guid InvoiceId, decimal Amount)> allocations, PaymentMethod method, DateOnly paidAt, string? payerName,
+        string? reference, string? note, PaymentKind kind, CancellationToken ct)
+    {
+        var receiptNo = await numbers.NextAsync(currentUser.OrganizationId!.Value, "PT", clock.GetUtcNow().ToBusinessDate().Year, ct);
+        var payment = Payment.Record(contract.PropertyId, contract.Id, receiptNo, allocations.Sum(a => a.Amount), method, paidAt, payerName, reference,
+            note, allocations, kind);
         payments.Add(payment);
         return payment;
     }

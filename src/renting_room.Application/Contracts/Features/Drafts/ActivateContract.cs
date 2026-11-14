@@ -1,3 +1,4 @@
+using FluentValidation;
 using Mediator;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Fees;
@@ -15,6 +16,11 @@ namespace renting_room.Application.Contracts;
 
 public sealed record ActivateContractCommand(
     Guid Id, IReadOnlyList<MeterReadingInput>? HandoverReadings = null) : IRequest<Result>;
+
+public sealed class ActivateContractCommandValidator : AbstractValidator<ActivateContractCommand>
+{
+    public ActivateContractCommandValidator() => this.RuleForMeterReadings(x => x.HandoverReadings);
+}
 
 /// <summary>
 /// CT-BR-01/02/18/19. Khóa theo thứ tự rooms → contracts (C-07). Hai hợp đồng cùng phòng kích hoạt song song:

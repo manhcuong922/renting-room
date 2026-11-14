@@ -6,7 +6,7 @@ public static class IdentityErrors
 {
     public static readonly Error InvalidCredentials =
         Error.Unauthorized("INVALID_CREDENTIALS",
-            "Tên đăng nhập hoặc mật khẩu không đúng. Nhập sai 5 lần liên tiếp, tài khoản sẽ bị tạm khóa 15 phút.");
+            "Tên đăng nhập hoặc mật khẩu không đúng. Nhập sai 5 lần, thiết bị này sẽ bị tạm chặn đăng nhập tài khoản 15 phút.");
 
     public static readonly Error AccountLocked =
         Error.Locked("ACCOUNT_LOCKED", "Tài khoản đang bị khóa. Vui lòng thử lại sau hoặc liên hệ quản trị viên.");
@@ -21,7 +21,7 @@ public static class IdentityErrors
         Error.BusinessRule("INVALID_CURRENT_PASSWORD", "Mật khẩu hiện tại không đúng.");
 
     public static readonly Error CurrentPasswordRequired =
-        Error.Validation("CURRENT_PASSWORD_REQUIRED", "Nhập mật khẩu hiện tại để đổi số điện thoại / email đăng nhập.");
+        Error.Validation("CURRENT_PASSWORD_REQUIRED", "Nhập mật khẩu đăng nhập hiện tại để xác nhận thay đổi này.");
 
     public static readonly Error ProfileManagedByOwner =
         Error.Forbidden("PROFILE_MANAGED_BY_OWNER", "Hồ sơ phó quản lý do chủ trọ sửa — liên hệ chủ trọ để đổi thông tin.");
@@ -61,10 +61,14 @@ public static class IdentityErrors
         Error.NotFound("MEMBER_NOT_FOUND", "Không tìm thấy thành viên trong tổ chức.");
 
     public static readonly Error ManagerLimitReached =
-        Error.BusinessRule("MANAGER_LIMIT_REACHED", "Tổ chức đã đạt số lượng phó quản lý tối đa.");
+        Error.BusinessRule("MANAGER_LIMIT_REACHED", "Tổ chức đã đạt số lượng quản lý khu tối đa.");
 
     public static readonly Error CannotModifyOwner =
         Error.BusinessRule("CANNOT_MODIFY_OWNER", "Không thể thực hiện thao tác này với tài khoản chủ trọ.");
+
+    /// <summary>M01 ID-BR-24 (08/11/2026): giao khu không thuộc tổ chức / đã ngừng sử dụng / không tồn tại.</summary>
+    public static readonly Error PropertyAssignmentInvalid =
+        Error.BusinessRule("PROPERTY_ASSIGNMENT_INVALID", "Có khu không tồn tại hoặc đã ngừng sử dụng — chọn lại khu được giao.");
 
     public static readonly Error CannotLockOwner =
         Error.BusinessRule("CANNOT_LOCK_OWNER", "Không khóa tài khoản chủ trọ — hãy tạm ngưng tổ chức.");

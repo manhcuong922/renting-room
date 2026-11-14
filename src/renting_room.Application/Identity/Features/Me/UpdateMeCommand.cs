@@ -28,8 +28,7 @@ public sealed class UpdateMeCommandValidator : AbstractValidator<UpdateMeCommand
 /// mọi phiên bị vô hiệu, phải đăng nhập lại.
 /// </summary>
 public sealed class UpdateMeHandler(
-    IUserRepository users, IUnitOfWork unitOfWork, ICurrentUser currentUser, IUserSessionStore sessionStore, IPasswordHasher passwordHasher,
-    TimeProvider clock)
+    IUserRepository users, IUnitOfWork unitOfWork, ICurrentUser currentUser, IUserSessionStore sessionStore, PasswordConfirmation passwordConfirmation)
     : IRequestHandler<UpdateMeCommand, Result>
 {
     public async ValueTask<Result> Handle(UpdateMeCommand request, CancellationToken cancellationToken)
@@ -46,7 +45,7 @@ public sealed class UpdateMeHandler(
         var email = ContactNormalizer.NormalizeEmail(request.Email);
         if (phone != user.PhoneNormalized || email != user.EmailNormalized)
         {
-            var confirmed = await ConfirmPasswordAsync(user, request.CurrentPassword, cancellationToken);
+            var confirmed = await passwordConfirmation.ConfirmAsync(user, request.CurrentPassword, cancellationToken);
             if (confirmed.IsFailure)
                 return confirmed;
         }
@@ -62,20 +61,5 @@ public sealed class UpdateMeHandler(
         await unitOfWork.SaveChangesAsync(cancellationToken);
         sessionStore.Invalidate(user.Id);
         return updated;
-    }
-
-    /// <summary>Sai mật khẩu tính vào bộ đếm khóa tài khoản như đăng nhập sai — access token bị lộ không dò được mật khẩu.</summary>
-    private async Task<Result> ConfirmPasswordAsync(User user, string? currentPassword, CancellationToken ct)
-    {
-        if (string.IsNullOrEmpty(currentPassword))
-            return Result.Failure(IdentityErrors.CurrentPasswordRequired);
-        var now = clock.GetUtcNow();
-        if (user.IsLockedOut(now))
-            return Result.Failure(IdentityErrors.AccountLocked);
-        if (passwordHasher.Verify(user.PasswordHash, currentPassword) != PasswordCheckResult.Failed)
-            return Result.Success();
-
-        await users.RegisterFailedLoginAsync(user.Id, now, ct);
-        return Result.Failure(IdentityErrors.InvalidCurrentPassword);
     }
 }

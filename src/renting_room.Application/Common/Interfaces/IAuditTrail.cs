@@ -13,10 +13,10 @@ public interface IAuditTrail
     void Record(string action, string entityType, Guid? entityId, object? details = null);
 
     /// <summary>
-    /// Thao tác chỉ đọc (không có SaveChanges để đi nhờ): đưa vào hàng đợi, luồng nền ghi theo lô.
-    /// App crash đột ngột có thể mất các bản ghi chưa kịp ghi (tối đa một cửa sổ gom).
+    /// Đọc dữ liệu nhạy cảm (xem / in / xuất số giấy tờ đầy đủ — LEG-06): ghi thẳng 1 INSERT, gọi TRƯỚC khi trả dữ liệu —
+    /// ghi lỗi ⇒ lệnh lỗi, không trả số / file (L-16, 05/11/2026; trước đó qua hàng đợi RAM, crash mất tới 2 giây nhật ký).
     /// </summary>
-    void RecordRead(string action, string entityType, Guid? entityId, object? details = null);
+    Task RecordReadAsync(string action, string entityType, Guid? entityId, object? details, CancellationToken cancellationToken);
 }
 
 public static class AuditActions
@@ -28,8 +28,14 @@ public static class AuditActions
     public const string RevealIdNumber = "RevealIdNumber";
     public const string PrintWithIdNumbers = "PrintWithIdNumbers";
     public const string ExportWithIdNumbers = "ExportWithIdNumbers";
+    /// <summary>M-15 (RP-BR-03): xuất danh sách người thuê không kèm số giấy tờ (vẫn có ngày sinh, SĐT, địa chỉ, liên hệ khẩn cấp).</summary>
+    public const string ExportRenters = "ExportRenters";
+    /// <summary>M-13: dò số giấy tờ — tìm theo số, hoặc tạo hồ sơ trùng số (409 trả họ tên). Không bao giờ ghi số đã nhập.</summary>
+    public const string IdNumberLookup = "IdNumberLookup";
     public const string Anonymized = "Anonymized";
     public const string Import = "Import";
+    /// <summary>M01 ID-BR-24: chủ trọ đổi khu được giao của quản lý khu (danh sách cũ → mới).</summary>
+    public const string PropertiesAssigned = "PropertiesAssigned";
 }
 
 /// <summary>RT-BR-06: xóa dữ liệu cá nhân của người được ẩn danh khỏi nhật ký — gọi sau SaveChanges, trong cùng transaction.</summary>
@@ -42,4 +48,19 @@ public interface IAuditLogEraser
     Task EraseRenterAsync(
         Guid renterId, IReadOnlyCollection<Guid> invoiceIds, IReadOnlyCollection<Guid> paymentIds, IReadOnlyCollection<Guid> vehicleIds,
         CancellationToken cancellationToken);
+}
+
+/// <param name="ClearContractIds">HĐ người đó đứng tên, ẩn danh tự động: xóa trắng mọi ô ghi chú tự do.</param>
+/// <param name="MaskContractIds">HĐ còn lại (bằng tay: cả HĐ đứng tên): che <paramref name="Identifiers"/> bằng <c>***</c>.</param>
+/// <param name="Identifiers">Họ tên (chỉ khi bằng tay), SĐT, email, số giấy tờ của chính người đó.</param>
+public sealed record PersonalNoteErasure(
+    Guid RenterId, IReadOnlyCollection<Guid> ClearContractIds, IReadOnlyCollection<Guid> MaskContractIds, IReadOnlyCollection<string> Identifiers);
+
+/// <summary>
+/// RT-BR-06 (05/11/2026, L-17): dữ liệu cá nhân trong ô ghi chú tự do (HĐ, người ở, phiếu, dòng phiếu, khoản phát sinh, phiếu thu…) và bản sao
+/// trong nhật ký — gọi sau SaveChanges, trong cùng transaction. Ghi chú dòng người ở / đồng ý xử lý dữ liệu của chính người đó luôn xóa trắng.
+/// </summary>
+public interface IPersonalNoteEraser
+{
+    Task EraseAsync(PersonalNoteErasure erasure, CancellationToken cancellationToken);
 }

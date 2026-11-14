@@ -68,7 +68,7 @@ public sealed class CreateFeeTypeHandler(IPropertyQueries properties, IFeeTypeRe
         IReadOnlyList<Warning> warnings = [];
         if (request.InitialPrice is { } price)
         {
-            var added = fee.AddPrice(price.EffectiveFrom, price.UnitPrice ?? 0, price.Note, lockedUntil: null, price.Tiers);
+            var added = fee.AddPrice(price.EffectiveFrom, price.UnitPrice ?? 0, price.Note, lockedDates: null, price.Tiers);
             if (added.IsFailure)
                 return added.Error!;
             warnings = FeeWarnings.ForPrice(fee, added.Value!, settings);

@@ -2,7 +2,7 @@ using renting_room.Domain.Common;
 
 namespace renting_room.Domain.Contracts;
 
-public sealed class ContractFee : TenantEntity
+public sealed class ContractFee : TenantEntity, IPropertyScoped
 {
     private ContractFee() { } // EF Core
 

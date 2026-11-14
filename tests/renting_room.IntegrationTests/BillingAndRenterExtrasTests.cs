@@ -54,7 +54,7 @@ public sealed class BillingAndRenterExtrasTests(ApiFactory factory)
         // Chốt 1 phiếu, thu 1 triệu ⇒ số tổng hợp tính trên toàn bộ kết quả lọc.
         var page = await (await _client.GetAsync($"/api/v1/invoices?contractId={a.ContractId}", token)).ReadAsync<JsonElement>();
         var invoiceId = page.GetProperty("items")[0].GetProperty("id").GetGuid();
-        (await _client.PostJsonAsync($"/api/v1/invoices/{invoiceId}/finalize", null, token)).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await _client.FinalizeInvoiceAsync(invoiceId, token)).StatusCode.Should().Be(HttpStatusCode.OK);
         (await _client.PostJsonAsync($"/api/v1/contracts/{a.ContractId}/payments", new { amount = 1_000_000, method = "Cash", paidAt = today, invoiceId }, token))
             .StatusCode.Should().Be(HttpStatusCode.Created);
 

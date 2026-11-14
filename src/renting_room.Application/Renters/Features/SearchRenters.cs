@@ -4,6 +4,7 @@ using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Common.Models;
 using renting_room.Application.Common.Validation;
 using renting_room.Domain.Common;
+using renting_room.Domain.Renters;
 
 namespace renting_room.Application.Renters;
 
@@ -24,7 +25,8 @@ public sealed class SearchRentersQueryValidator : AbstractValidator<SearchRenter
 }
 
 /// <summary>Tìm theo tên (không dấu) / SĐT; số giấy tờ tìm CHÍNH XÁC qua hash (không quét dữ liệu đã mã hóa).</summary>
-public sealed class SearchRentersHandler(IRenterQueries renters, ICurrentUser currentUser, IPersonalDataProtector protector, TimeProvider clock)
+public sealed class SearchRentersHandler(
+    IRenterQueries renters, ICurrentUser currentUser, IPersonalDataProtector protector, IAuditTrail auditTrail, TimeProvider clock)
     : IRequestHandler<SearchRentersQuery, PagedResult<RenterDto>>
 {
     public async ValueTask<PagedResult<RenterDto>> Handle(SearchRentersQuery request, CancellationToken cancellationToken)
@@ -49,6 +51,11 @@ public sealed class SearchRentersHandler(IRenterQueries renters, ICurrentUser cu
         var search = new RenterSearch(
             request.IncludeArchived, request.PropertyId, request.Staying, clock.GetUtcNow().ToBusinessDate(), hashes, text, phone,
             request.Page, request.PageSize);
-        return await renters.SearchAsync(search, cancellationToken);
+        var result = await renters.SearchAsync(search, cancellationToken);
+        // M-13: tìm theo số giấy tờ là đường dò CCCD — ghi ai / khi nào / có khớp không (không ghi số đã nhập).
+        if (hashes is not null)
+            await auditTrail.RecordReadAsync(AuditActions.IdNumberLookup, nameof(Renter), null,
+                new { source = "Search", idType = request.IdType?.ToString(), matches = result.TotalCount }, cancellationToken);
+        return result;
     }
 }

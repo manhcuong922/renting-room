@@ -1,6 +1,7 @@
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Wordprocessing;
+using renting_room.Application.Common.Formatting;
 using renting_room.Application.Common.Interfaces;
 
 namespace renting_room.Infrastructure.Exports;
@@ -71,7 +72,7 @@ internal sealed class OpenXmlWordWriter : IWordDocumentWriter
         };
         return new Paragraph(
             new ParagraphProperties(new Justification { Val = justification }, new SpacingBetweenLines { After = "80", Line = "300", LineRule = LineSpacingRuleValues.Auto }),
-            new Run(props, new Text(p.Text) { Space = SpaceProcessingModeValues.Preserve }));
+            new Run(props, new Text(TextSanitizer.ForXml(p.Text)) { Space = SpaceProcessingModeValues.Preserve }));
     }
 
     private static Table Table(PrintTable t)

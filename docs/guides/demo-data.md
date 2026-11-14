@@ -8,7 +8,7 @@ ngày tính theo **hôm nay** nên lúc nào seed cũng có phiếu quá hạn, 
 | Môi trường | Cấu hình |
 |------------|----------|
 | Dev | `appsettings.Development.json` → `Seed:DemoData:Enabled = true` (sẵn) |
-| Server test | biến môi trường `Seed__DemoData__Enabled=true`, `Seed__DemoData__OwnerPassword`, `Seed__DemoData__ManagerPassword` (+ tùy chọn `OrganizationCode`, `OwnerPhone`, `ManagerPhone`, `WriteOffManagerPhone`) |
+| Server test (**phải chạy `ASPNETCORE_ENVIRONMENT=Development`**; môi trường khác mà bật seed ⇒ app dừng khi khởi động — M-18) | biến môi trường `Seed__DemoData__Enabled=true`, `Seed__DemoData__OwnerPassword`, `Seed__DemoData__ManagerPassword` (+ tùy chọn `OrganizationCode`, `OwnerPhone`, `ManagerPhone`, `WriteOffManagerPhone`) |
 | Môi trường thật | **không bật** (mặc định `false` trong `appsettings.json`) |
 
 Chạy khi app khởi động, sau migration và tạo SystemAdmin. Đã có tổ chức cùng mã (`DEMO`) ⇒ bỏ qua, không nhân đôi.
@@ -20,9 +20,9 @@ Seed lỗi giữa chừng ⇒ app dừng với thông báo `Demo seed failed at 
 | Vai trò | Đăng nhập | Mật khẩu |
 |---------|-----------|----------|
 | Chủ trọ | `0900000009` | `ChuTroDemo2026` |
-| Phó quản lý | `0900000008` | `PhoQuanLy2026` — **chưa có quyền bỏ nợ** (chủ trọ bật / tắt riêng tại màn thành viên) |
-| Phó quản lý được bỏ nợ | `0900000007` (`Seed:DemoData:WriteOffManagerPhone`) | cùng mật khẩu phó quản lý — **đã được cấp quyền bỏ nợ** (PM-BR-16) |
-| SystemAdmin | theo `Bootstrap:Admin` (user-secrets) | |
+| Quản lý khu A, B | `0900000008` | `PhoQuanLy2026` — **chỉ thấy 2 khu đầu** (thu sau, thu trước); làm mọi việc như chủ trọ trong 2 khu đó, trừ ngân hàng / bên cho thuê / tạo, ngừng khu / mẫu HĐ (M01 ID-BR-24, 08/11/2026) |
+| Quản lý các khu còn lại | `0900000007` (`Seed:DemoData:WriteOffManagerPhone`) | cùng mật khẩu — **chỉ thấy khu nhập Excel và khu đổi kỳ thu**. Đăng nhập 2 tài khoản để thử tách khu: mở id khu của người kia → 404 |
+| SystemAdmin | theo `Bootstrap:Admin` (user-secrets) | lần đăng nhập đầu bị bắt đổi mật khẩu (11/11/2026); mật khẩu demo của chủ trọ / quản lý ở trên cố ý giữ trong `appsettings.Development.json` (chốt 11/11/2026 — chỉ Development) |
 
 ## Tình huống
 
@@ -38,7 +38,7 @@ wifi 100.000đ → **120.000đ từ ngày 10 tháng M−1** (cả tháng M−1 t
 | 101 | Vợ chồng + con 9 tuổi (có đồng ý người giám hộ), 2 xe máy, 3 tháng đã thu đủ; HĐ **duy nhất đã có bản ký** (các HĐ khác mang nhãn "Thiếu tài liệu"); hôm nay hỏng khóa ⇒ **khoản phát sinh "Thay khóa cửa" chờ vào phiếu** tháng này |
 | 102 | Phiếu M−2 **quá hạn** chưa thu (nhãn đỏ **Quá hạn**, lọc `GET /rooms?overdue=true`); phiếu M−1 **thu một phần**; phiếu M−1 hiện **"Nợ các kỳ trước"** (M−2) + **"Tổng cần thanh toán"**; người ở ghép **chưa khai quan hệ** ⇒ cảnh báo `RELATIONSHIP_REQUIRED`; **khoản bù "Mất nước 2 ngày" chờ vào phiếu** tháng này |
 | 103 | Phiếu nháp M−1: **sửa tay** tiền phòng, **phụ thu** thay khóa, **giảm trừ** mất nước; điện **= 0** khi có người ở ⇒ cảnh báo `UNUSUAL_USAGE`; khoản **"Làm thêm chìa khóa" đã thu ngay** ⇒ hiện trên nháp, không tính vào tổng; phụ thu / giảm trừ trên nháp cũng nằm trong danh sách khoản phát sinh của phòng |
-| 104 | Người nước ngoài (hộ chiếu) **vào giữa tháng**, ở ghép; phòng tính **nước theo người** (không công tơ nước); giá niêm yết tăng 3tr → 3,1tr rồi **áp cho người đang thuê** ⇒ HĐ 2,8tr → 3,1tr từ tháng M (tháng M−1 đã lập phiếu giữ giá cũ) |
+| 104 | Người nước ngoài (hộ chiếu) **vào giữa tháng**, ở ghép; phòng tính **nước theo người** (không công tơ nước); giá niêm yết tăng 3tr → 3,1tr rồi **áp cho người đang thuê** ⇒ HĐ 2,8tr → 3,1tr từ tháng M (tháng M−1 đã lập phiếu giữ giá cũ); phiếu M−1 thu đủ rồi **sửa số đã thu** giảm 100.000đ ("Đếm lại tiền mặt thiếu") ⇒ còn nợ 100k, cột "Sửa giảm" của Excel thu tiền |
 | 105 | **Đang thanh lý** — báo trả phòng sau 15 ngày; phiếu M−1 **"Thanh toán + bỏ phần còn lại"** (trả thiếu 200k, chủ trọ bỏ do mất nước) |
 | 106 | Bỏ đi không báo giữa tháng M−1, làm vỡ gương ⇒ tài sản ghi "Vỡ", hóa đơn trả phòng có **phụ thu "Bồi thường gương nhà tắm" 300k**; **kết toán** (27/10/2026 — BL-BR-41): nợ hóa đơn tháng M−2 chuyển vào hóa đơn trả phòng (tháng M−2 thành **"Đã bỏ nợ (qua hóa đơn trả phòng)"** `CarriedWrittenOff` — không phải đã thu), cọc **trừ hết** (`Deducted`); phần còn lại người thuê không trả ⇒ hoàn tất bằng **bỏ nợ** |
 | 201 | HĐ cũ đã kết thúc ~10 tháng trước (lịch sử) — cọc 2,5tr **đã trừ vào hóa đơn trả phòng** (`Deducted`), người thuê trả phần còn lại |
@@ -113,7 +113,7 @@ Không seed được HĐ "kết thúc hơn 36 tháng" (phần tính tiền khôn
 
 **Bổ sung 12/10/2026** (khu A): 101 — chồng có **ghi nhận đồng ý** theo điều khoản HĐ, vợ đồng ý miệng việc nhận thông báo rồi **đã rút lại** (`GET /renters/{id}/consents`); hồ sơ **Vũ Văn Cũ đã ẩn** (chỉ hiện khi `GET /renters?includeArchived=true`); 105 đang thanh lý ⇒ thử **xem trước thanh lý** (`GET /contracts/{id}/liquidation/preview`: `blockers` có `LIQUIDATION_BEFORE_END_DATE`, `FINAL_INVOICE_REQUIRED`). Thử trên dữ liệu sẵn có: `GET /invoices/totals` (số tổng hợp), `POST /invoices/generate-bulk` (tạo phiếu mọi khu), `GET /renters?propertyId=…` / `?staying=false`, `GET /org/login-events` (sau vài lần đăng nhập đúng / sai), đăng xuất rồi gọi lại bằng access token cũ ⇒ 401; ghi chỉ số cuối kỳ với ngày ghi đầu tháng ⇒ `warnings` có `READING_DATE_FAR_FROM_PERIOD_END`.
 
-**Bổ sung 13/10/2026 — thử trên dữ liệu sẵn có:** đăng nhập phó quản lý rồi `PUT /me` ⇒ 403 `PROFILE_MANAGED_BY_OWNER`; chủ trọ đổi SĐT không gửi `currentPassword` ⇒ 400 `CURRENT_PASSWORD_REQUIRED`; tạo khoản bù "đã trả ngay" lớn hơn tiền phòng rồi **bỏ đánh dấu** ⇒ 422 `ROOM_CHARGE_CREDIT_TOO_HIGH`.
+**Bổ sung 13/10/2026 — thử trên dữ liệu sẵn có:** đăng nhập quản lý khu rồi `PUT /me` ⇒ 403 `PROFILE_MANAGED_BY_OWNER`; chủ trọ đổi SĐT không gửi `currentPassword` ⇒ 400 `CURRENT_PASSWORD_REQUIRED`; tạo khoản bù "đã trả ngay" lớn hơn tiền phòng rồi **bỏ đánh dấu** ⇒ 422 `ROOM_CHARGE_CREDIT_TOO_HIGH`.
 
 **Hai endpoint đọc thêm 13/10/2026:** `GET /contracts/{id}/balance` — thử với HĐ phòng **102** (nợ 2 phiếu, 1 phiếu quá hạn); `GET /properties/{id}/meters/install-sheet?feeTypeId=<Nước>` ở khu A — ra phòng **104** và **210, 211** (chưa có công tơ nước).
 

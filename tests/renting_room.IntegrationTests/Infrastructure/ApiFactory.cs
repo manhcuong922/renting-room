@@ -5,8 +5,13 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Time.Testing;
+using renting_room.Application.Common.Interfaces;
+using renting_room.Domain.Identity;
+using renting_room.Infrastructure.Persistence;
 using Testcontainers.PostgreSql;
 
 namespace renting_room.IntegrationTests.Infrastructure;
@@ -28,6 +33,9 @@ public class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
     /// <summary>Đồng hồ giả để kiểm thử các mốc thời gian (grace period, lockout) mà không phải chờ thật.</summary>
     public FakeTimeProvider Clock { get; } = new(DateTimeOffset.UtcNow);
 
+    /// <summary>Thư hệ thống gửi đi (M-14: mật khẩu tạm gửi qua email của chủ trọ) — không gửi SMTP thật trong test.</summary>
+    public FakeEmailSender Emails { get; } = new();
+
     public string ConnectionString => _database.GetConnectionString();
 
     public Task InitializeAsync() => _database.StartAsync();
@@ -36,6 +44,20 @@ public class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
     {
         await base.DisposeAsync();
         await _database.DisposeAsync();
+    }
+
+    /// <summary>
+    /// Admin bootstrap bị bắt đổi mật khẩu ở lần đăng nhập đầu (M-18). Các test dùng chung <see cref="AdminPassword"/> nên đánh dấu đã đổi ngay
+    /// sau khi seed; hành vi bắt buộc đổi được kiểm riêng ở <c>BootstrapAdminTests</c>.
+    /// </summary>
+    protected override IHost CreateHost(IHostBuilder builder)
+    {
+        var host = base.CreateHost(builder);
+        using var scope = host.Services.CreateScope();
+        scope.ServiceProvider.GetRequiredService<AppDbContext>().Users
+            .Where(u => u.Role == UserRole.SystemAdmin && u.PhoneNormalized == AdminPhone)
+            .ExecuteUpdate(s => s.SetProperty(u => u.MustChangePassword, false));
+        return host;
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -49,14 +71,16 @@ public class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         builder.UseSetting("PersonalData:HashKey", "integration-test-personal-data-hmac-key-32+chars");
         builder.UseSetting("Bootstrap:Admin:Phone", AdminPhone);
         builder.UseSetting("Bootstrap:Admin:Password", AdminPassword);
-        // Audit đọc ghi nền theo lô: rút ngắn cửa sổ gom để test không phải chờ lâu.
-        builder.UseSetting("Audit:FlushInterval", "00:00:00.100");
+        builder.UseSetting("DataProtection:KeysPath", Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), "renting_room_tests_dp_keys")).FullName); // M-17: ngoài Development bắt buộc có, thư mục phải tồn tại
+        builder.UseSetting("AllowedHosts", "localhost"); // TestServer gửi Host: localhost; ngoài Development "*" bị chặn (L-15)
         ConfigureRateLimits(builder);
 
         builder.ConfigureTestServices(services =>
         {
             services.RemoveAll<TimeProvider>();
             services.AddSingleton<TimeProvider>(Clock);
+            services.RemoveAll<IEmailSender>();
+            services.AddSingleton<IEmailSender>(Emails);
             services.AddSingleton<IStartupFilter, TestClientIpStartupFilter>();
         });
     }
@@ -64,7 +88,7 @@ public class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
     /// <summary>Mặc định: hạn mức rất cao để test chức năng không bị 429 (limiter vẫn chạy).</summary>
     protected virtual void ConfigureRateLimits(IWebHostBuilder builder)
     {
-        foreach (var rule in new[] { "Login", "LoginPerAccount", "Refresh", "Sensitive", "Authenticated", "Anonymous", "Write" })
+        foreach (var rule in new[] { "Login", "LoginPerAccount", "Refresh", "Sensitive", "IdLookup", "Authenticated", "Anonymous", "Write" })
             builder.UseSetting($"RateLimiting:{rule}:PermitLimit", "100000");
         builder.UseSetting("RateLimiting:MaxConcurrentRequestsPerClient", "1000");
     }
@@ -103,8 +127,7 @@ public sealed class RateLimitedApiFactory : ApiFactory
         base.ConfigureRateLimits(builder);
         builder.UseSetting("RateLimiting:Login:PermitLimit", LoginLimit.ToString());
         builder.UseSetting("RateLimiting:LoginPerAccount:PermitLimit", LoginPerAccountLimit.ToString());
-        builder.UseSetting("RateLimiting:Sensitive:PermitLimit", SensitiveLimit.ToString());
-        builder.UseSetting("RateLimiting:Write:PermitLimit", WriteLimit.ToString());
+        builder.UseSetting("RateLimiting:Sensitive:PermitLimit", SensitiveLimit.ToString());        builder.UseSetting("RateLimiting:Write:PermitLimit", WriteLimit.ToString());
     }
 }
 

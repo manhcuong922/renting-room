@@ -116,7 +116,7 @@ public sealed class RoomChargeTests(ApiFactory factory)
         ChargeLine(invoice, credit).Should().BeNull();
         Total(invoice).Should().Be(Rent + 250_000);
         var paidLine = ChargeLine(invoice, paidNow)!.Value.GetProperty("id").GetGuid();
-        (await _client.DeleteAsync($"/api/v1/invoices/{invoiceId}/lines/{paidLine}", s.Token)).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await _client.ResetInvoiceLineAsync(invoiceId, paidLine, s.Token)).StatusCode.Should().Be(HttpStatusCode.OK);
         (await StatusAsync(s, paidNow)).Should().Be("Cancelled");
         (await StatusAsync(s, credit)).Should().Be("Cancelled");
     }
@@ -128,7 +128,7 @@ public sealed class RoomChargeTests(ApiFactory factory)
         var month1 = s.FirstMonth;
         var month2 = month1.AddMonths(1);
         var first = await GenerateAsync(s, month1);
-        (await _client.PostJsonAsync($"/api/v1/invoices/{first}/finalize", null, s.Token)).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await _client.FinalizeInvoiceAsync(first, s.Token)).StatusCode.Should().Be(HttpStatusCode.OK);
 
         // 4. Phát sinh ngày 29 của tháng đã chốt ⇒ sang phiếu tháng sau; phát sinh tháng này ⇒ không vào nháp tháng trước.
         var late = (await CreatedAsync(s, "Surcharge", 150_000, month1.AddDays(28))).GetProperty("id").GetGuid();
@@ -141,7 +141,7 @@ public sealed class RoomChargeTests(ApiFactory factory)
         (await StatusAsync(s, thisMonth)).Should().Be("Pending");
 
         // 5. Chốt ⇒ khóa; hủy phiếu ⇒ về chờ, lập lại thì có lại; xóa nháp ⇒ về chờ.
-        (await _client.PostJsonAsync($"/api/v1/invoices/{second}/finalize", null, s.Token)).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await _client.FinalizeInvoiceAsync(second, s.Token)).StatusCode.Should().Be(HttpStatusCode.OK);
         (await StatusAsync(s, late)).Should().Be("Billed");
         (await (await _client.PostJsonAsync($"/api/v1/room-charges/{late}/settle", new { settledOn = s.Today, method = "Cash" }, s.Token))
             .ReadProblemCodeAsync()).Should().Be("ROOM_CHARGE_LOCKED");
@@ -166,13 +166,13 @@ public sealed class RoomChargeTests(ApiFactory factory)
         var invoiceId = await GenerateAsync(s, s.FirstMonth);
 
         // 7. Thêm tay trên nháp (quên tạo trước) ⇒ cũng là khoản phát sinh của phòng; chọn đã thanh toán ⇒ không tính tổng.
-        var added = await _client.PostJsonAsync($"/api/v1/invoices/{invoiceId}/manual-lines", new
+        var added = await _client.AddInvoiceLineAsync(invoiceId, new
         {
             type = "Surcharge", description = "Thay bóng đèn", amount = 60_000, note = "Người thuê làm vỡ", settled = true, method = "Cash"
         }, s.Token);
         added.StatusCode.Should().Be(HttpStatusCode.OK, await added.Content.ReadAsStringAsync());
         Total(await added.ReadAsync<JsonElement>()).Should().Be(Rent);
-        await _client.PostJsonAsync($"/api/v1/invoices/{invoiceId}/manual-lines",
+        await _client.AddInvoiceLineAsync(invoiceId,
             new { type = "ManualDiscount", description = "Mất nước 2 ngày", amount = 40_000, note = "Sự cố bồn nước" }, s.Token);
         Total(await InvoiceAsync(s, invoiceId)).Should().Be(Rent - 40_000);
         var charges = await (await _client.GetAsync($"/api/v1/rooms/{s.RoomId}/charges", s.Token)).ReadAsync<JsonElement>();
@@ -183,7 +183,7 @@ public sealed class RoomChargeTests(ApiFactory factory)
         //    ⇒ chưa vào phiếu, khoản vẫn chờ, nháp có cảnh báo.
         var rentLine = (await InvoiceAsync(s, invoiceId)).GetProperty("lines").EnumerateArray()
             .Single(l => l.GetProperty("type").GetString() == "Rent").GetProperty("id").GetGuid();
-        (await _client.PutJsonAsync($"/api/v1/invoices/{invoiceId}/lines/{rentLine}", new { amount = 500_000, note = "Ở nhờ nửa tháng" }, s.Token))
+        (await _client.EditInvoiceLineAsync(invoiceId, rentLine, new { amount = 500_000, note = "Ở nhờ nửa tháng" }, s.Token))
             .StatusCode.Should().Be(HttpStatusCode.OK);
         var huge = (await CreatedAsync(s, "Credit", 1_000_000, s.FirstMonth.AddDays(5))).GetProperty("id").GetGuid();
         (await StatusAsync(s, huge)).Should().Be("Pending");
@@ -208,7 +208,7 @@ public sealed class RoomChargeTests(ApiFactory factory)
         var final = await (await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/final-invoice", new { }, token)).ReadAsync<JsonElement>();
         ChargeLine(final, damage).Should().NotBeNull("bồi thường = phụ thu trên phiếu quyết toán");
         var finalId = final.GetProperty("summary").GetProperty("id").GetGuid();
-        (await _client.PostJsonAsync($"/api/v1/invoices/{finalId}/finalize", null, token)).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await _client.FinalizeInvoiceAsync(finalId, token)).StatusCode.Should().Be(HttpStatusCode.OK);
         (await CreatedAsync(s, "Surcharge", 50_000, today)).GetProperty("status").GetString().Should().Be("Pending");
         (await _client.PostJsonAsync($"/api/v1/contracts/{contractId}/liquidation/complete",
             new { settlement = "CollectAll", pendingCharges = new { method = "Cash" } }, token)).StatusCode.Should().Be(HttpStatusCode.NoContent);

@@ -1,7 +1,9 @@
 # Khu trọ (property)
 
 Một tổ chức có **nhiều khu trọ**. Mỗi khu có: địa chỉ, cài đặt thu tiền mặc định, **bên cho thuê** (người đứng tên trên hợp đồng),
-tài khoản ngân hàng nhận tiền, nội quy. Quyền: chủ trọ và phó quản lý.
+tài khoản ngân hàng nhận tiền, nội quy. Quyền: chủ trọ và quản lý khu (**khu được giao** — 08/11/2026) — **chỉ chủ trọ**: tạo khu, ngừng / khôi phục khu,
+bên cho thuê của khu (gồm người ký thay + giấy ủy quyền — quản lý xem, in theo, xem được số giấy tờ đầy đủ), tài khoản ngân hàng (H-06, 06/11/2026).
+Quản lý khu gọi → 403 (ẩn nút). `GET /properties` của quản lý khu chỉ gồm khu được giao.
 
 ## Màn hình
 
@@ -12,7 +14,7 @@ tài khoản ngân hàng nhận tiền, nội quy. Quyền: chủ trọ và phó
 | Chi tiết khu — tab **Thông tin & cài đặt thu** | `GET /properties/{id}`, `PUT /properties/{id}` |
 | Cài đặt tổ chức — **Thông tin chủ trọ** (khai 1 lần) | `GET` / `PUT /org/lessor`, `POST /org/lessor/reveal-id-number` |
 | Tab **Bên cho thuê** của khu (chỉ khi khác chủ trọ) | `PUT` / `DELETE /properties/{id}/lessor`, `POST /properties/{id}/lessor/reveal-id-number` |
-| Tab **Ngân hàng** | `PUT /properties/{id}/bank-account` |
+| Tab **Ngân hàng** (chỉ chủ trọ — quản lý khu chỉ xem) | `PUT /properties/{id}/bank-account` |
 | Tab **Nội quy** | `PUT /properties/{id}/house-rules` |
 | Tab **Phòng**, **Nhóm phòng** | xem [rooms.md](rooms.md) |
 | Nút Ngừng sử dụng / Khôi phục | `POST /properties/{id}/archive` · `/restore` |
@@ -212,7 +214,7 @@ Chi tiết khu có `billing`:
 
 - `GET /org/lessor` → `{ "lessor": { …như dưới, có isComplete } | null, "prefill": { "name", "phone", "address" } }` — `prefill` lấy từ
   thông tin liên hệ của tổ chức để điền sẵn form lần đầu.
-- `PUT /org/lessor` (body như dưới) → 200 cùng dạng `GET`. **Chỉ chủ trọ** (phó quản lý 403).
+- `PUT /org/lessor` (body như dưới) → 200 cùng dạng `GET`. **Chỉ chủ trọ** (quản lý khu 403).
 - `POST /org/lessor/reveal-id-number` → `{ "idNumber" }` (quyền / giới hạn như xem số giấy tờ bên dưới).
 
 **Bên cho thuê riêng của khu** — chỉ khi khác chủ trọ (công ty quản lý, người được ủy quyền):
@@ -270,10 +272,21 @@ UI:
 `PUT /properties/{id}/bank-account`
 
 ```json
-{ "bankName": "Vietcombank", "accountNo": "0123456789", "accountName": "NGUYEN VAN CHU" }
+{ "bankName": "Vietcombank", "accountNo": "0123456789", "accountName": "NGUYEN VAN CHU", "currentPassword": "••••••••" }
 ```
 
 Nhập thì phải đủ 3 trường; số tài khoản 6–20 chữ số. Gửi cả 3 `null` = xóa. → 200 chi tiết khu.
+
+**Chỉ chủ trọ** (H-06, 06/11/2026): số tài khoản in trên mọi phiếu báo / mã QR — quản lý khu gọi → 403 (UI: ẩn nút sửa, chỉ hiện số tài khoản).
+**Đổi hoặc xóa** tài khoản phải gửi `currentPassword` = mật khẩu đăng nhập của chủ trọ (UI: hộp "Nhập mật khẩu để xác nhận" khi bấm Lưu):
+
+| Lỗi | Khi nào | UI |
+|-----|---------|----|
+| 400 `CURRENT_PASSWORD_REQUIRED` | Thiếu `currentPassword` mà tài khoản khác số đang lưu | Hiện ô mật khẩu |
+| 422 `INVALID_CURRENT_PASSWORD` | Sai mật khẩu — tính vào bộ đếm khóa tài khoản như `PUT /me` | Lỗi dưới ô mật khẩu; tài khoản không đổi |
+| 423 `ACCOUNT_LOCKED` | Sai quá nhiều lần | Như đăng nhập bị khóa |
+
+Gửi lại **đúng** tài khoản đang lưu (VD form lưu cả trang) thì không cần mật khẩu. Nhật ký ghi số cũ → mới.
 
 ## Nội quy
 
@@ -284,7 +297,7 @@ Nội quy được **chụp lại vào hợp đồng lúc kích hoạt**; sửa 
 
 | Endpoint | Điều kiện | Kết quả |
 |----------|-----------|---------|
-| `POST /properties/{id}/archive` | Không còn hợp đồng Nháp / Hiệu lực / Đang thanh lý (`PROPERTY_HAS_ACTIVE_CONTRACTS`) | 204 — khu và **mọi phòng** chuyển "Ngừng sử dụng" |
+| `POST /properties/{id}/archive` | Không còn hợp đồng Nháp / Hiệu lực / Đang thanh lý (`PROPERTY_HAS_ACTIVE_CONTRACTS`) | 204 — khu và **mọi phòng** chuyển "Ngừng sử dụng". Đang có lệnh tạo HĐ nháp trên phòng của khu ⇒ chờ lệnh đó xong rồi mới kiểm |
 | `POST /properties/{id}/restore` | Đang ngừng | 204 — chỉ khôi phục khu; phòng khôi phục riêng từng phòng |
 
 ## Lỗi thường gặp

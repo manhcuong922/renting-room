@@ -56,15 +56,29 @@ public sealed class RentersController(ISender sender) : ControllerBase
     [HttpPost("renters/search")]
     [NoStore]
     [EndpointSummary("Tìm người thuê, gồm số giấy tờ khớp chính xác (số giấy tờ gửi trong body, không đặt trên URL)")]
-    public async Task<IResult> Search(SearchRentersRequest body, CancellationToken ct) =>
-        Results.Ok(await sender.Send(new SearchRentersQuery(
+    public async Task<IResult> Search(SearchRentersRequest body, [FromServices] IdNumberLookupLimiter limiter, CancellationToken ct)
+    {
+        // M-13: chỉ tìm theo số giấy tờ mới tính hạn mức dò; tìm theo tên / SĐT dùng hằng ngày không bị chặn.
+        using var lease = string.IsNullOrWhiteSpace(body.IdNumber) ? null : limiter.Acquire(HttpContext);
+        if (lease is { IsAcquired: false })
+            return RateLimitingSetup.TooManyRequests(HttpContext, lease);
+
+        return Results.Ok(await sender.Send(new SearchRentersQuery(
             body.Q, body.IdNumber, body.IdType, body.Page ?? 1, body.PageSize ?? Paging.DefaultPageSize), ct));
+    }
 
     [HttpPost("renters")]
     [Idempotent]
-    [EndpointSummary("Tạo hồ sơ người thuê (409 nếu số giấy tờ đã có — dùng lại hồ sơ cũ)")]
-    public async Task<IResult> Create(RenterInput body, CancellationToken ct) =>
-        (await sender.Send(new CreateRenterCommand(body), ct)).ToCreated(Route);
+    [EndpointSummary("Tạo hồ sơ người thuê (409 nếu số giấy tờ đã có — dùng lại hồ sơ cũ). Dùng chung hạn mức dò số giấy tờ (429)")]
+    public async Task<IResult> Create(RenterInput body, [FromServices] IdNumberLookupLimiter limiter, CancellationToken ct)
+    {
+        // M-13: 409 trùng số trả họ tên + 4 số cuối ⇒ tạo hồ sơ cũng là cách dò CCCD, dùng chung hạn mức với tìm theo số giấy tờ.
+        using var lease = limiter.Acquire(HttpContext);
+        if (!lease.IsAcquired)
+            return RateLimitingSetup.TooManyRequests(HttpContext, lease);
+
+        return (await sender.Send(new CreateRenterCommand(body), ct)).ToCreated(Route);
+    }
 
     [HttpGet("renters/{id:guid}")]
     [EndpointSummary("Chi tiết người thuê")]

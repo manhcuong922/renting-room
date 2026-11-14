@@ -10,7 +10,7 @@
 Phần mềm SaaS giúp **chủ trọ** quản lý nhiều khu trọ: phòng, người thuê, hợp đồng, người ở,
 chỉ số điện nước, tính tiền phòng hàng tháng, thu tiền, theo dõi cọc, xuất Excel.
 Định hướng **B2B**: quản trị viên nền tảng cấp tài khoản cho chủ trọ (tổ chức); chủ trọ tạo tài khoản
-**phó quản lý**.
+**quản lý khu** (giao từng khu — 08/11/2026).
 
 **Trong phạm vi**
 - Quản lý tổ chức (chủ trọ) & tài khoản do Admin cấp.
@@ -38,7 +38,7 @@ Căn cứ pháp lý & quy tắc LEG-xx: [00-legal-basis.md](00-legal-basis.md).
 |------|-------|-------|-------|
 | `SystemAdmin` | Nền tảng (không thuộc tổ chức) | Tạo/khóa tổ chức chủ trọ, cấp & reset tài khoản chủ trọ, quản lý dữ liệu tham chiếu (ĐVHC). **Mặc định không xem dữ liệu nghiệp vụ** của tổ chức | P1 |
 | `OrgOwner` | 1 tổ chức | Chủ trọ — toàn quyền trong tổ chức của mình | P1 |
-| `OrgManager` | 1 tổ chức | **Phó quản lý** do chủ trọ tạo — thao tác nghiệp vụ như chủ trọ, KHÔNG quản lý thành viên. P3: giới hạn theo khu được gán | P1 |
+| `OrgManager` | 1 tổ chức, **các khu được giao** | **Quản lý khu** (đổi 08/11/2026, thay "phó quản lý") do chủ trọ tạo và giao khu — làm mọi việc như chủ trọ nhưng chỉ trong khu được giao; trừ danh sách chỉ chủ trọ (M01 ID-BR-28: ngân hàng nhận tiền, bên cho thuê / người ký thay, tạo / ngừng khu, mẫu HĐ, thành viên, tổ chức, nhật ký) | P1 |
 | Renter | — | Người thuê/người ở: **không phải user**, chỉ là bản ghi dữ liệu | — |
 
 ## 3. Kiến trúc
@@ -198,9 +198,11 @@ Trả lại cọc ⇒ bấm **"Đã hoàn trả cọc"** (không bắt buộc tr
 ### C-07 Concurrency
 - Optimistic concurrency bằng cột hệ thống `xmin` của PostgreSQL (`UseXminAsConcurrencyToken` / `IsRowVersion`).
 - API trả `version` (string) trong response; lệnh cập nhật nhận `version` → lệch trả **409 `CONCURRENCY_CONFLICT`**.
+  Postgres báo `40001` (serialization) / `40P01` (deadlock) — kể cả khi lệnh khóa ném thẳng, không qua `SaveChanges` — cũng ⇒ 409 `CONCURRENCY_CONFLICT` (03/11/2026, L-04).
 - Thao tác tài chính (chốt phiếu, phân bổ thanh toán, bỏ nợ, cấp số phiếu) chạy trong **transaction** và khóa hàng cha (`SELECT … FOR UPDATE`) khi cần tính số dư.
 - **Thứ tự khóa toàn cục** (chống deadlock — mọi module phải tuân theo, cùng loại thì theo `id` tăng dần):
   `organizations → properties → rooms → contracts → renters → fee_types → meters → invoices → payments → sequences`.
+- Lệnh khóa hàng (`LockForUpdateAsync` / `LockForShareAsync`) với bảng có `organization_id` luôn lọc thêm theo tổ chức đang đăng nhập (chưa có tổ chức ⇒ không khóa hàng nào) — biết UUID của tổ chức khác cũng không giữ được hàng của họ (04/11/2026, L-18).
 
 ### C-08 Idempotency
 - Header `Idempotency-Key` (8–64 ký tự `[A-Za-z0-9_-]`, khuyến nghị UUID) — **bắt buộc** cho thao tác tạo mới / tài chính
@@ -234,13 +236,13 @@ Trả lại cọc ⇒ bấm **"Đã hoàn trả cọc"** (không bắt buộc tr
 - Bảng `audit_logs(id uuid v7, organization_id, user_id, action, entity_type, entity_id, changes jsonb, ip_address, occurred_at)`.
   Không lưu `user_agent` (dài, ít giá trị tra cứu, làm bảng phình nhanh); lý do của lệnh (void, sửa chỉ số…) nằm trong `changes` / cột của entity.
 - Index chỉ 2: `(organization_id, entity_type, entity_id)` — lịch sử 1 đối tượng; `(organization_id, occurred_at)` — nhật ký theo thời gian.
-- **Hai đường ghi** — mục tiêu: không thêm lượt gọi DB cho mỗi thao tác:
+- **Ba đường ghi** — mục tiêu: không thêm lượt gọi DB cho thao tác ghi; thao tác đọc nhạy cảm chịu thêm 1 lượt để không mất nhật ký:
 
   | Loại thao tác | Cách ghi | Lượt DB thêm | Mất audit khi crash? |
   |---|---|---|---|
   | **Ghi** (tạo / sửa / xóa entity) | `AppDbContext.SaveChanges` đọc ChangeTracker → sinh dòng audit → thêm vào **chính lần lưu đó** (cùng batch lệnh, cùng transaction). Rollback ⇒ audit cũng không có; lưu lỗi ⇒ gỡ dòng audit khỏi context | 0 | Không |
   | Sự kiện nghiệp vụ trong lệnh ghi (ẩn danh, import) | `IAuditTrail.Record(...)` — đi kèm SaveChanges kế tiếp, cùng transaction | 0 | Không |
-  | **Đọc** dữ liệu nhạy cảm (xem số giấy tờ đầy đủ, in HĐ có số đầy đủ, xuất Excel `includeSensitive`, tải ảnh giấy tờ — M09) | `IAuditTrail.RecordRead(...)` → hàng đợi RAM (`Channel`, tối đa `Audit:QueueCapacity` = 10.000) → `AuditLogWriter` (BackgroundService) gom lô: ghi khi **đủ `Audit:MaxBatchSize` = 500 HOẶC hết `Audit:FlushInterval` = 2 giây** tính từ bản ghi đầu của lô | 1 INSERT / lô | Tối đa 1 cửa sổ gom (~2 giây). Tắt app bình thường ⇒ vét hàng đợi trước khi dừng. Hàng đợi đầy / ghi lỗi ⇒ chép tóm tắt ra log ứng dụng |
+  | **Đọc** dữ liệu nhạy cảm (xem số giấy tờ đầy đủ, in HĐ có số đầy đủ, xuất Excel `includeSensitive`, tải ảnh giấy tờ — M09) | `IAuditTrail.RecordReadAsync(...)` — **ghi thẳng 1 INSERT trước khi trả dữ liệu** (đổi 05/11/2026, L-16; trước đó qua hàng đợi RAM + `AuditLogWriter` gom lô 2 giây ⇒ crash mất tới 2 giây nhật ký, hàng đợi đầy thì chỉ ghi log — trái LEG-06). Không ghi được nhật ký ⇒ lệnh lỗi, **không trả số / file** | 1 INSERT / lần xem | Không. Cái giá: mỗi lần xem chậm thêm vài ms; DB lỗi thì không xem được — tần suất xem thấp nên chấp nhận |
 
   Lý do không đưa thao tác ghi sang nền: lượt SaveChanges đằng nào cũng xảy ra, audit đi nhờ không tốn thêm round-trip/commit; tách ra nền chỉ thêm commit và rủi ro mất audit.
 - Audit **tự động** cho mọi entity kế thừa `Entity` trừ `RefreshToken` (sự kiện đăng nhập ở bảng `login_events` — M01 §11). Không áp dụng cho lệnh `ExecuteUpdate` / `ExecuteDelete` / SQL thô (không qua ChangeTracker) ⇒ lệnh nghiệp vụ cần audit không được viết bằng các API này, hoặc phải tự gọi `IAuditTrail.Record`.
@@ -256,6 +258,8 @@ Trả lại cọc ⇒ bấm **"Đã hoàn trả cọc"** (không bắt buộc tr
 - JWT access 15 phút + refresh token xoay vòng (chi tiết M01). Rate limit đăng nhập & API.
 - Số giấy tờ: mã hóa cột (AES-GCM, khóa từ secret manager) + cột `id_number_hash` (HMAC-SHA256) để tìm kiếm/unique.
 - Không ghi dữ liệu cá nhân vào log ứng dụng (chỉ ghi id). **Không dùng Serilog** (chốt 08/10/2026): log mặc định của ASP.NET Core; che dữ liệu hiển thị ở FE. Số giấy tờ mã hóa ở DB, API luôn trả dạng che trừ endpoint xem đầy đủ (có audit).
+- ✅ Lỗi PostgreSQL (05/11/2026, L-12): app luôn tắt `Include Error Detail` của Npgsql (kể cả khi chuỗi kết nối bật) — `Detail` "Failing row contains (…, họ tên, SĐT, …)" không bao giờ có; lỗi check / lỗi không lường trước chỉ log `SqlState`, bảng, cột, tên ràng buộc, không log nguyên exception (câu lỗi có thể chứa giá trị người dùng nhập).
+- ✅ `AllowedHosts` (05/11/2026, L-15): ngoài Development phải liệt kê tên miền thật — `"*"` hoặc để trống ⇒ app dừng khi khởi động; Host lạ ⇒ 400. Development giữ `"*"`.
 - ✅ Secrets qua biến môi trường / User Secrets; app dừng ngay khi thiếu chuỗi kết nối (`ConnectionStrings__DefaultConnection`). `appsettings.Development.json` chỉ có mật khẩu mặc định `postgres/postgres` của container Postgres dev (`docker-compose.yml`, đổi qua `.env`) — không phải bí mật thật; môi trường thật bắt buộc lấy từ env / secret manager (P0-02).
 
 ### C-12 Địa chỉ
@@ -273,6 +277,6 @@ Trả lại cọc ⇒ bấm **"Đã hoàn trả cọc"** (không bắt buộc tr
 | **P0 Foundation** | net10.0, secrets, multi-tenant (C-01), audit (C-10), ProblemDetails (C-09), idempotency (C-08), TimeProvider (C-04), kỳ thu (C-05), Testcontainers, M01 auth | ✅ xong. Còn thiếu: bảng ĐVHC (C-12) |
 | **P1 MVP** | M01–M08; M09 file; M10 export | M01–M08 ✅ (phần ghi "chưa code" trong từng plan là ngoại lệ). **M09 chưa làm**. M10: mới có E1 |
 | **P2** | Gửi phiếu & nhắc nợ qua Zalo Bot / email (**M11**, hiện thực BL-UC-13 — đã có thiết kế 12/10/2026; ảnh VietQR để sau), in / xuất phiếu (BL-UC-12), thủ tục cư trú (M03), nhắc việc, đối chiếu hóa đơn điện EVN, dashboard, báo cáo doanh thu, export bất đồng bộ | Chưa làm |
-| **P3 B2B** | Thanh toán online / đối soát ngân hàng, số dư có, giới hạn `OrgManager` theo khu, gói dịch vụ & giới hạn (số khu / phòng), RLS, admin impersonation có audit | Chưa làm |
+| **P3 B2B** | Thanh toán online / đối soát ngân hàng, số dư có, gói dịch vụ & giới hạn (số khu / phòng), RLS, admin impersonation có audit | Chưa làm |
 
 **Việc đã chốt nhưng chưa code** (chi tiết ở [99-self-review.md](99-self-review.md) mục C): xem danh sách tại đó — không ghi lặp ở đây.

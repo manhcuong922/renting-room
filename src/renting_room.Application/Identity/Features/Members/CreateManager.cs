@@ -9,7 +9,9 @@ using renting_room.Domain.Identity;
 
 namespace renting_room.Application.Identity.Members;
 
-public sealed record CreateManagerCommand(string FullName, string? Phone, string? Email) : IRequest<Result<TemporaryCredentials>>;
+/// <param name="PropertyIds">Khu được giao (ID-BR-24); null = mọi khu đang dùng (ID-BR-29), <c>[]</c> = chưa giao khu nào.</param>
+public sealed record CreateManagerCommand(string FullName, string? Phone, string? Email, IReadOnlyList<Guid>? PropertyIds = null)
+    : IRequest<Result<TemporaryCredentials>>;
 
 public sealed class CreateManagerCommandValidator : AbstractValidator<CreateManagerCommand>
 {
@@ -18,10 +20,11 @@ public sealed class CreateManagerCommandValidator : AbstractValidator<CreateMana
         RuleFor(x => x.FullName).FullName();
         RuleFor(x => x.Phone).VietnamPhone();
         RuleFor(x => x.Email).ValidEmail();
+        RuleFor(x => x.PropertyIds).AssignedProperties();
         RuleFor(x => x)
             .Must(x => !string.IsNullOrWhiteSpace(x.Phone) || !string.IsNullOrWhiteSpace(x.Email))
             .OverridePropertyName("phone").WithErrorCode("USERNAME_REQUIRED")
-            .WithMessage("Phó quản lý phải có số điện thoại hoặc email để đăng nhập.");
+            .WithMessage("Quản lý khu phải có số điện thoại hoặc email để đăng nhập.");
     }
 }
 
@@ -29,6 +32,7 @@ public sealed class CreateManagerHandler(
     IUserRepository users,
     IUserQueries userQueries,
     IOrganizationQueries organizations,
+    IPropertyAccessRepository access,
     IUnitOfWork unitOfWork,
     ICurrentUser currentUser,
     IPasswordHasher passwordHasher,
@@ -55,12 +59,16 @@ public sealed class CreateManagerHandler(
         var activeManagers = await userQueries.CountActiveManagersAsync(organizationId, cancellationToken);
         if (activeManagers >= maxManagers)
             return IdentityErrors.ManagerLimitReached;
+        var propertyIds = await PropertyAssignment.ResolveAsync(access, request.PropertyIds, cancellationToken);
+        if (propertyIds.IsFailure)
+            return propertyIds.Error!;
 
         var now = clock.GetUtcNow();
         var temporaryPassword = TemporaryPasswordGenerator.Generate();
         var manager = User.CreateOrgManager(organizationId, request.FullName, phone, email, passwordHasher.Hash(temporaryPassword), now);
 
         users.Add(manager);
+        await access.ReplaceAsync(manager.Id, propertyIds.Value!, cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
 

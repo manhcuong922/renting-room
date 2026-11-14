@@ -69,6 +69,9 @@ public interface IInvoiceQueries
     /// <summary>Tổng các dòng hoàn trả (phiếu chưa hủy) trỏ tới phiếu nguồn, trừ dòng <paramref name="excludeLineId"/> (≤ 0).</summary>
     Task<decimal> GetRefundLinesTotalAsync(Guid sourceInvoiceId, Guid? excludeLineId, CancellationToken cancellationToken);
 
+    /// <summary>Như <see cref="GetRefundLinesTotalAsync"/> nhưng chỉ dòng của phiếu <b>đã chốt</b> (số âm) — nháp còn được kiểm lại khi chốt (BL-BR-27).</summary>
+    Task<decimal> GetFinalizedRefundLinesTotalAsync(Guid sourceInvoiceId, CancellationToken cancellationToken);
+
     Task<IReadOnlyList<InvoiceTarget>> ListRecalculationTargetsAsync(RecalculateInvoicesCommand request, CancellationToken cancellationToken);
 
     Task<IReadOnlyList<InvoiceTarget>> ListManualLineTargetsAsync(BulkAddManualLineCommand request, CancellationToken cancellationToken);

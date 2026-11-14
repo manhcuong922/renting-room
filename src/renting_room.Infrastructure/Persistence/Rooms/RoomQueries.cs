@@ -54,11 +54,13 @@ internal sealed class RoomQueries(AppDbContext db) : IRoomQueries
     public Task<bool> ExistsAsync(Guid id, CancellationToken cancellationToken) =>
         db.Rooms.AnyAsync(r => r.Id == id, cancellationToken);
 
+    /// <summary>PR-BR-03/05: còn người ở hoặc sắp ở — kể cả phòng cũ trong ngày chuyển phòng (lịch sử chuyển có <c>to_date ≥ hôm nay</c>, L-09).</summary>
     public Task<bool> HasOpenContractAsync(Guid roomId, bool includeDraft, DateOnly today, CancellationToken cancellationToken) =>
-        db.Contracts.AnyAsync(c => c.RoomId == roomId
-            && (c.Status == ContractStatus.Active || c.Status == ContractStatus.Liquidating
-                || (c.Status == ContractStatus.Ended && c.ActualEndDate >= today)
-                || (includeDraft && c.Status == ContractStatus.Draft)), cancellationToken);
+        db.Contracts.AnyAsync(c => (c.RoomId == roomId
+                && (c.Status == ContractStatus.Active || c.Status == ContractStatus.Liquidating
+                    || (c.Status == ContractStatus.Ended && c.ActualEndDate >= today)
+                    || (includeDraft && c.Status == ContractStatus.Draft)))
+            || c.RoomMoves.Any(m => m.RoomId == roomId && m.ToDate >= today), cancellationToken);
 
     public Task<int> CountInPropertyAsync(IReadOnlyCollection<Guid> roomIds, Guid propertyId, CancellationToken cancellationToken) =>
         db.Rooms.CountAsync(r => roomIds.Contains(r.Id) && r.PropertyId == propertyId, cancellationToken);

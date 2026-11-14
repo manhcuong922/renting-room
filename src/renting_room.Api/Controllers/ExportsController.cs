@@ -30,4 +30,15 @@ public sealed class ExportsController(ISender sender) : ControllerBase
             ? Results.File(result.Value!.Content, XlsxContentType, result.Value.FileName)
             : result.ToHttp();
     }
+
+    [HttpPost("exports/monthly-invoices")]
+    [EnableRateLimiting(RateLimitPolicies.Sensitive)]
+    [EndpointSummary("Xuất Excel thu tiền theo kỳ — mỗi hóa đơn 1 dòng (đã thu, bỏ nợ, sửa giảm kèm lý do / người, còn nợ, đơn giá) + tổng theo kỳ")]
+    public async Task<IResult> ExportMonthlyInvoices(ExportMonthlyInvoicesQuery body, CancellationToken ct)
+    {
+        var result = await sender.Send(body, ct);
+        return result.IsSuccess
+            ? Results.File(result.Value!.Content, XlsxContentType, result.Value.FileName)
+            : result.ToHttp();
+    }
 }

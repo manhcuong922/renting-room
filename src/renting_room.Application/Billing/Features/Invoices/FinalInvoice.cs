@@ -1,3 +1,4 @@
+using FluentValidation;
 using Mediator;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Contracts;
@@ -9,14 +10,20 @@ using renting_room.Domain.Billing;
 using renting_room.Domain.Common;
 using renting_room.Domain.Contracts;
 using renting_room.Domain.Meters;
+using renting_room.Domain.Properties;
 
 namespace renting_room.Application.Billing;
 
 public sealed record CreateFinalInvoiceCommand(Guid ContractId, IReadOnlyList<MeterReadingInput>? FinalReadings, bool SkipUnbilledPeriods = false)
     : IRequest<Result<InvoiceDetailDto>>;
 
+public sealed class CreateFinalInvoiceCommandValidator : AbstractValidator<CreateFinalInvoiceCommand>
+{
+    public CreateFinalInvoiceCommandValidator() => this.RuleForMeterReadings(x => x.FinalReadings);
+}
+
 public sealed class CreateFinalInvoiceHandler(
-    IUnitOfWork unitOfWork, IContractRepository contracts, IInvoiceRepository invoiceRepository, IInvoiceQueries invoiceQueries,
+    IUnitOfWork unitOfWork, IContractRepository contracts, IContractQueries contractQueries, IInvoiceRepository invoiceRepository, IInvoiceQueries invoiceQueries,
     IPropertyQueries properties, IRoomQueries rooms, IRenterQueries renters, InvoiceInputLoader inputs, ContractMeterReadings meterReadings,
     RoomChargeBilling roomCharges, BillingGapPlanner gapPlanner, IBillingGapRepository gapRepository, TimeProvider clock)
     : IRequestHandler<CreateFinalInvoiceCommand, Result<InvoiceDetailDto>>
@@ -24,6 +31,10 @@ public sealed class CreateFinalInvoiceHandler(
     public async ValueTask<Result<InvoiceDetailDto>> Handle(CreateFinalInvoiceCommand request, CancellationToken cancellationToken)
     {
         await using var transaction = await unitOfWork.BeginTransactionAsync(cancellationToken);
+        // L-05: giữ khu (FOR SHARE) trước HĐ như tạo phiếu định kỳ — đổi cài đặt kỳ thu không chen giữa lúc đọc lịch kỳ và lúc lưu nháp.
+        if (await contractQueries.GetPropertyIdAsync(request.ContractId, cancellationToken) is not { } propertyId)
+            return ContractErrors.NotFound;
+        await unitOfWork.LockForShareAsync<Property>(propertyId, cancellationToken);
         await unitOfWork.LockForUpdateAsync<Contract>(request.ContractId, cancellationToken);
         var contract = await contracts.GetForUpdateAsync(request.ContractId, cancellationToken);
         if (contract is null)

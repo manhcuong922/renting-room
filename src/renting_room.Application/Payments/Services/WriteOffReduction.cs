@@ -16,7 +16,7 @@ public sealed class WriteOffReduction(IPaymentRepository payments, IInvoiceRepos
     {
         var touched = new List<Payment>();
         var remaining = amount;
-        foreach (var writeOff in await payments.ListActiveWriteOffsForInvoiceAsync(invoice.Id, ct))
+        foreach (var writeOff in await payments.ListActiveForInvoiceAsync(invoice.Id, PaymentKind.WriteOff, ct))
         {
             if (remaining <= 0)
                 break;

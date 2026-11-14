@@ -30,11 +30,17 @@ public sealed class DemoDataSeederTests(ApiFactory factory)
         var owner = await _client.LoginAsync(options.OwnerPhone, options.OwnerPassword);
         var manager = await _client.LoginAsync(options.ManagerPhone, options.ManagerPassword);
         manager.AccessToken.Should().NotBeNullOrEmpty();
-        (await (await _client.GetAsync("/api/v1/me", manager.AccessToken)).ReadAsync<JsonElement>()).GetProperty("canWriteOff").GetBoolean()
-            .Should().BeFalse("phó quản lý thường không được bỏ nợ");
-        var trusted = await _client.LoginAsync(options.WriteOffManagerPhone, options.ManagerPassword);
-        (await (await _client.GetAsync("/api/v1/me", trusted.AccessToken)).ReadAsync<JsonElement>()).GetProperty("canWriteOff").GetBoolean()
-            .Should().BeTrue("phó quản lý thứ hai được chủ trọ cấp quyền bỏ nợ (PM-BR-16)");
+        // M01 ID-BR-24 (08/11/2026): 2 quản lý khu, mỗi người một nhóm khu; chủ trọ thấy tất cả.
+        var second = await _client.LoginAsync(options.WriteOffManagerPhone, options.ManagerPassword);
+        async Task<List<Guid>> PropertiesAsync(string accessToken) =>
+            (await (await _client.GetAsync("/api/v1/properties?pageSize=100", accessToken)).ReadAsync<JsonElement>()).GetProperty("items").EnumerateArray()
+            .Select(p => p.GetProperty("id").GetGuid()).ToList();
+        var allProperties = await PropertiesAsync(owner.AccessToken);
+        var firstProperties = await PropertiesAsync(manager.AccessToken);
+        var secondProperties = await PropertiesAsync(second.AccessToken);
+        firstProperties.Should().HaveCount(2);
+        secondProperties.Should().NotBeEmpty().And.NotIntersectWith(firstProperties);
+        firstProperties.Concat(secondProperties).Should().BeEquivalentTo(allProperties);
         var token = owner.AccessToken;
 
         var contracts = await (await _client.GetAsync("/api/v1/contracts?pageSize=100", token)).ReadAsync<JsonElement>();

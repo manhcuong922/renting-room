@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Npgsql;
@@ -53,7 +54,13 @@ public static class DatabaseInitializer
             cancellationToken);
 
         if (provider.GetRequiredService<IOptions<DemoDataOptions>>().Value.Enabled)
+        {
+            // M-18: seeder tạo chủ trọ với mật khẩu đã commit trong repo ⇒ chỉ chạy ở Development; bật nhầm ở môi trường khác thì dừng, không im lặng bỏ qua.
+            if (!provider.GetRequiredService<IHostEnvironment>().IsDevelopment())
+                throw new InvalidOperationException(
+                    $"{DemoDataOptions.SectionName}:Enabled is only allowed in the Development environment (demo accounts use well-known passwords).");
             await provider.GetRequiredService<DemoDataSeeder>().SeedAsync(cancellationToken);
+        }
     }
 
     private static async Task SeedSystemAdminAsync(

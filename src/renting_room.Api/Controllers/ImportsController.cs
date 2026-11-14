@@ -16,7 +16,8 @@ namespace renting_room.Controllers;
 [ApiController]
 [Route("api/v1")]
 [Tags("Imports")]
-[Authorize(Policy = AuthPolicies.OrgOwner)]
+// M01 ID-BR-27 (08/11/2026): chủ trọ và quản lý khu — khu ngoài phạm vi ⇒ 404 như id sai.
+[Authorize(Policy = AuthPolicies.OrgMember)]
 [NoStore]
 public sealed class ImportsController(ISender sender) : ControllerBase
 {

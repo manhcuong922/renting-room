@@ -30,6 +30,7 @@ public sealed class ContractTemplatesController(ISender sender) : ControllerBase
         Results.Ok(await sender.Send(new GetContractTemplatePresetsQuery(), ct));
 
     [HttpPost("contract-templates")]
+    [Authorize(Policy = AuthPolicies.OrgOwner)] // M01 ID-BR-28: chỉ chủ trọ
     [Idempotent]
     [EndpointSummary("Tạo mẫu hợp đồng")]
     public async Task<IResult> Create(ContractTemplateInput body, CancellationToken ct) =>
@@ -41,17 +42,20 @@ public sealed class ContractTemplatesController(ISender sender) : ControllerBase
         (await sender.Send(new GetContractTemplateQuery(id), ct)).ToHttp();
 
     [HttpPut("contract-templates/{id:guid}")]
+    [Authorize(Policy = AuthPolicies.OrgOwner)] // M01 ID-BR-28: chỉ chủ trọ
     [EndpointSummary("Sửa mẫu — không ảnh hưởng hợp đồng đã kích hoạt")]
     public async Task<IResult> Update(Guid id, UpdateContractTemplateRequest b, CancellationToken ct) =>
         (await sender.Send(new UpdateContractTemplateCommand(
             id, new ContractTemplateInput(b.Name, b.ContractType, b.Title, b.Clauses, b.Fields, b.NoDeposit), b.Version), ct)).ToHttp();
 
     [HttpPost("contract-templates/{id:guid}/archive")]
+    [Authorize(Policy = AuthPolicies.OrgOwner)] // M01 ID-BR-28: chỉ chủ trọ
     [EndpointSummary("Ngừng dùng mẫu (không chọn được cho hợp đồng mới)")]
     public async Task<IResult> Archive(Guid id, CancellationToken ct) =>
         (await sender.Send(new ChangeContractTemplateStateCommand(id, Archive: true), ct)).ToHttp();
 
     [HttpPost("contract-templates/{id:guid}/restore")]
+    [Authorize(Policy = AuthPolicies.OrgOwner)] // M01 ID-BR-28: chỉ chủ trọ
     [EndpointSummary("Khôi phục mẫu")]
     public async Task<IResult> Restore(Guid id, CancellationToken ct) =>
         (await sender.Send(new ChangeContractTemplateStateCommand(id, Archive: false), ct)).ToHttp();

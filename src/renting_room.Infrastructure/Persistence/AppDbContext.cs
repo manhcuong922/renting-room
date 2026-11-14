@@ -17,7 +17,7 @@ using renting_room.Infrastructure.Idempotency;
 
 namespace renting_room.Infrastructure.Persistence;
 
-public class AppDbContext(
+public partial class AppDbContext(
     DbContextOptions<AppDbContext> options,
     ICurrentUser currentUser,
     TimeProvider clock,
@@ -32,6 +32,8 @@ public class AppDbContext(
     public DbSet<Room> Rooms => Set<Room>();
     public DbSet<RoomGroup> RoomGroups => Set<RoomGroup>();
     public DbSet<Renter> Renters => Set<Renter>();
+    public DbSet<RenterClaim> RenterClaims => Set<RenterClaim>();
+    public DbSet<UserPropertyAccess> UserPropertyAccesses => Set<UserPropertyAccess>();
     public DbSet<ContractTemplate> ContractTemplates => Set<ContractTemplate>();
     public DbSet<FeeType> FeeTypes => Set<FeeType>();
     public DbSet<Meter> Meters => Set<Meter>();
@@ -41,6 +43,7 @@ public class AppDbContext(
     public DbSet<InvoiceAdjustment> InvoiceAdjustments => Set<InvoiceAdjustment>();
     public DbSet<RenterConsent> RenterConsents => Set<RenterConsent>();
     public DbSet<Payment> Payments => Set<Payment>();
+    public DbSet<CollectionReduction> CollectionReductions => Set<CollectionReduction>();
     public DbSet<Contract> Contracts => Set<Contract>();
 
     /// <summary>Bảng kỹ thuật — chỉ Infrastructure dùng, không có repository cho tầng Application.</summary>
@@ -54,6 +57,11 @@ public class AppDbContext(
     /// Null (chưa đăng nhập / SystemAdmin) ⇒ không thấy dòng nào của bảng nghiệp vụ (fail-closed).
     /// </summary>
     public Guid? CurrentOrganizationId => currentUser.OrganizationId;
+
+    /// <summary>M01 ID-BR-24: khu được giao của quản lý khu; null = không giới hạn (chủ trọ, job hệ thống). Đọc lại ở mỗi truy vấn như trên.</summary>
+    public Guid[]? CurrentPropertyIds => currentUser.PropertyIds;
+
+    public Guid? CurrentUserId => currentUser.UserId;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -92,8 +100,18 @@ public class AppDbContext(
     public void SetExpectedVersion(AuditableEntity entity, uint version) =>
         Entry(entity).Property(nameof(AuditableEntity.Version)).OriginalValue = version;
 
-    /// <summary>Tên bảng lấy từ model EF (không phải input người dùng) — an toàn khi ghép vào SQL; id truyền bằng tham số.</summary>
-    public async Task LockForUpdateAsync<TEntity>(Guid id, CancellationToken cancellationToken) where TEntity : Entity
+    public Task LockForUpdateAsync<TEntity>(Guid id, CancellationToken cancellationToken) where TEntity : Entity =>
+        LockRowAsync<TEntity>(id, "FOR UPDATE", cancellationToken);
+
+    public Task LockForShareAsync<TEntity>(Guid id, CancellationToken cancellationToken) where TEntity : Entity =>
+        LockRowAsync<TEntity>(id, "FOR SHARE", cancellationToken);
+
+    /// <summary>
+    /// Tên bảng lấy từ model EF (không phải input người dùng) — an toàn khi ghép vào SQL; id truyền bằng tham số.
+    /// Bảng của tổ chức lọc thêm <c>organization_id</c> như global query filter (L-18): biết UUID của tổ chức khác cũng không khóa được hàng của họ;
+    /// chưa có tổ chức ⇒ <c>= NULL</c> không khớp hàng nào (fail-closed).
+    /// </summary>
+    private async Task LockRowAsync<TEntity>(Guid id, string mode, CancellationToken cancellationToken) where TEntity : Entity
     {
         if (Database.CurrentTransaction is null)
             throw new InvalidOperationException("Row locks must be taken inside a transaction.");
@@ -104,8 +122,15 @@ public class AppDbContext(
         if (table is null || !table.All(c => c is >= 'a' and <= 'z' or '_'))
             throw new InvalidOperationException($"Unexpected table name '{table}'.");
 
-        var sql = "SELECT 1 FROM \"" + table + "\" WHERE id = @id FOR UPDATE";
-        await Database.ExecuteSqlRawAsync(sql, [new NpgsqlParameter("id", id)], cancellationToken);
+        var sql = "SELECT 1 FROM \"" + table + "\" WHERE id = @id";
+        List<NpgsqlParameter> parameters = [new("id", id)];
+        if (typeof(ITenantEntity).IsAssignableFrom(typeof(TEntity)))
+        {
+            sql += " AND organization_id = @organization_id";
+            parameters.Add(new NpgsqlParameter("organization_id", NpgsqlTypes.NpgsqlDbType.Uuid) { Value = (object?)CurrentOrganizationId ?? DBNull.Value });
+        }
+        sql += " " + mode;
+        await Database.ExecuteSqlRawAsync(sql, parameters, cancellationToken);
     }
 
     public async Task LockRentersAsync(IEnumerable<Guid> renterIds, CancellationToken cancellationToken)
@@ -163,10 +188,28 @@ public class AppDbContext(
     private List<AuditLog> PrepareForSave()
     {
         var actor = AuditActor.From(currentUser, clock);
+        TouchInvoicesWithChangedChildren();
         ApplyTenantAndAuditRules(actor);
         var auditLogs = EntityChangeAudit.Collect(ChangeTracker, actor);
         AuditLogs.AddRange(auditLogs);
         return auditLogs;
+    }
+
+    /// <summary>
+    /// M07 §10 (05/11/2026): version phiếu (xmin hàng <c>invoices</c>) phải đổi ở mọi thay đổi dòng / đoạn sản lượng — kể cả chỉ sửa ghi chú dòng,
+    /// không đổi cột nào của phiếu — để người đang mở phiếu cũ bị 409 khi sửa / chốt. Đánh dấu <c>updated_at</c> ⇒ có câu UPDATE ⇒ xmin mới.
+    /// </summary>
+    private void TouchInvoicesWithChangedChildren()
+    {
+        var invoiceIds = ChangeTracker.Entries()
+            .Where(e => e.State is EntityState.Added or EntityState.Modified or EntityState.Deleted)
+            .Select(e => e.Entity switch { InvoiceLine line => line.InvoiceId, InvoiceMeterSegment segment => segment.InvoiceId, _ => (Guid?)null })
+            .OfType<Guid>()
+            .ToHashSet();
+        if (invoiceIds.Count == 0)
+            return;
+        foreach (var entry in ChangeTracker.Entries<Invoice>().Where(e => e.State == EntityState.Unchanged && invoiceIds.Contains(e.Entity.Id)))
+            entry.Property(nameof(AuditableEntity.UpdatedAt)).IsModified = true;
     }
 
     /// <summary>Lưu lỗi (xung đột, vi phạm ràng buộc) ⇒ gỡ dòng audit vừa sinh để lần lưu sau trên cùng context không bị nhân đôi.</summary>
@@ -176,7 +219,10 @@ public class AppDbContext(
             Entry(auditLog).State = EntityState.Detached;
     }
 
-    /// <summary>Mọi entity <see cref="ITenantEntity"/>: <c>e =&gt; e.OrganizationId == CurrentOrganizationId</c>.</summary>
+    /// <summary>
+    /// Mọi entity <see cref="ITenantEntity"/>: <c>e =&gt; e.OrganizationId == CurrentOrganizationId</c>, cộng phạm vi khu của quản lý khu
+    /// (<see cref="PropertyScopeFilter"/>, ID-BR-24) — ghép thành một filter.
+    /// </summary>
     private void ApplyTenantQueryFilters(ModelBuilder modelBuilder)
     {
         var tenantTypes = modelBuilder.Model.GetEntityTypes()
@@ -190,9 +236,11 @@ public class AppDbContext(
             var entityOrganizationId = Expression.Convert(
                 Expression.Property(entity, nameof(ITenantEntity.OrganizationId)), typeof(Guid?));
             var currentOrganizationId = Expression.Property(Expression.Constant(this), nameof(CurrentOrganizationId));
-            var filter = Expression.Lambda(Expression.Equal(entityOrganizationId, currentOrganizationId), entity);
+            Expression body = Expression.Equal(entityOrganizationId, currentOrganizationId);
+            if (PropertyScopeFilter(clrType) is { } propertyFilter)
+                body = Expression.AndAlso(body, ParameterRebinder.Replace(propertyFilter.Body, propertyFilter.Parameters[0], entity));
 
-            modelBuilder.Entity(clrType).HasQueryFilter(filter);
+            modelBuilder.Entity(clrType).HasQueryFilter(Expression.Lambda(body, entity));
         }
     }
 
@@ -202,6 +250,7 @@ public class AppDbContext(
         {
             if (entry.Entity is ITenantEntity tenantEntity)
                 EnforceTenant(entry.State, tenantEntity, actor.OrganizationId);
+            EnforcePropertyScope(entry);
 
             if (entry.Entity is not AuditableEntity auditable)
                 continue;
@@ -211,6 +260,21 @@ public class AppDbContext(
             else if (entry.State == EntityState.Modified)
                 auditable.MarkUpdated(actor.OccurredAt, actor.UserId);
         }
+    }
+
+    /// <summary>ID-BR-24: quản lý khu không ghi được bản ghi của khu không được giao (lớp chặn cuối — handler thường đã trả 404 vì không đọc được).</summary>
+    private void EnforcePropertyScope(Microsoft.EntityFrameworkCore.ChangeTracking.EntityEntry entry)
+    {
+        if (CurrentPropertyIds is not { } allowed || entry.State is not (EntityState.Added or EntityState.Modified or EntityState.Deleted))
+            return;
+        var propertyId = entry.Entity switch
+        {
+            IPropertyScoped scoped => scoped.PropertyId,
+            Property property => property.Id,
+            _ => (Guid?)null
+        };
+        if (propertyId is { } id && !allowed.Contains(id))
+            throw new InvalidOperationException($"Write to {entry.Entity.GetType().Name} outside the user's assigned properties was blocked.");
     }
 
     private static void EnforceTenant(EntityState state, ITenantEntity entity, Guid? organizationId)
