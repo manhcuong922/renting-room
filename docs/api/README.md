@@ -35,6 +35,7 @@
 | [properties.md](properties.md) | Khu trọ, bên cho thuê, tài khoản ngân hàng, nội quy | Chủ trọ, quản lý khu |
 | [rooms.md](rooms.md) | Phòng, trạng thái phòng, bảo trì, nhóm phòng | Chủ trọ, quản lý khu |
 | [renters.md](renters.md) | Hồ sơ người thuê / người ở | Chủ trọ, quản lý khu |
+| [attachments.md](attachments.md) | Ảnh và tài liệu đính kèm (ảnh CCCD, ảnh phòng, ảnh công tơ, chứng từ) — lưu Local hoặc MinIO | Chủ trọ, quản lý khu |
 | [fees.md](fees.md) | Khoản thu của khu: điện nước theo công tơ; dịch vụ theo phòng / đầu người / số gói (mạng, nước theo người, giữ xe); bảng giá (một giá) | Chủ trọ, quản lý khu |
 | [meters.md](meters.md) | Công tơ điện nước của phòng: lắp, thay (phiên bản), tháo, lịch sử, sửa chỉ số; lưới ghi chỉ số hằng tháng | Chủ trọ, quản lý khu |
 | [invoices.md](invoices.md) | Phiếu tiền phòng: tạo nháp theo tháng, sửa tay, phụ thu, tính lại, chốt, hủy | Chủ trọ, quản lý khu |
@@ -43,6 +44,7 @@
 | [contract-templates.md](contract-templates.md) | Mẫu hợp đồng theo loại (thuê phòng trọ / thuê nhà): tiêu đề, điều khoản, trường tùy biến | Chủ trọ, quản lý khu |
 | [contracts.md](contracts.md) | Hợp đồng: tạo, kích hoạt, người ở, phụ lục, báo trả phòng, thanh lý, tài sản, xe | Chủ trọ, quản lý khu |
 | [imports.md](imports.md) | Nhập từ Excel: phòng; người thuê + lượt thuê đang ở (xem trước → xác nhận) | Chủ trọ |
+| [notifications.md](notifications.md) | Gửi phiếu / nhắc nợ qua Zalo Bot và email: kênh, liên kết Zalo, gửi lại, lịch sử, cài đặt khu | Chủ trọ, quản lý khu |
 | [exports.md](exports.md) | Xuất Excel danh sách người thuê theo khu / tầng / nhóm phòng / phòng / khoảng ngày | Chủ trọ, quản lý khu |
 | [errors.md](errors.md) | Bảng mã lỗi → câu thông báo / hành động UI | Mọi người |
 | [openapi.json](openapi.json) | Đặc tả OpenAPI 3 | Sinh code |

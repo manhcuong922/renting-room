@@ -15,6 +15,7 @@ internal sealed class PropertyConfiguration : IEntityTypeConfiguration<Property>
         builder.ToTable("properties", t =>
         {
             t.HasCheckConstraint("ck_properties_anchor_day", "billing_anchor_day BETWEEN 1 AND 28");
+            t.HasCheckConstraint("ck_properties_overdue_reminder_days", "cardinality(overdue_reminder_days) <= 3");
             t.HasCheckConstraint("ck_properties_lessor_organization",
                 "lessor_type IS DISTINCT FROM 'Organization' OR (lessor_tax_code IS NOT NULL AND lessor_representative_name IS NOT NULL)");
         });
@@ -67,6 +68,16 @@ internal sealed class PropertyConfiguration : IEntityTypeConfiguration<Property>
         builder.Property(p => p.BankAccountNo).HasMaxLength(20);
         builder.Property(p => p.BankAccountName).HasMaxLength(200);
         builder.Property(p => p.HouseRulesText).HasMaxLength(20_000);
+        builder.Property(p => p.NotifyOnFinalize).HasDefaultValue(false);
+        builder.Property(p => p.OverdueReminderDays)
+            .HasColumnType("smallint[]")
+            .HasConversion(
+                v => v.Select(d => (short)d).ToArray(),
+                v => v.Select(d => (int)d).ToArray(),
+                new ValueComparer<IReadOnlyList<int>>(
+                    (a, b) => a!.SequenceEqual(b!),
+                    v => v.Aggregate(0, (h, d) => HashCode.Combine(h, d)),
+                    v => v.ToArray()));
 
         builder.Ignore(p => p.BillingSettings);
         builder.Ignore(p => p.BillingSchedule);

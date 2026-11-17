@@ -1,5 +1,7 @@
 using Npgsql;
 using renting_room.Application.Audit;
+using renting_room.Application.Attachments;
+using renting_room.Infrastructure.Storage;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -17,6 +19,8 @@ using renting_room.Application.Rooms;
 using renting_room.Infrastructure.Auditing;
 using renting_room.Infrastructure.Email;
 using renting_room.Infrastructure.Jobs;
+using renting_room.Infrastructure.Notifications;
+using renting_room.Application.Notifications;
 using renting_room.Infrastructure.Seeding;
 using renting_room.Application.Exports;
 using renting_room.Infrastructure.Exports;
@@ -138,11 +142,87 @@ public static class DependencyInjection
         services.AddSingleton<AccountCleanupService>();
         services.AddHostedService(sp => sp.GetRequiredService<AccountCleanupService>());
 
+        AddNotifications(services, configuration);
+        AddStorage(services, configuration);
+
         // Dữ liệu demo cho dev / server test — chỉ chạy khi bật Seed:DemoData:Enabled (DatabaseInitializer).
         services.AddOptions<DemoDataOptions>().Bind(configuration.GetSection(DemoDataOptions.SectionName));
         services.AddTransient<DemoDataSeeder>();
 
         return services;
+    }
+
+    /// <summary>
+    /// M11: gửi phiếu / nhắc nợ qua Zalo Bot + email. Thiếu token Zalo hoặc SMTP KHÔNG làm app ngừng chạy — kênh đó chỉ ở trạng thái "chưa cấu hình".
+    /// </summary>
+    private static void AddNotifications(IServiceCollection services, IConfiguration configuration)
+    {
+        services.AddOptions<ZaloBotOptions>()
+            .Bind(configuration.GetSection(ZaloBotOptions.SectionName))
+            .ValidateDataAnnotations()
+            .Validate(o => ZaloBotOptions.IsValidToken(o.Token), "ZaloBot:Token must look like '<digits>:<secret>' (the token Zalo gives when creating the bot).")
+            .ValidateOnStart();
+        services.AddOptions<NotificationOptions>()
+            .Bind(configuration.GetSection(NotificationOptions.SectionName))
+            .ValidateDataAnnotations()
+            .Validate(o => o.SendWindowStartHour < o.SendWindowEndHour, "Notifications:SendWindowStartHour must be before SendWindowEndHour.")
+            .ValidateOnStart();
+
+        // Tắt log URL của HttpClient: đường dẫn gọi Zalo chứa token.
+        services.AddHttpClient(ZaloBotClient.HttpClientName, client => client.Timeout = TimeSpan.FromSeconds(90)).RemoveAllLoggers();
+        services.AddSingleton<IZaloBotClient, ZaloBotClient>();
+        services.AddSingleton<INotificationChannels, NotificationChannels>();
+        services.AddSingleton<ILinkCodeHasher, LinkCodeHasher>();
+        services.AddSingleton<ZaloLinkAttemptLimiter>();
+        services.AddSingleton<ZaloBotMessageHandler>();
+        services.AddSingleton<INotificationSender, ZaloNotificationSender>();
+        services.AddSingleton<INotificationSender, EmailNotificationSender>();
+
+        services.AddScoped<INotificationRepository, NotificationRepository>();
+        services.AddScoped<IZaloLinkCodeRepository, ZaloLinkCodeRepository>();
+        services.AddScoped<IZaloLinkLookup, ZaloLinkLookup>();
+        services.AddScoped<NotificationOutboxStore>();
+
+        services.AddSingleton<NotificationDispatcher>();
+        services.AddHostedService(sp => sp.GetRequiredService<NotificationDispatcher>());
+        services.AddSingleton<ZaloBotUpdatePoller>();
+        services.AddHostedService(sp => sp.GetRequiredService<ZaloBotUpdatePoller>());
+        services.AddSingleton<OverdueReminderScheduler>();
+        services.AddHostedService(sp => sp.GetRequiredService<OverdueReminderScheduler>());
+        services.AddSingleton<NotificationCleanupService>();
+        services.AddHostedService(sp => sp.GetRequiredService<NotificationCleanupService>());
+    }
+
+    /// <summary>
+    /// M09: lưu ảnh / tài liệu. Mặc định Local (không cần MinIO). <c>Storage:Provider=S3</c> thiếu cấu hình ⇒ app không khởi động (FS-BR-13);
+    /// không kết nối MinIO lúc khởi động (FS-BR-12).
+    /// </summary>
+    private static void AddStorage(IServiceCollection services, IConfiguration configuration)
+    {
+        services.AddOptions<StorageOptions>()
+            .Bind(configuration.GetSection(StorageOptions.SectionName))
+            .ValidateOnStart();
+        // Validator riêng để thông báo lỗi nêu đúng khóa còn thiếu (VD Storage:S3:SecretKey).
+        services.AddSingleton<Microsoft.Extensions.Options.IValidateOptions<StorageOptions>, StorageOptionsValidator>();
+        services.AddSingleton<IFileStorageSelector, FileStorageSelector>();
+        services.AddSingleton<IStorageSettings, StorageSettings>();
+        services.AddScoped<IAttachmentRepository, AttachmentRepository>();
+        services.AddScoped<IStorageQuota, StorageQuota>();
+        services.AddScoped<IAttachmentOwners, AttachmentOwners>();
+        // FS-11: mỗi ngày xóa file vật lý của tệp xóa mềm quá Storage:PurgeAfterDays và trả hạn mức.
+        services.AddSingleton<AttachmentPurgeService>();
+        services.AddHostedService(sp => sp.GetRequiredService<AttachmentPurgeService>());
+    }
+
+    private sealed class StorageOptionsValidator : Microsoft.Extensions.Options.IValidateOptions<StorageOptions>
+    {
+        public Microsoft.Extensions.Options.ValidateOptionsResult Validate(string? name, StorageOptions options)
+        {
+            var errors = options.Validate();
+            return errors.Count == 0
+                ? Microsoft.Extensions.Options.ValidateOptionsResult.Success
+                : Microsoft.Extensions.Options.ValidateOptionsResult.Fail(errors);
+        }
     }
 
     internal static void ConfigureDbContext(DbContextOptionsBuilder options, string connectionString) =>

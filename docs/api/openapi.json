@@ -279,6 +279,181 @@
         }
       }
     },
+    "/api/v1/attachments": {
+      "post": {
+        "tags": [
+          "Attachments"
+        ],
+        "summary": "Tải lên 1–20 ảnh / PDF (≤ 10 MB mỗi tệp) cho một đối tượng: ownerType, ownerId, category, description?, files[]. Không dùng Idempotency-Key",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "required": [
+                  "Category",
+                  "OwnerId",
+                  "OwnerType"
+                ],
+                "type": "object",
+                "properties": {
+                  "OwnerType": {
+                    "$ref": "#/components/schemas/AttachmentOwnerType"
+                  },
+                  "OwnerId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "Category": {
+                    "$ref": "#/components/schemas/AttachmentCategory"
+                  },
+                  "Description": {
+                    "type": "string"
+                  },
+                  "Files": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "binary"
+                    }
+                  }
+                }
+              },
+              "encoding": {
+                "OwnerType": {
+                  "style": "form"
+                },
+                "OwnerId": {
+                  "style": "form"
+                },
+                "Category": {
+                  "style": "form"
+                },
+                "Description": {
+                  "style": "form"
+                },
+                "Files": {
+                  "style": "form"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Attachments"
+        ],
+        "summary": "Danh sách tệp (chưa xóa) của một đối tượng",
+        "parameters": [
+          {
+            "name": "ownerType",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/AttachmentOwnerType"
+            }
+          },
+          {
+            "name": "ownerId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/attachments/{id}/content": {
+      "get": {
+        "tags": [
+          "Attachments"
+        ],
+        "summary": "Tải nội dung (stream). Mặc định tải về (attachment); inline=true cho ảnh không nhạy cảm để hiển thị trực tiếp. Tệp nhạy cảm ghi audit mỗi lần tải",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "inline",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/attachments/{id}/signed-url": {
+      "get": {
+        "tags": [
+          "Attachments"
+        ],
+        "summary": "Liên kết tạm 5 phút (chỉ tệp không nhạy cảm trên S3/MinIO; còn lại 422 SIGNED_URL_NOT_SUPPORTED — dùng /content)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/attachments/{id}": {
+      "delete": {
+        "tags": [
+          "Attachments"
+        ],
+        "summary": "Xóa mềm (file vật lý dọn sau 30 ngày); chứng từ thanh toán / ảnh công tơ: 422 ATTACHMENT_LOCKED",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/api/v1/audit-logs": {
       "get": {
         "tags": [
@@ -4148,6 +4323,201 @@
         }
       }
     },
+    "/api/v1/notifications/channels": {
+      "get": {
+        "tags": [
+          "Notifications"
+        ],
+        "summary": "Kênh nào dùng được: Zalo (đã cấu hình token chưa + tên bot), Email (đã cấu hình SMTP chưa)",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/notifications/summary": {
+      "get": {
+        "tags": [
+          "Notifications"
+        ],
+        "summary": "Tổng hợp tin theo khu + tháng thu (billingMonth là ngày đầu tháng): đang chờ / đã gửi / lỗi / bỏ qua / hủy / phiếu chưa có kênh",
+        "parameters": [
+          {
+            "name": "propertyId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "billingMonth",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/invoices/{id}/notifications": {
+      "get": {
+        "tags": [
+          "Notifications"
+        ],
+        "summary": "Lịch sử gửi của một phiếu (kênh, loại, trạng thái, số lần thử, lỗi)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/invoices/{id}/notifications/resend": {
+      "post": {
+        "tags": [
+          "Notifications"
+        ],
+        "summary": "Gửi lại phiếu đã chốt cho người đứng tên (mọi kênh họ có, hoặc chỉ các kênh chọn); không bị giới hạn khung giờ",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Khóa duy nhất cho thao tác (VD UUID). Gửi lại cùng khóa ⇒ nhận lại kết quả cũ, không thực thi lần 2.",
+            "schema": {
+              "maxLength": 64,
+              "minLength": 8,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResendNotificationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/renters/{id}/zalo-link-code": {
+      "post": {
+        "tags": [
+          "Notifications"
+        ],
+        "summary": "Tạo mã liên kết Zalo 8 ký tự (hạn 48 giờ, dùng một lần; mã cũ chưa dùng hết hiệu lực). Mã thô chỉ trả một lần",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/renters/{id}/zalo-link": {
+      "delete": {
+        "tags": [
+          "Notifications"
+        ],
+        "summary": "Hủy liên kết Zalo của người thuê; tin Zalo đang chờ của người đó bị hủy",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/properties/{id}/notification-settings": {
+      "put": {
+        "tags": [
+          "Notifications"
+        ],
+        "summary": "Bật / tắt tự gửi phiếu khi chốt và cài các mốc nhắc nợ (tối đa 3 mốc, mỗi mốc 1–60 ngày sau hạn, tăng dần; rỗng = không nhắc)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateNotificationSettingsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/api/v1/org/members": {
       "get": {
         "tags": [
@@ -6667,6 +7037,37 @@
         },
         "additionalProperties": false
       },
+      "AttachmentCategory": {
+        "enum": [
+          "ContractScan",
+          "ContractAddendum",
+          "HandoverMinutes",
+          "IdCardFront",
+          "IdCardBack",
+          "Portrait",
+          "ResidenceConfirmation",
+          "MeterPhoto",
+          "RoomPhoto",
+          "PaymentProof",
+          "ComplianceDoc",
+          "AuthorizationDoc",
+          "LessorIdCard",
+          "AssetPhoto",
+          "Other"
+        ],
+        "type": "string"
+      },
+      "AttachmentOwnerType": {
+        "enum": [
+          "Property",
+          "Room",
+          "Renter",
+          "MeterReading",
+          "Payment",
+          "Contract"
+        ],
+        "type": "string"
+      },
       "AuthTokens": {
         "type": "object",
         "properties": {
@@ -7819,6 +8220,10 @@
           },
           "includeSensitive": {
             "type": "boolean"
+          },
+          "currentPassword": {
+            "type": "string",
+            "nullable": true
           }
         },
         "additionalProperties": false
@@ -8963,6 +9368,19 @@
         },
         "additionalProperties": false
       },
+      "ResendNotificationRequest": {
+        "type": "object",
+        "properties": {
+          "channels": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
       "ResignContractRequest": {
         "type": "object",
         "properties": {
@@ -9686,6 +10104,23 @@
         },
         "additionalProperties": false
       },
+      "UpdateNotificationSettingsRequest": {
+        "type": "object",
+        "properties": {
+          "notifyOnFinalize": {
+            "type": "boolean"
+          },
+          "overdueReminderDays": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int32"
+            },
+            "nullable": true
+          }
+        },
+        "additionalProperties": false
+      },
       "UpdateOrganizationInfoRequest": {
         "type": "object",
         "properties": {
@@ -9900,6 +10335,9 @@
       "name": "Admin - Users"
     },
     {
+      "name": "Attachments"
+    },
+    {
       "name": "Audit"
     },
     {
@@ -9925,6 +10363,9 @@
     },
     {
       "name": "Meters"
+    },
+    {
+      "name": "Notifications"
     },
     {
       "name": "Organization members"

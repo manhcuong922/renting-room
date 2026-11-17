@@ -85,6 +85,7 @@ public sealed partial class DemoDataSeeder(
         await SeedPrepaidPropertyAsync();
         await SeedImportedPropertyAsync();
         await SeedBillingChangePropertyAsync();
+        await SeedAttachmentsAsync();
         await SeedManagerPropertiesAsync();
         await ApplyBackdatesAsync();
         logger.LogInformation("Seeded demo organization {Code} (owner {Phone})", _options.OrganizationCode, _options.OwnerPhone);

@@ -27,7 +27,9 @@ public sealed record RenterDto(
     DateTimeOffset CreatedAt,
     string Version,
     DateTimeOffset? AnonymizedAt = null,
-    DateTimeOffset? ArchivedAt = null);
+    DateTimeOffset? ArchivedAt = null,
+    bool ZaloLinked = false,
+    DateTimeOffset? ZaloLinkedAt = null);
 
 internal static class RenterProjection
 {

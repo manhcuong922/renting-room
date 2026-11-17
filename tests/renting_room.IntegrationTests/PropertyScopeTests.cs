@@ -186,6 +186,7 @@ public sealed class PropertyScopeTests(ApiFactory factory)
             ("POST", $"/api/v1/properties/{a.PropertyId}/archive"),
             ("POST", $"/api/v1/properties/{a.PropertyId}/restore"),
             ("PUT", $"/api/v1/properties/{a.PropertyId}/lessor"),
+            ("DELETE", $"/api/v1/properties/{a.PropertyId}/lessor"), // M-28: trước đây thiếu policy OrgOwner
             ("PUT", $"/api/v1/properties/{a.PropertyId}/bank-account"),
             ("POST", "/api/v1/contract-templates"),
             ("PUT", "/api/v1/org"),
@@ -203,6 +204,7 @@ public sealed class PropertyScopeTests(ApiFactory factory)
             {
                 "GET" => await _client.GetAsync(url, token),
                 "PUT" => await _client.PutJsonAsync(url, empty, token),
+                "DELETE" => await _client.DeleteAsync(url, token),
                 _ => await _client.PostJsonAsync(url, empty, token, idempotencyKey: Guid.NewGuid().ToString())
             };
             response.StatusCode.Should().Be(HttpStatusCode.Forbidden, $"{method} {url}");

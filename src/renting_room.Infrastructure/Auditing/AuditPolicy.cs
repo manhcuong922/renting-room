@@ -1,6 +1,7 @@
 using renting_room.Domain.Common;
 using renting_room.Domain.Contracts;
 using renting_room.Domain.Identity;
+using renting_room.Domain.Notifications;
 
 namespace renting_room.Infrastructure.Auditing;
 
@@ -10,7 +11,8 @@ public static class AuditPolicy
     /// <summary>Thay cho giá trị trường nhạy cảm — chỉ cho biết trường có giá trị / đã đổi, không lộ nội dung.</summary>
     public const string RedactedValue = "[redacted]";
 
-    private static readonly HashSet<Type> IgnoredEntityTypes = [typeof(RefreshToken)];
+    // Outbox tự nó là nhật ký gửi (M11 §11) — không audit từng lần đổi trạng thái; mã liên kết chỉ có hash.
+    private static readonly HashSet<Type> IgnoredEntityTypes = [typeof(RefreshToken), typeof(NotificationOutbox), typeof(ZaloLinkCode)];
 
     /// <summary>Đã có cột riêng trên dòng audit (entity_id, organization_id, user_id, occurred_at) hoặc là token concurrency.</summary>
     private static readonly HashSet<string> IgnoredProperties =

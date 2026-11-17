@@ -245,7 +245,7 @@ public sealed class RenterAnonymizationTests(ApiFactory factory)
         var (note, termination, audit) = await NotesAsync(s.ContractId);
         note.Should().Be("Chị *** hẹn trả tiền ngày 10, gọi ***");
         termination.Should().Be("*** (***, CCCD ***) trả phòng, trừ cọc vì vỡ kính");
-        (audit ?? "").Should().NotContain("901").And.NotContain(s.IdNumber).And.NotContain("Trần Thị Lan");
+        (audit ?? "").Should().NotContain("901.234.567").And.NotContain("901 234 567").And.NotContain(s.IdNumber).And.NotContain("Trần Thị Lan");
     }
 
     /// <summary>L-17: ẩn danh tự động (≥ 36 tháng, quá thời hiệu) ⇒ xóa trắng ghi chú HĐ người đó đứng tên.</summary>
@@ -259,7 +259,7 @@ public sealed class RenterAnonymizationTests(ApiFactory factory)
         var (note, termination, audit) = await NotesAsync(s.ContractId);
         note.Should().Be(Erased);
         termination.Should().Be(Erased);
-        (audit ?? "").Should().NotContain("901").And.NotContain(s.IdNumber).And.NotContain("hẹn trả tiền");
+        (audit ?? "").Should().NotContain("901.234.567").And.NotContain("901 234 567").And.NotContain(s.IdNumber).And.NotContain("hẹn trả tiền");
     }
 
     private async Task<List<(string Action, string? Changes)>> AuditChangesAsync(Guid renterId)

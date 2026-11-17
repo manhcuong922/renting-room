@@ -15,7 +15,7 @@ cài đặt kỳ thu của khu; bên cho thuê; tài khoản ngân hàng, nội 
 **Phase**: P1.
 
 **Trạng thái (10/10/2026)**: đã code toàn bộ, **trừ**: bảng ĐVHC để chọn / kiểm mã tỉnh – xã (C-12), giới hạn gói (PR-BR-11 — P3),
-ảnh phòng (chờ M09). Số phòng đang thuê của khu chưa tính lịch sử chuyển phòng — xem [99-self-review.md](99-self-review.md) mục C.
+ảnh phòng ✅ 16/11/2026 (M09: tab Tài liệu của khu, mục Ảnh phòng). Số phòng đang thuê của khu chưa tính lịch sử chuyển phòng — xem [99-self-review.md](99-self-review.md) mục C.
 
 ## 2. Thuật ngữ
 
@@ -110,7 +110,7 @@ cài đặt kỳ thu của khu; bên cho thuê; tài khoản ngân hàng, nội 
 | lessor_phone / lessor_email | varchar(15) / varchar(254) | Y | |
 | lessor_tax_code | varchar(14) | Y | bắt buộc nếu Organization |
 | lessor_representative_name / lessor_representative_title | varchar(200) / varchar(100) | Y | bắt buộc nếu Organization |
-| authorization_doc_no / authorization_doc_date | varchar(50) / date | Y | PR-BR-13; scan giấy ủy quyền ở M09 |
+| authorization_doc_no / authorization_doc_date | varchar(50) / date | Y | PR-BR-13; scan giấy ủy quyền: upload ✅ 16/11/2026 (M09 `Property` + `AuthorizationDoc`, tab Tài liệu của khu) |
 | **Thửa đất (tùy chọn — Điều 163 khoản 2)** | | | |
 | land_parcel_no / land_map_sheet_no | varchar(20) | Y | số thửa / số tờ bản đồ |
 | ownership_certificate_no | varchar(50) | Y | số Giấy chứng nhận (không bắt buộc khi cho thuê — Điều 160) |
@@ -306,4 +306,4 @@ Audit: tạo/sửa/archive khu & phòng, đổi cài đặt thu, bảo trì, tha
 |---|---------|---------|
 | Q1 | Có cần "loại phòng" (đơn/đôi/studio) với giá mặc định? | Không (YAGNI); dùng nhóm phòng + tag tiện ích |
 | Q2 | Một phòng cho thuê theo **giường** (ký túc xá)? | Ngoài phạm vi P1; nếu cần → mỗi giường là 1 `Room` với tiền tố mã |
-| Q3 | Ảnh phòng? | Dùng M09 với owner_type `Room` — chưa làm (chờ M09) |
+| Q3 ✅ | Ảnh phòng? | Dùng M09 với owner_type `Room`, category `RoomPhoto` (tối đa 20 ảnh) — đã làm 16/11/2026 (BE + UI) |

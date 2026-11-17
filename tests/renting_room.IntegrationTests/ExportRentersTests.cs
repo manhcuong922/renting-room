@@ -121,9 +121,30 @@ public sealed class ExportRentersTests(ApiFactory factory)
     {
         var f = await SeedAsync();
 
-        using var book = await ExportAsync(f.Token, new { propertyIds = new[] { f.PropertyA }, includeSensitive = true });
+        using var book = await ExportAsync(f.Token,
+            new { propertyIds = new[] { f.PropertyA }, includeSensitive = true, currentPassword = TestApi.OwnerPassword });
 
         book.Worksheets.Single().Cell(HeaderRow + 1, 12).GetString().Should().Be(f.RepresentativeIdNumber);
+    }
+
+    /// <summary>M-30: xuất kèm số giấy tờ đầy đủ phải nhập lại mật khẩu — token bị đánh cắp không lấy được cả danh sách.</summary>
+    [Fact]
+    public async Task IncludeSensitive_RequiresCurrentPassword()
+    {
+        var f = await SeedAsync();
+        var body = new { propertyIds = new[] { f.PropertyA }, includeSensitive = true };
+
+        var missing = await _client.PostJsonAsync("/api/v1/exports/renters", body, f.Token, idempotencyKey: null);
+        missing.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await missing.ReadProblemCodeAsync()).Should().Be("CURRENT_PASSWORD_REQUIRED");
+
+        var wrong = await _client.PostJsonAsync("/api/v1/exports/renters",
+            new { propertyIds = new[] { f.PropertyA }, includeSensitive = true, currentPassword = "SaiMatKhau99" }, f.Token, idempotencyKey: null);
+        (await wrong.ReadProblemCodeAsync()).Should().Be("INVALID_CURRENT_PASSWORD");
+
+        // Bản che (không kèm số đầy đủ) vẫn không cần mật khẩu.
+        using var masked = await ExportAsync(f.Token, new { propertyIds = new[] { f.PropertyA } });
+        masked.Worksheets.Should().NotBeEmpty();
     }
 
     [Fact]

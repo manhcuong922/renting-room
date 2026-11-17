@@ -167,6 +167,11 @@ dữ liệu của người đó luôn xóa trắng. Nhật ký thay đổi của
 
 Cả hai mức đều đặt `anonymizedAt` và không đảo ngược được.
 
+## Liên kết Zalo (M11, 14/11/2026)
+
+Hồ sơ trả thêm `zaloLinked` (bool) và `zaloLinkedAt`. Chat id Zalo là dữ liệu cá nhân — **không** trả ra API. Ẩn danh hồ sơ ⇒ tự hủy liên kết, hủy tin đang chờ, xóa nơi nhận khỏi hàng đợi.
+Tạo mã / hủy liên kết: [notifications.md](notifications.md).
+
 ## Ẩn hồ sơ (12/10/2026)
 
 Người đã đi lâu, không muốn hiện trong danh sách / ô chọn — **không xóa dữ liệu**, khác với ẩn danh.

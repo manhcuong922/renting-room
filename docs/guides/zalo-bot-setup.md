@@ -43,6 +43,25 @@ dotnet user-secrets list --project renting_room
 
 Trên máy chủ: đặt biến môi trường `ZaloBot__Token` (hai dấu gạch dưới) thay cho user-secrets.
 
+**Hoặc điền vào file JSON (máy dev)**: mở `src/renting_room.Api/appsettings.Development.json`, thêm khối dưới đây. ⚠️ File này (và `appsettings.json`) **đang được git theo dõi** —
+nếu điền token thật vào thì **không được commit** file đó (dùng `git update-index --skip-worktree src/renting_room.Api/appsettings.Development.json` để git bỏ qua thay đổi cục bộ).
+Cách an toàn hơn là user-secrets ở trên.
+
+```json
+{
+  "ZaloBot": {
+    "Token": "1234567890:abcDEF...",
+    "BotName": "Bot Nha Tro Hoa Mai"
+  }
+}
+```
+
+- `BotName` tùy chọn — để trống thì hệ thống hỏi `getMe` lần đầu. Đây là tên chủ trọ đọc cho người thuê khi đưa mã liên kết.
+- **Đừng** ghi token vào `appsettings.json` / `appsettings.Development.json` (cả hai được commit). Token phải dạng `số:chuỗi`, sai dạng thì app báo lỗi lúc khởi động.
+- Để trống `Token` ⇒ kênh Zalo "chưa cấu hình": app vẫn chạy, `GET /notifications/channels` báo `zalo.configured = false`.
+- Khởi động lại API sau khi đổi. Kiểm tra: `GET /api/v1/notifications/channels` phải báo `zalo.configured = true` và hiện tên bot.
+- Email dùng cùng cách (`Email:Smtp:*` — xem mục 5; mật khẩu `Email:Smtp:Password` cũng chỉ đặt trong file Development / user-secrets / biến môi trường).
+
 ## 4. Tự kiểm tra bot
 
 Lệnh `Read-Host -AsSecureString` hỏi token mà không ghi vào lịch sử PowerShell.

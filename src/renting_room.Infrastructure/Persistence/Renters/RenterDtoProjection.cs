@@ -12,5 +12,6 @@ internal static class RenterDtoProjection
             r.Id, r.FullName, r.DateOfBirth, r.Gender, r.Phone, r.Email, r.Nationality, r.IdType,
             r.IdNumberLast4 == null ? null : "********" + r.IdNumberLast4,
             r.IdIssueDate, r.IdIssuePlace, r.PermanentAddress, r.Occupation, r.Workplace,
-            r.EmergencyContactName, r.EmergencyContactPhone, r.Note, r.CreatedAt, r.Version.ToString(), r.AnonymizedAt, r.ArchivedAt));
+            r.EmergencyContactName, r.EmergencyContactPhone, r.Note, r.CreatedAt, r.Version.ToString(), r.AnonymizedAt, r.ArchivedAt,
+            r.ZaloChatId != null, r.ZaloLinkedAt));
 }

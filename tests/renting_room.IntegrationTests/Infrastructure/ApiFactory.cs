@@ -10,6 +10,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Time.Testing;
 using renting_room.Application.Common.Interfaces;
+using renting_room.Application.Notifications;
 using renting_room.Domain.Identity;
 using renting_room.Infrastructure.Persistence;
 using Testcontainers.PostgreSql;
@@ -36,7 +37,13 @@ public class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
     /// <summary>Thư hệ thống gửi đi (M-14: mật khẩu tạm gửi qua email của chủ trọ) — không gửi SMTP thật trong test.</summary>
     public FakeEmailSender Emails { get; } = new();
 
+    /// <summary>Zalo Bot giả (M11) — không gọi mạng thật.</summary>
+    public FakeZaloBotClient Zalo { get; } = new();
+
     public string ConnectionString => _database.GetConnectionString();
+
+    /// <summary>Thư mục lưu file của <c>LocalFileStorage</c> trong test (M09).</summary>
+    public string StorageRoot { get; } = Path.Combine(Path.GetTempPath(), "renting_room_tests_storage", Guid.NewGuid().ToString("N"));
 
     public Task InitializeAsync() => _database.StartAsync();
 
@@ -72,8 +79,17 @@ public class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         builder.UseSetting("Bootstrap:Admin:Phone", AdminPhone);
         builder.UseSetting("Bootstrap:Admin:Password", AdminPassword);
         builder.UseSetting("DataProtection:KeysPath", Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), "renting_room_tests_dp_keys")).FullName); // M-17: ngoài Development bắt buộc có, thư mục phải tồn tại
+        // M09: lưu file vào thư mục tạm riêng (Provider mặc định Local) — không cần MinIO để chạy test.
+        builder.UseSetting("Storage:Local:RootPath", StorageRoot);
         builder.UseSetting("AllowedHosts", "localhost"); // TestServer gửi Host: localhost; ngoài Development "*" bị chặn (L-15)
         ConfigureRateLimits(builder);
+        // M11: vòng nền tắt — test tự gọi RunOnceAsync / RunAsync cho tất định; token giả đúng dạng để ValidateOnStart qua.
+        builder.UseSetting("ZaloBot:Token", "123456:integration-test-token");
+        builder.UseSetting("ZaloBot:PollerEnabled", "false");
+        builder.UseSetting("Notifications:DispatcherEnabled", "false");
+        builder.UseSetting("Notifications:ReminderSchedulerEnabled", "false");
+        builder.UseSetting("Notifications:ZaloPerSecond", "1000");
+        builder.UseSetting("Notifications:EmailPerSecond", "1000");
 
         builder.ConfigureTestServices(services =>
         {
@@ -81,6 +97,8 @@ public class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
             services.AddSingleton<TimeProvider>(Clock);
             services.RemoveAll<IEmailSender>();
             services.AddSingleton<IEmailSender>(Emails);
+            services.RemoveAll<IZaloBotClient>();
+            services.AddSingleton<IZaloBotClient>(Zalo);
             services.AddSingleton<IStartupFilter, TestClientIpStartupFilter>();
         });
     }
@@ -120,7 +138,10 @@ public sealed class RateLimitedApiFactory : ApiFactory
     public const int LoginLimit = 5;
     public const int LoginPerAccountLimit = 2;
     public const int SensitiveLimit = 2;
-    public const int WriteLimit = 5;
+    public const int WriteLimit = 8;
+    /// <summary>M-29: giới hạn song song thấp + hàng chờ ⇒ request dư xếp hàng thay vì bị 429.</summary>
+    public const int ConcurrentLimit = 2;
+    public const int ConcurrentQueue = 50;
 
     protected override void ConfigureRateLimits(IWebHostBuilder builder)
     {
@@ -128,6 +149,8 @@ public sealed class RateLimitedApiFactory : ApiFactory
         builder.UseSetting("RateLimiting:Login:PermitLimit", LoginLimit.ToString());
         builder.UseSetting("RateLimiting:LoginPerAccount:PermitLimit", LoginPerAccountLimit.ToString());
         builder.UseSetting("RateLimiting:Sensitive:PermitLimit", SensitiveLimit.ToString());        builder.UseSetting("RateLimiting:Write:PermitLimit", WriteLimit.ToString());
+        builder.UseSetting("RateLimiting:MaxConcurrentRequestsPerClient", ConcurrentLimit.ToString());
+        builder.UseSetting("RateLimiting:ConcurrentQueueLimit", ConcurrentQueue.ToString());
     }
 }
 

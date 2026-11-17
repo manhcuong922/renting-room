@@ -22,3 +22,20 @@ Thumbs.db
 
 ## Local environment overrides (secrets)
 .env
+.env.*
+!.env.example
+!.env.prod.example
+appsettings.Local.json
+appsettings.*.local.json
+secrets.json
+*.pem
+*.pfx
+*.key
+*.age
+backups/
+
+# M09: file tải lên khi chạy Local (dữ liệu người dùng — không đưa vào git)
+App_Data/
+
+# Sinh bằng scripts/make-migrate-sql.* trước mỗi lần deploy (M12)
+deploy/migrate.sql

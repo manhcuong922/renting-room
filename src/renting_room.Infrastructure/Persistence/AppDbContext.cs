@@ -3,12 +3,14 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using renting_room.Application.Common.Interfaces;
 using Npgsql;
+using renting_room.Domain.Attachments;
 using renting_room.Domain.Billing;
 using renting_room.Domain.Common;
 using renting_room.Domain.Contracts;
 using renting_room.Domain.Fees;
 using renting_room.Domain.Identity;
 using renting_room.Domain.Meters;
+using renting_room.Domain.Notifications;
 using renting_room.Domain.Payments;
 using renting_room.Domain.Properties;
 using renting_room.Domain.Renters;
@@ -42,9 +44,13 @@ public partial class AppDbContext(
     public DbSet<ContractBillingGap> ContractBillingGaps => Set<ContractBillingGap>();
     public DbSet<InvoiceAdjustment> InvoiceAdjustments => Set<InvoiceAdjustment>();
     public DbSet<RenterConsent> RenterConsents => Set<RenterConsent>();
+    public DbSet<NotificationOutbox> NotificationOutbox => Set<NotificationOutbox>();
+    public DbSet<ZaloLinkCode> ZaloLinkCodes => Set<ZaloLinkCode>();
     public DbSet<Payment> Payments => Set<Payment>();
     public DbSet<CollectionReduction> CollectionReductions => Set<CollectionReduction>();
     public DbSet<Contract> Contracts => Set<Contract>();
+    public DbSet<Attachment> Attachments => Set<Attachment>();
+    public DbSet<OrganizationStorageUsage> StorageUsages => Set<OrganizationStorageUsage>();
 
     /// <summary>Bảng kỹ thuật — chỉ Infrastructure dùng, không có repository cho tầng Application.</summary>
     public DbSet<IdempotencyRecord> IdempotencyRecords => Set<IdempotencyRecord>();

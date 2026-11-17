@@ -395,3 +395,9 @@ Hóa đơn trả phòng là **bản kết toán**: ngoài phần thu của kỳ 
 - **Hủy** hóa đơn trả phòng (chưa thu, chưa xác nhận hoàn) ⇒ hoàn nguyên: hóa đơn nguồn lại còn nợ, cọc về `Holding`.
 - Tổng âm ⇒ `RefundPending` (phần cọc dư phải trả lại — "Đã trả" / "Không hoàn" khi hoàn tất); tổng dương ⇒ còn nợ ⇒ thu / bỏ nợ.
 - `GET /invoices/totals`: `totalAmount` cộng **phần thu** từng hóa đơn (`totalAmount − settlementTotal`), `paidAmount` bỏ phần nợ đã chuyển ⇒ nợ chuyển không đếm 2 lần; cọc đã trừ không tính là đã thu.
+
+## Gửi phiếu cho người thuê (M11)
+
+Khu bật "tự gửi khi chốt" ⇒ chốt phiếu tạo tin cho người đứng tên (cùng transaction); hủy phiếu ⇒ tin đang chờ bị hủy. Lịch sử gửi, gửi lại thủ công:
+`GET /invoices/{id}/notifications`, `POST /invoices/{id}/notifications/resend` — xem [notifications.md](notifications.md).
+

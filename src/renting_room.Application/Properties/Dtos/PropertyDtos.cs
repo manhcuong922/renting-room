@@ -17,7 +17,8 @@ public sealed record BillingChangeDto(
 
 public sealed record PropertyBillingDto(
     int AnchorDay, ChargeMode ChargeMode, int PaymentDueDays, ProrationMode ProrationMode, int NoticeDays,
-    IReadOnlyList<BillingChangeDto> Changes, bool RoundInvoiceTotal = true);
+    IReadOnlyList<BillingChangeDto> Changes, bool RoundInvoiceTotal = true,
+    bool NotifyOnFinalize = false, IReadOnlyList<int>? OverdueReminderDays = null);
 
 public sealed record PropertySummaryDto(
     Guid Id,
@@ -118,6 +119,6 @@ internal static class PropertyMapping
             return new BillingChangeDto(e.EffectiveFrom, transition.End, e.AnchorDay, e.ChargeMode, transition.DeviationDays, e.AdjustDays);
         }).ToList();
         return new PropertyBillingDto(p.BillingAnchorDay, p.ChargeMode, p.PaymentDueDays, p.ProrationMode, p.DefaultNoticeDays, changes,
-            p.RoundInvoiceTotal);
+            p.RoundInvoiceTotal, p.NotifyOnFinalize, p.OverdueReminderDays);
     }
 }

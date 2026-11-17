@@ -1,7 +1,10 @@
 using FluentValidation;
+using renting_room.Application.Attachments;
 using renting_room.Application.Billing;
+using renting_room.Domain.Attachments;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Contracts;
+using renting_room.Application.Notifications;
 using renting_room.Application.Payments;
 using renting_room.Domain.Common;
 using renting_room.Domain.Renters;
@@ -21,6 +24,8 @@ public sealed class RenterAnonymizer(
     IAuditLogEraser auditLogEraser,
     IPersonalNoteEraser noteEraser,
     IPersonalDataProtector protector,
+    INotificationRepository notifications,
+    SensitiveFilePurger filePurger,
     TimeProvider clock)
 {
     private async Task<Error?> FindBlockerAsync(Guid renterId, CancellationToken ct)
@@ -71,6 +76,8 @@ public sealed class RenterAnonymizer(
             Identifiers: identifiers.OfType<string>().ToList());
 
         renter.Anonymize(clock.GetUtcNow(), keepName);
+        // M11 NT-BR-16: hủy tin chờ, xóa recipient trong outbox, thu hồi mã liên kết Zalo.
+        await notifications.PurgeRenterAsync(renterId, clock.GetUtcNow(), ct);
         foreach (var contract in contracts)
             contract.ReplaceSigningSnapshot(SigningSnapshot.FromJson(contract.SigningSnapshot)?.WithAnonymizedRepresentative(name).ToJson());
         if (!keepName)
@@ -87,11 +94,15 @@ public sealed class RenterAnonymizer(
                 vehicles = vehicleIds.Count
             });
 
+        // M09 FS-BR-09: ảnh giấy tờ / chân dung bị xóa ngay — đánh dấu trong cùng lần lưu, xóa file vật lý sau khi commit.
+        var attachmentFiles = await filePurger.DetachAsync(AttachmentOwnerType.Renter, renterId, ct);
+
         await unitOfWork.SaveChangesAsync(ct);
         // Sau SaveChanges: chính lần lưu này cũng sinh audit "Updated" chứa giá trị cũ ⇒ xóa cùng lúc, trong cùng transaction.
         await auditLogEraser.EraseRenterAsync(renterId, invoices.Select(i => i.Id).ToList(), payments.Select(p => p.Id).ToList(), vehicleIds, ct);
         await noteEraser.EraseAsync(noteErasure, ct);
         await transaction.CommitAsync(ct);
+        await filePurger.DeleteFilesAsync(attachmentFiles, ct);
         return Result.Success();
     }
 }

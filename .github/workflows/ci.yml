@@ -1,6 +1,7 @@
 name: CI
 
 on:
+  workflow_call:
   push:
     branches: [main]
   pull_request:
@@ -10,7 +11,25 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# Quyền tối thiểu cho GITHUB_TOKEN: chỉ đọc code.
+permissions:
+  contents: read
+
 jobs:
+  secret-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # quét cả lịch sử
+      - name: Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Tài khoản cá nhân dùng miễn phí; nếu chuyển repo sang Organization cần GITLEAKS_LICENSE.
+          GITLEAKS_ENABLE_COMMENTS: "false"
+
   build-and-test:
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -26,7 +45,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.nuget/packages
-          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', 'Directory.Packages.props') }}
           restore-keys: nuget-${{ runner.os }}-
 
       - name: Restore
@@ -34,6 +53,12 @@ jobs:
 
       - name: Build
         run: dotnet build renting_room.sln -c Release --no-restore
+
+      # Gói NuGet có lỗ hổng đã biết (kể cả gói gián tiếp) ⇒ đỏ.
+      - name: Vulnerable packages
+        run: |
+          dotnet list renting_room.sln package --vulnerable --include-transitive 2>&1 | tee vuln.txt
+          if grep -qE '^\s+>' vuln.txt; then echo "::error::Có gói NuGet chứa lỗ hổng, xem log ở trên"; exit 1; fi
 
       # Nhanh, không cần DB — đỏ ở đây thì dừng sớm.
       - name: Unit tests
@@ -59,3 +84,16 @@ jobs:
             TestResults/
             tests/renting_room.IntegrationTests/bin/Release/net10.0/openapi.actual.json
           if-no-files-found: ignore
+
+  docker-build:
+    # Đảm bảo Dockerfile luôn build được và image không chứa file bí mật (không đẩy lên đâu).
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -t renting_room_api:ci .
+      - name: Image không chạy root và không chứa file cấu hình dev
+        run: |
+          [ "$(docker run --rm --entrypoint id renting_room_api:ci -u)" != "0" ]
+          ! docker run --rm --entrypoint sh renting_room_api:ci -c 'ls /app' | grep -E 'appsettings\.Development\.json|^\.env|secrets\.json'

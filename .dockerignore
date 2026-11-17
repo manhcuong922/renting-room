@@ -1,0 +1,17 @@
+**/bin/
+**/obj/
+.git/
+.github/
+.env
+.env.*
+!.env.example
+**/appsettings.Local.json
+**/appsettings.*.local.json
+**/secrets.json
+**/*.pem
+**/*.pfx
+tests/
+docs/
+backups/
+TestResults/
+**/appsettings.Development.json

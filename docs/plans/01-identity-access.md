@@ -426,7 +426,7 @@ Mặc định **mọi endpoint** yêu cầu `RequireOrgMember` (fallback policy)
   - S4 Người thuê: hồ sơ chỉ có HĐ ở B ⇒ M không thấy (danh sách, mở → 404); hồ sơ M tự tạo ⇒ thấy; M tạo hồ sơ trùng CCCD hồ sơ ở B ⇒ 409 kèm họ tên + 4 số cuối;
     lập HĐ khu A với hồ sơ đó được ⇒ thấy hồ sơ, lịch sử thuê không có HĐ ở B.
   - S5 Quyền như chủ trong khu: M xem CCCD đầy đủ, bỏ nợ, "Không hoàn" khi hoàn tất thanh lý, nhập Excel phòng vào A → được (trước 403).
-  - S6 Chỉ chủ trọ: M gọi tạo khu, ngừng / khôi phục khu A, `PUT /properties/{A}/lessor`, tài khoản ngân hàng A, tạo / sửa / ngừng mẫu HĐ, thành viên, giao khu,
+  - S6 Chỉ chủ trọ: M gọi tạo khu, ngừng / khôi phục khu A, `PUT` và `DELETE /properties/{A}/lessor` (M-28 14/11/2026), tài khoản ngân hàng A, tạo / sửa / ngừng mẫu HĐ, thành viên, giao khu,
     `PUT /org`, giữ dữ liệu, ẩn danh tay, nhật ký, nhật ký đăng nhập → 403.
   - S7 Chủ trọ thấy cả A và B; job ẩn danh (hệ thống) xử lý cả hai khu.
   - S8 Giao khu: khu của tổ chức khác / khu đã ngừng / id lạ → 422; giao cho chủ trọ → 422 `CANNOT_MODIFY_OWNER`; danh sách thành viên trả `propertyIds`.

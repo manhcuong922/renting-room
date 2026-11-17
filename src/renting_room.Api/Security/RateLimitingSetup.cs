@@ -59,7 +59,11 @@ public sealed class RateLimitingOptions
 
     /// <summary>Số request đang xử lý ĐỒNG THỜI tối đa của một client — chống bắn song song hàng loạt.</summary>
     [Range(1, 1000)]
-    public int MaxConcurrentRequestsPerClient { get; init; } = 10;
+    public int MaxConcurrentRequestsPerClient { get; init; } = 20;
+
+    /// <summary>M-29: request vượt giới hạn song song xếp hàng chờ (tối đa chừng này) thay vì bị 429 ngay — trang nhiều truy vấn, nhiều tab, HTTP/2.</summary>
+    [Range(0, 1000)]
+    public int ConcurrentQueueLimit { get; init; } = 50;
 }
 
 public static class RateLimitPolicies
@@ -76,7 +80,7 @@ public static class RateLimitPolicies
 /// Global (mọi request, trừ /health):
 ///   1. Theo client: user đã đăng nhập → Authenticated; chưa đăng nhập → Anonymous (theo IP)
 ///   2. Request ghi (POST/PUT/PATCH/DELETE) → Write
-///   3. Số request song song → MaxConcurrentRequestsPerClient
+///   3. Số request song song → MaxConcurrentRequestsPerClient; vượt thì xếp hàng chờ tối đa ConcurrentQueueLimit (M-29), quá hàng chờ mới 429
 /// Policy theo endpoint: login, refresh (theo IP) · sensitive, import (theo user)
 /// Trong endpoint login: theo IP + tài khoản (<see cref="LoginAttemptLimiter"/> — cần username trong body)
 /// </code>
@@ -142,7 +146,8 @@ internal static class RateLimitingSetup
                         new ConcurrencyLimiterOptions
                         {
                             PermitLimit = settings.MaxConcurrentRequestsPerClient,
-                            QueueLimit = 0
+                            QueueLimit = settings.ConcurrentQueueLimit,
+                            QueueProcessingOrder = QueueProcessingOrder.OldestFirst
                         });
                 }));
         });

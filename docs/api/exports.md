@@ -20,7 +20,7 @@ Nút **"Xuất Excel"** ở danh sách người thuê / danh sách khu / sơ đ�
 | Phòng (chọn nhiều) | `roomIds` | `GET /rooms?propertyId=` |
 | Thời điểm: "Đang ở hôm nay" / "Trong khoảng ngày" | `fromDate`, `toDate` | |
 | Chia sheet: theo khu / theo tầng / gộp 1 sheet | `layout` | |
-| ☐ Hiện đầy đủ số giấy tờ | `includeSensitive` | Cảnh báo: dữ liệu cá nhân, thao tác được ghi log. **Ẩn** khi `canViewSensitiveData = false`. Quản lý khu: chỉ xuất được khu được giao (bộ lọc trống = các khu đó) |
+| ☐ Hiện đầy đủ số giấy tờ | `includeSensitive` | Cảnh báo: dữ liệu cá nhân, thao tác được ghi log; **hiện ô nhập mật khẩu đăng nhập** khi tick (M-30). **Ẩn** khi `canViewSensitiveData = false`. Quản lý khu: chỉ xuất được khu được giao (bộ lọc trống = các khu đó) |
 
 Các bộ lọc kết hợp **AND** (VD khu A + tầng 2 = tầng 2 của khu A).
 
@@ -51,7 +51,8 @@ Body rỗng `{}` = tất cả khu, người đang ở hôm nay, mỗi khu 1 shee
 | `roomIds` | | ≤ 500; sai id → 404 `ROOM_NOT_FOUND` |
 | `fromDate`, `toDate` | hôm nay | Người có thời gian ở **giao** với khoảng `[fromDate, toDate]` (kể cả đã chuyển đi trong khoảng). Gửi 1 ngày = ngày đó. `toDate ≥ fromDate`, tối đa 10 năm |
 | `layout` | `SheetPerProperty` | `SheetPerProperty` mỗi khu 1 sheet · `SheetPerFloor` mỗi tầng của mỗi khu 1 sheet · `SingleSheet` gộp |
-| `includeSensitive` | `false` | `true` = số giấy tờ đầy đủ (ghi log kiểm toán) |
+| `includeSensitive` | `false` | `true` = số giấy tờ đầy đủ (ghi log kiểm toán) — **kèm `currentPassword`** (mật khẩu đăng nhập, M-30 14/11/2026): thiếu ⇒ 400 `CURRENT_PASSWORD_REQUIRED`, sai ⇒ 422 `INVALID_CURRENT_PASSWORD` (tính vào bộ đếm khóa). Quyền kiểm trước mật khẩu (403 `SENSITIVE_DATA_FORBIDDEN`) |
+| `currentPassword` | `null` | Chỉ cần khi `includeSensitive = true` (≤ 200 ký tự) |
 
 **200** — file `danh-sach-nguoi-thue_20261002-1530.xlsx`
 (`Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`).

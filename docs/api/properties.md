@@ -208,6 +208,11 @@ Chi tiết khu có `billing`:
 - Đổi lại khi kỳ chuyển tiếp chưa lập phiếu ⇒ ghi đè lần đổi trước; đổi về đúng cài đặt cũ ⇒ bỏ kỳ chuyển tiếp.
 - Đổi thu sau → thu trước: phiếu đầu tiên thu trước có cảnh báo `TWO_RENT_PERIODS` (người thuê trả 2 tháng tiền phòng gần nhau).
 
+## Cài đặt thông báo (M11, 14/11/2026)
+
+`billing.notifyOnFinalize` (mặc định `false`) và `billing.overdueReminderDays` (mặc định `[]`) có trong chi tiết khu; đổi bằng `PUT /properties/{id}/notification-settings`
+(chi tiết: [notifications.md](notifications.md)). Hai trường này **không** nằm trong `PUT /properties/{id}/billing`.
+
 ## Bên cho thuê
 
 **Thông tin chủ trọ** (khai 1 lần, mọi khu dùng chung):
@@ -220,7 +225,7 @@ Chi tiết khu có `billing`:
 **Bên cho thuê riêng của khu** — chỉ khi khác chủ trọ (công ty quản lý, người được ủy quyền):
 
 - `PUT /properties/{id}/lessor` → 200 trả chi tiết khu (`lessorInherited: false`).
-- `DELETE /properties/{id}/lessor` → 200 trả chi tiết khu — bỏ khai riêng, quay về thông tin chủ trọ.
+- `DELETE /properties/{id}/lessor` — **chỉ chủ trọ** (quản lý khu → 403 `FORBIDDEN`, như `PUT`; M-28 14/11/2026) → 200 trả chi tiết khu — bỏ khai riêng, quay về thông tin chủ trọ.
 
 Sửa / bỏ không ảnh hưởng HĐ đã kích hoạt (HĐ giữ bản chụp lúc kích hoạt).
 

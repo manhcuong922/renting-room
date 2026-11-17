@@ -32,6 +32,10 @@ internal sealed class RenterConfiguration : IEntityTypeConfiguration<Renter>
         builder.Property(r => r.EmergencyContactName).HasMaxLength(200);
         builder.Property(r => r.EmergencyContactPhone).HasMaxLength(20);
         builder.Property(r => r.Note).HasMaxLength(2000);
+        builder.Property(r => r.ZaloChatId).HasMaxLength(64);
+        builder.Ignore(r => r.ZaloLinked);
+        // M11: lệnh HUY / chặn bot tìm hồ sơ theo chat id.
+        builder.HasIndex(r => r.ZaloChatId).HasDatabaseName("ix_renters_zalo_chat").HasFilter("zalo_chat_id IS NOT NULL");
 
         // RT-BR-02: hash đã gồm loại giấy tờ + tổ chức ⇒ unique trong tổ chức, chặn tạo trùng khi gửi song song.
         builder.HasIndex(r => new { r.OrganizationId, r.IdNumberHash }).IsUnique().HasDatabaseName(DbConstraints.RenterIdNumberUnique);

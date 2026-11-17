@@ -78,6 +78,7 @@ public sealed class PropertiesController(ISender sender) : ControllerBase
             b.DateOfBirth, b.TaxCode, b.RepresentativeName, b.RepresentativeTitle, b.AuthorizationDocNo, b.AuthorizationDocDate), ct)).ToHttp();
 
     [HttpDelete("properties/{id:guid}/lessor")]
+    [Authorize(Policy = AuthPolicies.OrgOwner)] // M-28 / ID-BR-28 (3): bên cho thuê của khu chỉ chủ trọ cài và gỡ
     [EndpointSummary("Bỏ bên cho thuê riêng ⇒ khu dùng thông tin chủ trọ (GET /org/lessor)")]
     public async Task<IResult> ClearLessor(Guid id, CancellationToken ct) =>
         (await sender.Send(new ClearPropertyLessorCommand(id), ct)).ToHttp();

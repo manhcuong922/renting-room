@@ -22,6 +22,7 @@ public static class DependencyInjection
         services.AddScoped<AuthTokenIssuer>();
         services.AddScoped<Identity.PasswordConfirmation>();
         services.AddScoped<Renters.RenterAnonymizer>();
+        services.AddScoped<Attachments.SensitiveFilePurger>();
         services.AddScoped<Payments.PaymentPosting>();
         services.AddScoped<IDomainEventHandler, Billing.DraftStalenessHandler>();
         services.AddScoped<Billing.RoomChargeBilling>();
@@ -43,6 +44,7 @@ public static class DependencyInjection
         services.AddScoped<Contracts.ResignLiquidation>();
         services.AddScoped<Contracts.ContractPaperWarnings>();
         services.AddScoped<Contracts.ContractDraftBuilder>();
+        services.AddScoped<Notifications.NotificationEnqueuer>();
 
         return services;
     }

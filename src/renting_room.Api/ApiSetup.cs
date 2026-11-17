@@ -89,7 +89,9 @@ internal static class ApiSetup
                 options.KnownIPNetworks.Add(ParseNetwork(network));
         });
 
-        services.AddHealthChecks().AddDbContextCheck<AppDbContext>("database", tags: [ReadyTag]);
+        services.AddHealthChecks()
+            .AddDbContextCheck<AppDbContext>("database", tags: [ReadyTag])
+            .AddCheck<StorageHealthCheck>("storage", Microsoft.Extensions.Diagnostics.HealthChecks.HealthStatus.Degraded, tags: [ReadyTag]);
         services.AddCachedHealthChecks(TimeSpan.FromSeconds(configuration.GetValue("Health:ReadyCacheSeconds", 5)));
 
         services.AddEndpointsApiExplorer();

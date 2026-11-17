@@ -30,7 +30,8 @@ public sealed record ExportRentersQuery(
     DateOnly? FromDate = null,
     DateOnly? ToDate = null,
     RenterExportLayout Layout = RenterExportLayout.SheetPerProperty,
-    bool IncludeSensitive = false) : IRequest<Result<ExportFile>>;
+    bool IncludeSensitive = false,
+    string? CurrentPassword = null) : IRequest<Result<ExportFile>>;
 
 public sealed record ExportFile(string FileName, byte[] Content);
 
@@ -46,6 +47,7 @@ public sealed class ExportRentersQueryValidator : AbstractValidator<ExportRenter
         RuleFor(x => x.Floors).Must(f => f is null || f.Count <= 50).WithErrorCode("OUT_OF_RANGE").WithMessage("Tối đa 50 tầng.");
         RuleForEach(x => x.Floors).OptionalText(10);
         RuleFor(x => x.Layout).IsInEnum();
+        RuleFor(x => x.CurrentPassword).MaximumLength(200).WithErrorCode("OUT_OF_RANGE");
         RuleFor(x => x.ToDate)
             .Must((x, to) => x.FromDate is null || to is null || (to >= x.FromDate && to.Value.DayNumber - x.FromDate.Value.DayNumber <= MaxRangeDays))
             .WithErrorCode("INVALID_DATE_RANGE").WithMessage("Đến ngày phải ≥ từ ngày và khoảng tối đa 10 năm.");
@@ -70,7 +72,8 @@ public sealed class ExportRentersHandler(
     IPersonalDataProtector protector,
     ISpreadsheetWriter writer,
     TimeProvider clock,
-    IAuditTrail auditTrail)
+    IAuditTrail auditTrail,
+    PasswordConfirmation passwordConfirmation)
     : IRequestHandler<ExportRentersQuery, Result<ExportFile>>
 {
     public async ValueTask<Result<ExportFile>> Handle(ExportRentersQuery request, CancellationToken cancellationToken)
@@ -81,6 +84,13 @@ public sealed class ExportRentersHandler(
 
         if (request.IncludeSensitive && !await SensitiveDataAccess.CanViewAsync(users, currentUser, cancellationToken))
             return IdentityErrors.SensitiveDataForbidden;
+        // M-30: xuất tới 20.000 số giấy tờ một lần ⇒ nhập lại mật khẩu (quyền kiểm trước mật khẩu).
+        if (request.IncludeSensitive)
+        {
+            var confirmed = await passwordConfirmation.ConfirmCurrentUserAsync(request.CurrentPassword, cancellationToken);
+            if (confirmed.IsFailure)
+                return confirmed.Error!;
+        }
 
         var now = clock.GetUtcNow();
         var today = now.ToBusinessDate();

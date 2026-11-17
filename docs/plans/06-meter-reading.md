@@ -339,4 +339,4 @@ Audit sửa/hủy chỉ số (giá trị cũ → mới, lý do), thay/gỡ công
 |---|---------|---------|
 | Q1 ✅ | Nhiều phòng dùng chung 1 công tơ? | **Ngoài phạm vi** (chốt 08/10/2026): chỉ phòng trọ / chung cư mini mỗi phòng 1 công tơ riêng; căn nhiều buồng nhỏ thuê chung = 1 phòng 1 công tơ. Nhà nguyên căn / công tơ tổng: chủ trọ tự chia, nhập phụ thu nhiều phòng |
 | Q2 | Có hệ số nhân (CT ratio)? | Không cần với nhà trọ |
-| Q3 | Bắt buộc ảnh chụp công tơ? | Tùy chọn theo cài đặt khu (P2, chờ M09) |
+| Q3 | Bắt buộc ảnh chụp công tơ? | Tùy chọn theo cài đặt khu (P2). BE M09 đã nhận `MeterReading` + `MeterPhoto` (16/11/2026); UI gắn ảnh vào dòng chỉ số: chưa làm |
