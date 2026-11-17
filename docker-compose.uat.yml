@@ -1,0 +1,77 @@
+# Compose UAT (nghiệm thu): stack riêng, tách hẳn production — postgres + api, có DỮ LIỆU DEMO.
+# Vì sao không seed vào docker-compose.prod.yml: seeder tạo chủ trọ với mật khẩu công khai ⇒ chỉ chạy được ở Development (M-18).
+# Stack này cố ý chạy ASPNETCORE_ENVIRONMENT=Development, cổng chỉ bind 127.0.0.1; muốn cho tester vào thì đặt sau VPN / tunnel có xác thực.
+# KHÔNG đặt chung máy / chung volume với production thật, KHÔNG nhập dữ liệu khách hàng thật vào đây.
+#
+# Cách dùng (xem docs/guides/demo-data.md mục "Môi trường UAT"):
+#   cp .env.uat.example .env.uat                       # điền mật khẩu
+#   docker compose -f docker-compose.uat.yml --env-file .env.uat up -d --build
+# Seed lại từ đầu (ngày demo tính theo hôm nay nên nên làm trước mỗi đợt UAT):
+#   powershell scripts/reseed-uat.ps1
+name: renting_room_uat
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: renting_room
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      RR_OWNER_PASSWORD: ${RR_OWNER_PASSWORD:?RR_OWNER_PASSWORD is required}
+      RR_APP_PASSWORD: ${RR_APP_PASSWORD:?RR_APP_PASSWORD is required}
+      TZ: Asia/Ho_Chi_Minh
+    volumes:
+      - uat_pgdata:/var/lib/postgresql/data
+      - ./deploy/postgres-init:/docker-entrypoint-initdb.d:ro
+    networks: [backend]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d renting_room"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build: .
+    image: renting_room_api:uat
+    restart: unless-stopped
+    depends_on:
+      postgres: { condition: service_healthy }
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      # Role owner: UAT tự migrate khi khởi động (không có bước migrate riêng như production).
+      ConnectionStrings__DefaultConnection: "Host=postgres;Port=5432;Database=renting_room;Username=renting_room_owner;Password=${RR_OWNER_PASSWORD}"
+      Database__MigrateOnStartup: "true"
+      Jwt__SigningKey: ${Jwt__SigningKey:?Jwt__SigningKey is required}
+      PersonalData__HashKey: ${PersonalData__HashKey:?PersonalData__HashKey is required}
+      DataProtection__KeysPath: /keys
+      AllowedHosts: ${AllowedHosts:-localhost}
+      Cors__AllowedOrigins__0: ${UAT_WEB_ORIGIN:-http://localhost:5173}
+      Bootstrap__Admin__Phone: ${Bootstrap__Admin__Phone:-0900000001}
+      Bootstrap__Admin__Email: ${Bootstrap__Admin__Email:-admin@rentingroom.local}
+      Bootstrap__Admin__Password: ${Bootstrap__Admin__Password:?Bootstrap__Admin__Password is required (>= 12 ký tự)}
+      Seed__DemoData__Enabled: "true"
+      Seed__DemoData__OrganizationCode: DEMO
+      Seed__DemoData__OwnerPassword: ${Seed__DemoData__OwnerPassword:?Seed__DemoData__OwnerPassword is required}
+      Seed__DemoData__ManagerPassword: ${Seed__DemoData__ManagerPassword:?Seed__DemoData__ManagerPassword is required}
+      # MinIO không có ở UAT ⇒ lưu file trên ổ đĩa (volume files).
+      Storage__Provider: Local
+      Storage__Local__RootPath: /data/files
+    volumes:
+      - uat_keys:/keys
+      - uat_files:/data/files
+    ports:
+      - "127.0.0.1:${UAT_API_PORT:-8090}:8080"
+    networks: [backend, frontend]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+
+networks:
+  backend:
+    internal: true
+  frontend: {}
+
+volumes:
+  uat_pgdata:
+  uat_keys:
+  uat_files:

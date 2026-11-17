@@ -154,7 +154,7 @@ Cả hai đều cho phép truy cập ẩn danh ([ApiSetup.cs](../../src/renting_
 | `Jwt:SigningKey` | Bắt buộc, tối thiểu 32 byte | ✅ `JwtSigningKeyProvider` |
 | `PersonalData:HashKey` | Bắt buộc, tối thiểu 32 ký tự | ✅ `PersonalDataOptions` |
 | `DataProtection:KeysPath` | **Bắt buộc, thư mục tồn tại và ghi được** | ✅ `ApiSetup.RequireDataProtectionKeysPath` (T1, T2, T5, T6 — code 11/11/2026, M-17) |
-| `Seed:DemoData:Enabled` | Chỉ được `true` ở Development, ngoài ra dừng khi khởi động | ✅ `DatabaseInitializer` (M-18, 11/11/2026) |
+| `Seed:DemoData:Enabled` | Chỉ được `true` ở Development, ngoài ra dừng khi khởi động | ✅ `DatabaseInitializer` (M-18, 11/11/2026) — nghiệm thu dùng stack riêng `docker-compose.uat.yml` (17/11/2026), không bật trên compose production |
 | `ReverseProxy:KnownProxies/KnownNetworks` | Rỗng thì chỉ cảnh báo | ✅ cảnh báo. Bước 8 xem lại |
 
 Lưu ý: integration test chạy với environment **`Testing`**, không phải Development (`ApiFactory.UseEnvironment("Testing")`). Vì vậy `ApiFactory` phải đặt `DataProtection:KeysPath` trỏ tới một thư mục tạm, giống cách đang đặt `Jwt:SigningKey`.

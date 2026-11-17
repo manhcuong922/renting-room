@@ -25,6 +25,7 @@ Thumbs.db
 .env.*
 !.env.example
 !.env.prod.example
+!.env.uat.example
 appsettings.Local.json
 appsettings.*.local.json
 secrets.json
