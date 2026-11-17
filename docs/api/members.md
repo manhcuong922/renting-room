@@ -62,7 +62,7 @@ Bỏ 08/11/2026: `PUT /org/members/{id}/sensitive-data-access`, `PUT /org/member
 ]
 ```
 
-- `propertyIds`: khu được giao (`[]` = chưa giao khu nào — đăng nhập vào thấy trống, UI nhắc chủ trọ giao khu). Dòng chủ trọ `null` = mọi khu.
+- `propertyIds`: khu được giao (`[]` = chưa giao khu nào — đăng nhập vào thấy trống, UI nhắc chủ trọ giao khu). **Bỏ trống / `null` khi tạo ⇒ giao tất cả khu đang hoạt động** (cùng mặc định chọn sẵn của UI — chốt 14/11/2026, 99 O-29); muốn không giao khu nào phải gửi `[]`. Dòng chủ trọ `null` = mọi khu.
 - `canViewSensitiveData` / `canWriteOff`: luôn `true` với chủ trọ và quản lý khu (giữ để UI cũ không vỡ).
 
 Nhãn phụ gợi ý:

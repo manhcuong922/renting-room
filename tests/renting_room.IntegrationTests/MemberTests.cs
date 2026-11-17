@@ -51,7 +51,7 @@ public sealed class MemberTests(ApiFactory factory)
 
         var revealed = await _client.PostJsonAsync($"/api/v1/renters/{renterId}/reveal-id-number", null, manager.AccessToken);
         revealed.StatusCode.Should().Be(HttpStatusCode.OK, await revealed.Content.ReadAsStringAsync());
-        (await _client.PostJsonAsync("/api/v1/exports/renters", new { propertyIds = new[] { propertyId }, includeSensitive = true }, manager.AccessToken))
+        (await _client.PostJsonAsync("/api/v1/exports/renters", new { propertyIds = new[] { propertyId }, includeSensitive = true, currentPassword = "PhoQuanLy2026" }, manager.AccessToken))
             .StatusCode.Should().Be(HttpStatusCode.OK);
         var print = await _client.GetAsync($"/api/v1/contracts/{contractId}/document", manager.AccessToken);
         print.StatusCode.Should().Be(HttpStatusCode.OK);

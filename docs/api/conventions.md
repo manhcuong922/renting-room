@@ -130,7 +130,7 @@ Lỗi nhập liệu (400) có thêm `errors` theo **đường dẫn field** đ�
 ## Giới hạn tần suất
 
 Vượt giới hạn → **429 `TOO_MANY_REQUESTS`** + header `Retry-After` (giây). UI: hiện thông báo, **không tự retry liên tục**.
-Đăng nhập: 5 lần/phút cho mỗi IP + tài khoản, 20 lần/phút/IP · đổi mật khẩu, xem số giấy tờ đầy đủ, xuất Excel: chung 5 lần/phút mỗi tài khoản · tạo/sửa (POST/PUT/DELETE): 60 lần/phút · tối đa 10 request đồng thời.
+Đăng nhập: 5 lần/phút cho mỗi IP + tài khoản, 20 lần/phút/IP · đổi mật khẩu, xem số giấy tờ đầy đủ, xuất Excel: chung 5 lần/phút mỗi tài khoản · tạo/sửa (POST/PUT/DELETE): 60 lần/phút · tối đa 20 request đồng thời mỗi người dùng; request thứ 21 trở đi **xếp hàng chờ** (tối đa 50) thay vì bị từ chối ngay (M-29 14/11/2026) — chỉ khi hàng chờ cũng đầy mới 429.
 
 ## Enum dùng chung
 
@@ -165,6 +165,8 @@ Vượt giới hạn → **429 `TOO_MANY_REQUESTS`** + header `Retry-After` (gi�
 | `OccupantRole` | `Resident` Người ở · `CoTenant` Đồng thuê |
 | `TenancyRole` | `Representative` Đứng tên · `CoTenant` Đồng thuê · `Resident` Người ở (lịch sử thuê của phòng) |
 | `ConsentMethod` | `PaperSigned` Ký giấy · `ContractClause` Điều khoản hợp đồng · `Verbal` Xác nhận miệng |
+| `AttachmentOwnerType` | `Property` Khu · `Room` Phòng · `Renter` Người thuê · `MeterReading` Chỉ số công tơ · `Payment` Phiếu thu (`Contract` chưa mở) |
+| `AttachmentCategory` | `IdCardFront` CCCD mặt trước · `IdCardBack` CCCD mặt sau · `Portrait` Chân dung · `RoomPhoto` Ảnh phòng · `MeterPhoto` Ảnh công tơ · `PaymentProof` Chứng từ chuyển khoản · `AuthorizationDoc` Giấy ủy quyền · `LessorIdCard` Giấy tờ bên cho thuê · `ComplianceDoc` Giấy tờ PCCC / pháp lý · `Other` Khác (còn `ContractScan`, `ContractAddendum`, `HandoverMinutes`, `ResidenceConfirmation`, `AssetPhoto` — chưa dùng) |
 | `DebtSettlement` | `CollectAll` Đã thu toàn bộ · `WriteOff` Bỏ nợ |
 | `ReadingKind` | `Initial` Lắp công tơ · `Handover` Nhận phòng · `Periodic` Cuối kỳ · `Adhoc` Kiểm tra · `Final` Cuối hợp đồng · `Removal` Tháo công tơ |
 | `ContractFlag` | `RepresentativeMovedOut` Người ký đã rời đi · `NoOccupantLeft` Không còn người ở · `ExpiredAwaitingDecision` Hết hạn — chờ quyết định (chỉ ở hợp đồng, không ở phòng) · `MissingSignedDocument` Thiếu tài liệu · `MoveOutOverdue` Quá ngày trả phòng (nhãn đỏ, 20/10/2026). (`Holdover` đã bỏ 13/10/2026) |

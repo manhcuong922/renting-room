@@ -23,5 +23,32 @@ services:
       timeout: 3s
       retries: 10
 
+  # M09: kho ảnh / tài liệu (MinIO, tương thích S3). KHÔNG bắt buộc — app mặc định lưu file trên ổ đĩa (Storage:Provider=Local).
+  # Muốn app dùng MinIO: powershell scripts/set-dev-secrets.ps1 -UseMinio   (xem docs/guides/file-storage.md)
+  # Console quản trị: http://localhost:9001 (đăng nhập bằng MINIO_ROOT_USER / MINIO_ROOT_PASSWORD).
+  minio:
+    # LƯU Ý (kiểm 16/11/2026): MinIO đã ngừng đăng image công khai — `minio/minio` trên Docker Hub không còn, `quay.io/minio/minio` kéo mới bị từ chối.
+    # Máy đã có sẵn image thì dùng được; máy mới cần tự có image (đẩy bản của bạn lên registry riêng rồi đặt MINIO_IMAGE) hoặc dùng kho S3 khác.
+    # Xem docs/guides/file-storage.md mục 6. App chạy bình thường không cần service này (Storage:Provider=Local).
+    image: ${MINIO_IMAGE:-quay.io/minio/minio:latest}
+    container_name: renting_room_minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin123}
+    # Chỉ máy này (127.0.0.1) — mật khẩu dev mặc định công khai, giống Postgres (L-15).
+    ports:
+      - "127.0.0.1:${MINIO_PORT:-9000}:9000"
+      - "127.0.0.1:${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
 volumes:
   postgres_data:
+  minio_data:

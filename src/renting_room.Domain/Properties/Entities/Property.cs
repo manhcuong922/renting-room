@@ -1,5 +1,6 @@
 using renting_room.Domain.Billing;
 using renting_room.Domain.Common;
+using renting_room.Domain.Notifications;
 
 namespace renting_room.Domain.Properties;
 
@@ -51,6 +52,12 @@ public sealed class Property : TenantEntity
     public string? BankAccountNo { get; private set; }
     public string? BankAccountName { get; private set; }
     public string? HouseRulesText { get; private set; }
+
+    /// <summary>M11 NT-BR-04: chốt phiếu ⇒ tự gửi cho người đứng tên. Mặc định tắt — khu nào muốn phải bật.</summary>
+    public bool NotifyOnFinalize { get; private set; }
+
+    /// <summary>M11 NT-BR-06 / NT-BR-19: nhắc nợ sau hạn N ngày; ≤ 3 mốc, 1–60, tăng dần. Rỗng = không nhắc.</summary>
+    public IReadOnlyList<int> OverdueReminderDays { get; private set; } = [];
 
     public DateTimeOffset? ArchivedAt { get; private set; }
 
@@ -169,6 +176,16 @@ public sealed class Property : TenantEntity
     }
 
     public void UpdateHouseRules(string? text) => HouseRulesText = TextNormalizer.TrimToNull(text);
+
+    public Result UpdateNotificationSettings(bool notifyOnFinalize, IReadOnlyList<int> overdueReminderDays)
+    {
+        if (!OverdueReminderPolicy.IsValid(overdueReminderDays))
+            return Result.Failure(NotificationErrors.InvalidReminderDays);
+
+        NotifyOnFinalize = notifyOnFinalize;
+        OverdueReminderDays = overdueReminderDays.ToArray();
+        return Result.Success();
+    }
 
     public Result Archive(DateTimeOffset now)
     {

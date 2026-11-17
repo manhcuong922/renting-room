@@ -16,13 +16,13 @@ chỉ số điện nước, tính tiền phòng hàng tháng, thu tiền, theo d
 - Quản lý tổ chức (chủ trọ) & tài khoản do Admin cấp.
 - Khu trọ, phòng, nhóm phòng.
 - Hồ sơ người thuê, người ở cùng (P1); theo dõi thủ tục tạm trú / lưu trú / tạm vắng (P2).
-- Hợp đồng (thông tin, in từ mẫu, cờ "đã có bản ký"), đổi giá, chuyển phòng, ký lại, thanh lý. File scan: chờ M09.
+- Hợp đồng (thông tin, in từ mẫu, cờ "đã có bản ký"), đổi giá, chuyển phòng, ký lại, thanh lý. File scan HĐ: ⏸ tạm hoãn (M09 đã có, chưa mở cho HĐ).
 - Danh mục khoản thu 3 nhóm: **Theo chỉ số** (điện, nước, …), **Dịch vụ cố định** (rác, wifi…),
   **Dịch vụ theo số lượng** (giữ xe ×N…).
 - Màn hình ghi chỉ số cuối kỳ; tính tiền phòng; sửa tay trên phiếu nháp; phụ thu / giảm trừ / hoàn trả cho 1 hoặc nhiều phòng;
   **khoản phát sinh theo phòng** (phụ thu / bù tạo giữa tháng, đã thanh toán hay chưa); chốt phiếu; thu tiền, bỏ nợ;
   theo dõi cọc (có cọc / đã hoàn trả).
-- Nhập Excel (phòng, người đang thuê); xuất Excel danh sách người thuê. **Chưa làm**: upload ảnh / file (M09),
+- Nhập Excel (phòng, người đang thuê); xuất Excel danh sách người thuê. Upload ảnh / file (M09) ✅ 16/11/2026 cho người thuê, phòng, khu; **chưa làm**:
   xuất Excel tiền phòng tháng / thông tin phòng / công nợ (M10).
 
 **Ngoài phạm vi** (ghi rõ để không bị "trôi" yêu cầu)
@@ -48,7 +48,7 @@ Căn cứ pháp lý & quy tắc LEG-xx: [00-legal-basis.md](00-legal-basis.md).
 - Application tổ chức **theo module**, mỗi nhóm tính năng một file (`Application/{Module}/{Feature}.cs` gồm command / query / handler / validator).
 - Mediator (`Mediator.Abstractions` source-gen) + FluentValidation pipeline (đã có `ValidationBehavior`).
 - EF Core + **PostgreSQL** (Npgsql). Một DB, một schema `public` (module tách bằng tiền tố bảng không cần thiết — dùng tên rõ nghĩa).
-- Xuất / nhập Excel: **ClosedXML** (MIT). Lưu file (`IFileStorage`, Local disk → S3/MinIO): **chưa làm** (M09).
+- Xuất / nhập Excel: **ClosedXML** (MIT). Lưu file (`IFileStorage`, Local disk → S3/MinIO, AWSSDK.S3): ✅ 16/11/2026 (M09).
 - ✅ Đã nâng lên **net10.0** (LTS, SDK 10.0.4xx) — EF Core 10 / Npgsql 10, Swashbuckle 10 (Microsoft.OpenApi v2). .NET 8 hết hỗ trợ 10/11/2026.
 
 ## 4. Bản đồ module
@@ -275,7 +275,7 @@ Trả lại cọc ⇒ bấm **"Đã hoàn trả cọc"** (không bắt buộc tr
 | Phase | Nội dung | Trạng thái |
 |-------|----------|------------|
 | **P0 Foundation** | net10.0, secrets, multi-tenant (C-01), audit (C-10), ProblemDetails (C-09), idempotency (C-08), TimeProvider (C-04), kỳ thu (C-05), Testcontainers, M01 auth | ✅ xong. Còn thiếu: bảng ĐVHC (C-12) |
-| **P1 MVP** | M01–M08; M09 file; M10 export | M01–M08 ✅ (phần ghi "chưa code" trong từng plan là ngoại lệ). **M09 chưa làm**. M10: mới có E1 |
+| **P1 MVP** | M01–M08; M09 file; M10 export | M01–M08 ✅ (phần ghi "chưa code" trong từng plan là ngoại lệ). **M09 ✅ 16/11/2026** (trừ upload cho HĐ — hoãn). M10: mới có E1 |
 | **P2** | Gửi phiếu & nhắc nợ qua Zalo Bot / email (**M11**, hiện thực BL-UC-13 — đã có thiết kế 12/10/2026; ảnh VietQR để sau), in / xuất phiếu (BL-UC-12), thủ tục cư trú (M03), nhắc việc, đối chiếu hóa đơn điện EVN, dashboard, báo cáo doanh thu, export bất đồng bộ | Chưa làm |
 | **P3 B2B** | Thanh toán online / đối soát ngân hàng, số dư có, gói dịch vụ & giới hạn (số khu / phòng), RLS, admin impersonation có audit | Chưa làm |
 

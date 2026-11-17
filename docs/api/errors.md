@@ -336,8 +336,40 @@ Cảnh báo (không chặn): `READING_DATE_FAR_FROM_PERIOD_END` trong `warnings[
 | Code | HTTP | UI |
 |------|------|----|
 | `PROFILE_MANAGED_BY_OWNER` | 403 | Quản lý khu không tự sửa hồ sơ — ẩn nút sửa, ghi "Liên hệ chủ trọ để đổi thông tin" |
-| `CURRENT_PASSWORD_REQUIRED` | 400 | Đổi SĐT / email đăng nhập, đổi / xóa tài khoản ngân hàng của khu (H-06) phải nhập mật khẩu hiện tại — hiện ô mật khẩu |
+| `CURRENT_PASSWORD_REQUIRED` | 400 | Đổi SĐT / email đăng nhập, đổi / xóa tài khoản ngân hàng của khu (H-06), xuất danh sách người thuê kèm số giấy tờ đầy đủ (M-30) phải nhập mật khẩu hiện tại — hiện ô mật khẩu |
 | `INVALID_CURRENT_PASSWORD` | 422 | Mật khẩu hiện tại sai (cũng dùng cho `PUT /me`, `PUT /properties/{id}/bank-account`) |
 
 Đã bỏ: cờ `Holdover`, cảnh báo `HOLDOVER_SIGN_ADDENDUM` ("Ở tiếp" giờ chuyển hợp đồng sang không thời hạn).
 `ROOM_CHARGE_CREDIT_TOO_HIGH` giờ còn trả khi bỏ đánh dấu "đã thanh toán" một khoản bù.
+
+## Ảnh và tài liệu đính kèm (M09, 16/11/2026)
+
+Chi tiết: [attachments.md](attachments.md).
+
+| Mã | HTTP | Ý nghĩa / UI làm gì |
+|----|------|----------------------|
+| `NO_FILE` | 400 | Chưa chọn tệp — lỗi lập trình nếu nút "Tải lên" không bị khóa |
+| `TOO_MANY_FILES` | 400 | Quá 20 tệp một lần — cắt lô |
+| `FILE_TYPE_NOT_ALLOWED` | 400 | Không phải JPEG / PNG / WEBP / HEIC / PDF (kiểm theo nội dung, đổi đuôi file không qua được) |
+| `FILE_TOO_LARGE` | 400 | Tệp > 10 MB |
+| `OWNER_NOT_FOUND` | 404 | Đối tượng (người thuê, phòng…) không tồn tại / thuộc tổ chức khác |
+| `ATTACHMENT_NOT_FOUND` | 404 | Tệp đã xóa hoặc không còn — tải lại danh sách |
+| `CATEGORY_NOT_ALLOWED` | 422 | Loại tài liệu không dùng được cho đối tượng này (hoặc hợp đồng — chưa mở) |
+| `TOO_MANY_ATTACHMENTS` | 422 | Đã đủ số tệp tối đa của loại này (ảnh phòng 20, ảnh công tơ 3…) |
+| `ATTACHMENT_LOCKED` | 422 | Ảnh công tơ / chứng từ thanh toán không xóa được — ẩn nút xóa |
+| `SIGNED_URL_NOT_SUPPORTED` | 422 | Không có liên kết tạm cho tệp này (nhạy cảm hoặc lưu ổ đĩa) — dùng `/content` |
+| `STORAGE_QUOTA_EXCEEDED` | 507 | Hết dung lượng lưu trữ của tổ chức — báo chủ trọ xóa bớt hoặc liên hệ người vận hành |
+| `STORAGE_UNAVAILABLE` | 503 | Kho tệp (MinIO) không dùng được — thử lại sau; các chức năng khác vẫn chạy |
+
+## Thông báo (M11)
+
+| Mã | HTTP | Ý nghĩa / UI làm gì |
+|----|------|----------------------|
+| `ZALO_BOT_NOT_CONFIGURED` | 409 | Máy chủ chưa có token Zalo — ẩn nút liên kết, báo liên hệ người vận hành |
+| `INVOICE_NOT_FINALIZED` | 409 | Gửi lại phiếu còn nháp — chốt trước |
+| `INVOICE_VOIDED` | 409 | Phiếu đã hủy — không gửi |
+| `NO_NOTIFICATION_CHANNEL` | 422 | Người đứng tên chưa có kênh nhận tin — liên kết Zalo / thêm email, hoặc gửi tay |
+| `INVALID_CHANNEL` | 400 | Kênh gửi lại phải là `Zalo` / `Email`, không trùng |
+| `INVALID_REMINDER_DAYS` | 400 | Mốc nhắc nợ: tối đa 3, mỗi mốc 1–60, không trùng, tăng dần |
+| `INVALID_BILLING_MONTH` | 400 | `billingMonth` phải là ngày đầu tháng |
+

@@ -32,6 +32,8 @@ public static class AuditActions
     public const string ExportRenters = "ExportRenters";
     /// <summary>M-13: dò số giấy tờ — tìm theo số, hoặc tạo hồ sơ trùng số (409 trả họ tên). Không bao giờ ghi số đã nhập.</summary>
     public const string IdNumberLookup = "IdNumberLookup";
+    /// <summary>M09 FS-BR-07: tải tệp nhạy cảm (ảnh giấy tờ…) — mỗi lần tải một dòng.</summary>
+    public const string DownloadAttachment = "DownloadAttachment";
     public const string Anonymized = "Anonymized";
     public const string Import = "Import";
     /// <summary>M01 ID-BR-24: chủ trọ đổi khu được giao của quản lý khu (danh sách cũ → mới).</summary>

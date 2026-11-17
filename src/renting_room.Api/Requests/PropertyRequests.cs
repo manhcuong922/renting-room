@@ -39,3 +39,7 @@ public sealed record UpdateBankAccountRequest(string? BankName, string? AccountN
 public sealed record UpdateHouseRulesRequest(string? Text);
 
 public sealed record RevealedIdNumber(string IdNumber);
+
+public sealed record UpdateNotificationSettingsRequest(bool NotifyOnFinalize, IReadOnlyList<int>? OverdueReminderDays);
+
+public sealed record ResendNotificationRequest(IReadOnlyList<string>? Channels);

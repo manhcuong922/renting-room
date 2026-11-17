@@ -3,6 +3,7 @@ using Mediator;
 using renting_room.Application.Common.Interfaces;
 using renting_room.Application.Contracts;
 using renting_room.Application.Meters;
+using renting_room.Application.Notifications;
 using renting_room.Application.Properties;
 using renting_room.Domain.Billing;
 using renting_room.Domain.Common;
@@ -22,7 +23,7 @@ public sealed class FinalizeInvoiceHandler(InvoiceFinalizer finalizer) : IReques
 public sealed class InvoiceFinalizer(
     IUnitOfWork unitOfWork, IInvoiceRepository invoices, IInvoiceQueries invoiceQueries, IContractRepository contracts, IMeterQueries meters,
     IPropertyQueries properties, InvoiceInputLoader inputs, IDocumentNumberGenerator numbers, ICurrentUser currentUser, FinalInvoiceSettlement settlement,
-    TimeProvider clock)
+    NotificationEnqueuer notifications, TimeProvider clock)
 {
     public async Task<Result<InvoiceDetailDto>> FinalizeAsync(Guid id, CancellationToken ct, uint? expectedVersion = null)
     {
@@ -72,6 +73,8 @@ public sealed class InvoiceFinalizer(
             if (settled.IsFailure)
                 return settled.Error!;
         }
+        // M11 NT-BR-04: tin tạo cùng transaction với lệnh chốt (khu bật "tự gửi khi chốt").
+        await notifications.EnqueueIssuedAsync(invoice, contract.RepresentativeRenterId, ct);
 
         await unitOfWork.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);

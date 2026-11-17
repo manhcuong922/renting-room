@@ -33,6 +33,30 @@ public sealed class Renter : TenantEntity
 
     public DateTimeOffset? AnonymizedAt { get; private set; }
 
+    /// <summary>M11 NT-BR-15: cuộc chat Zalo đã liên kết (một người thuê chỉ gắn 1 chat, liên kết lại ⇒ ghi đè). Dữ liệu cá nhân — không trả ra API.</summary>
+    public string? ZaloChatId { get; private set; }
+
+    public DateTimeOffset? ZaloLinkedAt { get; private set; }
+
+    public bool ZaloLinked => ZaloChatId is not null;
+
+    public void LinkZalo(string chatId, DateTimeOffset now)
+    {
+        if (IsAnonymized)
+            throw new InvalidOperationException("Anonymized renters cannot be linked.");
+        if (string.IsNullOrWhiteSpace(chatId))
+            throw new ArgumentException("Chat id is required.", nameof(chatId));
+
+        ZaloChatId = chatId.Trim();
+        ZaloLinkedAt = now;
+    }
+
+    public void UnlinkZalo()
+    {
+        ZaloChatId = null;
+        ZaloLinkedAt = null;
+    }
+
     public bool IsAnonymized => AnonymizedAt is not null;
 
     public const int IdRequiredAge = 14;
@@ -106,6 +130,7 @@ public sealed class Renter : TenantEntity
         IdNumberEncrypted = null;
         IdNumberHash = null;
         IdNumberLast4 = null;
+        UnlinkZalo(); // NT-BR-16
         ArchivedAt ??= now;
         AnonymizedAt = now;
     }

@@ -77,6 +77,7 @@ public static class ProblemResponses
         ErrorType.BusinessRule => StatusCodes.Status422UnprocessableEntity,
         ErrorType.Locked => StatusCodes.Status423Locked,
         ErrorType.Unavailable => StatusCodes.Status503ServiceUnavailable,
+        ErrorType.InsufficientStorage => StatusCodes.Status507InsufficientStorage,
         _ => StatusCodes.Status500InternalServerError
     };
 

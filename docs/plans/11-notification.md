@@ -31,7 +31,26 @@ và tự **nhắc nợ** khi phiếu quá hạn mà chưa thu đủ. Gửi qua h
 - ZNS / Zalo OA, SMS, webhook, bot riêng cho từng tổ chức (P3 B2B).
 - Bot trả lời hội thoại: bot chỉ hiểu **mã liên kết** và lệnh `HUY`.
 
-**Phase**: P2. **Trạng thái (12/10/2026)**: chưa code gì — toàn bộ file là thiết kế. Bước đầu tiên là spike **NT-T00**.
+**Phase**: P2. **Trạng thái (14/11/2026)**: phần BE đã code (Zalo + email, outbox, dispatcher, liên kết, nhắc nợ, cài đặt khu, 7 endpoint). Chạy được ngay khi có token:
+điền `ZaloBot:Token` (user-secrets hoặc biến môi trường — xem [zalo-bot-setup.md](../guides/zalo-bot-setup.md) mục 3) rồi khởi động lại — chưa có token thì kênh Zalo ở trạng thái "chưa cấu hình", app vẫn chạy.
+
+**Khác thiết kế gốc (quyết định khi code 14/11/2026)**
+- Mã liên kết hạn **48 giờ** (gốc 7 ngày) và hash bằng **HMAC-SHA256 có khóa** (khóa dẫn xuất từ `PersonalData:HashKey`) — theo L-19.
+- Bot trả lời xác nhận liên kết **không nêu tên khu / phòng** (mã bị lộ cũng không lộ thêm thông tin). Mã sai và mã hết hạn cùng một câu.
+- Chống dò mã (NT-BR-14): bộ đếm vẫn **trong RAM** (5 lần sai / giờ / chat) **cộng trần chung 200 lần sai / giờ** toàn hệ thống; không đưa xuống DB — 99 O-31.
+- Cấu hình thêm: `ZaloBot:ApiBaseUrl`, `ZaloBot:BotName`, `ZaloBot:PollerEnabled` (chạy nhiều instance chỉ bật một), `Notifications:*` (khung giờ, tốc độ, chu kỳ, thời gian giữ).
+- Cài đặt khu (`notifyOnFinalize`, `overdueReminderDays`) nằm trong `billing` của chi tiết khu, đổi bằng endpoint riêng `PUT /properties/{id}/notification-settings` (không đổi `PUT …/billing`).
+- Tin Zalo gửi chỉ sau khi người thuê đã nhắn mã cho bot (đó là cách có `chat_id`).
+
+**UI (14/11/2026, repo renting_room_ui)**: hồ sơ người thuê có mục "Nhận phiếu qua Zalo" (tạo mã, hủy liên kết); chi tiết phiếu đã chốt có mục "Gửi cho người thuê" (lịch sử + Gửi lại);
+chi tiết khu có tab "Thông báo" (tự gửi khi chốt, tối đa 3 mốc nhắc nợ). Lint + build đạt; **chưa mở thử trên trình duyệt**. Chưa có: tổng hợp theo khu / tháng ở danh sách phiếu, nhãn "Chưa gửi được" (cần `notificationStatus`).
+
+**Chưa làm (còn lại của M11)**
+- **NT-T00 spike chưa chạy**: dạng phản hồi `getMe` / `getUpdates` / `sendMessage` và tên trường (`chat.id`, `update_id`, `message_id`, mã lỗi chặn bot / không tìm thấy chat) viết theo tài liệu công khai,
+  **chưa kiểm chứng với token thật**; toàn bộ nằm trong `ZaloBotClient` (có unit test với phản hồi giả). Q1 (bot chủ động nhắn sau nhiều ngày) và Q2 (giới hạn tốc độ / phí) vẫn mở.
+- NT-UC-09 `GET /invoices/{id}/share-content` (nội dung chia sẻ tay + link `zalo.me/<sđt>`); `notificationStatus` trong DTO phiếu (mục 4.3).
+- Seeder demo (NT-T13); `NT-BR-19` DB CHECK đã có nhưng chưa có test DB trực tiếp (validator + domain đã test).
+- Test 9 (chốt hàng loạt 100 phiếu), 20 (lease hết hạn), 21 (hai dispatcher song song) chưa viết riêng — cơ chế `FOR UPDATE SKIP LOCKED` + lease đã code nhưng chưa có test đua.
 
 ## 2. Thuật ngữ
 

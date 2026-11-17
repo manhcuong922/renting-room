@@ -98,7 +98,7 @@ public sealed class RateLimitingTests(RateLimitedApiFactory factory)
         {
             "renter" => ($"/api/v1/renters/{await _client.CreateRenterAsync(token)}/reveal-id-number", (object?)null),
             "lessor" => ($"/api/v1/properties/{await _client.CreatePropertyAsync(token)}/lessor/reveal-id-number", null),
-            _ => ("/api/v1/exports/renters", new { includeSensitive = true })
+            _ => ("/api/v1/exports/renters", new { includeSensitive = true, currentPassword = TestApi.OwnerPassword })
         };
 
         (await _client.PostJsonAsync(url, body, token, idempotencyKey: null)).StatusCode.Should().Be(HttpStatusCode.OK);
@@ -125,6 +125,21 @@ public sealed class RateLimitingTests(RateLimitedApiFactory factory)
 
         rejected.Should().NotBeNull("spam tạo dữ liệu phải bị chặn trong giới hạn ghi");
         (await _client.GetAsync("/api/v1/rooms", owner.Tokens.AccessToken)).StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+
+    /// <summary>
+    /// M-29: nhiều request song song của một người dùng (trang nhiều truy vấn, 2 tab) vượt giới hạn đồng thời ⇒ xếp hàng chờ, không bị 429.
+    /// </summary>
+    [Fact]
+    public async Task ParallelRequests_AboveConcurrentLimit_AreQueued_NotRejected()
+    {
+        var owner = await CreateOwnerAsync("198.51.100.31");
+        var token = owner.Tokens.AccessToken;
+
+        var responses = await Task.WhenAll(Enumerable.Range(0, 12).Select(_ => _client.GetAsync("/api/v1/rooms", token)));
+
+        responses.Select(r => r.StatusCode).Should().OnlyContain(s => s == HttpStatusCode.OK);
     }
 
     /// <summary>Tạo chủ trọ với IP riêng (login bị giới hạn theo IP, nên mỗi test dùng IP khác nhau).</summary>

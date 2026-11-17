@@ -11,7 +11,10 @@ public enum ErrorType
     BusinessRule,
 
     /// <summary>Phụ thuộc bên ngoài chưa cấu hình / không phản hồi (VD máy chủ mail) — 503, thử lại sau.</summary>
-    Unavailable
+    Unavailable,
+
+    /// <summary>Hết dung lượng lưu trữ của tổ chức (M09 FS-BR-02) — 507.</summary>
+    InsufficientStorage
 }
 
 /// <summary>
@@ -31,4 +34,5 @@ public sealed record Error(string Code, string Message, ErrorType Type, IReadOnl
     public static Error Locked(string code, string message) => new(code, message, ErrorType.Locked);
     public static Error BusinessRule(string code, string message) => new(code, message, ErrorType.BusinessRule);
     public static Error Unavailable(string code, string message) => new(code, message, ErrorType.Unavailable);
+    public static Error InsufficientStorage(string code, string message) => new(code, message, ErrorType.InsufficientStorage);
 }

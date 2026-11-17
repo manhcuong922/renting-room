@@ -1,0 +1,162 @@
+# Compose PRODUCTION (plan M12 DO-03, bước chưa ra internet): postgres + migrate + minio + api. Chưa có web (Caddy), backup, cloudflared.
+# Cách dùng (xem docs/guides/deploy.md):
+#   cp .env.prod.example .env  → điền (bash scripts/new-secrets.sh sinh khóa)
+#   sh scripts/make-migrate-sql.sh                      # sinh deploy/migrate.sql
+#   docker compose -f docker-compose.prod.yml --env-file .env up -d --build
+# Không service nào publish cổng ra mạng, trừ api bind 127.0.0.1 (để Caddy / tunnel / kiểm tra sức khỏe).
+name: renting_room_prod
+
+x-logging: &logging
+  driver: json-file
+  options: { max-size: "10m", max-file: "5" }
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: always
+    stop_grace_period: 60s
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-renting_room}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      RR_OWNER_PASSWORD: ${RR_OWNER_PASSWORD:?RR_OWNER_PASSWORD is required}
+      RR_APP_PASSWORD: ${RR_APP_PASSWORD:?RR_APP_PASSWORD is required}
+      TZ: Asia/Ho_Chi_Minh
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./deploy/postgres-init:/docker-entrypoint-initdb.d:ro
+    networks: [backend]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-renting_room}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    logging: *logging
+
+  # Chạy MỘT lần mỗi lần deploy bằng role owner; script idempotent, mỗi migration một transaction (lỗi ⇒ dừng, API cũ vẫn chạy).
+  migrate:
+    image: postgres:16-alpine
+    restart: "no"
+    depends_on:
+      postgres: { condition: service_healthy }
+    environment:
+      PGPASSWORD: ${RR_OWNER_PASSWORD}
+    volumes:
+      - ./deploy/migrate.sql:/migrate.sql:ro
+    command: ["psql", "-h", "postgres", "-U", "renting_room_owner", "-d", "${POSTGRES_DB:-renting_room}", "-v", "ON_ERROR_STOP=1", "-f", "/migrate.sql"]
+    networks: [backend]
+    logging: *logging
+
+  # Kho ảnh / tài liệu (M09). Image: xem docs/guides/file-storage.md mục 6 (MinIO không còn đăng image công khai).
+  minio:
+    image: ${MINIO_IMAGE:-quay.io/minio/minio:latest}
+    restart: always
+    stop_grace_period: 30s
+    command: server /data
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?MINIO_ROOT_USER is required}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required}
+    volumes:
+      - minio_data:/data
+    networks: [backend]
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    logging: *logging
+
+  # Tạo bucket private + tài khoản riêng của app chỉ có quyền trên bucket đó (không dùng tài khoản root cho app). Chạy lại an toàn.
+  minio-setup:
+    image: ${MINIO_MC_IMAGE:-quay.io/minio/mc:latest}
+    restart: "no"
+    depends_on:
+      minio: { condition: service_healthy }
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      APP_ACCESS_KEY: ${MINIO_APP_ACCESS_KEY:?MINIO_APP_ACCESS_KEY is required}
+      APP_SECRET_KEY: ${MINIO_APP_SECRET_KEY:?MINIO_APP_SECRET_KEY is required}
+      BUCKET: ${STORAGE_BUCKET:-renting-room}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -eu
+        mc alias set local http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD" >/dev/null
+        mc mb --ignore-existing "local/$$BUCKET"
+        cat > /tmp/policy.json <<EOF
+        {"Version":"2012-10-17","Statement":[
+          {"Effect":"Allow","Action":["s3:ListBucket","s3:GetBucketLocation"],"Resource":["arn:aws:s3:::$$BUCKET"]},
+          {"Effect":"Allow","Action":["s3:GetObject","s3:PutObject","s3:DeleteObject"],"Resource":["arn:aws:s3:::$$BUCKET/*"]}]}
+        EOF
+        mc admin policy create local rr-app /tmp/policy.json 2>/dev/null || mc admin policy create local rr-app /tmp/policy.json --overwrite 2>/dev/null || true
+        mc admin user add local "$$APP_ACCESS_KEY" "$$APP_SECRET_KEY" 2>/dev/null || true
+        mc admin policy attach local rr-app --user "$$APP_ACCESS_KEY" 2>/dev/null || true
+        echo "MinIO ready: bucket $$BUCKET, app user $$APP_ACCESS_KEY"
+    networks: [backend]
+    logging: *logging
+
+  api:
+    build: .
+    image: renting_room_api:${API_TAG:-local}
+    restart: always
+    stop_grace_period: 40s
+    depends_on:
+      postgres: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+      minio-setup: { condition: service_completed_successfully }
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__DefaultConnection: "Host=postgres;Port=5432;Database=${POSTGRES_DB:-renting_room};Username=renting_room_app;Password=${RR_APP_PASSWORD}"
+      Jwt__SigningKey: ${Jwt__SigningKey:?Jwt__SigningKey is required}
+      PersonalData__HashKey: ${PersonalData__HashKey:?PersonalData__HashKey is required}
+      DataProtection__KeysPath: /keys
+      AllowedHosts: ${AllowedHosts:?AllowedHosts is required}
+      Bootstrap__Admin__Phone: ${Bootstrap__Admin__Phone:-}
+      Bootstrap__Admin__Email: ${Bootstrap__Admin__Email:-}
+      Bootstrap__Admin__Password: ${Bootstrap__Admin__Password:-}
+      ZaloBot__Token: ${ZaloBot__Token:-}
+      ZaloBot__BotName: ${ZaloBot__BotName:-}
+      Email__Smtp__Host: ${Email__Smtp__Host:-}
+      Email__Smtp__Port: ${Email__Smtp__Port:-587}
+      Email__Smtp__Security: ${Email__Smtp__Security:-StartTls}
+      Email__Smtp__Username: ${Email__Smtp__Username:-}
+      Email__Smtp__Password: ${Email__Smtp__Password:-}
+      Email__Smtp__FromAddress: ${Email__Smtp__FromAddress:-}
+      # M09: MinIO (S3) là mặc định khi deploy; đặt Storage__Provider=Local để dùng ổ đĩa (volume files).
+      Storage__Provider: ${Storage__Provider:-S3}
+      Storage__Local__RootPath: /data/files
+      Storage__S3__ServiceUrl: http://minio:9000
+      Storage__S3__Bucket: ${STORAGE_BUCKET:-renting-room}
+      Storage__S3__AccessKey: ${MINIO_APP_ACCESS_KEY}
+      Storage__S3__SecretKey: ${MINIO_APP_SECRET_KEY}
+      Storage__OrganizationQuotaBytes: ${Storage__OrganizationQuotaBytes:-5368709120}
+    volumes:
+      - dpkeys:/keys
+      - files:/data/files
+    ports:
+      - "127.0.0.1:${API_PORT:-8080}:8080"
+    networks: [backend, frontend]
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      # Image aspnet không có curl / wget — dùng /dev/tcp của bash. Host: localhost phải nằm trong AllowedHosts (M-24).
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /health/live HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && grep -q ' 200 ' <&3"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+    logging: *logging
+
+networks:
+  backend:
+    internal: true # postgres / minio không ra internet, không ai vào được từ ngoài
+  frontend: {}
+
+volumes:
+  pgdata:
+  minio_data:
+  dpkeys:
+  files:

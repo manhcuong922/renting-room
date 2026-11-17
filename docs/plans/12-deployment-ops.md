@@ -4,7 +4,7 @@
 > Liên quan: [../guides/postgresql.md](../guides/postgresql.md) mục 10 (backup tay) và 12 (checklist production), [09-file-storage.md](09-file-storage.md) (thư mục upload),
 > mẫu reverse proxy cũ của FE: `renting_room_ui/deploy/nginx.conf.example` (sẽ thay bằng `Caddyfile`).
 
-> **Trạng thái (31/10/2026)**: mới có plan, **chưa làm bước nào**. Bước tiếp theo: **bước 1 (DO-01)**.
+> **Trạng thái (15/11/2026)**: đã làm một phần theo yêu cầu riêng — `.env.prod.example`, `scripts/new-secrets.*`, `scripts/set-dev-secrets.ps1` (một phần DO-01); `Dockerfile` + `.dockerignore` cho API (một phần DO-02); CI/CD GitHub Actions (xem [secrets-and-cicd.md](../guides/secrets-and-cicd.md)). Còn lại DO-01 (fail-fast `KeysPath` đã xong ở M-17), Dockerfile UI, compose prod, backup, deploy.
 > Cách làm: **từng bước một**. Xong một bước (đạt tiêu chí "Đạt khi") thì dừng cho người dùng duyệt rồi mới sang bước sau.
 > Bước có code thì theo quy trình [.claude/rules/common/change-process.md](../../.claude/rules/common/change-process.md): kịch bản test → test RED → code → docs → full test.
 > Không commit khi người dùng chưa yêu cầu.
@@ -73,7 +73,7 @@ Không áp dụng, vì đây là hạ tầng. Không có use case nghiệp vụ 
 | 1 | **Dữ liệu PostgreSQL** | Named volume `pgdata` | Mất toàn bộ nghiệp vụ |
 | 2 | **Khoá DataProtection** | Volume `dpkeys`, gắn vào `DataProtection:KeysPath` | **Mất vĩnh viễn số CCCD** ([PersonalDataProtector.cs](../../src/renting_room.Infrastructure/Identity/PersonalDataProtector.cs) mã hoá bằng DataProtection). Các response idempotency đang lưu ([IdempotencyStore.cs](../../src/renting_room.Infrastructure/Idempotency/IdempotencyStore.cs)) không đọc được nữa |
 | 3 | **Secret** (`.env`, không commit) | Ngoài repo, có bản cất trong trình quản lý mật khẩu | Đổi `PersonalData__HashKey` thì tìm kiếm và chống trùng CCCD cũ hỏng. Đổi `Jwt__SigningKey` thì access token đang dùng hết hiệu lực. Refresh token lưu trong DB dạng SHA-256, không phụ thuộc khoá này |
-| 4 | **File upload** (khi làm M09) | Volume `uploads` | Mất ảnh và bản scan hợp đồng |
+| 4 | **File upload** (M09 đã làm 16/11/2026: Local `/data/files` hoặc volume `minio_data` — xem [file-storage.md](../guides/file-storage.md)) | Volume `uploads` / `minio_data` | Mất ảnh và bản scan hợp đồng |
 
 Volume chứng chỉ của Caddy (`caddy_data`) **không** cần mang theo khi chuyển máy, Caddy tự xin lại. Nhưng phải là volume bền, nếu không Let's Encrypt sẽ khoá việc xin chứng chỉ vì vượt giới hạn 5 chứng chỉ giống nhau mỗi tuần.
 
@@ -91,7 +91,7 @@ Volume chứng chỉ của Caddy (`caddy_data`) **không** cần mang theo khi c
 Mỗi bản gồm:
 - `pg_dump -Fc` của DB `renting_room`;
 - `pg_dumpall --globals-only` để giữ role và quyền;
-- bản tar của `dpkeys`, và của `uploads` khi đã có M09;
+- bản tar của `dpkeys`, và của `uploads` (Local) hoặc `minio_data` (MinIO) — M09 đã có; **lưu ý** MinIO không còn đăng image công khai (kiểm 16/11/2026), xem file-storage.md mục 6;
 - file `manifest` ghi version app, migration cuối và sha256.
 
 Cả bản được **mã hoá bằng `age` với public key**. Private key cất **ngoài máy chạy**, nên kẻ chiếm được máy chủ cũng không giải mã được các bản backup cũ.
@@ -178,7 +178,7 @@ Không áp dụng cho người dùng ứng dụng. Phân quyền ở tầng hạ
 | Tắt đột ngột (cúp điện, `kill -9`) | Postgres phục hồi từ WAL. **Không bao giờ** tắt `fsync`, `full_page_writes` hay `synchronous_commit` để tăng tốc. Audit đọc dữ liệu nhạy cảm ghi thẳng trước khi trả dữ liệu (05/11/2026) nên không mất |
 | API lên trước khi DB sẵn sàng | `depends_on: postgres: condition: service_healthy` (healthcheck `pg_isready`, đã có trong compose dev) |
 | Client gửi lại request trong lúc API khởi động lại | `Idempotency-Key` đã có sẵn, nên phiếu thu hay hoá đơn không bị ghi trùng |
-| Migration lỗi giữa chừng | `psql -v ON_ERROR_STOP=1 --single-transaction -f migrate.sql`: lỗi thì rollback toàn bộ, API cũ vẫn chạy. Cẩn thận với migration có `CREATE INDEX CONCURRENTLY`, vì lệnh này không chạy được trong transaction |
+| Migration lỗi giữa chừng | `psql -v ON_ERROR_STOP=1 -f migrate.sql` (**không** `--single-transaction`: script EF idempotent đã bọc mỗi migration trong transaction riêng, lồng nhau sẽ commit sớm — chốt 16/11/2026): lỗi thì dừng, migration đang chạy rollback, API cũ vẫn chạy. Cẩn thận với migration có `CREATE INDEX CONCURRENTLY`, vì lệnh này không chạy được trong transaction |
 | Bản mới lỗi sau khi đã migrate | Migration tương thích ngược, nên chỉ cần quay lại image cũ, không phải restore DB. Chỉ restore từ `pre-deploy` khi migration làm hỏng dữ liệu |
 | Backup âm thầm hỏng hoặc không chạy | Mỗi bản backup chạy `pg_restore --list` để kiểm tra. Bước 8 thêm cảnh báo khi quá 2 giờ không có backup mới (healthchecks.io hoặc tương đương) |
 | Đầy đĩa | Xoá backup theo lịch giữ ở 4.2. Xoay vòng log Docker (`json-file`, `max-size: 10m`, `max-file: 5`). Kiểm tra dung lượng trong checklist hằng tuần |
@@ -240,7 +240,7 @@ Khoá DataProtection lưu trên đĩa **không mã hoá** khi dùng `PersistKeys
 |---|---|---|---|---|---|
 | DO-01 | **1. Cố định trạng thái và secret** | Fail-fast cho `DataProtection:KeysPath` ngoài Development (nên chuyển phần cấu hình DataProtection vào Infrastructure cùng một options class, để unit test được như `JwtSigningKeyProvider`). Sửa `ApiFactory`. Thêm `.env.prod.example` (đủ mọi khoá ở mục 4.1 và mục 8). Thêm script sinh secret ngẫu nhiên (`scripts/new-secrets.ps1` và `.sh`). Bổ sung `appsettings.json` và [postgresql.md](../guides/postgresql.md) mục 12 | T1–T6 xanh, full test xanh | 0.5d | ⏳ Tiếp theo |
 | DO-02 | **2. Đóng gói image** | `Dockerfile` cho API (build nhiều tầng, non-root, cố định digest, healthcheck không cần shell nếu dùng chiseled), `.dockerignore`. `Dockerfile` cho UI (build bằng node rồi đóng vào image Caddy cùng `dist`, `VITE_API_BASE_URL=/api/v1`). `Caddyfile` thay cho `nginx.conf.example` | D1, D2 | 0.5d | ☐ |
-| DO-03 | **3. Compose production (chưa ra internet)** | `docker-compose.prod.yml` theo mục 5. Script khởi tạo role DB (`owner`/`app`). `restart: always`, healthcheck, `depends_on: service_healthy`, `stop_grace_period`, `read_only`, `cap_drop`, `no-new-privileges`, xoay vòng log, subnet cố định | D3, D4 | 1d | ☐ |
+| DO-03 ◐ | **3. Compose production (chưa ra internet)** — ✅ 16/11/2026 phần postgres + migrate + MinIO + api (xem [deploy.md](../guides/deploy.md); đã kiểm chứng chạy thật); **chưa**: web, backup | `docker-compose.prod.yml` theo mục 5. Script khởi tạo role DB (`owner`/`app`). `restart: always`, healthcheck, `depends_on: service_healthy`, `stop_grace_period`, `read_only`, `cap_drop`, `no-new-privileges`, xoay vòng log, subnet cố định | D3, D4 | 1d | ☐ |
 | DO-04 | **4. Backup và restore** | Service `backup` (cron, `pg_dump`, `pg_dumpall --globals-only`, tar `dpkeys`, mã hoá `age`, lịch giữ ở 4.2, kiểm tra bằng `pg_restore --list`). `scripts/backup` để chạy tay. `scripts/restore` dùng được cả cho máy trống. Hướng dẫn diễn tập | D7 | 1d | ☐ |
 | DO-05 | **5. Quy trình deploy** | Build image có tag version, sinh `migrate.sql` idempotent (`dotnet ef migrations script --idempotent`). `scripts/deploy`: backup `pre-deploy`, chạy `migrate` (single transaction), đổi image `api`/`web`, chờ `/health/ready`; lỗi thì quay lại tag cũ. Thêm quy tắc migration tương thích ngược vào [postgresql.md](../guides/postgresql.md) mục 8 | D8, D9 | 1d | ☐ |
 | DO-06 | **6. Caddy và header bảo mật** | Hoàn thiện `Caddyfile` (header, cache, SPA, ẩn header `Server`), chạy được trong LAN qua `127.0.0.1` | Header đúng (kiểm tra cục bộ phần không phụ thuộc HTTPS) | 0.5d | ☐ |

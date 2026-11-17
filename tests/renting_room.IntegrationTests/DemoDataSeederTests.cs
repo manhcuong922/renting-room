@@ -312,5 +312,19 @@ public sealed class DemoDataSeederTests(ApiFactory factory)
         var payments105 = await (await _client.GetAsync(
             $"/api/v1/payments?contractId={all.First(c => c.GetProperty("roomCode").GetString() == "105").GetProperty("id").GetGuid()}", token)).ReadAsync<JsonElement>();
         payments105.EnumerateArray().Should().Contain(p => p.GetProperty("kind").GetString() == "WriteOff" && p.GetProperty("amount").GetDecimal() == 200000);
+
+        // M09 (16/11/2026): ảnh / tài liệu mẫu — CCCD + chân dung của Lê Thị Mai (nhạy cảm), 2 ảnh phòng 101, giấy PCCC của khu A; tải được qua API.
+        async Task<List<JsonElement>> AttachmentsOfAsync(string ownerType, Guid ownerId) =>
+            (await (await _client.GetAsync($"/api/v1/attachments?ownerType={ownerType}&ownerId={ownerId}", token)).ReadAsync<JsonElement>())
+            .GetProperty("items").EnumerateArray().ToList();
+        var ofWife = await AttachmentsOfAsync("Renter", wife101);
+        ofWife.Select(a => a.GetProperty("category").GetString()).Should().BeEquivalentTo(["IdCardFront", "Portrait"]);
+        ofWife.Should().OnlyContain(a => a.GetProperty("isSensitive").GetBoolean());
+        var room101 = khuA.GetProperty("items").EnumerateArray().Single(r => r.GetProperty("code").GetString() == "101").GetProperty("id").GetGuid();
+        (await AttachmentsOfAsync("Room", room101)).Select(a => a.GetProperty("category").GetString()).Should().Equal("RoomPhoto", "RoomPhoto");
+        (await AttachmentsOfAsync("Property", khuAId)).Select(a => a.GetProperty("category").GetString()).Should().Equal("ComplianceDoc");
+        var sample = await _client.GetAsync($"/api/v1/attachments/{ofWife[0].GetProperty("id").GetGuid()}/content", token);
+        sample.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await sample.Content.ReadAsByteArrayAsync()).Take(4).Should().Equal(0x89, 0x50, 0x4E, 0x47);
     }
 }
