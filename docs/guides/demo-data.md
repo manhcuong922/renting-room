@@ -15,6 +15,30 @@ Chạy khi app khởi động, sau migration và tạo SystemAdmin. Đã có t�
 Muốn seed lại từ đầu trên dev: `docker compose down -v` → `docker compose up -d` → chạy API.
 Seed lỗi giữa chừng ⇒ app dừng với thông báo `Demo seed failed at <Lệnh>: <MÃ_LỖI>` — sửa seeder rồi làm lại như trên.
 
+## Seed lại khi dữ liệu bị "cũ" (17/11/2026)
+
+Ngày demo tính theo **hôm nay lúc seed**. DB seed lâu ngày lệch so với lịch thật: seed 20/10, tới 17/11 thì phiếu mới nhất là tháng 9 ⇒ bấm "Tạo phiếu tháng 11"
+thì ~20 HĐ bị bỏ qua `PREVIOUS_PERIOD_NOT_BILLED` (không phải lỗi code — quy tắc BL-BR-42). Seed lại trước mỗi đợt test tay:
+dừng API dev → `powershell scripts/reseed-dev.ps1` → chạy lại API.
+
+Trên DB vừa seed, "Tạo phiếu" tháng hiện tại **cố ý** vẫn bỏ qua một số HĐ (không phải lỗi dữ liệu):
+`MISSING_READING` (chưa nhập chỉ số cuối tháng — nhập ở lưới chỉ số rồi tạo lại), `USE_FINAL_INVOICE` (HĐ đang / đã thanh lý — dùng hóa đơn trả phòng),
+`EXISTS` (đã có phiếu), và vài HĐ thuộc case riêng (202, 223 `PREVIOUS_PERIOD_NOT_BILLED`; 234 `PREVIOUS_PERIOD_INCOMPLETE`).
+
+## Môi trường UAT (stack riêng, có dữ liệu demo)
+
+Không bật seed trên `docker-compose.prod.yml` (production chặn: M-18). UAT dùng **stack riêng** `docker-compose.uat.yml` (project `renting_room_uat`:
+postgres + api, chạy `Development`, file lưu ổ đĩa, API chỉ bind `127.0.0.1:8090`) — tách hẳn production, volume riêng.
+
+```
+cp .env.uat.example .env.uat       # điền mật khẩu (scripts/new-secrets.ps1 sinh khóa)
+docker compose -f docker-compose.uat.yml --env-file .env.uat up -d --build
+powershell scripts/reseed-uat.ps1  # seed lại từ đầu (xóa volume UAT) — nên làm trước mỗi đợt nghiệm thu
+```
+
+Gọi API: `http://localhost:8090/api/v1` (host phải nằm trong `AllowedHosts`; mặc định `localhost`). Tài khoản demo giống mục dưới, mật khẩu theo
+`Seed__DemoData__OwnerPassword` / `ManagerPassword` trong `.env.uat`. **Không** nhập dữ liệu khách thật vào UAT và không dùng chung máy / volume với production.
+
 ## Tài khoản (dev)
 
 | Vai trò | Đăng nhập | Mật khẩu |
