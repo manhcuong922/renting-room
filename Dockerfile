@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # Image API. Không chứa bí mật: mọi khóa truyền lúc chạy qua biến môi trường (xem .env.prod.example).
-FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:11.0 AS build
 WORKDIR /src
 COPY Directory.Build.props Directory.Packages.props renting_room.sln ./
 COPY src/renting_room.Domain/*.csproj src/renting_room.Domain/
