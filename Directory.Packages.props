@@ -6,7 +6,7 @@
   </PropertyGroup>
 
   <ItemGroup Label="Application">
-    <PackageVersion Include="AWSSDK.S3" Version="3.7.511.8" />
+    <PackageVersion Include="AWSSDK.S3" Version="4.1.2" />
     <PackageVersion Include="FluentValidation" Version="12.1.1" />
     <PackageVersion Include="FluentValidation.DependencyInjectionExtensions" Version="12.1.1" />
     <PackageVersion Include="MailKit" Version="5.0.0" />
