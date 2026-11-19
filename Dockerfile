@@ -11,7 +11,7 @@ RUN dotnet restore src/renting_room.Api/renting_room.Api.csproj
 COPY src/ src/
 RUN dotnet publish src/renting_room.Api/renting_room.Api.csproj -c Release --no-restore -o /out /p:UseAppHost=false
 
-FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:11.0 AS runtime
 WORKDIR /app
 ENV ASPNETCORE_URLS=http://+:8080 ASPNETCORE_ENVIRONMENT=Production
 COPY --from=build /out .
