@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using renting_room.Application.Notifications;
+using renting_room.Application.Common.Models;
 using renting_room.Domain.Billing;
+using renting_room.Domain.Contracts;
 using renting_room.Domain.Notifications;
 
 namespace renting_room.Infrastructure.Persistence.Repositories;
@@ -71,8 +73,9 @@ internal sealed class NotificationRepository(AppDbContext db) : INotificationRep
             .ToListAsync(cancellationToken);
         var ids = invoices.Select(i => i.Id).ToList();
         var steps = (await db.NotificationOutbox.AsNoTracking()
-                .Where(n => ids.Contains(n.InvoiceId) && n.Kind == NotificationKind.OverdueReminder && n.Status != NotificationStatus.Cancelled)
-                .Select(n => new { n.InvoiceId, n.Step }).ToListAsync(cancellationToken))
+                .Where(n => n.InvoiceId != null && ids.Contains(n.InvoiceId.Value) && n.Kind == NotificationKind.OverdueReminder
+                    && n.Status != NotificationStatus.Cancelled)
+                .Select(n => new { InvoiceId = n.InvoiceId!.Value, n.Step }).ToListAsync(cancellationToken))
             .GroupBy(n => n.InvoiceId).ToDictionary(g => g.Key, g => (IReadOnlyList<int>)g.Select(n => n.Step).Distinct().ToList());
 
         return invoices.Select(i => new OverdueInvoiceRow(
@@ -83,7 +86,7 @@ internal sealed class NotificationRepository(AppDbContext db) : INotificationRep
     {
         var month = db.Invoices.AsNoTracking().Where(i => i.PropertyId == propertyId && i.BillingMonth == billingMonth);
         var counts = await (from n in db.NotificationOutbox.AsNoTracking()
-                join i in month on n.InvoiceId equals i.Id
+                join i in month on n.InvoiceId equals (Guid?)i.Id
                 group n by n.Status into g
                 select new { Status = g.Key, Count = g.Count() })
             .ToDictionaryAsync(x => x.Status, x => x.Count, cancellationToken);
@@ -106,4 +109,53 @@ internal sealed class ZaloLinkCodeRepository(AppDbContext db) : IZaloLinkCodeRep
     public Task RevokeUnusedAsync(Guid renterId, DateTimeOffset now, CancellationToken cancellationToken) =>
         db.ZaloLinkCodes.Where(c => c.RenterId == renterId && c.UsedAt == null && c.RevokedAt == null)
             .ExecuteUpdateAsync(s => s.SetProperty(c => c.RevokedAt, now), cancellationToken);
+}
+
+/// <summary>M11 §17: thông báo chung — mọi truy vấn qua global filter (tổ chức + khu được giao).</summary>
+internal sealed class AnnouncementRepository(AppDbContext db) : IAnnouncementRepository
+{
+    public void Add(Announcement announcement) => db.Announcements.Add(announcement);
+
+    public Task<Announcement?> GetAsync(Guid id, CancellationToken cancellationToken) =>
+        db.Announcements.AsNoTracking().FirstOrDefaultAsync(a => a.Id == id, cancellationToken);
+
+    public Task<int> CountRoomsAsync(Guid propertyId, IReadOnlyCollection<Guid> roomIds, CancellationToken cancellationToken) =>
+        db.Rooms.CountAsync(r => r.PropertyId == propertyId && roomIds.Contains(r.Id), cancellationToken);
+
+    public async Task<IReadOnlyList<AnnouncementTarget>> ListTargetsAsync(
+        Guid propertyId, IReadOnlyCollection<Guid>? roomIds, CancellationToken cancellationToken)
+    {
+        var contracts = db.Contracts.AsNoTracking()
+            .Where(c => c.PropertyId == propertyId && (c.Status == ContractStatus.Active || c.Status == ContractStatus.Liquidating));
+        if (roomIds is not null)
+            contracts = contracts.Where(c => roomIds.Contains(c.RoomId));
+        return await (from c in contracts
+                join room in db.Rooms.AsNoTracking() on c.RoomId equals room.Id
+                join renter in db.Renters.AsNoTracking() on c.RepresentativeRenterId equals renter.Id
+                select new AnnouncementTarget(room.Id, room.Code, renter.Id, renter.ZaloChatId, renter.AnonymizedAt != null))
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<PagedResult<AnnouncementDto>> ListAsync(Guid propertyId, int page, int pageSize, CancellationToken cancellationToken)
+    {
+        var query = db.Announcements.AsNoTracking().Where(a => a.PropertyId == propertyId);
+        var total = await query.CountAsync(cancellationToken);
+        var items = await query.OrderByDescending(a => a.CreatedAt).ThenByDescending(a => a.Id)
+            .Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(cancellationToken);
+        var ids = items.Select(a => a.Id).ToList();
+        var counts = (await db.NotificationOutbox.AsNoTracking()
+                .Where(n => n.AnnouncementId != null && ids.Contains(n.AnnouncementId.Value))
+                .GroupBy(n => new { AnnouncementId = n.AnnouncementId!.Value, n.Status })
+                .Select(g => new { g.Key.AnnouncementId, g.Key.Status, Count = g.Count() })
+                .ToListAsync(cancellationToken))
+            .ToLookup(x => x.AnnouncementId);
+
+        return new PagedResult<AnnouncementDto>(items.Select(a =>
+        {
+            int Of(params NotificationStatus[] statuses) => counts[a.Id].Where(c => statuses.Contains(c.Status)).Sum(c => c.Count);
+            return new AnnouncementDto(a.Id, a.Title, a.Body, a.AllRooms, a.RoomCount, a.RecipientCount,
+                Of(NotificationStatus.Pending, NotificationStatus.Sending), Of(NotificationStatus.Sent), Of(NotificationStatus.Failed),
+                Of(NotificationStatus.Cancelled), a.CreatedAt);
+        }).ToList(), page, pageSize, total);
+    }
 }

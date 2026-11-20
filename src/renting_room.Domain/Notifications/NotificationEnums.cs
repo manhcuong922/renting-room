@@ -7,12 +7,16 @@ public enum NotificationChannel
     Email
 }
 
-/// <summary>M11 §2: <c>InvoiceIssued</c> phiếu mới chốt · <c>OverdueReminder</c> nhắc nợ · <c>ManualResend</c> chủ trọ bấm gửi lại.</summary>
+/// <summary>
+/// M11 §2: <c>InvoiceIssued</c> phiếu mới chốt · <c>OverdueReminder</c> nhắc nợ · <c>ManualResend</c> chủ trọ bấm gửi lại ·
+/// <c>Announcement</c> thông báo chung của khu (§17, không gắn phiếu).
+/// </summary>
 public enum NotificationKind
 {
     InvoiceIssued,
     OverdueReminder,
-    ManualResend
+    ManualResend,
+    Announcement
 }
 
 /// <summary>M11 §3.3. <c>Sent</c>, <c>Failed</c>, <c>Skipped</c>, <c>Cancelled</c> là trạng thái kết thúc.</summary>

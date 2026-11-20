@@ -1,6 +1,7 @@
 using Mediator;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using renting_room.Application.Common.Models;
 using renting_room.Application.Notifications;
 using renting_room.Application.Properties;
 using renting_room.Http;
@@ -50,6 +51,20 @@ public sealed class NotificationsController(ISender sender) : ControllerBase
     [EndpointSummary("Hủy liên kết Zalo của người thuê; tin Zalo đang chờ của người đó bị hủy")]
     public async Task<IResult> Unlink(Guid id, CancellationToken ct) =>
         (await sender.Send(new UnlinkRenterZaloCommand(id), ct)).ToHttp();
+
+    [HttpPost("properties/{id:guid}/announcements")]
+    [Idempotent(required: false)]
+    [EndpointSummary("Gửi thông báo chung (tiêu đề + nội dung) qua Zalo cho người đứng tên mọi phòng đang thuê của khu, hoặc các phòng chọn; gửi ngay, không giới hạn khung giờ")]
+    public async Task<IResult> SendAnnouncement(Guid id, SendAnnouncementRequest body, CancellationToken ct)
+    {
+        var result = await sender.Send(new SendAnnouncementCommand(id, body.Title, body.Body, body.RoomIds), ct);
+        return result.IsSuccess ? Results.Accepted(value: result.Value) : result.ToHttp();
+    }
+
+    [HttpGet("properties/{id:guid}/announcements")]
+    [EndpointSummary("Các thông báo chung đã gửi của khu (mới nhất trước) kèm số tin đang chờ / đã gửi / lỗi / hủy")]
+    public async Task<IResult> ListAnnouncements(Guid id, int? page, int? pageSize, CancellationToken ct) =>
+        (await sender.Send(new ListAnnouncementsQuery(id, page ?? 1, pageSize ?? Paging.DefaultPageSize), ct)).ToHttp();
 
     [HttpPut("properties/{id:guid}/notification-settings")]
     [EndpointSummary("Bật / tắt tự gửi phiếu khi chốt và cài các mốc nhắc nợ (tối đa 3 mốc, mỗi mốc 1–60 ngày sau hạn, tăng dần; rỗng = không nhắc)")]

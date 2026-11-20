@@ -23,7 +23,7 @@ public sealed class NotificationOutboxStore(AppDbContext db, TimeProvider clock)
     /// <c>UPDATE … WHERE id IN (SELECT … FOR UPDATE SKIP LOCKED) RETURNING</c>: nhận tối đa <paramref name="batch"/> tin và chuyển <c>Sending</c> trong
     /// cùng câu lệnh ⇒ hai dispatcher không bao giờ nhận cùng một tin. Tin <c>Sending</c> hết lease (app chết giữa chừng) được nhận lại.
     /// </summary>
-    /// <param name="inWindow">Trong khung giờ gửi (NT-BR-08). Ngoài khung chỉ <c>ManualResend</c> được nhận.</param>
+    /// <param name="inWindow">Trong khung giờ gửi (NT-BR-08). Ngoài khung chỉ <c>ManualResend</c> và thông báo chung (NT-BR-23) được nhận.</param>
     public async Task<IReadOnlyList<ClaimedNotification>> ClaimAsync(
         int batch, bool inWindow, IReadOnlyCollection<NotificationChannel> channels, TimeSpan lease, CancellationToken cancellationToken)
     {
@@ -42,7 +42,7 @@ public sealed class NotificationOutboxStore(AppDbContext db, TimeProvider clock)
             WHERE id IN (
                 SELECT id FROM notification_outbox
                 WHERE ((status = 'Pending' AND next_attempt_at <= @now) OR (status = 'Sending' AND locked_until < @now AND attempts < @max))
-                  AND channel = ANY(@channels) AND (kind = 'ManualResend' OR @in_window)
+                  AND channel = ANY(@channels) AND (kind IN ('ManualResend', 'Announcement') OR @in_window)
                 ORDER BY next_attempt_at
                 LIMIT @batch
                 FOR UPDATE SKIP LOCKED)

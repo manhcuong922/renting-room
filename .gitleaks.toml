@@ -1,0 +1,21 @@
+# Cấu hình gitleaks cho CI (job secret-scan). Giữ toàn bộ luật mặc định, chỉ bỏ qua giá trị GIẢ đã biết.
+# Thêm giá trị vào đây chỉ khi chắc chắn là giá trị giả (test / ví dụ trong docs / seed demo dev). Bí mật thật bị bắt ⇒ coi như đã lộ, đổi khóa.
+title = "renting_room"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Code test: mật khẩu / token giả cố ý ghi cứng"
+paths = ['''^tests/''']
+
+[[allowlists]]
+description = "Giá trị giả trong seed demo dev và ví dụ của tài liệu"
+regexes = [
+  '''^PhoQuanLy2026$''',                                # mật khẩu quản lý demo (appsettings.Development.json)
+  '''^ChuTroDemo2026$''',                               # mật khẩu chủ trọ demo
+  '''^q7Rk2mXw9pLa$''',                                 # mật khẩu tạm ví dụ (docs/plans/01-identity-access.md)
+  '''^dMkK_wzA1KfaGnsROsNforD23ZW6nB7Q37Dbn_1BdoU$''',  # refresh token ví dụ (docs/api/auth.md)
+  '''^7f3c1a2e-5b4d-4e8f-9a01-2b3c4d5e6f70$''',         # Idempotency-Key ví dụ (docs/api)
+  '''^sk_live_abc123$''',                               # ví dụ trong .claude/skills/api-design
+]

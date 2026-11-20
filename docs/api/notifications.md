@@ -28,6 +28,8 @@ Nội dung tin chỉ có: tên khu, mã phòng, tên người đứng tên, thá
 | POST | `/renters/{id}/zalo-link-code` | Tạo mã liên kết Zalo |
 | DELETE | `/renters/{id}/zalo-link` | Hủy liên kết Zalo (204) |
 | PUT | `/properties/{id}/notification-settings` | Bật / tắt tự gửi, mốc nhắc nợ |
+| POST | `/properties/{id}/announcements` | Gửi thông báo chung của khu qua Zalo (202) |
+| GET | `/properties/{id}/announcements` | Các thông báo chung đã gửi của khu |
 
 ### `GET /notifications/channels`
 
@@ -70,6 +72,7 @@ Nội dung tin chỉ có: tên khu, mã phòng, tên người đứng tên, thá
 ```
 
 - `channel`: `Zalo` | `Email`. `kind`: `InvoiceIssued` | `OverdueReminder` (`step` = số ngày sau hạn) | `ManualResend` (`step` = lần gửi lại thứ mấy).
+  (`Announcement` = thông báo chung — không nằm trong lịch sử của phiếu, xem `GET /properties/{id}/announcements`.)
 - `status`: `Pending` (chờ / chờ thử lại) · `Sending` · `Sent` · `Failed` · `Skipped` (nhắc nợ nhưng phiếu đã hết nợ / đã hủy) · `Cancelled` (hủy phiếu / hủy liên kết).
 - `lastError`: mã ngắn (VD `HTTP_500`, `RATE_LIMITED`, `NETWORK`, `HTTP_403`) — không chứa token hay nội dung tin.
 
@@ -94,6 +97,55 @@ Body tùy chọn: `{ "channels": ["Zalo"] }` (bỏ trống = mọi kênh ngườ
 ```
 
 `noChannel` = phiếu đã chốt (tổng > 0) của khu bật tự gửi mà không có dòng nào — người đứng tên chưa có kênh. Dùng để nhắc chủ trọ gửi tay.
+
+### `POST /properties/{id}/announcements` — thông báo chung (tăng giá điện, cắt nước, bảo trì…)
+
+Gửi cho **người đứng tên** của HĐ đang hiệu lực (`Active` / `Liquidating`) ở các phòng của khu, **chỉ qua Zalo** (đã liên kết), **gửi ngay — không giới hạn 08:00–20:00**.
+Người ở cùng không nhận. Cùng một chat Zalo (một người đứng tên 2 phòng, hoặc nhiều hồ sơ gắn một chat) ⇒ đúng 1 tin. Hỗ trợ `Idempotency-Key`. Đã gửi thì **không thu hồi được**.
+
+```json
+{ "title": "Tăng giá điện từ 01/12/2026", "body": "Giá điện tăng lên 3.800đ/kWh, áp dụng từ kỳ thu tháng 12/2026.", "roomIds": null }
+```
+
+- `title` 1–100 ký tự, `body` 1–1500 ký tự (bỏ khoảng trắng đầu / cuối). `roomIds` bỏ trống / `[]` = mọi phòng đang thuê; có thì ≤ 500, không trùng.
+- Trả **202**:
+
+```json
+{ "id": "…", "title": "Tăng giá điện từ 01/12/2026", "roomCount": 12, "queued": 9,
+  "noChannelRooms": [{ "roomId": "…", "roomCode": "P102" }, { "roomId": "…", "roomCode": "P205" }] }
+```
+
+`roomCount` = số phòng có người đứng tên trong phạm vi gửi (phòng trống không tính); `queued` = số tin đã xếp; `noChannelRooms` = phòng mà người đứng tên chưa liên kết Zalo
+⇒ hiện cho chủ trọ nhắn tay.
+
+Tin người thuê nhận:
+
+```
+[Khu A — Thu sau] Tăng giá điện từ 01/12/2026
+
+Giá điện tăng lên 3.800đ/kWh, áp dụng từ kỳ thu tháng 12/2026.
+
+(Nhắn HUY để ngừng nhận tin.)
+```
+
+| Mã | HTTP | Khi nào |
+|---|---|---|
+| `VALIDATION_FAILED` | 400 | Tiêu đề / nội dung rỗng hoặc quá dài; `roomIds` trùng / quá 500 |
+| `PROPERTY_NOT_FOUND` | 404 | Không có khu (hoặc của tổ chức khác / ngoài khu được giao) |
+| `ROOM_NOT_FOUND` | 404 | Có phòng trong `roomIds` không thuộc khu |
+| `ZALO_BOT_NOT_CONFIGURED` | 409 | Máy chủ chưa có token Zalo |
+| `NO_NOTIFICATION_CHANNEL` | 422 | Không người đứng tên nào trong phạm vi đã liên kết Zalo — **không lưu** thông báo |
+
+### `GET /properties/{id}/announcements?page=&pageSize=`
+
+Trang chuẩn (`items`, `page`, `pageSize`, `totalCount`, `totalPages`), mới nhất trước:
+
+```json
+{ "items": [{ "id": "…", "title": "Tăng giá điện từ 01/12/2026", "body": "…", "allRooms": true, "roomCount": 12, "recipientCount": 9,
+  "pending": 0, "sent": 8, "failed": 1, "cancelled": 0, "createdAt": "2026-11-20T08:00:00Z" }], "page": 1, "pageSize": 20, "totalCount": 1, "totalPages": 1 }
+```
+
+`pending` gồm cả đang gửi. Tin quá 180 ngày bị dọn khỏi hàng đợi ⇒ các số đếm về 0, thông báo vẫn còn trong danh sách. 404 `PROPERTY_NOT_FOUND`.
 
 ## Bot Zalo nói gì
 
