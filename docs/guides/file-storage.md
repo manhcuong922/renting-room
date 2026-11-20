@@ -65,7 +65,7 @@ Quy tắc an toàn:
 ## 5. Kiểm chứng
 
 - `FileStorageTests` (16 test): chạy mặc định bằng Local, không cần MinIO — kiểm loại file, quyền, hạn mức, 503 khi MinIO không chạy, đổi Provider không mất file cũ, khởi động thất bại khi thiếu khóa.
-- `MinioStorageTests` (2 test): chạy với **MinIO thật** trong container tạm — upload, tải, liên kết ký, bucket private, xóa, tự tạo bucket, health. Image lấy từ biến `MINIO_TEST_IMAGE` (mặc định `quay.io/minio/minio:latest`, image đã có sẵn trên máy dev).
+- `MinioStorageTests` (2 test): chạy với **MinIO thật** trong container tạm — upload, tải, liên kết ký, bucket private, xóa, tự tạo bucket, health. Image lấy từ biến `MINIO_TEST_IMAGE` (mặc định `pgsty/minio:RELEASE.2026-08-04T00-00-00Z`: bản build cộng đồng của MinIO, kéo công khai được nên CI chạy được; trước 20/11/2026 mặc định `quay.io/minio/minio:latest` khiến CI đỏ vì không kéo được image).
 
 ## 6. Cảnh báo: nguồn image MinIO (kiểm 16/11/2026)
 
@@ -73,6 +73,7 @@ MinIO đã ngừng phát hành image công khai: `docker pull minio/minio` báo 
 
 - **Máy mới / VPS mới không `docker compose up` được MinIO** nếu chưa có image. Cách xử lý: `docker save quay.io/minio/minio:latest | gzip > minio.tar.gz` trên máy đang có, chép sang máy mới rồi `docker load`; hoặc đẩy image đó lên registry riêng (GitHub Container Registry) và đặt `MINIO_IMAGE=ghcr.io/<bạn>/minio:<tag>`.
 - Image cũ không nhận bản vá bảo mật mới. Với kho chứa ảnh CCCD, hãy cân nhắc kỹ trước khi đặt production lên image này.
+- Image công khai còn kéo được (kiểm 20/11/2026): `pgsty/minio` (bản build cộng đồng từ mã nguồn MinIO, dùng y như image gốc, đang dùng cho test). Cân nhắc dùng cho compose: do một nhóm cộng đồng duy trì, nên ghim phiên bản cụ thể.
 - Code M09 nói chuyện bằng giao thức **S3 chuẩn**, nên đổi sang kho khác (RustFS, SeaweedFS, Garage — có image công khai — hoặc object storage thuê của nhà cung cấp) chỉ cần đổi `ServiceUrl` / `AccessKey` / `SecretKey`. Chưa kiểm thử với các kho đó.
 
 ## 7. Giới hạn hiện tại

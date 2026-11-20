@@ -12,10 +12,10 @@ public sealed class MinioStorageTests(ApiFactory factory) : IAsyncLifetime
 {
     private const string Bucket = "renting-room-test";
     /// <summary>
-    /// Image S3 thật cho test. MinIO đã ngừng phát hành image công khai trên Docker Hub / quay.io (kiểm 16/11/2026) — mặc định dùng image đã có trên máy;
-    /// CI / máy khác đặt <c>MINIO_TEST_IMAGE</c> (VD ảnh nội bộ ghcr.io/...).
+    /// Image S3 thật cho test. MinIO đã ngừng phát hành image công khai trên Docker Hub / quay.io (kiểm 16/11/2026) ⇒ mặc định dùng bản build
+    /// cộng đồng <c>pgsty/minio</c> (cùng mã nguồn MinIO, kéo công khai được, ghim phiên bản để CI ổn định). Đổi image bằng biến <c>MINIO_TEST_IMAGE</c>.
     /// </summary>
-    private static readonly string Image = Environment.GetEnvironmentVariable("MINIO_TEST_IMAGE") ?? "quay.io/minio/minio:latest";
+    private static readonly string Image = Environment.GetEnvironmentVariable("MINIO_TEST_IMAGE") ?? "pgsty/minio:RELEASE.2026-08-04T00-00-00Z";
 
     private readonly MinioContainer _minio = new MinioBuilder(Image).Build();
 
