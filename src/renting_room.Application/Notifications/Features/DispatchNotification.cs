@@ -20,7 +20,7 @@ public sealed record DispatchNotificationCommand(Guid OutboxId) : IRequest<Dispa
 
 public sealed class DispatchNotificationHandler(
     INotificationRepository notifications, IInvoiceQueries invoices, IPropertyQueries properties, IRenterRepository renters,
-    IEnumerable<INotificationSender> senders, IUnitOfWork unitOfWork, TimeProvider clock)
+    IAnnouncementRepository announcements, IEnumerable<INotificationSender> senders, IUnitOfWork unitOfWork, TimeProvider clock)
     : IRequestHandler<DispatchNotificationCommand, DispatchResult>
 {
     public async ValueTask<DispatchResult> Handle(DispatchNotificationCommand request, CancellationToken cancellationToken)
@@ -28,7 +28,9 @@ public sealed class DispatchNotificationHandler(
         if (await notifications.GetForUpdateAsync(request.OutboxId, cancellationToken) is not { Status: NotificationStatus.Sending } outbox)
             return new DispatchResult(NotificationChannel.Zalo, null, null);
 
-        var result = await DecideAsync(outbox, cancellationToken);
+        var result = outbox.AnnouncementId is { } announcementId
+            ? await DecideAnnouncementAsync(outbox, announcementId, cancellationToken)
+            : await DecideAsync(outbox, cancellationToken);
         await unitOfWork.SaveChangesAsync(cancellationToken);
         return new DispatchResult(outbox.Channel, result?.Outcome, result?.RetryAfter);
     }
@@ -36,7 +38,7 @@ public sealed class DispatchNotificationHandler(
     /// <returns>Kết quả gửi thật; null nếu tin bị bỏ qua / thất bại trước khi gửi.</returns>
     private async Task<SendResult?> DecideAsync(NotificationOutbox outbox, CancellationToken ct)
     {
-        var invoice = await invoices.GetDetailsAsync(outbox.InvoiceId, ct);
+        var invoice = outbox.InvoiceId is { } invoiceId ? await invoices.GetDetailsAsync(invoiceId, ct) : null;
         if (invoice is null || invoice.Status != InvoiceStatus.Finalized || invoice.VoidedAt is not null)
         {
             outbox.MarkSkipped(); // phiếu đã hủy trong lúc tin chờ — không gửi nội dung của phiếu hủy
@@ -47,23 +49,51 @@ public sealed class DispatchNotificationHandler(
             outbox.MarkSkipped();
             return null;
         }
+        if (ResolveSender(outbox) is not { } sender)
+            return null;
+
+        var property = await properties.GetAsync(invoice.PropertyId, ct);
+        var content = InvoiceMessageBuilder.Build(
+            invoice, property?.Name ?? string.Empty, property?.BankAccount, outbox.Kind, outbox.Step, clock.GetUtcNow().ToBusinessDate(),
+            includeUnsubscribeHint: outbox.Channel == NotificationChannel.Zalo);
+        return await SendAndRecordAsync(outbox, sender, content.Subject, content.Text, ct);
+    }
+
+    /// <summary>M11 §17 / NT-BR-23: nội dung lấy từ thông báo đã lưu; thông báo không còn ⇒ bỏ qua.</summary>
+    private async Task<SendResult?> DecideAnnouncementAsync(NotificationOutbox outbox, Guid announcementId, CancellationToken ct)
+    {
+        if (await announcements.GetAsync(announcementId, ct) is not { } announcement)
+        {
+            outbox.MarkSkipped();
+            return null;
+        }
+        if (ResolveSender(outbox) is not { } sender)
+            return null;
+
+        var property = await properties.GetAsync(announcement.PropertyId, ct);
+        var text = AnnouncementMessageBuilder.Build(property?.Name ?? string.Empty, announcement.Title, announcement.Body,
+            includeUnsubscribeHint: outbox.Channel == NotificationChannel.Zalo);
+        return await SendAndRecordAsync(outbox, sender, announcement.Title, text, ct);
+    }
+
+    /// <returns>null (và tin đã <c>Failed</c>) nếu thiếu người nhận hoặc kênh chưa cấu hình ở máy chủ.</returns>
+    private INotificationSender? ResolveSender(NotificationOutbox outbox)
+    {
         if (outbox.Recipient is null)
         {
             outbox.MarkFailed("NO_RECIPIENT");
             return null;
         }
         var sender = senders.FirstOrDefault(s => s.Channel == outbox.Channel);
-        if (sender is not { IsConfigured: true })
-        {
-            outbox.MarkFailed("CHANNEL_NOT_CONFIGURED");
-            return null;
-        }
+        if (sender is { IsConfigured: true })
+            return sender;
+        outbox.MarkFailed("CHANNEL_NOT_CONFIGURED");
+        return null;
+    }
 
-        var property = await properties.GetAsync(invoice.PropertyId, ct);
-        var content = InvoiceMessageBuilder.Build(
-            invoice, property?.Name ?? string.Empty, property?.BankAccount, outbox.Kind, outbox.Step, clock.GetUtcNow().ToBusinessDate(),
-            includeUnsubscribeHint: outbox.Channel == NotificationChannel.Zalo);
-        var result = await sender.SendAsync(new NotificationMessage(outbox.Recipient, content.Subject, content.Text), ct);
+    private async Task<SendResult> SendAndRecordAsync(NotificationOutbox outbox, INotificationSender sender, string subject, string text, CancellationToken ct)
+    {
+        var result = await sender.SendAsync(new NotificationMessage(outbox.Recipient!, subject, text), ct);
 
         var now = clock.GetUtcNow();
         switch (result.Outcome)

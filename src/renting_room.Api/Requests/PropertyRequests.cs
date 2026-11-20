@@ -43,3 +43,6 @@ public sealed record RevealedIdNumber(string IdNumber);
 public sealed record UpdateNotificationSettingsRequest(bool NotifyOnFinalize, IReadOnlyList<int>? OverdueReminderDays);
 
 public sealed record ResendNotificationRequest(IReadOnlyList<string>? Channels);
+
+/// <param name="RoomIds">Bỏ trống / rỗng = mọi phòng đang thuê của khu (M11 §17).</param>
+public sealed record SendAnnouncementRequest(string Title, string Body, IReadOnlyList<Guid>? RoomIds);

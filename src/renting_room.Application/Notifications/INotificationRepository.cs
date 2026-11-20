@@ -1,3 +1,4 @@
+using renting_room.Application.Common.Models;
 using renting_room.Domain.Notifications;
 
 namespace renting_room.Application.Notifications;
@@ -47,6 +48,26 @@ public sealed record OverdueInvoiceRow(
     Guid InvoiceId, Guid ContractId, Guid RenterId, DateOnly DueDate, IReadOnlyList<int> ConfiguredDays, IReadOnlyList<int> SentSteps);
 
 public sealed record NotificationSummaryDto(int Total, int Pending, int Sent, int Failed, int Skipped, int Cancelled, int NoChannel);
+
+/// <summary>M11 §17: người đứng tên của một phòng (HĐ <c>Active</c> / <c>Liquidating</c>) — ứng viên nhận thông báo chung.</summary>
+public sealed record AnnouncementTarget(Guid RoomId, string RoomCode, Guid RenterId, string? ZaloChatId, bool IsAnonymized);
+
+/// <summary>Thông báo chung của khu (M11 §17) — trong phạm vi tổ chức + khu được giao (global filter).</summary>
+public interface IAnnouncementRepository
+{
+    void Add(Announcement announcement);
+
+    Task<Announcement?> GetAsync(Guid id, CancellationToken cancellationToken);
+
+    /// <summary>Số phòng trong <paramref name="roomIds"/> thuộc khu (NT-BR-21: thiếu ⇒ <c>ROOM_NOT_FOUND</c>).</summary>
+    Task<int> CountRoomsAsync(Guid propertyId, IReadOnlyCollection<Guid> roomIds, CancellationToken cancellationToken);
+
+    /// <summary>NT-BR-20: người đứng tên các HĐ đang hiệu lực ở các phòng của khu; <paramref name="roomIds"/> null = mọi phòng.</summary>
+    Task<IReadOnlyList<AnnouncementTarget>> ListTargetsAsync(Guid propertyId, IReadOnlyCollection<Guid>? roomIds, CancellationToken cancellationToken);
+
+    /// <summary>Mới nhất trước, kèm số tin theo trạng thái.</summary>
+    Task<PagedResult<AnnouncementDto>> ListAsync(Guid propertyId, int page, int pageSize, CancellationToken cancellationToken);
+}
 
 /// <summary>Mã liên kết trong phạm vi tổ chức hiện tại.</summary>
 public interface IZaloLinkCodeRepository

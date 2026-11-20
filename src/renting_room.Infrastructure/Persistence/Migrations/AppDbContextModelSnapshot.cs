@@ -2880,11 +2880,87 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("renting_room.Domain.Notifications.Announcement", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("AllRooms")
+                        .HasColumnType("boolean")
+                        .HasColumnName("all_rooms");
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasMaxLength(1500)
+                        .HasColumnType("character varying(1500)")
+                        .HasColumnName("body");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("organization_id");
+
+                    b.Property<Guid>("PropertyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("property_id");
+
+                    b.Property<int>("RecipientCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("recipient_count");
+
+                    b.Property<int>("RoomCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("room_count");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("title");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_announcements");
+
+                    b.HasAlternateKey("OrganizationId", "Id")
+                        .HasName("ak_announcements_organization_id_id");
+
+                    b.HasIndex("OrganizationId", "PropertyId", "CreatedAt")
+                        .HasDatabaseName("ix_announcements_property_created");
+
+                    b.ToTable("announcements", (string)null);
+                });
+
             modelBuilder.Entity("renting_room.Domain.Notifications.NotificationOutbox", b =>
                 {
                     b.Property<Guid>("Id")
                         .HasColumnType("uuid")
                         .HasColumnName("id");
+
+                    b.Property<Guid?>("AnnouncementId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("announcement_id");
 
                     b.Property<short>("Attempts")
                         .HasColumnType("smallint")
@@ -2904,7 +2980,7 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("created_by");
 
-                    b.Property<Guid>("InvoiceId")
+                    b.Property<Guid?>("InvoiceId")
                         .HasColumnType("uuid")
                         .HasColumnName("invoice_id");
 
@@ -2983,11 +3059,19 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("ix_notification_outbox_pending")
                         .HasFilter("status = 'Pending'");
 
+                    b.HasIndex("OrganizationId", "AnnouncementId")
+                        .HasDatabaseName("ix_notification_outbox_organization_id_announcement_id");
+
                     b.HasIndex("OrganizationId", "InvoiceId")
                         .HasDatabaseName("ix_notification_outbox_invoice");
 
                     b.HasIndex("OrganizationId", "RenterId")
                         .HasDatabaseName("ix_notification_outbox_renter");
+
+                    b.HasIndex("AnnouncementId", "RenterId", "Channel")
+                        .IsUnique()
+                        .HasDatabaseName("ux_notification_outbox_announcement")
+                        .HasFilter("announcement_id IS NOT NULL");
 
                     b.HasIndex("InvoiceId", "Channel", "Kind", "Step")
                         .IsUnique()
@@ -2999,7 +3083,9 @@ namespace renting_room.Infrastructure.Persistence.Migrations
 
                             t.HasCheckConstraint("ck_notification_outbox_channel", "channel IN ('Zalo','Email')");
 
-                            t.HasCheckConstraint("ck_notification_outbox_kind", "kind IN ('InvoiceIssued','OverdueReminder','ManualResend')");
+                            t.HasCheckConstraint("ck_notification_outbox_kind", "kind IN ('InvoiceIssued','OverdueReminder','ManualResend','Announcement')");
+
+                            t.HasCheckConstraint("ck_notification_outbox_source", "num_nonnulls(invoice_id, announcement_id) = 1");
 
                             t.HasCheckConstraint("ck_notification_outbox_status", "status IN ('Pending','Sending','Sent','Failed','Skipped','Cancelled')");
                         });
@@ -4652,6 +4738,24 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                         .HasConstraintName("fk_meter_readings_meters_organization_id_meter_id");
                 });
 
+            modelBuilder.Entity("renting_room.Domain.Notifications.Announcement", b =>
+                {
+                    b.HasOne("renting_room.Domain.Identity.Organization", null)
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_announcements_organizations_organization_id");
+
+                    b.HasOne("renting_room.Domain.Properties.Property", null)
+                        .WithMany()
+                        .HasForeignKey("OrganizationId", "PropertyId")
+                        .HasPrincipalKey("OrganizationId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_announcements_properties_organization_id_property_id");
+                });
+
             modelBuilder.Entity("renting_room.Domain.Notifications.NotificationOutbox", b =>
                 {
                     b.HasOne("renting_room.Domain.Identity.Organization", null)
@@ -4661,12 +4765,18 @@ namespace renting_room.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasConstraintName("fk_notification_outbox_organizations_organization_id");
 
+                    b.HasOne("renting_room.Domain.Notifications.Announcement", null)
+                        .WithMany()
+                        .HasForeignKey("OrganizationId", "AnnouncementId")
+                        .HasPrincipalKey("OrganizationId", "Id")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_notification_outbox_announcements_organization_id_announcem");
+
                     b.HasOne("renting_room.Domain.Billing.Invoice", null)
                         .WithMany()
                         .HasForeignKey("OrganizationId", "InvoiceId")
                         .HasPrincipalKey("OrganizationId", "Id")
                         .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
                         .HasConstraintName("fk_notification_outbox_invoices_organization_id_invoice_id");
 
                     b.HasOne("renting_room.Domain.Renters.Renter", null)

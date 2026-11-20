@@ -46,6 +46,7 @@ public partial class AppDbContext(
     public DbSet<RenterConsent> RenterConsents => Set<RenterConsent>();
     public DbSet<NotificationOutbox> NotificationOutbox => Set<NotificationOutbox>();
     public DbSet<ZaloLinkCode> ZaloLinkCodes => Set<ZaloLinkCode>();
+    public DbSet<Announcement> Announcements => Set<Announcement>();
     public DbSet<Payment> Payments => Set<Payment>();
     public DbSet<CollectionReduction> CollectionReductions => Set<CollectionReduction>();
     public DbSet<Contract> Contracts => Set<Contract>();

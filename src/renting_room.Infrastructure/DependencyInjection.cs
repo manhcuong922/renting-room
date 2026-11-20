@@ -180,6 +180,7 @@ public static class DependencyInjection
 
         services.AddScoped<INotificationRepository, NotificationRepository>();
         services.AddScoped<IZaloLinkCodeRepository, ZaloLinkCodeRepository>();
+        services.AddScoped<IAnnouncementRepository, AnnouncementRepository>();
         services.AddScoped<IZaloLinkLookup, ZaloLinkLookup>();
         services.AddScoped<NotificationOutboxStore>();
 

@@ -1,6 +1,7 @@
 using System.Linq.Expressions;
 using renting_room.Domain.Common;
 using renting_room.Domain.Contracts;
+using renting_room.Domain.Notifications;
 using renting_room.Domain.Properties;
 using renting_room.Domain.Renters;
 
@@ -40,6 +41,11 @@ public partial class AppDbContext
                     && (c.RepresentativeRenterId == e.Id || c.Occupants.Any(o => o.RenterId == e.Id) || c.RepresentativeHistory.Any(h => h.RenterId == e.Id))));
         if (type == typeof(RenterConsent))
             return (Expression<Func<RenterConsent, bool>>)(e => CurrentPropertyIds == null || Renters.Any(r => r.Id == e.RenterId));
+        // M11 §17: tin của phiếu HOẶC của thông báo chung (hai khóa cha nullable — vòng lặp dưới chỉ nhận Guid không null).
+        if (type == typeof(NotificationOutbox))
+            return (Expression<Func<NotificationOutbox, bool>>)(e => CurrentPropertyIds == null
+                || Invoices.Any(i => i.Id == e.InvoiceId && CurrentPropertyIds.Contains(i.PropertyId))
+                || Announcements.Any(a => a.Id == e.AnnouncementId && CurrentPropertyIds.Contains(a.PropertyId)));
         // Bảng của chính cơ chế phạm vi: chỉ lọc tổ chức (RenterClaim trỏ Renter — lọc theo Renter sẽ thành vòng).
         if (type == typeof(RenterClaim) || type == typeof(Domain.Identity.UserPropertyAccess))
             return null;

@@ -368,7 +368,7 @@ Chi tiết: [attachments.md](attachments.md).
 | `ZALO_BOT_NOT_CONFIGURED` | 409 | Máy chủ chưa có token Zalo — ẩn nút liên kết, báo liên hệ người vận hành |
 | `INVOICE_NOT_FINALIZED` | 409 | Gửi lại phiếu còn nháp — chốt trước |
 | `INVOICE_VOIDED` | 409 | Phiếu đã hủy — không gửi |
-| `NO_NOTIFICATION_CHANNEL` | 422 | Người đứng tên chưa có kênh nhận tin — liên kết Zalo / thêm email, hoặc gửi tay |
+| `NO_NOTIFICATION_CHANNEL` | 422 | Người đứng tên chưa có kênh nhận tin — liên kết Zalo / thêm email, hoặc gửi tay. Thông báo chung: không người đứng tên nào trong phạm vi đã liên kết Zalo |
 | `INVALID_CHANNEL` | 400 | Kênh gửi lại phải là `Zalo` / `Email`, không trùng |
 | `INVALID_REMINDER_DAYS` | 400 | Mốc nhắc nợ: tối đa 3, mỗi mốc 1–60, không trùng, tăng dần |
 | `INVALID_BILLING_MONTH` | 400 | `billingMonth` phải là ngày đầu tháng |

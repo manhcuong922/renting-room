@@ -24,6 +24,8 @@ và tự **nhắc nợ** khi phiếu quá hạn mà chưa thu đủ. Gửi qua h
 - Nội dung tin dạng chữ: chi tiết phiếu, tổng tiền, hạn nộp, tài khoản ngân hàng của khu.
 - Nội dung "chia sẻ tay" (văn bản + link `zalo.me/<sđt>`) cho người thuê chưa có kênh nào.
 - Xem trạng thái gửi theo phiếu và tổng hợp theo khu / tháng thu.
+- **Thông báo chung của khu** (20/11/2026 — NT-UC-12/13): chủ trọ / quản lý khu nhập tiêu đề + nội dung (VD tăng giá điện, cắt nước, bảo trì)
+  rồi gửi qua Zalo tới người đứng tên của **mọi phòng đang thuê** trong khu hoặc **các phòng chọn**. Mục 17.
 
 **Ngoài phạm vi**
 - Ảnh VietQR, trang xem phiếu công khai, PDF phiếu (cần UI công khai + mã BIN ngân hàng — mục 15 Q3, Q4).
@@ -31,7 +33,7 @@ và tự **nhắc nợ** khi phiếu quá hạn mà chưa thu đủ. Gửi qua h
 - ZNS / Zalo OA, SMS, webhook, bot riêng cho từng tổ chức (P3 B2B).
 - Bot trả lời hội thoại: bot chỉ hiểu **mã liên kết** và lệnh `HUY`.
 
-**Phase**: P2. **Trạng thái (14/11/2026)**: phần BE đã code (Zalo + email, outbox, dispatcher, liên kết, nhắc nợ, cài đặt khu, 7 endpoint). Chạy được ngay khi có token:
+**Phase**: P2. **Trạng thái (20/11/2026)**: thêm thông báo chung của khu (mục 17). **(14/11/2026)**: phần BE đã code (Zalo + email, outbox, dispatcher, liên kết, nhắc nợ, cài đặt khu, 7 endpoint). Chạy được ngay khi có token:
 điền `ZaloBot:Token` (user-secrets hoặc biến môi trường — xem [zalo-bot-setup.md](../guides/zalo-bot-setup.md) mục 3) rồi khởi động lại — chưa có token thì kênh Zalo ở trạng thái "chưa cấu hình", app vẫn chạy.
 
 **Khác thiết kế gốc (quyết định khi code 14/11/2026)**
@@ -57,9 +59,10 @@ chi tiết khu có tab "Thông báo" (tự gửi khi chốt, tối đa 3 mốc n
 | Thuật ngữ (VI) | Tên trong code | Định nghĩa |
 |---|---|---|
 | Kênh | `NotificationChannel` | `Zalo`, `Email` |
-| Loại tin | `NotificationKind` | `InvoiceIssued` (phiếu mới chốt), `OverdueReminder` (nhắc nợ), `ManualResend` (chủ trọ bấm gửi lại) |
+| Loại tin | `NotificationKind` | `InvoiceIssued` (phiếu mới chốt), `OverdueReminder` (nhắc nợ), `ManualResend` (chủ trọ bấm gửi lại), `Announcement` (thông báo chung — mục 17) |
 | Bước | `Step` | `InvoiceIssued` = 0; `OverdueReminder` = số ngày quá hạn đã cài (VD 1, 3, 7); `ManualResend` = số thứ tự lần gửi lại |
 | Tin chờ gửi | `NotificationOutbox` | 1 dòng = 1 tin tới 1 người trên 1 kênh |
+| Thông báo chung | `Announcement` | Tin chủ trọ tự soạn (tiêu đề + nội dung) gửi cho người đứng tên các phòng của một khu — không gắn phiếu (mục 17) |
 | Mã liên kết | `ZaloLinkCode` | Mã dùng một lần để gắn một cuộc chat Zalo với một hồ sơ người thuê |
 | Người nhận | — | Người đứng tên hợp đồng của phiếu (`Contract.RepresentativeRenterId`) |
 | Khung giờ gửi | `SendWindow` | 08:00–20:00 giờ VN (C-04), cấu hình hệ thống |
@@ -81,6 +84,8 @@ chi tiết khu có tab "Thông báo" (tự gửi khi chốt, tối đa 3 mốc n
 | NT-UC-09 | OrgOwner / OrgManager | Lấy nội dung chia sẻ tay của một phiếu | Văn bản phiếu + link `https://zalo.me/<sđt>` (nếu có số) |
 | NT-UC-10 | OrgOwner, OrgManager (theo quyền sửa cài đặt khu — §9) | Bật / tắt tự gửi và cài số ngày nhắc nợ của khu | Lưu vào cài đặt kỳ thu của khu (M02) |
 | NT-UC-11 | OrgOwner / OrgManager | Xem kênh nào đang dùng được | Zalo: đã cấu hình chưa + tên bot; Email: đã cấu hình chưa |
+| NT-UC-12 | OrgOwner / OrgManager (khu được giao) | Gửi thông báo chung cho một khu: tiêu đề, nội dung, mọi phòng đang thuê hoặc các phòng chọn | 1 dòng `announcements` + mỗi người nhận có Zalo ⇒ 1 dòng outbox `Announcement`; trả số tin đã xếp và các phòng chưa liên kết Zalo |
+| NT-UC-13 | OrgOwner / OrgManager (khu được giao) | Xem các thông báo chung đã gửi của khu | Danh sách (mới nhất trước, phân trang) kèm số tin theo trạng thái |
 
 ### 3.2 Quy tắc nghiệp vụ
 
@@ -105,6 +110,10 @@ chi tiết khu có tab "Thông báo" (tự gửi khi chốt, tối đa 3 mốc n
 | NT-BR-17 | Nội dung tin **không** chứa số giấy tờ, ngày sinh, số điện thoại người thuê. Chỉ có: tên khu, mã phòng, tên người đứng tên, tháng thu, các dòng tiền, tổng, còn nợ, hạn nộp, tài khoản ngân hàng của khu | Application (bộ dựng nội dung) |
 | NT-BR-18 | Dòng outbox quá 180 ngày ở trạng thái kết thúc ⇒ job dọn xóa (giống `IdempotencyCleanupService`) | Infrastructure |
 | NT-BR-19 | `overdue_reminder_days`: tối đa 3 giá trị, mỗi giá trị 1–60, không trùng, tăng dần | Validator + DB CHECK |
+| NT-BR-20 | Thông báo chung — người nhận = **người đứng tên** của HĐ `Active` / `Liquidating` ở các phòng được chọn trong khu (không gửi người ở cùng, như Q8). **Chỉ kênh Zalo** (đã liên kết). Hồ sơ ẩn danh ⇒ bỏ. Cùng một chat Zalo (một người đứng tên 2 phòng, hoặc 1 chat gắn nhiều hồ sơ — NT-BR-15) ⇒ **đúng 1 tin** | Application |
+| NT-BR-21 | Tiêu đề 1–100 ký tự, nội dung 1–1500 ký tự (sau khi bỏ khoảng trắng đầu / cuối). `roomIds` bỏ trống / rỗng = mọi phòng của khu; có thì ≤ 500 phần tử, không trùng, mọi phòng phải thuộc khu (sai ⇒ 404 `ROOM_NOT_FOUND`) | Validator + Application |
+| NT-BR-22 | Zalo chưa cấu hình ⇒ 409 `ZALO_BOT_NOT_CONFIGURED`. Không có người nhận nào có Zalo ⇒ 422 `NO_NOTIFICATION_CHANNEL`, **không lưu** thông báo | Application |
+| NT-BR-23 | Thông báo chung gửi **ngay**, không giới hạn khung giờ (như `ManualResend`, NT-BR-08). Nội dung **lưu** trong `announcements` (khác tin phiếu — không có gì để dựng lại); dạng `[Tên khu] Tiêu đề` + nội dung + dòng `HUY`. Đã gửi thì không thu hồi được | Application + Infrastructure |
 
 ### 3.3 Vòng đời trạng thái (dòng outbox)
 
@@ -158,6 +167,24 @@ stateDiagram-v2
 | created_by | uuid | Y | null = hệ thống; có giá trị với `ManualResend` |
 
 Nội dung tin **không lưu**: dựng lại từ phiếu lúc gửi (phiếu đã chốt gần như không đổi — trừ điều chỉnh chỉ số đã chốt và ẩn danh, M07 BL-BR-14 — nên dựng lại luôn ra đúng nội dung hiện hành; số "còn nợ" luôn mới nhất).
+
+**`announcements`** (mới 20/11/2026, `TenantEntity`, `IPropertyScoped` — quản lý khu chỉ thấy khu được giao)
+
+| Cột | Kiểu | Null | Ghi chú |
+|---|---|---|---|
+| id | uuid | N | UUIDv7 |
+| organization_id | uuid | N | |
+| property_id | uuid | N | FK composite → `properties` |
+| title | varchar(100) | N | NT-BR-21 |
+| body | varchar(1500) | N | NT-BR-21 |
+| all_rooms | boolean | N | `true` = gửi mọi phòng đang thuê lúc bấm gửi |
+| room_count | int | N | Số phòng có người đứng tên lúc gửi |
+| recipient_count | int | N | Số tin đã xếp (sau khi gộp theo chat) |
+| created_at / created_by | timestamptz / uuid | N | Ai gửi, lúc nào (audit tự động khi tạo) |
+
+**`notification_outbox`** (đổi 20/11/2026): `invoice_id` thành **nullable**, thêm `announcement_id uuid null` (FK composite → `announcements`);
+CHECK `num_nonnulls(invoice_id, announcement_id) = 1`; `kind` thêm `Announcement`; `UNIQUE (announcement_id, renter_id, channel)`.
+Thông báo chung không có phiếu ⇒ các truy vấn theo phiếu (lịch sử, tổng hợp tháng, nhắc nợ) tự bỏ qua các dòng này.
 
 **`zalo_link_codes`** (mới, `TenantEntity`)
 
@@ -255,6 +282,8 @@ Câu truy vấn nhận việc của dispatcher và tra `code_hash` của poller 
 | GET | `/api/v1/invoices/{id}/share-content` | Owner, Manager | — | `{ text, zaloLink }` | 404, 409 `INVOICE_NOT_FINALIZED` |
 | GET | `/api/v1/notifications/summary?propertyId=&billingMonth=` | Owner, Manager | — | `{ total, pending, sent, failed, skipped, cancelled, noChannel }` | 404 `PROPERTY_NOT_FOUND` |
 | GET | `/api/v1/notifications/channels` | Owner, Manager | — | `{ zalo: { configured, botName }, email: { configured } }` | — |
+| POST | `/api/v1/properties/{id}/announcements` | Owner, Manager (khu được giao) | `{ title, body, roomIds?: [] }` | 202 `{ id, title, roomCount, queued, noChannelRooms: [{ roomId, roomCode }] }` | 400 `VALIDATION_FAILED`, 404 `PROPERTY_NOT_FOUND` / `ROOM_NOT_FOUND`, 409 `ZALO_BOT_NOT_CONFIGURED`, 422 `NO_NOTIFICATION_CHANNEL` |
+| GET | `/api/v1/properties/{id}/announcements?page=&pageSize=` | Owner, Manager (khu được giao) | — | Trang `{ id, title, body, allRooms, roomCount, recipientCount, pending, sent, failed, cancelled, createdAt }` | 404 `PROPERTY_NOT_FOUND` |
 
 Thay đổi endpoint có sẵn: DTO người thuê thêm `zaloLinked`, `zaloLinkedAt`; cài đặt kỳ thu của khu thêm `notifyOnFinalize`, `overdueReminderDays`;
 DTO phiếu thêm `notificationStatus` (mục 4.3). `POST …/resend` theo C-08 (idempotency key).
@@ -287,6 +316,7 @@ Nội dung CK: P101 T10
 | overdueReminderDays | ≤ 3 phần tử; mỗi phần tử 1–60; không trùng; tăng dần | `INVALID_REMINDER_DAYS` (400) |
 | channels (resend) | Chỉ `Zalo` / `Email`; không trùng; rỗng hoặc bỏ trống = mọi kênh người nhận có | `INVALID_CHANNEL` (400) |
 | billingMonth | Ngày đầu tháng (theo quy ước M07) | `INVALID_BILLING_MONTH` (400) |
+| title / body / roomIds (thông báo chung) | NT-BR-21 | `VALIDATION_FAILED` (400) |
 
 Cấu hình máy chủ kiểm lúc khởi động (`ValidateOnStart`): token Zalo nếu có phải đúng dạng `số:chuỗi`; SMTP nếu bật phải đủ host / port / user / mật khẩu; tốc độ gửi > 0. Thiếu token hoặc SMTP **không** làm app ngừng chạy — kênh đó chỉ ở trạng thái "chưa cấu hình".
 
@@ -352,6 +382,15 @@ Cấu hình máy chủ kiểm lúc khởi động (`ValidateOnStart`): token Zal
 23. SystemAdmin gọi các endpoint nghiệp vụ ⇒ 403.
 24. Chưa cấu hình token ⇒ tạo mã trả `ZALO_BOT_NOT_CONFIGURED`; app vẫn khởi động; kênh email vẫn chạy.
 
+**Thông báo chung (mục 17)**
+25. Khu 3 phòng: P101 có HĐ, người đứng tên đã liên kết Zalo; P102 có HĐ, chưa liên kết; P103 trống. Gửi "Tăng giá điện từ 01/12/2026" cho mọi phòng ⇒ 202,
+    `roomCount = 2`, `queued = 1`, `noChannelRooms = [P102]`; dispatcher chạy lúc **22:00** (ngoài khung) ⇒ tin vẫn đi, nội dung có `[Tên khu] Tăng giá điện…`, nội dung đầy đủ, dòng `HUY`.
+26. Chỉ chọn P102 ⇒ 422 `NO_NOTIFICATION_CHANNEL`; danh sách thông báo của khu vẫn rỗng.
+27. `roomIds` có phòng của khu khác ⇒ 404 `ROOM_NOT_FOUND`. Tiêu đề rỗng / nội dung 1501 ký tự / `roomIds` trùng ⇒ 400 `VALIDATION_FAILED`.
+28. Hai hồ sơ người đứng tên (P101, P102) cùng liên kết một chat Zalo ⇒ `queued = 1`, bot gửi đúng 1 tin.
+29. Zalo chưa cấu hình ⇒ 409 `ZALO_BOT_NOT_CONFIGURED`.
+30. Danh sách thông báo của khu sau khi gửi ⇒ 1 dòng, `recipientCount = 1`, `sent = 1`. Tổ chức khác gọi với id khu ⇒ 404 `PROPERTY_NOT_FOUND`.
+
 **Thủ công (sau khi có token thật)**: spike NT-T00, rồi chạy trọn một lượt với bot thật trên dữ liệu seed.
 
 ## 13. Phụ thuộc
@@ -408,3 +447,23 @@ Thứ tự: T00 chạy song song với T01–T06 (không cần Zalo). Kết qu�
 - [ ] Mã lỗi đã liệt kê đầy đủ ở mục 7–8
 - [ ] Token / mật khẩu SMTP không xuất hiện trong log, audit, `last_error`
 - [ ] Hai chỗ truy vấn xuyên tổ chức đã được test cô lập (test 22)
+
+## 17. Thông báo chung của khu (20/11/2026)
+
+**Quyết định của chủ dự án**: gửi theo **từng khu** (không gửi xuyên khu); **chỉ người đứng tên**; **chỉ Zalo**; gửi **ngay, mọi giờ**.
+
+**Luồng**: tab "Thông báo" của khu ⇒ "Gửi thông báo" ⇒ nhập tiêu đề, nội dung, chọn "Tất cả phòng đang thuê" hoặc tick từng phòng ⇒ xác nhận
+⇒ `POST /properties/{id}/announcements` ⇒ dispatcher gửi trong vài giây. Kết quả báo luôn các phòng chưa liên kết Zalo để chủ trọ nhắn tay.
+
+**Cái giá / rủi ro đã chấp nhận**
+- Gõ nhầm rồi gửi cả khu thì không thu hồi được (Zalo Bot không có API xóa tin) ⇒ UI bắt bước xác nhận có số phòng nhận.
+- Gửi ban đêm được (theo quyết định) ⇒ UI cảnh báo khi đang ngoài 08:00–20:00, không chặn.
+- Người ở cùng không nhận ⇒ tin vận hành (cắt nước) phụ thuộc người đứng tên báo lại.
+- Q1 (bot nhắn chủ động sau nhiều ngày im lặng) chưa kiểm chứng ⇒ thông báo cho người lâu không nhắn bot có thể `Failed`.
+
+**UI (20/11/2026)**: tab "Thông báo" của khu có mục "Thông báo chung" (nút "Gửi thông báo", lịch sử có phân trang) nằm trên phần cài đặt tự gửi.
+Hộp thoại: tiêu đề, nội dung (đếm ký tự), "Tất cả phòng đang thuê" / "Chọn phòng" (phòng Đang thuê / Giữ chỗ), cảnh báo ngoài 08–20h, cảnh báo không thu hồi;
+gửi xong báo số tin + các phòng chưa liên kết Zalo. Lint + build đạt; chưa mở thử trên trình duyệt.
+
+**Chưa làm**: hủy thông báo đang chờ, gửi kèm email, gửi xuyên khu, mẫu soạn sẵn, seeder (cùng NT-T13 — seeder demo của M11 chưa có;
+dữ liệu demo không có chat Zalo thật nên tin seed sẽ `Failed` khi dev chạy với token thật).
